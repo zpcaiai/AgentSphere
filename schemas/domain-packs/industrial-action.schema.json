@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/domain-packs/industrial-action.schema.json",
+  "title": "Industrial Two Phase Action", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "asset_id", "point_id", "stage", "expected_version", "target_value", "prepared_digest", "interlock_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.industrial-pack.v1"}, "asset_id": {"type": "string", "minLength": 1},
+    "point_id": {"type": "string", "minLength": 1}, "stage": {"enum": ["SIMULATOR", "DIGITAL_TWIN", "READ_ONLY", "SHADOW", "SUPERVISED_WRITE"]},
+    "expected_version": {"type": "string", "minLength": 1}, "target_value": {"type": "number"},
+    "prepared_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "interlock_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

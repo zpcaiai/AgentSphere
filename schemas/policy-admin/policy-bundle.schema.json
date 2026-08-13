@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/policy-admin/policy-bundle.schema.json",
+  "title": "Signed Policy Bundle", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "bundle_id", "version", "source_digest", "compiled_digest", "analysis_digest", "key_id", "signature", "status"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.policy-bundle.v1"}, "tenant_id": {"type": "string", "minLength": 1}, "bundle_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1}, "source_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "compiled_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "analysis_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "key_id": {"type": "string", "minLength": 1}, "signature": {"type": "string", "minLength": 16},
+    "status": {"enum": ["DRAFT", "REVIEW", "CANARY", "ACTIVE", "ROLLED_BACK", "REVOKED"]}
+  }
+}

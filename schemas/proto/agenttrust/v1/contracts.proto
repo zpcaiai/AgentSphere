@@ -1,0 +1,22 @@
+syntax = "proto3";
+package agenttrust.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+enum RiskLevel { RISK_LEVEL_UNSPECIFIED = 0; RISK_LEVEL_LOW = 1; RISK_LEVEL_MEDIUM = 2; RISK_LEVEL_HIGH = 3; RISK_LEVEL_CRITICAL = 4; }
+enum EffectClass { EFFECT_CLASS_UNSPECIFIED = 0; EFFECT_CLASS_PURE = 1; EFFECT_CLASS_IDEMPOTENT = 2; EFFECT_CLASS_COMPENSATABLE = 3; EFFECT_CLASS_IRREVERSIBLE = 4; }
+enum Decision { DECISION_UNSPECIFIED = 0; DECISION_ALLOW = 1; DECISION_DENY = 2; DECISION_REQUIRE_APPROVAL = 3; DECISION_PAUSE = 4; DECISION_KILL = 5; }
+enum ExecutionStatus { EXECUTION_STATUS_UNSPECIFIED = 0; EXECUTION_STATUS_PREPARED = 1; EXECUTION_STATUS_RUNNING = 2; EXECUTION_STATUS_SUCCEEDED = 3; EXECUTION_STATUS_FAILED = 4; EXECUTION_STATUS_TIMED_OUT = 5; EXECUTION_STATUS_CANCELLED = 6; EXECUTION_STATUS_KILLED = 7; EXECUTION_STATUS_COMPENSATING = 8; EXECUTION_STATUS_COMPENSATED = 9; EXECUTION_STATUS_COMPENSATION_FAILED = 10; EXECUTION_STATUS_UNKNOWN = 11; }
+
+message ToolRef { string tool_id = 1; string tool_version = 2; }
+message SignedGoal { string schema_version = 1; string goal_id = 2; string normalized_goal = 3; string goal_hash = 4; map<string,string> constraints = 5; string approved_by = 6; google.protobuf.Timestamp signed_at = 7; string signer_key_id = 8; bytes signature = 9; }
+message PlanStep { string step_id = 1; uint32 sequence = 2; string intent = 3; repeated string dependencies = 4; ToolRef tool = 5; repeated string resource_scope = 6; RiskLevel risk = 7; }
+message PlanManifest { string schema_version = 1; string plan_id = 2; string goal_hash = 3; string plan_hash = 4; repeated PlanStep steps = 5; repeated string max_scope = 6; RiskLevel risk_budget = 7; uint64 cost_budget_microunits = 8; google.protobuf.Timestamp valid_until = 9; }
+message DelegationEnvelope { string schema_version = 1; string parent_agent = 2; string child_agent = 3; repeated ToolRef delegated_tools = 4; repeated string delegated_resources = 5; uint64 budget_ceiling_microunits = 6; google.protobuf.Timestamp expiry = 7; }
+message AuthorizationLease { string schema_version = 1; string lease_id = 2; string task_id = 3; string goal_hash = 4; string plan_hash = 5; string policy_snapshot = 6; repeated ToolRef allowed_tools = 7; repeated string allowed_resources = 8; uint64 revocation_epoch = 9; google.protobuf.Timestamp valid_until = 10; }
+message AgentIdentity { string schema_version = 1; string agent_type = 2; string agent_instance_id = 3; string organization_id = 4; string tenant_id = 5; string owner_subject = 6; string model_provider = 7; string model_id = 8; string agent_version = 9; string deployment_environment = 10; string trust_level = 11; string auth_context_ref = 12; google.protobuf.Timestamp issued_at = 13; google.protobuf.Timestamp expires_at = 14; }
+message CanonicalAction { string schema_version = 1; string action_id = 2; string task_id = 3; string step_id = 4; AgentIdentity agent = 5; ToolRef tool = 6; google.protobuf.Struct payload = 7; string action_hash = 8; }
+message PolicyDecision { string schema_version = 1; string decision_id = 2; Decision decision = 3; repeated string reason_codes = 4; string policy_version = 5; string policy_bundle_hash = 6; string input_hash = 7; google.protobuf.Timestamp evaluated_at = 8; google.protobuf.Timestamp expires_at = 9; }
+message ExecutionAuthorization { string schema_version = 1; string authorization_id = 2; string action_hash = 3; string tool_snapshot_hash = 4; string policy_decision_id = 5; string resource_version = 6; string sandbox_profile = 7; string network_profile = 8; string credential_profile = 9; uint64 max_execution_ms = 10; uint64 max_result_bytes = 11; google.protobuf.Timestamp expires_at = 12; bool single_use = 13; string issuer = 14; string key_id = 15; bytes signature = 16; }
+

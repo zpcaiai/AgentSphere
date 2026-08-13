@@ -1,0 +1,282 @@
+{
+  "project": "agent-trust-control-plane",
+  "package_version": "2.0.0",
+  "skill_count": 9,
+  "batches": [
+    {
+      "batch": "19",
+      "skill": "agent-trust-audit-retention",
+      "title": "审计留存、Control Catalog与Evidence Graph",
+      "path": ".agents/skills/agent-trust-audit-retention/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          10
+        ],
+        "implementation": [
+          10,
+          18
+        ],
+        "runtime": [
+          20,
+          22,
+          31,
+          34,
+          35,
+          36
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "20",
+      "skill": "agent-trust-pack-supply-chain",
+      "title": "平台供应链与Domain Pack SDK Foundation",
+      "path": ".agents/skills/agent-trust-pack-supply-chain/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          5,
+          10,
+          19
+        ],
+        "implementation": [
+          5,
+          10,
+          19
+        ],
+        "runtime": [
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          32,
+          33,
+          36
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "21",
+      "skill": "agent-trust-runtime-anomaly-detection",
+      "title": "异常轨迹检测与Continuous Authorization",
+      "path": ".agents/skills/agent-trust-runtime-anomaly-detection/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          3,
+          6,
+          10
+        ],
+        "implementation": [
+          4,
+          6,
+          10,
+          17
+        ],
+        "runtime": [
+          29,
+          31,
+          33,
+          35
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "22",
+      "skill": "agent-trust-incident-release-gate",
+      "title": "Incident、Replay与Release Gate Engine",
+      "path": ".agents/skills/agent-trust-incident-release-gate/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          10,
+          19
+        ],
+        "implementation": [
+          9,
+          10,
+          17,
+          19,
+          21
+        ],
+        "runtime": [
+          33,
+          34,
+          35,
+          36
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "23",
+      "skill": "agent-trust-coding-risk-pack",
+      "title": "Coding Agent Risk Pack",
+      "path": ".agents/skills/agent-trust-coding-risk-pack/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          20
+        ],
+        "implementation": [
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          20,
+          29
+        ],
+        "runtime": [
+          21,
+          22,
+          28,
+          33,
+          36
+        ],
+        "optional": [
+          12,
+          15
+        ]
+      }
+    },
+    {
+      "batch": "24",
+      "skill": "agent-trust-industrial-risk-pack",
+      "title": "Industrial Agent Risk Pack",
+      "path": ".agents/skills/agent-trust-industrial-risk-pack/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          20
+        ],
+        "implementation": [
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          16,
+          20,
+          29
+        ],
+        "runtime": [
+          21,
+          22,
+          28,
+          33,
+          34,
+          36
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "25",
+      "skill": "agent-trust-energy-risk-pack",
+      "title": "Energy Agent Risk Pack",
+      "path": ".agents/skills/agent-trust-energy-risk-pack/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          20
+        ],
+        "implementation": [
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          16,
+          20,
+          29
+        ],
+        "runtime": [
+          21,
+          22,
+          28,
+          33,
+          34,
+          36
+        ],
+        "optional": [
+          24
+        ]
+      }
+    },
+    {
+      "batch": "26",
+      "skill": "agent-trust-medical-risk-pack",
+      "title": "Medical Agent Risk Pack",
+      "path": ".agents/skills/agent-trust-medical-risk-pack/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          20
+        ],
+        "implementation": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          17,
+          18,
+          19,
+          20,
+          29
+        ],
+        "runtime": [
+          21,
+          22,
+          28,
+          32,
+          33,
+          36
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "27",
+      "skill": "agent-trust-sensitive-interaction-pack",
+      "title": "Sensitive Interaction Risk Pack",
+      "path": ".agents/skills/agent-trust-sensitive-interaction-pack/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          20
+        ],
+        "implementation": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          17,
+          18,
+          19,
+          20,
+          29,
+          32
+        ],
+        "runtime": [
+          21,
+          22,
+          28,
+          33,
+          36
+        ],
+        "optional": []
+      }
+    }
+  ],
+  "package_range": "19-27"
+}

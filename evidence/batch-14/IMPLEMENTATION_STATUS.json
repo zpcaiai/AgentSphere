@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "14", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "python3 scripts/validate-runtime-assets.py", "exit_code": 0}],
+  "tests": [{"name": "unknown version, identity trust downgrade and extension override denial", "status": "PASS", "evidence_ref": "rust/crates/cn-standard-adapter"}],
+  "evidence": ["schemas/cn-standard/version-package.schema.json", "config/cn-standard/adapter.production.json", "docs/cn-standard/version-package-upgrade.md"],
+  "unresolved_risks": ["Authoritative user/official CN standard schema, license and vectors were not supplied; full compatibility is intentionally NOT_CLAIMED."], "verified_at": "2026-08-05T11:49:35Z"
+}

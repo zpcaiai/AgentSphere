@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "range": "01-09",
+  "skills": [
+    {
+      "batch": "01",
+      "skill": "agent-trust-contracts",
+      "title": "公共契约、Signed Goal、Plan与Authorization Lease",
+      "lines": 390,
+      "bytes": 15491
+    },
+    {
+      "batch": "02",
+      "skill": "agent-trust-gateway",
+      "title": "Rust Agent Gateway与Admission Control",
+      "lines": 416,
+      "bytes": 12481
+    },
+    {
+      "batch": "03",
+      "skill": "agent-trust-action-ir",
+      "title": "Typed Unified Agent Action IR",
+      "lines": 458,
+      "bytes": 13676
+    },
+    {
+      "batch": "04",
+      "skill": "agent-trust-identity-credentials",
+      "title": "Agent Identity与Workload Credential",
+      "lines": 202,
+      "bytes": 9662
+    },
+    {
+      "batch": "05",
+      "skill": "agent-trust-tool-registry",
+      "title": "Tool与Capability Registry",
+      "lines": 446,
+      "bytes": 13376
+    },
+    {
+      "batch": "06",
+      "skill": "agent-trust-policy-pep",
+      "title": "Policy Enforcement与Minimal Approval Kernel",
+      "lines": 462,
+      "bytes": 12923
+    },
+    {
+      "batch": "07",
+      "skill": "agent-trust-sandbox-runtime",
+      "title": "Sandbox Runtime、Runtime Supervisor与Kill Switch",
+      "lines": 505,
+      "bytes": 15306
+    },
+    {
+      "batch": "08",
+      "skill": "agent-trust-tool-credential-proxy",
+      "title": "Target Credential Broker与Tool Proxy",
+      "lines": 204,
+      "bytes": 9310
+    },
+    {
+      "batch": "09",
+      "skill": "agent-trust-transaction-ledger",
+      "title": "幂等、补偿事务与Unknown Outcome Recovery",
+      "lines": 205,
+      "bytes": 8980
+    }
+  ]
+}

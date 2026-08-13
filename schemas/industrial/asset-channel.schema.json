@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/industrial-asset-channel.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "resource", "engineering_unit", "minimum", "maximum", "maximum_delta", "writable", "criticality", "freshness_ms", "protocol_security_profile"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.industrial.v1"}, "tenant_id": {"type": "string", "minLength": 1}, "resource": {"type": "object"},
+    "engineering_unit": {"type": "string"}, "minimum": {"type": "number"}, "maximum": {"type": "number"}, "maximum_delta": {"type": "number", "minimum": 0},
+    "writable": {"type": "boolean"}, "criticality": {"type": "string"}, "freshness_ms": {"type": "integer", "minimum": 1}, "protocol_security_profile": {"type": "string", "minLength": 1}
+  }
+}

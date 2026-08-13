@@ -1,0 +1,25 @@
+[package]
+name = "agent-trust-production-closure"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+agent-trust-audit-retention = { path = "../audit-retention" }
+agent-trust-incident-release-gate = { path = "../incident-release-gate" }
+agent-trust-platform-sre = { path = "../platform-sre" }
+agent-trust-security-evaluation-lab = { path = "../security-evaluation-lab" }
+base64.workspace = true
+chrono.workspace = true
+ed25519-dalek.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_jcs.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

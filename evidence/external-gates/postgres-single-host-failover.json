@@ -1,0 +1,23 @@
+{
+  "checks": {
+    "physical_base_backup": true,
+    "post_failover_write": true,
+    "pre_failover_marker_preserved": true,
+    "primary_immediate_stop": true,
+    "standby_promoted": true,
+    "standby_read_verified": true,
+    "streaming_replication": true
+  },
+  "completed_at": "2026-08-06T02:42:04.608789+00:00",
+  "evidence_digest": "1fa9356607091287558997469c881a6448391c7f99a3dea78b534c2297c0529a",
+  "postgres_version": "17.5 (Homebrew)",
+  "primary_lsn": "0/19567E0",
+  "production_evidence": false,
+  "release_id": "WORKTREE-NO-GIT",
+  "rpo_lost_markers": 0,
+  "rto_milliseconds": 688,
+  "schema_version": "agenttrust.postgres-failover-report.v1",
+  "standby_replay_lsn_before_promotion": "0/3000000",
+  "started_at": "2026-08-06T02:42:01.868918+00:00",
+  "topology": "SINGLE_HOST_TWO_INSTANCE_PHYSICAL_STREAMING"
+}

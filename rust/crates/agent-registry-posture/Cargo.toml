@@ -1,0 +1,20 @@
+[package]
+name = "agent-trust-agent-registry-posture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+agent-trust-contracts = { path = "../contracts" }
+agent-trust-pack-supply-chain = { path = "../pack-supply-chain" }
+chrono.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

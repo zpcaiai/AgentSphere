@@ -1,0 +1,42 @@
+{
+  "project": "agent-trust-control-plane",
+  "batch": "36",
+  "status": "IN_PROGRESS",
+  "commit": "WORKTREE-NO-GIT",
+  "commands": [
+    {"command": "cargo test -p agent-trust-production-closure", "exit_code": 0},
+    {"command": "PostgreSQL 17: apply all 33 migrations twice with ON_ERROR_STOP and run Rust persistence/RLS gate", "exit_code": 0},
+    {"command": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --all-targets", "exit_code": 0},
+    {"command": "python3 -m unittest discover -s python -p 'test_*.py'", "exit_code": 0},
+    {"command": "./scripts/run-policy-tests.sh", "exit_code": 0},
+    {"command": "python3 scripts/validate-enterprise-api-contract.py", "exit_code": 0},
+    {"command": "python3 -m unittest python.production_gates.tests.test_git_provenance python.production_gates.tests.test_external_condition_matrix", "exit_code": 0}
+  ],
+  "tests": [
+    {"name": "gate aggregation, evidence-kind enforcement, P0/P1 denial, offline signature and revocation", "status": "PASS", "evidence_ref": "rust/crates/production-closure"},
+    {"name": "qualified dual-reviewer domain attestations reject automation, wrong roles, tampering and expiry", "status": "PASS", "evidence_ref": "rust/crates/production-closure"},
+    {"name": "multi-organization external gate assurances require gate-specific roles and convert to scope-bound real-environment evidence only after signature verification", "status": "PASS", "evidence_ref": "rust/crates/production-closure"},
+    {"name": "immutable Git provenance rejects non-repository worktrees, dirty files, local remotes and unverified production signatures", "status": "PASS", "evidence_ref": "python/production_gates/git_provenance.py"},
+    {"name": "17-condition external production matrix is integrity-bound and retains external_verified zero", "status": "PASS", "evidence_ref": "evidence/production-closure/external-condition-matrix.json"},
+    {"name": "current local verification status remains fail-closed for production gates despite passing non-production baselines", "status": "PASS", "evidence_ref": "evidence/production-closure/production-readiness-report.json"}
+  ],
+  "evidence": [
+    "schemas/release/production-closure-certificate.schema.json",
+    "schemas/release/domain-assurance-attestation.schema.json",
+    "schemas/release/external-gate-assurance-attestation.schema.json",
+    "schemas/release/external-condition-matrix.schema.json",
+    "migrations/production-closure/0036_production_closure.sql",
+    "migrations/production-closure/0036_02_global_tenant_isolation.sql",
+    "config/production-closure/authority.production.json",
+    "evidence/production-closure/production-readiness-report.json",
+    "evidence/production-closure/gate-results.json",
+    "evidence/production-closure/residual-risk-register.json",
+    "evidence/production-closure/external-condition-matrix.json",
+    "evidence/production-closure/evidence-bundle-manifest.json",
+    "evidence/production-closure/CERTIFICATE_NOT_ISSUED.json"
+  ],
+  "unresolved_risks": [
+    "Batches 01-35 are not all EVIDENCE_VERIFIED; the source is WORKTREE-NO-GIT and required production-scoped real-environment, customer, domain-expert and independent attestations remain NOT_RUN/NOT_PROVIDED, so no Production Closure Certificate has been issued."
+  ],
+  "verified_at": "2026-08-06T05:01:53Z"
+}

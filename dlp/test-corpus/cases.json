@@ -1,0 +1,11 @@
+{
+  "schema_version": "agenttrust.dlp-corpus.v1",
+  "cases": [
+    {"id": "safe-internal", "encoding": "utf8", "payload": "build completed", "expected": []},
+    {"id": "api-key", "encoding": "utf8", "payload": "api_key=test-secret-value", "expected": ["SECRET"]},
+    {"id": "bearer", "encoding": "utf8", "payload": "Authorization: Bearer test-token", "expected": ["SECRET"]},
+    {"id": "personal-phone", "encoding": "utf8", "payload": "contact 13800138000", "expected": ["PERSONAL_DATA"]},
+    {"id": "base64-secret", "encoding": "utf8", "payload": "YXBpX2tleT10ZXN0LXNlY3JldA==", "expected": ["ENCODED_PAYLOAD", "SECRET"]},
+    {"id": "gzip-denied", "encoding": "hex", "payload": "1f8b0800000000000003", "expected": ["COMPRESSED_PAYLOAD"]}
+  ]
+}

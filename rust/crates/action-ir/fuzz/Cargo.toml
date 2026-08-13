@@ -1,0 +1,19 @@
+[package]
+name = "agent-trust-action-ir-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+agent-trust-action-ir = { path = ".." }
+
+[[bin]]
+name = "parse_draft"
+path = "fuzz_targets/parse_draft.rs"
+test = false
+doc = false
+bench = false

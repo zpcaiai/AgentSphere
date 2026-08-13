@@ -1,0 +1,78 @@
+{
+  "schema_version": "agenttrust.residual-risk-register.v1",
+  "release_id": "WORKTREE-NO-GIT",
+  "risks": [
+    {
+      "risk_id": "R-001",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Docker Desktop Linux VM baseline passed and the production gate now requires digest-pinned runsc plus a signed dedicated-host attestation, but dedicated real-Linux gVisor/runsc production execution is absent."
+    },
+    {
+      "risk_id": "R-002",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Local real-protocol Temporal, S3, physical PostgreSQL failover, encrypted backup/restore and Kubernetes pod-loss baselines passed; production mTLS Temporal, managed database/object-lock, multi-zone topology, sustained load and deployment-bound DR evidence are absent."
+    },
+    {
+      "risk_id": "R-003",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Industrial and energy paths have no physical or high-fidelity stage certificate signed by the required qualified reviewers."
+    },
+    {
+      "risk_id": "R-004",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Medical and sensitive-interaction paths lack signed professional, jurisdictional and live escalation acceptance."
+    },
+    {
+      "risk_id": "R-005",
+      "severity": "P2",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Enterprise IAM issuer/audience/JWKS, workload mTLS CA, secret broker, authenticated browser acceptance and customer pilot are not configured or run."
+    },
+    {
+      "risk_id": "R-006",
+      "severity": "P2",
+      "owner": "UNASSIGNED",
+      "status": "CLOSED",
+      "description": "OPA 1.19.0 ran from a digest-pinned official container with network disabled and passed all 25 Rego tests."
+    },
+    {
+      "risk_id": "R-007",
+      "severity": "P2",
+      "owner": "UNASSIGNED",
+      "status": "CLOSED",
+      "description": "Local capacity recovered; the full 164-test Rust workspace, warnings-denied Clippy, 53 Python tests, 33 migrations applied twice, and the real PostgreSQL adapter test passed on the current worktree."
+    },
+    {
+      "risk_id": "R-008",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "The source directory is not a Git repository, so the release remains WORKTREE-NO-GIT and has no clean signed immutable commit/tag or approved remote provenance."
+    },
+    {
+      "risk_id": "R-009",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Model generation/stream/billing/DLP/residency, MCP/A2A, OPC UA/MQTT/Modbus and supervised physical writes have code-level gates but no passing real production endpoint evidence."
+    },
+    {
+      "risk_id": "R-010",
+      "severity": "P1",
+      "owner": "UNASSIGNED",
+      "status": "OPEN",
+      "description": "Customer release authority, real domain experts and independent auditor signatures are not provided; repository tests cannot substitute for these external approvals."
+    }
+  ],
+  "p0_p1_waiver_allowed": false,
+  "production_eligible": false
+}

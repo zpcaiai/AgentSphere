@@ -1,0 +1,15 @@
+schema_version: agenttrust.chaos-suite.v1
+production_execution_allowed: false
+scenarios:
+  - id: policy-service-unavailable
+    expected: state-changing actions fail closed; emergency stop remains locally journaled
+  - id: postgres-primary-failover
+    expected: no duplicate task command or ledger effect; recovery reconciles cursors
+  - id: object-store-unavailable
+    expected: evidence-dependent completion remains verifying and exports fail closed
+  - id: workflow-engine-partition
+    expected: bounded admission rejects overload and resumes idempotently
+  - id: half-upgrade-schema-incompatible
+    expected: canary stops and rollback digest is applied
+  - id: regional-loss
+    expected: restore uses signed backup, exact counts, object integrity, and ledger reconciliation

@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.audit-retention-config.v1","profile":"production","fail_closed":true,"maximum_batch_events":1000,"maximum_query_records":10000,"require_tenant_filter":true,"require_signed_exports":true,"legal_hold_release_approvals":2,"allow_unsigned_restore":false}

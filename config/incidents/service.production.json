@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.incident-config.v1","profile":"production","fail_closed":true,"maximum_open_incidents_per_tenant":10000,"logical_replay_effects_allowed":false,"sandbox_replay_production_credentials":false,"live_replay_requires_fresh_lease":true,"live_replay_requires_approval":true}

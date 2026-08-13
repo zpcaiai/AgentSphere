@@ -1,0 +1,13 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: agenttrust-control-plane-pod-kill
+  namespace: ${NAMESPACE}
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces: [${NAMESPACE}]
+    labelSelectors:
+      agenttrust.io/chaos-target: "true"
+  duration: 30s

@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "range": "10-18",
+  "skills": [
+    {
+      "batch": "10",
+      "skill": "agent-trust-trace-evaluator",
+      "title": "Trace、Evidence与Evaluator Governance",
+      "lines": 201,
+      "bytes": 8983
+    },
+    {
+      "batch": "11",
+      "skill": "agent-trust-protocol-adapter-sdk",
+      "title": "Protocol Adapter SDK与一致性测试",
+      "lines": 191,
+      "bytes": 7848
+    },
+    {
+      "batch": "12",
+      "skill": "agent-trust-mcp-security-proxy",
+      "title": "MCP Adapter与Security Proxy",
+      "lines": 194,
+      "bytes": 8070
+    },
+    {
+      "batch": "13",
+      "skill": "agent-trust-a2a-agui-adapter",
+      "title": "A2A与AG-UI Adapter",
+      "lines": 191,
+      "bytes": 7744
+    },
+    {
+      "batch": "14",
+      "skill": "agent-trust-cn-standard-adapter",
+      "title": "中国智能体标准Adapter",
+      "lines": 194,
+      "bytes": 7986
+    },
+    {
+      "batch": "15",
+      "skill": "agent-trust-model-gateway",
+      "title": "Unified Model Gateway与模型合规路由",
+      "lines": 196,
+      "bytes": 8275
+    },
+    {
+      "batch": "16",
+      "skill": "agent-trust-industrial-protocol-gateway",
+      "title": "工业协议Adapter与Edge Gateway",
+      "lines": 198,
+      "bytes": 8199
+    },
+    {
+      "batch": "17",
+      "skill": "agent-trust-human-approval",
+      "title": "Enterprise Human Approval与职责分离",
+      "lines": 194,
+      "bytes": 7922
+    },
+    {
+      "batch": "18",
+      "skill": "agent-trust-data-governance",
+      "title": "数据分级、跨域与部署治理",
+      "lines": 199,
+      "bytes": 8126
+    }
+  ]
+}

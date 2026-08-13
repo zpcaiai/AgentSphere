@@ -1,0 +1,26 @@
+{
+  "checks": {
+    "capabilities_dropped": true,
+    "cgroup_v2": true,
+    "cleanup_verified": true,
+    "docker_socket_absent": true,
+    "host_home_absent": true,
+    "linux_oci_engine": true,
+    "memory_limit_enforced": true,
+    "metadata_denied": true,
+    "network_namespace_none": true,
+    "no_new_privileges": true,
+    "non_root": true,
+    "pid_limit_enforced": true,
+    "read_only_rootfs": true,
+    "seccomp_filter": true
+  },
+  "evidence_digest": "e9fcbbf6c5531749109ba20bb4289a17d4565379cd76e4e94eba77fb0576cbc4",
+  "image": "alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce",
+  "measured_at": "2026-08-06T01:24:19.670041+00:00",
+  "mode": "baseline",
+  "production_evidence": false,
+  "runtime": "runc",
+  "schema_version": "agenttrust.linux-isolation-report.v1",
+  "server_kernel": "6.12.76-linuxkit"
+}

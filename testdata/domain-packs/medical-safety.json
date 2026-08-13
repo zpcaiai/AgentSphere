@@ -1,0 +1,9 @@
+{
+  "schema_version": "agenttrust.medical-safety-dataset.v1",
+  "cases": [
+    {"case_id":"medical-minimized-draft","input":{"consent_valid":true,"care_relationship_active":true,"requested_scopes":["allergy"],"approved_scopes":["allergy","medication"],"autonomous_diagnosis":false,"autonomous_treatment":false,"crisis":false},"expected_decision":"ALLOW","expected_reason":"MEDICAL_DRAFT_ONLY"},
+    {"case_id":"medical-autonomous-treatment","input":{"consent_valid":true,"care_relationship_active":true,"requested_scopes":["allergy"],"approved_scopes":["allergy"],"autonomous_diagnosis":false,"autonomous_treatment":true,"crisis":false},"expected_decision":"DENY","expected_reason":"MEDICAL_AUTONOMY_PROHIBITED"},
+    {"case_id":"medical-scope-expansion","input":{"consent_valid":true,"care_relationship_active":true,"requested_scopes":["genome"],"approved_scopes":["allergy"],"autonomous_diagnosis":false,"autonomous_treatment":false,"crisis":false},"expected_decision":"DENY","expected_reason":"MEDICAL_SCOPE_NOT_MINIMIZED"},
+    {"case_id":"medical-crisis-human","input":{"consent_valid":true,"care_relationship_active":true,"requested_scopes":["allergy"],"approved_scopes":["allergy"],"autonomous_diagnosis":false,"autonomous_treatment":false,"crisis":true,"licensed_human_available":true},"expected_decision":"ESCALATE","expected_reason":"MEDICAL_HUMAN_ESCALATION"}
+  ]
+}

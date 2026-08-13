@@ -1,0 +1,32 @@
+[package]
+name = "agent-trust-integration-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+[dependencies]
+agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-audit-retention = { path = "../audit-retention" }
+agent-trust-contracts = { path = "../contracts" }
+agent-trust-gateway = { path = "../gateway" }
+agent-trust-identity = { path = "../identity" }
+agent-trust-policy-pep = { path = "../policy-pep" }
+agent-trust-registry = { path = "../registry" }
+agent-trust-sandbox-runtime = { path = "../sandbox-runtime" }
+agent-trust-tool-proxy = { path = "../tool-proxy" }
+agent-trust-transaction-ledger = { path = "../transaction-ledger" }
+agent-trust-evidence-evaluator = { path = "../evidence-evaluator" }
+agent-trust-model-gateway = { path = "../model-gateway" }
+agent-trust-data-governance = { path = "../data-governance" }
+async-trait.workspace = true
+chrono.workspace = true
+ed25519-dalek.workspace = true
+parking_lot.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+jsonschema.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+[lints]
+workspace = true

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/enterprise/admin-action.schema.json",
+  "title": "Enterprise Admin Action", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "action_id", "tenant_id", "project_id", "operation", "resource", "requested_by", "approval_ids", "action_digest", "requested_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.enterprise-control.v1"}, "action_id": {"type": "string", "minLength": 1}, "tenant_id": {"type": "string", "minLength": 1},
+    "project_id": {"type": ["string", "null"]}, "operation": {"type": "string", "minLength": 1}, "resource": {"type": "string", "minLength": 1},
+    "requested_by": {"type": "string", "minLength": 1}, "approval_ids": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string"}},
+    "action_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "requested_at": {"type": "string", "format": "date-time"}
+  }
+}

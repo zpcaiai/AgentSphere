@@ -1,0 +1,4 @@
+{
+  "compilerOptions": {"strict": true, "noEmit": true, "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler"},
+  "include": ["contracts.test.ts", "../../../generated/typescript/contracts.ts"]
+}

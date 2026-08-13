@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "09", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "cargo test -p agent-trust-integration-tests --test postgres_persistence -- --nocapture", "exit_code": 0}],
+  "tests": [{"name": "in-memory idempotency, fencing, UNKNOWN and compensation", "status": "PASS", "evidence_ref": "rust/crates/transaction-ledger"}, {"name": "PostgreSQL 17 20-way reservation and outbox", "status": "PASS", "evidence_ref": "isolated local PostgreSQL 17 integration"}],
+  "evidence": ["migrations/transaction-ledger/0001_transaction_ledger.sql", "docs/transactions/manual-recovery-runbook.md"],
+  "unresolved_risks": ["PostgreSQL failover/partition reconciliation and managed-service load evidence are NOT_RUN."], "verified_at": "2026-08-05T11:49:35Z"
+}

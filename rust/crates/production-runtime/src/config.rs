@@ -1,0 +1,298 @@
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::{Path, PathBuf},
+    time::Duration,
+};
+use thiserror::Error;
+use url::Url;
+
+#[derive(Debug, Error)]
+pub enum ConfigurationError {
+    #[error("PRODUCTION_RUNTIME_CONFIG_IO")]
+    Io,
+    #[error("PRODUCTION_RUNTIME_CONFIG_INVALID")]
+    Invalid,
+    #[error("PRODUCTION_RUNTIME_SECRET_FILE_INVALID")]
+    SecretFileInvalid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TlsClientConfig {
+    pub ca_bundle: PathBuf,
+    pub client_identity_pem: Option<PathBuf>,
+    pub bearer_token_file: Option<PathBuf>,
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_timeout_ms() -> u64 {
+    20_000
+}
+
+impl TlsClientConfig {
+    pub fn validate(&self) -> Result<(), ConfigurationError> {
+        if self.timeout_ms == 0 || self.timeout_ms > 120_000 || !self.ca_bundle.is_file() {
+            return Err(ConfigurationError::Invalid);
+        }
+        for path in [&self.client_identity_pem, &self.bearer_token_file]
+            .into_iter()
+            .flatten()
+        {
+            validate_private_file(path)?;
+        }
+        Ok(())
+    }
+
+    pub fn timeout(&self) -> Duration {
+        Duration::from_millis(self.timeout_ms)
+    }
+}
+
+#[cfg(unix)]
+fn validate_private_file(path: &Path) -> Result<(), ConfigurationError> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(path).map_err(|_| ConfigurationError::SecretFileInvalid)?;
+    if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
+        return Err(ConfigurationError::SecretFileInvalid);
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn validate_private_file(path: &Path) -> Result<(), ConfigurationError> {
+    if !path.is_file() {
+        return Err(ConfigurationError::SecretFileInvalid);
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EndpointConfig {
+    pub base_url: String,
+    pub tls: TlsClientConfig,
+    #[serde(default)]
+    pub health_path: Option<String>,
+}
+
+impl EndpointConfig {
+    pub fn validate(&self) -> Result<(), ConfigurationError> {
+        self.tls.validate()?;
+        let url = Url::parse(&self.base_url).map_err(|_| ConfigurationError::Invalid)?;
+        if url.scheme() != "https"
+            || url.host_str().is_none()
+            || url.username() != ""
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(ConfigurationError::Invalid);
+        }
+        if let Some(path) = &self.health_path {
+            validate_relative_path(path)?;
+        } else {
+            return Err(ConfigurationError::Invalid);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubjectMappingConfig {
+    pub subject: String,
+    pub organization_id: String,
+    pub tenant_id: String,
+    pub owner_subject: String,
+    pub agent_instance_id: String,
+    pub roles: Vec<String>,
+    pub auth_strength: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IdentityConfig {
+    pub issuer: String,
+    pub audience: String,
+    pub authorized_party: Option<String>,
+    pub jwks_endpoint: String,
+    pub jwks_tls: TlsClientConfig,
+    #[serde(default = "default_jwks_ttl_seconds")]
+    pub jwks_ttl_seconds: u64,
+    #[serde(default)]
+    pub require_mtls_peer: bool,
+    pub subject_mappings: Vec<SubjectMappingConfig>,
+}
+
+fn default_jwks_ttl_seconds() -> u64 {
+    300
+}
+
+impl IdentityConfig {
+    pub fn validate(&self) -> Result<(), ConfigurationError> {
+        self.jwks_tls.validate()?;
+        for raw in [&self.issuer, &self.jwks_endpoint] {
+            let url = Url::parse(raw).map_err(|_| ConfigurationError::Invalid)?;
+            if url.scheme() != "https" || url.host_str().is_none() {
+                return Err(ConfigurationError::Invalid);
+            }
+        }
+        if self.audience.is_empty()
+            || self.jwks_ttl_seconds < 30
+            || self.jwks_ttl_seconds > 86_400
+            || self.subject_mappings.is_empty()
+            || self.subject_mappings.len() > 100_000
+        {
+            return Err(ConfigurationError::Invalid);
+        }
+        let mut subjects = BTreeSet::new();
+        for mapping in &self.subject_mappings {
+            if mapping.subject.is_empty()
+                || mapping.organization_id.is_empty()
+                || mapping.owner_subject.is_empty()
+                || mapping.auth_strength.is_empty()
+                || mapping.roles.is_empty()
+                || mapping.roles.iter().any(String::is_empty)
+                || !subjects.insert(mapping.subject.clone())
+            {
+                return Err(ConfigurationError::Invalid);
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListenerConfig {
+    pub data: String,
+    pub management: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EvidenceFilesConfig {
+    pub batch_statuses: PathBuf,
+    pub gate_evidence: PathBuf,
+    pub residual_risks: PathBuf,
+    pub exceptions: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionRuntimeConfig {
+    pub schema_version: String,
+    pub fail_closed: bool,
+    pub listeners: ListenerConfig,
+    pub identity: IdentityConfig,
+    pub endpoints: BTreeMap<String, EndpointConfig>,
+    pub model_versions: BTreeMap<String, String>,
+    pub evidence_files: EvidenceFilesConfig,
+}
+
+impl ProductionRuntimeConfig {
+    pub fn load(path: &Path) -> Result<Self, ConfigurationError> {
+        let bytes = fs::read(path).map_err(|_| ConfigurationError::Io)?;
+        let config: Self =
+            serde_json::from_slice(&bytes).map_err(|_| ConfigurationError::Invalid)?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigurationError> {
+        const REQUIRED_ENDPOINTS: [&str; 12] = [
+            "orchestrator",
+            "secret_broker",
+            "backup",
+            "policy_distribution",
+            "containment",
+            "recertification",
+            "enterprise_integration",
+            "authority",
+            "notification",
+            "industrial",
+            "runtime_control",
+            "lifecycle",
+        ];
+        let data_listener = self
+            .listeners
+            .data
+            .parse::<std::net::SocketAddr>()
+            .map_err(|_| ConfigurationError::Invalid)?;
+        if self.schema_version != "agenttrust.production-runtime-config.v1"
+            || !self.fail_closed
+            || self
+                .listeners
+                .management
+                .parse::<std::net::SocketAddr>()
+                .is_err()
+            || self.endpoints.is_empty()
+            || self.model_versions.is_empty()
+        {
+            return Err(ConfigurationError::Invalid);
+        }
+        self.identity.validate()?;
+        // When a local mTLS ingress proxy supplies the verified certificate digest,
+        // the application listener must not be reachable off-host.
+        if self.identity.require_mtls_peer && !data_listener.ip().is_loopback() {
+            return Err(ConfigurationError::Invalid);
+        }
+        for (name, endpoint) in &self.endpoints {
+            if name.is_empty()
+                || !name.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
+                })
+            {
+                return Err(ConfigurationError::Invalid);
+            }
+            endpoint.validate()?;
+        }
+        if REQUIRED_ENDPOINTS
+            .iter()
+            .any(|name| !self.endpoints.contains_key(*name))
+            || !self.endpoints.keys().any(|name| name.starts_with("model:"))
+            || !self.endpoints.keys().any(|name| name.starts_with("mcp:"))
+            || !self.endpoints.keys().any(|name| name.starts_with("a2a:"))
+        {
+            return Err(ConfigurationError::Invalid);
+        }
+        if self.model_versions.iter().any(|(profile, model)| {
+            profile.is_empty()
+                || !profile
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+                || model.is_empty()
+                || model.len() > 256
+                || !self.endpoints.contains_key(&format!("model:{profile}"))
+        }) {
+            return Err(ConfigurationError::Invalid);
+        }
+        let evidence_paths = [
+            &self.evidence_files.batch_statuses,
+            &self.evidence_files.gate_evidence,
+            &self.evidence_files.residual_risks,
+            &self.evidence_files.exceptions,
+        ];
+        if evidence_paths.iter().any(|path| !path.is_absolute())
+            || evidence_paths.iter().collect::<BTreeSet<_>>().len() != evidence_paths.len()
+        {
+            return Err(ConfigurationError::Invalid);
+        }
+        Ok(())
+    }
+}
+
+pub fn validate_relative_path(path: &str) -> Result<(), ConfigurationError> {
+    if !path.starts_with('/')
+        || path.starts_with("//")
+        || path.contains("..")
+        || path.contains('?')
+        || path.contains('#')
+    {
+        return Err(ConfigurationError::Invalid);
+    }
+    Ok(())
+}

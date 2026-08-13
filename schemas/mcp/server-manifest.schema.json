@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/mcp-server-manifest.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "server_id", "publisher", "transport_profile", "implementation_digest", "sbom_digest", "permissions", "network_endpoints", "trust_tier", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.mcp.v1"}, "server_id": {"type": "string", "minLength": 1},
+    "publisher": {"type": "string", "minLength": 1}, "transport_profile": {"type": "string", "minLength": 1},
+    "implementation_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}, "sbom_digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "permissions": {"type": "array", "uniqueItems": true, "items": {"enum": ["TOOLS", "RESOURCES_READ", "PROMPTS_READ"]}},
+    "network_endpoints": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "trust_tier": {"type": "string"}, "key_id": {"type": "string", "minLength": 1}, "signature": {"type": "string", "minLength": 1}
+  }
+}

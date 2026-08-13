@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/runtime/production-runtime-config.v1.json",
+  "title": "AgentTrust production runtime configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","fail_closed","listeners","identity","model_versions","endpoints","evidence_files"],
+  "properties": {
+    "schema_version": {"const":"agenttrust.production-runtime-config.v1"},
+    "fail_closed": {"const":true},
+    "listeners": {
+      "type":"object","additionalProperties":false,"required":["data","management"],
+      "properties":{"data":{"type":"string","minLength":3},"management":{"type":"string","minLength":3}}
+    },
+    "identity": {
+      "type":"object","additionalProperties":false,
+      "required":["issuer","audience","jwks_endpoint","jwks_tls","require_mtls_peer","subject_mappings"],
+      "properties": {
+        "issuer":{"type":"string","format":"uri","pattern":"^https://"},
+        "audience":{"type":"string","minLength":1},
+        "authorized_party":{"type":["string","null"]},
+        "jwks_endpoint":{"type":"string","format":"uri","pattern":"^https://"},
+        "jwks_tls":{"$ref":"#/$defs/tls"},
+        "jwks_ttl_seconds":{"type":"integer","minimum":30,"maximum":86400},
+        "require_mtls_peer":{"type":"boolean"},
+        "subject_mappings":{"type":"array","minItems":1,"maxItems":100000,"items":{"$ref":"#/$defs/subject"}}
+      }
+    },
+    "model_versions":{"type":"object","minProperties":1,"additionalProperties":{"type":"string","minLength":1}},
+    "endpoints":{"type":"object","minProperties":15,"additionalProperties":{"$ref":"#/$defs/endpoint"}},
+    "evidence_files": {
+      "type":"object","additionalProperties":false,
+      "required":["batch_statuses","gate_evidence","residual_risks","exceptions"],
+      "properties": {
+        "batch_statuses":{"type":"string","pattern":"^/"},"gate_evidence":{"type":"string","pattern":"^/"},
+        "residual_risks":{"type":"string","pattern":"^/"},"exceptions":{"type":"string","pattern":"^/"}
+      }
+    }
+  },
+  "$defs": {
+    "tls": {
+      "type":"object","additionalProperties":false,"required":["ca_bundle"],
+      "properties": {
+        "ca_bundle":{"type":"string","pattern":"^/"},"client_identity_pem":{"type":"string","pattern":"^/"},
+        "bearer_token_file":{"type":"string","pattern":"^/"},"timeout_ms":{"type":"integer","minimum":1,"maximum":120000}
+      }
+    },
+    "endpoint": {
+      "type":"object","additionalProperties":false,"required":["base_url","tls","health_path"],
+      "properties":{"base_url":{"type":"string","format":"uri","pattern":"^https://"},"tls":{"$ref":"#/$defs/tls"},"health_path":{"type":"string","pattern":"^/"}}
+    },
+    "subject": {
+      "type":"object","additionalProperties":false,
+      "required":["subject","organization_id","tenant_id","owner_subject","agent_instance_id","roles","auth_strength"],
+      "properties": {
+        "subject":{"type":"string","minLength":1},"organization_id":{"type":"string","minLength":1},
+        "tenant_id":{"type":"string","format":"uuid"},"owner_subject":{"type":"string","minLength":1},
+        "agent_instance_id":{"type":"string","format":"uuid"},"roles":{"type":"array","items":{"type":"string","minLength":1}},
+        "auth_strength":{"type":"string","minLength":1}
+      }
+    }
+  }
+}

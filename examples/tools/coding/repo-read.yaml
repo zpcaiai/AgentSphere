@@ -1,0 +1,9 @@
+{
+  "schema_version":"agenttrust.registry.v1","tool_id":"coding.repo-read","tool_version":"1.0.0","status":"DRAFT","domain":"coding","display_name":"Repository read","description":"Read a bounded path from a task workspace",
+  "input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["path"],"properties":{"path":{"type":"string","maxLength":1024}}},
+  "output_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["content_ref"],"properties":{"content_ref":{"type":"string"}}},
+  "effect_class":"PURE","risk_level":"LOW","executor_profile":"coding-repo-read","credential_profile":"none","approval_profile":"none","compensation":null,
+  "limits":{"timeout_ms":30000,"max_result_bytes":1048576},"network_profile_ref":"none","filesystem_profile_ref":"repo-ro",
+  "implementation":{"kind":"internal_service","digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","executor_id":"repo-reader"}
+}
+

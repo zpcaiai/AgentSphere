@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/domain-packs/energy-candidate.schema.json",
+  "title": "Energy Candidate Plan", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "algorithm", "setpoints_kw", "confidence", "out_of_distribution", "requires_shadow_validation", "constraint_digest", "fallback_reason"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.energy-candidate.v1"}, "algorithm": {"type": "string", "minLength": 1},
+    "setpoints_kw": {"type": "array", "minItems": 1, "maxItems": 10000, "items": {"type": "number"}},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1}, "out_of_distribution": {"type": "boolean"},
+    "requires_shadow_validation": {"const": true}, "constraint_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "fallback_reason": {"type": ["string", "null"]}
+  }
+}

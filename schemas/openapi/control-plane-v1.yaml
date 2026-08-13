@@ -1,0 +1,393 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Control Plane API
+  version: 1.0.0
+servers:
+  - url: https://control.invalid/v1
+    description: Placeholder only; deployment supplies an approved endpoint.
+security:
+  - workloadIdentity: []
+paths:
+  /tenants/{tenantId}:
+    post:
+      operationId: createTenant
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedTenantRequest'}
+      responses:
+        '201': {description: Tenant created after PEP authorization and audit persistence}
+        '403': {description: Tenant, role, CSRF, action binding, or separation-of-duties denial}
+  /tenants/{tenantId}/organizations:
+    post:
+      operationId: createOrganization
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedOrganizationRequest'}
+      responses:
+        '201': {description: Organization created and audited}
+        '403': {description: Authorization denied}
+  /tenants/{tenantId}/projects:
+    post:
+      operationId: createProject
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedProjectRequest'}
+      responses:
+        '201': {description: Project and bounded environment set created and audited}
+        '403': {description: Authorization denied}
+  /tenants/{tenantId}/integrations:
+    post:
+      operationId: createIntegration
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedIntegrationRequest'}
+      responses:
+        '201': {description: HTTPS integration configuration created and audited}
+        '403': {description: Authorization or endpoint validation denied}
+  /tenants/{tenantId}/quota/consume:
+    post:
+      operationId: consumeTenantQuota
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedQuotaRequest'}
+      responses:
+        '200':
+          description: Atomic quota consumption result
+          content: {application/json: {schema: {$ref: '#/components/schemas/QuotaUsage'}}}
+        '403': {description: Authorization denied or quota exceeded}
+  /tenants/{tenantId}/costs:
+    post:
+      operationId: recordTenantCost
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedCostRequest'}
+      responses:
+        '202': {description: Cost usage recorded and audited}
+        '403': {description: Authorization or project scope denied}
+  /tenants/{tenantId}/api-keys:
+    post:
+      operationId: issueApiKey
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedApiKeyIssueRequest'}
+      responses:
+        '201':
+          description: One-time API key secret; response is non-cacheable
+          content: {application/json: {schema: {$ref: '#/components/schemas/ApiKeyIssueResponse'}}}
+        '403': {description: Authorization denied}
+  /tenants/{tenantId}/api-keys/{apiKeyId}/revoke:
+    post:
+      operationId: revokeApiKey
+      security: [{enterpriseJwt: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: apiKeyId, in: path, required: true, schema: {type: string, format: uuid}}
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedAdminIntent'}
+      responses:
+        '204': {description: API key revoked and audited}
+        '403': {description: Authorization denied}
+  /tenants/{tenantId}/tasks/{taskId}/commands:
+    post:
+      operationId: submitTaskCommand
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/TaskId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TaskCommand'}
+      responses:
+        '202': {description: Command accepted for authoritative transition}
+        '409': {description: State version conflict or duplicate content mismatch}
+        '429': {description: Bounded queue full}
+  /tenants/{tenantId}/agents:
+    get:
+      operationId: listAgentInventory
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: cursor, in: query, schema: {type: string}}
+        - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200': {description: Tenant-scoped authoritative inventory page}
+  /tenants/{tenantId}/policies/{bundleId}/simulate:
+    post:
+      operationId: simulatePolicyBundle
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: bundleId, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Side-effect-free impact report}
+  /tenants/{tenantId}/admin/actions:
+    post:
+      operationId: submitAdminIntent
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedAdminIntent'}
+      responses:
+        '202': {description: Intent accepted; this is not authorization}
+        '403': {description: Tenant, RBAC/ABAC, CSRF, or separation-of-duties denial}
+components:
+  securitySchemes:
+    workloadIdentity:
+      type: mutualTLS
+    enterpriseJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TenantId: {name: tenantId, in: path, required: true, schema: {type: string, minLength: 1}}
+    TaskId: {name: taskId, in: path, required: true, schema: {type: string, minLength: 1}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
+    CsrfToken: {name: X-XSRF-TOKEN, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 4096}}
+  schemas:
+    TaskCommand:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command_id, command_type, expected_state_version, payload_digest]
+      properties:
+        schema_version: {const: agenttrust.orchestrator-command.v1}
+        command_id: {type: string, minLength: 1}
+        command_type: {enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT]}
+        expected_state_version: {type: integer, minimum: 0}
+        payload_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    AdminAction:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, tenant_id, project_id, operation, resource, requested_by, approval_ids, action_digest, requested_at]
+      properties:
+        schema_version: {const: agenttrust.enterprise-control.v1}
+        action_id: {type: string, minLength: 1}
+        tenant_id: {type: string, format: uuid}
+        project_id: {type: [string, 'null']}
+        operation: {type: string, minLength: 1}
+        resource: {type: string, minLength: 1}
+        requested_by: {type: string, minLength: 1}
+        approval_ids: {type: array, maxItems: 16, uniqueItems: true, items: {type: string}}
+        action_digest:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: SHA-256 of the canonical action binding, excluding this field and including reason plus the governed request payload.
+        requested_at: {type: string, format: date-time}
+    GovernedAdminIntent:
+      type: object
+      additionalProperties: false
+      required: [intent, reason]
+      properties:
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    QuotaSpec:
+      type: object
+      additionalProperties: false
+      required: [maximum_active_tasks, maximum_export_records, maximum_webhooks, maximum_api_requests_per_minute]
+      properties:
+        maximum_active_tasks: {type: integer, minimum: 1}
+        maximum_export_records: {type: integer, minimum: 1}
+        maximum_webhooks: {type: integer, minimum: 1}
+        maximum_api_requests_per_minute: {type: integer, minimum: 1}
+    TenantRequest:
+      type: object
+      additionalProperties: false
+      required: [display_name, owner_subject, data_region, quota]
+      properties:
+        display_name: {type: string, minLength: 1, maxLength: 200}
+        owner_subject: {type: string, minLength: 1, maxLength: 300}
+        data_region: {type: string, pattern: '^[A-Z]{2}(-[A-Z0-9]{1,8})?$'}
+        quota: {$ref: '#/components/schemas/QuotaSpec'}
+    OrganizationRequest:
+      type: object
+      additionalProperties: false
+      required: [organization_id, display_name, sponsor_subject]
+      properties:
+        organization_id: {type: string, minLength: 1, maxLength: 200}
+        display_name: {type: string, minLength: 1, maxLength: 200}
+        sponsor_subject: {type: string, minLength: 1, maxLength: 300}
+    ProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [project_id, organization_id, owner_subject, environments]
+      properties:
+        project_id: {type: string, minLength: 1, maxLength: 200}
+        organization_id: {type: string, minLength: 1, maxLength: 200}
+        owner_subject: {type: string, minLength: 1, maxLength: 300}
+        environments: {type: array, minItems: 1, maxItems: 20, uniqueItems: true, items: {type: string, pattern: '^[a-z][a-z0-9-]{0,62}$'}}
+    IntegrationRequest:
+      type: object
+      additionalProperties: false
+      required: [integration_id, kind, endpoint, secret_ref, configuration_digest, active]
+      properties:
+        integration_id: {type: string, format: uuid}
+        kind: {enum: [IAM, NOTIFICATION, TICKETING, SIEM, WEBHOOK]}
+        endpoint: {type: string, format: uri, pattern: '^https://'}
+        secret_ref: {type: string, minLength: 1, maxLength: 1000}
+        configuration_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        active: {type: boolean}
+    QuotaConsumeRequest:
+      type: object
+      additionalProperties: false
+      required: [quota_key, window_started_at, amount, limit]
+      properties:
+        quota_key: {type: string, minLength: 1, maxLength: 100}
+        window_started_at: {type: string, format: date-time}
+        amount: {type: integer, minimum: 1}
+        limit: {type: integer, minimum: 1}
+    QuotaUsage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, quota_key, window_started_at, used, limit]
+      properties:
+        schema_version: {const: agenttrust.quota-usage.v1}
+        tenant_id: {type: string, format: uuid}
+        quota_key: {type: string}
+        window_started_at: {type: string, format: date-time}
+        used: {type: integer, minimum: 1}
+        limit: {type: integer, minimum: 1}
+    CostUsageRequest:
+      type: object
+      additionalProperties: false
+      required: [usage_id, project_id, meter, quantity, unit_cost_micros, source_digest, recorded_at]
+      properties:
+        usage_id: {type: string, format: uuid}
+        project_id: {type: string, minLength: 1, maxLength: 200}
+        meter: {type: string, minLength: 1, maxLength: 100}
+        quantity: {type: integer, minimum: 1}
+        unit_cost_micros: {type: integer, minimum: 0}
+        source_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        recorded_at: {type: string, format: date-time}
+    ApiKeyIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [project_id, scopes, expires_at]
+      properties:
+        project_id: {type: [string, 'null']}
+        scopes: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, pattern: '^[a-z][a-z0-9:_-]{0,99}$'}}
+        expires_at: {type: string, format: date-time}
+    ApiKeyIssueResponse:
+      type: object
+      additionalProperties: false
+      required: [schema_version, api_key_id, one_time_secret, created_at, expires_at, scopes]
+      properties:
+        schema_version: {const: agenttrust.api-key.v1}
+        api_key_id: {type: string, format: uuid}
+        one_time_secret: {type: string, pattern: '^atk_[A-Za-z0-9_-]{43}$'}
+        created_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        scopes: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string}}
+    GovernedTenantRequest:
+      type: object
+      additionalProperties: false
+      required: [tenant, intent, reason]
+      properties:
+        tenant: {$ref: '#/components/schemas/TenantRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    GovernedOrganizationRequest:
+      type: object
+      additionalProperties: false
+      required: [organization, intent, reason]
+      properties:
+        organization: {$ref: '#/components/schemas/OrganizationRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    GovernedProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [project, intent, reason]
+      properties:
+        project: {$ref: '#/components/schemas/ProjectRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    GovernedIntegrationRequest:
+      type: object
+      additionalProperties: false
+      required: [integration, intent, reason]
+      properties:
+        integration: {$ref: '#/components/schemas/IntegrationRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    GovernedQuotaRequest:
+      type: object
+      additionalProperties: false
+      required: [quota, intent, reason]
+      properties:
+        quota: {$ref: '#/components/schemas/QuotaConsumeRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    GovernedCostRequest:
+      type: object
+      additionalProperties: false
+      required: [cost, intent, reason]
+      properties:
+        cost: {$ref: '#/components/schemas/CostUsageRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    GovernedApiKeyIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [api_key, intent, reason]
+      properties:
+        api_key: {$ref: '#/components/schemas/ApiKeyIssueRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}

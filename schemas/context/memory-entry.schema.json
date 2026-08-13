@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/context/memory-entry.schema.json",
+  "title": "Governed Memory Entry", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "memory_id", "subject_id", "owner_subject", "action_digest", "policy_digest", "content_digest", "object_ref", "status", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.memory-entry.v1"}, "tenant_id": {"type": "string", "minLength": 1}, "memory_id": {"type": "string", "minLength": 1},
+    "subject_id": {"type": "string", "minLength": 1}, "owner_subject": {"type": "string", "minLength": 1},
+    "action_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "policy_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "content_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "object_ref": {"type": "string", "minLength": 1},
+    "status": {"enum": ["ACTIVE", "QUARANTINED", "TOMBSTONED", "HELD"]}, "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

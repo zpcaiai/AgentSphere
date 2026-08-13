@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.industrial-pack-config.v1","profile":"production","fail_closed":true,"initial_stage":"SIMULATOR","supervised_write_requires_stage_certificate":true,"require_fresh_good_quality_telemetry":true,"require_interlock_check":true,"two_phase_write":true,"command_ack_is_physical_success":false}

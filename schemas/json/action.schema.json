@@ -1,0 +1,21 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://agenttrust.local/schemas/action.schema.json",
+  "type":"object","additionalProperties":false,
+  "required":["schema_version","action_id","task_id","step_id","agent","intent","tool","payload","resource","environment","risk","data","expected_outcome","credential_refs","requested_at","extensions"],
+  "properties":{
+    "schema_version":{"const":"agenttrust.action.v1"},"action_id":{"$ref":"common.schema.json#/$defs/uuid"},"task_id":{"$ref":"common.schema.json#/$defs/uuid"},"step_id":{"$ref":"common.schema.json#/$defs/uuid"},
+    "agent":{"$ref":"identity.schema.json"},
+    "intent":{"type":"object","additionalProperties":false,"required":["goal_hash","operation","justification_code"],"properties":{"goal_hash":{"$ref":"common.schema.json#/$defs/hash"},"operation":{"type":"string","minLength":1,"maxLength":64},"justification_code":{"type":"string","minLength":1,"maxLength":64},"safe_summary":{"type":["string","null"],"maxLength":512}}},
+    "tool":{"$ref":"common.schema.json#/$defs/tool_ref"},
+    "payload":{"type":"object","additionalProperties":false,"required":["type_id","schema_version","data"],"properties":{"type_id":{"enum":["coding.patch.v1","coding.command.v1","industrial.read.v1","industrial.setpoint.v1"]},"schema_version":{"const":"1"},"data":{"type":"object","maxProperties":256}}},
+    "resource":{"type":"object","additionalProperties":false,"required":["scheme","tenant_id","locator"],"properties":{"scheme":{"enum":["repo","file","database","opcua","mqtt","http"]},"tenant_id":{"$ref":"common.schema.json#/$defs/uuid"},"locator":{"type":"string","minLength":1,"maxLength":2048},"version":{"type":["string","null"],"maxLength":128}}},
+    "environment":{"type":"object","additionalProperties":false,"required":["tenant_id","deployment","region","simulation"],"properties":{"tenant_id":{"$ref":"common.schema.json#/$defs/uuid"},"deployment":{"enum":["development","staging","production"]},"region":{"type":"string","minLength":1,"maxLength":64},"zone":{"type":["string","null"],"maxLength":64},"simulation":{"type":"boolean"}}},
+    "current_state_version":{"type":["string","null"],"maxLength":128},
+    "risk":{"type":"object","additionalProperties":false,"required":["declared_risk","scope_delta","automation_allowed"],"properties":{"declared_risk":{"$ref":"common.schema.json#/$defs/risk_level"},"trajectory_risk_ref":{"type":["string","null"],"maxLength":256},"scope_delta":{"type":"integer","minimum":0,"maximum":10000},"automation_allowed":{"type":"boolean"}}},
+    "data":{"type":"object","additionalProperties":false,"required":["classification","jurisdiction","export_constraints"],"properties":{"classification":{"$ref":"common.schema.json#/$defs/data_classification"},"jurisdiction":{"type":"string","minLength":2,"maxLength":64},"export_constraints":{"type":"array","maxItems":32,"items":{"type":"string","maxLength":128}}}},
+    "expected_outcome":{"type":"object","additionalProperties":false,"required":["metric","operator","target"],"properties":{"metric":{"type":"string","minLength":1,"maxLength":128},"operator":{"enum":["eq","ne","gt","gte","lt","lte","contains"]},"target":{}}},
+    "credential_refs":{"type":"array","maxItems":16,"items":{"type":"object","additionalProperties":false,"required":["profile","resource_prefix","operations"],"properties":{"profile":{"type":"string","minLength":1,"maxLength":128},"resource_prefix":{"type":"string","minLength":1,"maxLength":512},"operations":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"string","maxLength":64}}}}},
+    "requested_at":{"$ref":"common.schema.json#/$defs/timestamp"},"extensions":{"type":"object","propertyNames":{"pattern":"^x-"},"maxProperties":32}
+  }
+}
+

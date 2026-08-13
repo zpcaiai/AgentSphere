@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.pack-marketplace-config.v1","profile":"production","fail_closed":true,"unknown_publisher":"DENY","production_activation_requires_certificate":true,"permission_expansion_requires_review":true,"retain_previous_versions":2,"maximum_results":100,"revoke_propagation_required":true}

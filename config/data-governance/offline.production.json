@@ -1,0 +1,11 @@
+{
+  "schema_version": "agenttrust.data-deployment.v1",
+  "profile_id": "offline-production",
+  "fail_closed": true,
+  "mode": "OFFLINE",
+  "allowed_external_endpoints": [],
+  "telemetry_export": false,
+  "update_channel": "offline-bundle",
+  "maximum_classification": "REGULATED",
+  "fail_closed_when_classifier_unavailable": true
+}

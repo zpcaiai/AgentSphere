@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/cn-standard-version-package.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "standard_id", "standard_version", "source_uri", "published_at", "license", "root_schema", "examples", "mapping_rules", "known_limitations", "schema_hash", "bundle_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.cn-adapter.v1"}, "standard_id": {"type": "string", "minLength": 1},
+    "standard_version": {"type": "string", "minLength": 1}, "source_uri": {"type": "string", "format": "uri"},
+    "published_at": {"type": "string", "format": "date-time"}, "license": {"type": "string", "minLength": 1},
+    "root_schema": {"type": "object"}, "examples": {"type": "array", "items": {}}, "mapping_rules": {"type": "object"},
+    "known_limitations": {"type": "array", "items": {"type": "string"}}, "schema_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "bundle_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

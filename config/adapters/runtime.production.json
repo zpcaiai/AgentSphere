@@ -1,0 +1,10 @@
+{
+  "schema_version": "agenttrust.adapter-runtime.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "maximum_concurrent_adapters": 32,
+  "maximum_message_bytes": 1048576,
+  "maximum_stream_events": 10000,
+  "approved_runtime_profiles": ["wasi-no-network", "container-adapter-ro"],
+  "forbidden_permissions": ["EXECUTOR_ACCESS", "RAW_CREDENTIALS", "TASK_STATE_WRITE"]
+}

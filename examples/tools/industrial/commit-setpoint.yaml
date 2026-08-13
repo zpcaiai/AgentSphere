@@ -1,0 +1,9 @@
+{
+  "schema_version":"agenttrust.registry.v1","tool_id":"industrial.commit-setpoint","tool_version":"1.0.0","status":"DRAFT","domain":"industrial","display_name":"Commit setpoint","description":"Conditionally write a simulator setpoint",
+  "input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["asset_id","tag","value","expected_current_value","resource_version"],"properties":{"asset_id":{"type":"string"},"tag":{"type":"string"},"value":{"type":"number"},"expected_current_value":{"type":"number"},"resource_version":{"type":"string"}}},
+  "output_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["verified_value","resource_version"],"properties":{"verified_value":{"type":"number"},"resource_version":{"type":"string"}}},
+  "effect_class":"COMPENSATABLE","risk_level":"HIGH","executor_profile":"industrial-simulator","credential_profile":"simulator-setpoint","approval_profile":"industrial-write",
+  "compensation":{"tool":{"tool_id":"industrial.restore-setpoint","tool_version":"1.0.0"},"precondition_kind":"expected_current_value"},"limits":{"timeout_ms":5000,"max_result_bytes":65536},
+  "network_profile_ref":"industrial-gateway-only","filesystem_profile_ref":"none","implementation":{"kind":"industrial_gateway","digest":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","executor_id":"simulator-gateway"}
+}
+

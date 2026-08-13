@@ -1,0 +1,20 @@
+{
+  "schema_version": "agenttrust.contract-model.v1",
+  "enums": {
+    "TaskStatus": ["CREATED", "PLANNED", "POLICY_CHECKED", "APPROVAL_PENDING", "APPROVED", "RUNNING", "PAUSE_REQUESTED", "PAUSED", "CANCEL_REQUESTED", "CANCELLING", "KILL_REQUESTED", "KILLED", "VERIFYING", "COMPLETED", "DENIED", "FAILED", "EVALUATION_FAILED", "COMPENSATING", "ROLLED_BACK", "NEEDS_HUMAN", "MANUAL_RECOVERY_REQUIRED"],
+    "ExecutionStatus": ["PREPARED", "RUNNING", "SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED", "KILLED", "COMPENSATING", "COMPENSATED", "COMPENSATION_FAILED", "UNKNOWN"],
+    "RiskLevel": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
+    "EffectClass": ["PURE", "IDEMPOTENT", "COMPENSATABLE", "IRREVERSIBLE"],
+    "Decision": ["ALLOW", "DENY", "REQUIRE_APPROVAL", "PAUSE", "KILL"],
+    "DataClassification": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"],
+    "EvaluationStatus": ["PASS", "FAIL", "NEEDS_HUMAN", "ROLLED_BACK", "MANUAL_RECOVERY_REQUIRED"]
+  },
+  "records": {
+    "ToolRef": {"tool_id":"string","tool_version":"string"},
+    "PlanStep": {"step_id":"string","sequence":"uint32","intent":"string","dependencies":"list<string>","tool":"optional<ToolRef>","resource_scope":"list<string>","risk":"RiskLevel"},
+    "SignedGoal": {"schema_version":"string","goal_id":"string","normalized_goal":"string","goal_hash":"string","constraints":"map<string,string>","approved_by":"string","signed_at":"datetime","signer_key_id":"string","signature":"string"},
+    "PlanManifest": {"schema_version":"string","plan_id":"string","goal_hash":"string","plan_hash":"string","steps":"list<PlanStep>","max_scope":"list<string>","risk_budget":"RiskLevel","cost_budget_microunits":"uint64","valid_until":"datetime"},
+    "DelegationEnvelope": {"schema_version":"string","parent_agent":"string","child_agent":"string","delegated_tools":"list<ToolRef>","delegated_resources":"list<string>","budget_ceiling_microunits":"uint64","expiry":"datetime"},
+    "AuthorizationLease": {"schema_version":"string","lease_id":"string","task_id":"string","goal_hash":"string","plan_hash":"string","policy_snapshot":"string","allowed_tools":"list<ToolRef>","allowed_resources":"list<string>","revocation_epoch":"uint64","valid_until":"datetime"}
+  }
+}

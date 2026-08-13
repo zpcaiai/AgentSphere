@@ -1,0 +1,8 @@
+{
+  "schema_version": "agenttrust.production-closure-denial.v1",
+  "release_id": "WORKTREE-NO-GIT",
+  "decision": "NOT_ISSUED",
+  "reason_codes": ["BATCH_STATUSES_NOT_EVIDENCE_VERIFIED","REQUIRED_REAL_ENVIRONMENT_GATES_NOT_RUN","BLOCKING_RESIDUAL_RISKS_OPEN","IMMUTABLE_GIT_PROVENANCE_ABSENT","CUSTOMER_EXPERT_INDEPENDENT_SIGNATURES_ABSENT"],
+  "evaluated_at": "2026-08-06T05:01:53Z",
+  "signature": null
+}

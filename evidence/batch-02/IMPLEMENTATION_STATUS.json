@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "02", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test -p agent-trust-gateway --all-targets", "exit_code": 0}, {"command": "python3 -m python.platform_sre.http_load_gate --requests 500 --concurrency 8 against authenticated local admission path", "exit_code": 0}],
+  "tests": [{"name": "gateway tenant admission, required bounded idempotency, per-agent/per-tenant limits, timeout/circuit breaker and fail-closed production-verifier requirement", "status": "PASS", "evidence_ref": "rust/crates/gateway"}, {"name": "Axum 0.8 action cancel/kill command routes build and dispatch without router panic", "status": "PASS", "evidence_ref": "rust/crates/gateway/src/lib.rs"}, {"name": "authenticated local admission load with 500 expected safe 404 responses and p99 11.204 ms", "status": "PASS", "evidence_ref": "evidence/external-gates/gateway-local-load.json"}],
+  "evidence": ["config/gateway.production.example.json", "schemas/execution/gateway-config.schema.json", "docs/gateway/security-boundary.md", "schemas/sre/http-load-report.schema.json", "evidence/external-gates/gateway-local-load.json"],
+  "unresolved_risks": ["Production ingress, configured enterprise identity/orchestrator wiring and representative sustained load/SLO evidence remain NOT_RUN."], "verified_at": "2026-08-06T03:52:09Z"
+}

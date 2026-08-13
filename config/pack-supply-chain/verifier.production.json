@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.supply-chain-config.v1","profile":"production","fail_closed":true,"require_signature":true,"require_sbom":true,"require_provenance":true,"require_latest_revocation_state":true,"deny_unknown_publishers":true,"maximum_critical_vulnerabilities":0,"sandbox_validation_required":true}

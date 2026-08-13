@@ -1,0 +1,13 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://agenttrust.local/schemas/tool.schema.json",
+  "type":"object","additionalProperties":false,
+  "required":["schema_version","tool_id","tool_version","status","domain","input_schema","output_schema","effect_class","risk_level","executor_profile","credential_profile","approval_profile","limits","implementation"],
+  "properties":{
+    "schema_version":{"const":"agenttrust.registry.v1"},"tool_id":{"type":"string","minLength":1,"maxLength":128},"tool_version":{"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "status":{"enum":["DRAFT","VALIDATED","SIGNED","ACTIVE","DEPRECATED","REVOKED"]},"domain":{"type":"string","minLength":1,"maxLength":64},"input_schema":{"type":"object"},"output_schema":{"type":"object"},
+    "effect_class":{"$ref":"common.schema.json#/$defs/effect_class"},"risk_level":{"$ref":"common.schema.json#/$defs/risk_level"},"executor_profile":{"type":"string","minLength":1},"credential_profile":{"type":"string","minLength":1},"approval_profile":{"type":"string","minLength":1},
+    "compensation":{"type":["object","null"]},"limits":{"type":"object","additionalProperties":false,"required":["timeout_ms","max_result_bytes"],"properties":{"timeout_ms":{"type":"integer","minimum":1},"max_result_bytes":{"type":"integer","minimum":1}}},
+    "implementation":{"type":"object","additionalProperties":false,"required":["kind","digest","executor_id"],"properties":{"kind":{"enum":["wasm_component","oci_container","internal_service","http_proxy","mcp_server","industrial_gateway"]},"digest":{"type":"string","pattern":"^sha256:[a-f0-9]{64}$"},"executor_id":{"type":"string","minLength":1}}}
+  }
+}
+

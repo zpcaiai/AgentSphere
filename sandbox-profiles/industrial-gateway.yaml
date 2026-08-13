@@ -1,0 +1,2 @@
+{"schema_version":"agenttrust.sandbox-profile.v1","profile_id":"industrial-gateway","production_isolation_required":true,"runtime":"industrial_gateway","agent_receives_target_credentials":false,"requires_compare_and_set":true,"requires_fresh_resource_version":true,"timeout_ms":5000}
+

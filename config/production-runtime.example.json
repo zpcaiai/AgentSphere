@@ -1,0 +1,47 @@
+{
+  "schema_version": "agenttrust.production-runtime-config.v1",
+  "fail_closed": true,
+  "listeners": {"data": "127.0.0.1:8080", "management": "0.0.0.0:9090"},
+  "identity": {
+    "issuer": "https://idp.production.example",
+    "audience": "agenttrust-gateway",
+    "authorized_party": "agenttrust-control-plane",
+    "jwks_endpoint": "https://idp.production.example/.well-known/jwks.json",
+    "jwks_tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "timeout_ms": 10000},
+    "jwks_ttl_seconds": 300,
+    "require_mtls_peer": true,
+    "subject_mappings": [{
+      "subject": "REPLACE_WITH_ENTERPRISE_SUBJECT",
+      "organization_id": "REPLACE_WITH_ORGANIZATION",
+      "tenant_id": "00000000-0000-4000-8000-000000000001",
+      "owner_subject": "REPLACE_WITH_ENTERPRISE_SUBJECT",
+      "agent_instance_id": "00000000-0000-4000-8000-000000000002",
+      "roles": ["agent-owner"],
+      "auth_strength": "mfa-phishing-resistant"
+    }]
+  },
+  "model_versions": {"primary": "REPLACE_WITH_APPROVED_MODEL_VERSION"},
+  "endpoints": {
+    "orchestrator": {"base_url": "https://orchestrator.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/orchestrator", "timeout_ms": 20000}, "health_path": "/ready"},
+    "secret_broker": {"base_url": "https://vault.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/vault", "timeout_ms": 10000}, "health_path": "/v1/sys/health"},
+    "backup": {"base_url": "https://backup.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/backup", "timeout_ms": 120000}, "health_path": "/ready"},
+    "policy_distribution": {"base_url": "https://policy.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/policy", "timeout_ms": 20000}, "health_path": "/ready"},
+    "containment": {"base_url": "https://incident.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/incident", "timeout_ms": 20000}, "health_path": "/ready"},
+    "recertification": {"base_url": "https://evaluation.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/evaluation", "timeout_ms": 120000}, "health_path": "/ready"},
+    "enterprise_integration": {"base_url": "https://integration.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/integration", "timeout_ms": 20000}, "health_path": "/ready"},
+    "authority": {"base_url": "https://authority.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/authority", "timeout_ms": 20000}, "health_path": "/ready"},
+    "notification": {"base_url": "https://notification.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/notification", "timeout_ms": 20000}, "health_path": "/ready"},
+    "industrial": {"base_url": "https://industrial-edge.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/industrial-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/industrial-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/industrial", "timeout_ms": 20000}, "health_path": "/ready"},
+    "runtime_control": {"base_url": "https://runtime-control.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/runtime-control", "timeout_ms": 20000}, "health_path": "/ready"},
+    "lifecycle": {"base_url": "https://lifecycle.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/lifecycle", "timeout_ms": 20000}, "health_path": "/ready"},
+    "model:primary": {"base_url": "https://model-provider.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "bearer_token_file": "/etc/agenttrust/tokens/model-primary", "timeout_ms": 120000}, "health_path": "/v1/models"},
+    "mcp:primary": {"base_url": "https://mcp-bridge.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/mcp-primary", "timeout_ms": 30000}, "health_path": "/ready"},
+    "a2a:primary": {"base_url": "https://a2a-peer.production.example", "tls": {"ca_bundle": "/etc/agenttrust/tls/enterprise-ca.pem", "client_identity_pem": "/etc/agenttrust/tls/workload-identity.pem", "bearer_token_file": "/etc/agenttrust/tokens/a2a-primary", "timeout_ms": 30000}, "health_path": "/.well-known/agent-card.json"}
+  },
+  "evidence_files": {
+    "batch_statuses": "/var/lib/agenttrust/evidence/batch-statuses.json",
+    "gate_evidence": "/var/lib/agenttrust/evidence/gate-evidence.json",
+    "residual_risks": "/var/lib/agenttrust/evidence/residual-risks.json",
+    "exceptions": "/var/lib/agenttrust/evidence/exceptions.json"
+  }
+}

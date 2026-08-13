@@ -1,0 +1,37 @@
+﻿batch,skill,title,contracts,implementation,runtime,optional,status_file_required
+01,agent-trust-contracts,公共契约、Signed Goal、Plan与Authorization Lease,,,,,yes
+02,agent-trust-gateway,Rust Agent Gateway与Admission Control,01,01,03;04;05;06;09;10;29,15;30;34,yes
+03,agent-trust-action-ir,Typed Unified Agent Action IR,01,01,05;06;29,11;20,yes
+04,agent-trust-identity-credentials,Agent Identity与Workload Credential,01,01,02;08;29;30,,yes
+05,agent-trust-tool-registry,Tool与Capability Registry,01;03,01;03,06;08;11;20;30,,yes
+06,agent-trust-policy-pep,Policy Enforcement与Minimal Approval Kernel,01;03;05,01;03;05,04;17;21;29;31,,yes
+07,agent-trust-sandbox-runtime,Sandbox Runtime、Runtime Supervisor与Kill Switch,01;03;06,01;03;06,08;09;10;29;34,16,yes
+08,agent-trust-tool-credential-proxy,Target Credential Broker与Tool Proxy,01;03;04;05;06,04;05;06;07,09;10;15;16;29,,yes
+09,agent-trust-transaction-ledger,幂等、补偿事务与Unknown Outcome Recovery,01;03,01;03;05,07;08;10;29,,yes
+10,agent-trust-trace-evaluator,Trace、Evidence与Evaluator Governance,01;03;09,01;03;09,19;21;22;23;24;25;26;27;29;33,,yes
+11,agent-trust-protocol-adapter-sdk,Protocol Adapter SDK与一致性测试,01;03;05,01;03;05,12;13;14;16;30,,yes
+12,agent-trust-mcp-security-proxy,MCP Adapter与Security Proxy,11,03;05;06;07;08;10;11,21;33,,yes
+13,agent-trust-a2a-agui-adapter,A2A与AG-UI Adapter,11,03;04;05;06;10;11,17;21;29,,yes
+14,agent-trust-cn-standard-adapter,中国智能体标准Adapter,11,01;03;04;05;06;11,18;19;30,,yes
+15,agent-trust-model-gateway,Unified Model Gateway与模型合规路由,01;03;06,02;04;05;06;08;10,,18;31;32,yes
+16,agent-trust-industrial-protocol-gateway,工业协议Adapter与Edge Gateway,01;03;05;06;11,02;05;06;07;08;10;11,18;21;24;29;34,,yes
+17,agent-trust-human-approval,Enterprise Human Approval与职责分离,01;06,04;06;10,13;18;21;22;29;31;35,,yes
+18,agent-trust-data-governance,数据分级、跨域与部署治理,01;03;06,01;04;06;10,15;16;17;19;31;32;35,,yes
+19,agent-trust-audit-retention,审计留存、Control Catalog与Evidence Graph,01;10,10;18,20;22;31;34;35;36,,yes
+20,agent-trust-pack-supply-chain,平台供应链与Domain Pack SDK Foundation,01;05;10;19,05;10;19,23;24;25;26;27;28;32;33;36,,yes
+21,agent-trust-runtime-anomaly-detection,异常轨迹检测与Continuous Authorization,01;03;06;10,04;06;10;17,29;31;33;35,,yes
+22,agent-trust-incident-release-gate,Incident、Replay与Release Gate Engine,01;10;19,09;10;17;19;21,33;34;35;36,,yes
+23,agent-trust-coding-risk-pack,Coding Agent Risk Pack,20,05;06;07;08;09;10;20;29,21;22;28;33;36,12;15,yes
+24,agent-trust-industrial-risk-pack,Industrial Agent Risk Pack,20,05;06;07;08;09;10;16;20;29,21;22;28;33;34;36,,yes
+25,agent-trust-energy-risk-pack,Energy Agent Risk Pack,20,05;06;07;08;09;10;16;20;29,21;22;28;33;34;36,24,yes
+26,agent-trust-medical-risk-pack,Medical Agent Risk Pack,20,04;05;06;07;08;09;10;17;18;19;20;29,21;22;28;32;33;36,,yes
+27,agent-trust-sensitive-interaction-pack,Sensitive Interaction Risk Pack,20,04;05;06;07;08;09;10;17;18;19;20;29;32,21;22;28;33;36,,yes
+28,agent-trust-domain-pack-sdk-marketplace,Domain Pack Marketplace与Lifecycle Governance,20,20;23;24;25;26;27,30;31;35;36,,yes
+29,agent-trust-durable-orchestrator,Durable Runtime Orchestrator与Continuous Task State,01;03;09;10,02;04;05;06;07;08;09;10;17,11;12;13;14;15;16;21;23;24;25;26;27;34;35;36,,yes
+30,agent-trust-agent-registry-posture,Agent Registry、Discovery与Posture Management,01;04;05;11,04;05;11;14;20,21;28;31;35;36,12;13,yes
+31,agent-trust-policy-administration,Policy Administration、Simulation与Change Governance,01;06,06;17;18;21;30,22;33;35;36,,yes
+32,agent-trust-memory-prompt-provenance,Memory、Prompt与Knowledge Provenance,01;03;10;18;19;20,04;06;10;18;19;20,15;21;26;27;33;35;36,,yes
+33,agent-trust-security-evaluation-lab,Agent Security Evaluation与Red-Team Lab,01;10;20;21;22;32,10;12;20;21;22;32,23;24;25;26;27;28;34;35;36,,yes
+34,agent-trust-platform-sre,Platform SRE、HA、DR与Deployment,01;10;19;22;29,02;04;06;07;08;09;10;19;22;29,16;24;25;35;36,,yes
+35,agent-trust-enterprise-control-console,Enterprise Control API与Unified Management Console,01;10;17;19;22;29;30;31;34,17;19;22;29;30;31;34,36,28;32;33,yes
+36,agent-trust-production-closure,Full-System Production Closure与最终认证,01;10;19,22;23;24;25;26;27;28;29;30;31;32;33;34;35,,,yes

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/sre/multizone-topology-report.schema.json",
+  "title": "Multi-zone Kubernetes topology report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "context_digest",
+    "minimum_zones",
+    "observed_zone_count",
+    "ready_node_count",
+    "workloads",
+    "passed",
+    "read_only_probe",
+    "production_evidence",
+    "measured_at",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.multizone-topology-report.v1"},
+    "context_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "minimum_zones": {"type": "integer", "minimum": 2, "maximum": 16},
+    "observed_zone_count": {"type": "integer", "minimum": 2, "maximum": 10000},
+    "ready_node_count": {"type": "integer", "minimum": 2, "maximum": 10000},
+    "workloads": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference",
+          "replicas",
+          "ready_replicas",
+          "observed_pod_zones",
+          "zone_spread_enforced",
+          "pdb_allows_one_disruption",
+          "images_digest_pinned",
+          "pod_security_hardened",
+          "workload_digest"
+        ],
+        "properties": {
+          "reference": {"type": "string", "pattern": "^[a-z0-9.-]+/(?:deployment|statefulset)/[a-z0-9.-]+$"},
+          "replicas": {"type": "integer", "minimum": 2, "maximum": 100000},
+          "ready_replicas": {"type": "integer", "minimum": 2, "maximum": 100000},
+          "observed_pod_zones": {"type": "integer", "minimum": 2, "maximum": 10000},
+          "zone_spread_enforced": {"const": true},
+          "pdb_allows_one_disruption": {"const": true},
+          "images_digest_pinned": {"const": true},
+          "pod_security_hardened": {"const": true},
+          "workload_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "passed": {"const": true},
+    "read_only_probe": {"const": true},
+    "production_evidence": {"const": false},
+    "measured_at": {"type": "string", "format": "date-time"},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

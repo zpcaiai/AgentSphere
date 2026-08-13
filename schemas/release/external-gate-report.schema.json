@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/external-gate-report.schema.json",
+  "title": "Agent Trust external gate report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "gate", "status", "environment_reference", "checks", "production_evidence", "measured_at", "evidence_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.external-gate-report.v1"},
+    "gate": {"type": "string", "minLength": 1, "maxLength": 128},
+    "status": {"enum": ["PASS_REAL_PROTOCOL", "NOT_RUN_CONFIGURATION", "FAIL"]},
+    "environment_reference": {"type": "string", "minLength": 1, "maxLength": 512},
+    "checks": {"type": "object", "minProperties": 1, "maxProperties": 100},
+    "production_evidence": {"const": false},
+    "measured_at": {"type": "string", "format": "date-time"},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

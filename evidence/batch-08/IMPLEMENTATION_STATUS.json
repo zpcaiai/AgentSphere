@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "08", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "python3 -m unittest python.production_gates.tests.test_external_services", "exit_code": 0}],
+  "tests": [{"name": "opaque secret lease, DLP-before-audit, SSRF/path and tenant pooling", "status": "PASS", "evidence_ref": "rust/crates/tool-proxy"}, {"name": "Vault dynamic lease issue/revoke, TTL bound, fixed profile mapping, zeroization and redaction", "status": "PASS", "evidence_ref": "rust/crates/tool-proxy/src/lib.rs"}, {"name": "real Vault health, least-privilege token lookup and immediate dynamic lease revoke protocol gate", "status": "PASS", "evidence_ref": "python/production_gates/external_services.py"}],
+  "evidence": ["docs/security/credential-proxy/security-model.md", "docs/security/credential-proxy/operations-runbook.md", "python/production_gates/external_services.py"],
+  "unresolved_risks": ["The production Vault endpoint, enterprise CA/client identity, least-privilege token and approved dynamic profiles are not configured, so the real secret-broker gate remains NOT_RUN_CONFIGURATION."], "verified_at": "2026-08-06T04:50:49Z"
+}

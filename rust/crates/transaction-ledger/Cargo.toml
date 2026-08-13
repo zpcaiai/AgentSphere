@@ -1,0 +1,21 @@
+[package]
+name = "agent-trust-transaction-ledger"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+[dependencies]
+agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-contracts = { path = "../contracts" }
+agent-trust-registry = { path = "../registry" }
+async-trait.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+[lints]
+workspace = true

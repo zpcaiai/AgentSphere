@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/sre/restore-verification.schema.json",
+  "title": "Isolated backup restore verification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "backup_id", "backup_digest", "database_archive_verified", "object_archive_digest_verified", "database_restore_executed", "object_restore_executed", "record_counts_verified", "restored_object_count", "restored_object_bytes", "actual_restore_executed", "rto_milliseconds", "production_evidence", "verified_at", "evidence_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.restore-verification.v1"},
+    "backup_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,80}$"},
+    "backup_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "database_archive_verified": {"const": true},
+    "object_archive_digest_verified": {"const": true},
+    "database_restore_executed": {"const": true},
+    "object_restore_executed": {"const": true},
+    "record_counts_verified": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "integer", "minimum": 0}},
+    "restored_object_count": {"type": "integer", "minimum": 0},
+    "restored_object_bytes": {"type": "integer", "minimum": 0},
+    "actual_restore_executed": {"const": true},
+    "rto_milliseconds": {"type": "integer", "minimum": 0},
+    "production_evidence": {"const": false},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

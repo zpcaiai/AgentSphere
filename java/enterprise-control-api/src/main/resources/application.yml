@@ -1,0 +1,35 @@
+server:
+  shutdown: graceful
+  forward-headers-strategy: framework
+spring:
+  lifecycle.timeout-per-shutdown-phase: 30s
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  datasource:
+    url: ${AGENT_TRUST_DATABASE_URL}
+    username: ${AGENT_TRUST_DATABASE_USER}
+    password: ${AGENT_TRUST_DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 2
+      connection-timeout: 3000
+  security.oauth2.resourceserver.jwt:
+    issuer-uri: ${AGENT_TRUST_IAM_ISSUER}
+management:
+  endpoints.web.exposure.include: health,metrics,prometheus
+  endpoint.health.probes.enabled: true
+agenttrust.control:
+  console-origins: ${AGENT_TRUST_CONSOLE_ORIGINS}
+  service-token: ${AGENT_TRUST_SERVICE_TOKEN}
+  api-key-pepper: ${AGENT_TRUST_API_KEY_PEPPER}
+  pep-endpoint: ${AGENT_TRUST_PEP_ENDPOINT}
+  authority-endpoints:
+    agents: ${AGENT_TRUST_AGENT_REGISTRY_ENDPOINT}
+    tasks: ${AGENT_TRUST_ORCHESTRATOR_ENDPOINT}
+    approvals: ${AGENT_TRUST_APPROVAL_ENDPOINT}
+    evidence: ${AGENT_TRUST_EVIDENCE_ENDPOINT}
+    incidents: ${AGENT_TRUST_INCIDENT_ENDPOINT}
+    policies: ${AGENT_TRUST_POLICY_ADMIN_ENDPOINT}
+  maximum-page-size: 100
+  authority-timeout-millis: 3000
+  database-tls-required: true

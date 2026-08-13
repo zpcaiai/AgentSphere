@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/sre/backup-manifest.schema.json",
+  "title": "Encrypted backup manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "backup_id", "release_digest", "database_lsn", "database_artifact_digest", "object_manifest_digest", "object_count", "object_bytes", "ledger_head_digest", "record_counts", "encrypted", "encryption_format", "key_version", "created_at", "production_restore_verified", "backup_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.backup-manifest.v1"},
+    "backup_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,80}$"},
+    "release_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "database_lsn": {"type": "string", "minLength": 1, "maxLength": 128},
+    "database_artifact_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "object_manifest_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "object_count": {"type": "integer", "minimum": 0},
+    "object_bytes": {"type": "integer", "minimum": 0},
+    "ledger_head_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "record_counts": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "integer", "minimum": 0}},
+    "encrypted": {"const": true},
+    "encryption_format": {"const": "CMS_AES256"},
+    "key_version": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,80}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "production_restore_verified": {"const": false},
+    "backup_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

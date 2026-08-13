@@ -1,0 +1,20 @@
+{
+  "backup_digest": "a790b1a85737325fdffe6c45b3a34fdeec9af669a72e40b131d7f0c9e11148ea",
+  "checks": {
+    "cms_aes256_encryption": true,
+    "database_restore_executed": true,
+    "object_restore_executed": true,
+    "record_counts_verified": true,
+    "tls_database_connections": true
+  },
+  "completed_at": "2026-08-06T03:10:19.120619+00:00",
+  "evidence_digest": "56db06bc40c502255707879ca52e07a22b7a1117df6e208b85d730314549cda5",
+  "postgres_version": "psql (PostgreSQL) 17.5 (Homebrew)",
+  "production_evidence": false,
+  "release_id": "WORKTREE-NO-GIT",
+  "restore_evidence_digest": "d5afd6bffd8f575d22986fb4c87dc8751128f9fef14043361342d0dde2c691fa",
+  "rto_milliseconds": 157,
+  "schema_version": "agenttrust.backup-restore-drill.v1",
+  "started_at": "2026-08-06T03:10:17.322204+00:00",
+  "topology": "SINGLE_HOST_TWO_ISOLATED_INSTANCES"
+}

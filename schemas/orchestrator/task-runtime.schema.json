@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/orchestrator/task-runtime.schema.json",
+  "title": "Durable Task Runtime", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "task_id", "goal_digest", "plan_digest", "status", "state_version", "command_cursor", "steps"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.orchestrator.v1"}, "tenant_id": {"type": "string", "minLength": 1}, "task_id": {"type": "string", "minLength": 1},
+    "goal_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "plan_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "status": {"enum": ["CREATED", "PLANNED", "AUTHORIZED", "RUNNING", "PAUSED", "CANCELING", "CANCELED", "COMPLETED", "FAILED", "KILLED"]},
+    "state_version": {"type": "integer", "minimum": 0}, "command_cursor": {"type": "integer", "minimum": 0},
+    "steps": {"type": "array", "maxItems": 10000, "items": {"type": "object"}}
+  }
+}

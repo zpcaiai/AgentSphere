@@ -1,0 +1,39 @@
+[package]
+name = "agent-trust-production-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+agent-trust-agent-registry-posture = { path = "../agent-registry-posture" }
+agent-trust-contracts = { path = "../contracts" }
+agent-trust-enterprise-approval = { path = "../enterprise-approval" }
+agent-trust-enterprise-control = { path = "../enterprise-control" }
+agent-trust-gateway = { path = "../gateway" }
+agent-trust-identity = { path = "../identity" }
+agent-trust-incident-release-gate = { path = "../incident-release-gate" }
+agent-trust-industrial-edge-gateway = { path = "../industrial-edge-gateway" }
+agent-trust-model-gateway = { path = "../model-gateway" }
+agent-trust-mcp-security-proxy = { path = "../mcp-security-proxy" }
+agent-trust-platform-sre = { path = "../platform-sre" }
+agent-trust-policy-administration = { path = "../policy-administration" }
+agent-trust-policy-pep = { path = "../policy-pep" }
+agent-trust-production-closure = { path = "../production-closure" }
+agent-trust-sandbox-runtime = { path = "../sandbox-runtime" }
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+futures.workspace = true
+http.workspace = true
+parking_lot.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true
+
+[lints]
+workspace = true

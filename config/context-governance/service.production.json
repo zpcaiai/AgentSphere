@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.context-governance-config.v1","profile":"production","fail_closed":true,"memory_write_requires_policy":true,"retrieval_authorize_before_candidates":true,"poisoning_quarantine":true,"prompt_signature_required":true,"knowledge_snapshot_required":true,"maximum_context_tokens":32768}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-label.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "classification", "domain_tags", "jurisdictions", "contains_secret", "contains_personal_data", "export_restricted", "retention_label", "confidence", "lineage"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.data-governance.v1"}, "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "domain_tags": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}, "jurisdictions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "contains_secret": {"type": "boolean"}, "contains_personal_data": {"type": "boolean"}, "export_restricted": {"type": "boolean"},
+    "retention_label": {"type": "string", "minLength": 1}, "confidence": {"enum": ["UNKNOWN", "INFERRED", "DETERMINISTIC", "HUMAN_VERIFIED"]},
+    "lineage": {"type": "object", "additionalProperties": false, "required": ["source_id", "source_hash", "transformation_hashes"], "properties": {"source_id": {"type": "string"}, "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "transformation_hashes": {"type": "array", "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
+  }
+}

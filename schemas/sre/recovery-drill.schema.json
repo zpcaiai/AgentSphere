@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/sre/recovery-drill.schema.json",
+  "title": "Recovery Drill Result", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "drill_id", "backup_digest", "isolated_environment_ref", "expected_records", "restored_records", "object_integrity_passed", "ledger_reconciled", "rto_seconds", "rpo_seconds", "report_digest", "completed_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.recovery-drill.v1"}, "drill_id": {"type": "string", "minLength": 1},
+    "backup_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "isolated_environment_ref": {"type": "string", "minLength": 1},
+    "expected_records": {"type": "integer", "minimum": 0}, "restored_records": {"type": "integer", "minimum": 0},
+    "object_integrity_passed": {"type": "boolean"}, "ledger_reconciled": {"type": "boolean"},
+    "rto_seconds": {"type": "integer", "minimum": 0}, "rpo_seconds": {"type": "integer", "minimum": 0},
+    "report_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "completed_at": {"type": "string", "format": "date-time"}
+  }
+}

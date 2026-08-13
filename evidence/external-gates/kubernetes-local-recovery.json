@@ -1,0 +1,20 @@
+{
+  "checks": {
+    "cleanup_verified": true,
+    "dedicated_context_allowlisted": true,
+    "initial_workload_available": true,
+    "namespace_labeled": true,
+    "pod_uid_replaced": true,
+    "replacement_ready": true
+  },
+  "completed_at": "2026-08-06T03:18:13.179841+00:00",
+  "context": "kind-agenttrust-chaos-local",
+  "evidence_digest": "b7093f515bb2c3fb8cd80e4a521cd8e49badbe3527e36f2c17f645b6cf37ef20",
+  "fault": "POD_DELETE",
+  "image": "docker.io/agenttrust/alpine-isolation@sha256:2c9d26f410d032d5b1525aa8a873e238b05b90c4ae8618743d4311f0cc827e37",
+  "namespace": "agenttrust-chaos-local",
+  "production_evidence": false,
+  "rto_milliseconds": 1335,
+  "schema_version": "agenttrust.kubernetes-recovery-drill.v1",
+  "started_at": "2026-08-06T03:16:37.207621+00:00"
+}

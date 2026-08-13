@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/sre/backup-restore-drill.schema.json",
+  "title": "Encrypted backup and isolated restore drill",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "topology", "postgres_version", "backup_digest", "restore_evidence_digest", "checks", "rto_milliseconds", "started_at", "completed_at", "production_evidence", "evidence_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.backup-restore-drill.v1"},
+    "release_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,80}$"},
+    "topology": {"const": "SINGLE_HOST_TWO_ISOLATED_INSTANCES"},
+    "postgres_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "backup_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "restore_evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tls_database_connections", "cms_aes256_encryption", "database_restore_executed", "object_restore_executed", "record_counts_verified"],
+      "properties": {
+        "tls_database_connections": {"const": true},
+        "cms_aes256_encryption": {"const": true},
+        "database_restore_executed": {"const": true},
+        "object_restore_executed": {"const": true},
+        "record_counts_verified": {"const": true}
+      }
+    },
+    "rto_milliseconds": {"type": "integer", "minimum": 0},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "production_evidence": {"const": false},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

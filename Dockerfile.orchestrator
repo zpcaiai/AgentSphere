@@ -1,0 +1,8 @@
+ARG PYTHON_BASE_IMAGE
+FROM ${PYTHON_BASE_IMAGE}
+WORKDIR /app
+COPY requirements-production.txt .
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r requirements-production.txt
+COPY python ./python
+USER 65532:65532
+ENTRYPOINT ["python", "-m", "python.durable_worker.orchestrator_api"]

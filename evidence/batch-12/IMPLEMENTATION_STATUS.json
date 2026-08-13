@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "12", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "cargo clippy --workspace --all-targets -- -D warnings", "exit_code": 0}, {"command": "python3 -m unittest python.production_gates.tests.test_external_services", "exit_code": 0}],
+  "tests": [{"name": "MCP drift freeze, strict input, injection, replay and full proxy call", "status": "PASS", "evidence_ref": "rust/crates/mcp-security-proxy"}, {"name": "bounded MCP initialize, session negotiation and tools/list schema digest without tool execution", "status": "PASS", "evidence_ref": "python/production_gates/external_services.py"}],
+  "evidence": ["schemas/mcp/server-manifest.schema.json", "config/mcp/proxy.production.json", "docs/mcp/threat-model-and-runbook.md", "python/production_gates/external_services.py"],
+  "unresolved_risks": ["The real third-party MCP endpoint, SBOM/vulnerability feed and sandbox behavior probes are NOT_RUN."], "verified_at": "2026-08-06T04:50:49Z"
+}

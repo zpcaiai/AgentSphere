@@ -1,0 +1,42 @@
+version: "2.0.0"
+controls:
+  - id: C-IDENTITY
+    name: "Unique workload identity and revocation"
+    batches: ["01", "04", "30"]
+    required_evidence: ["token-negative-tests", "revocation-latency-report"]
+  - id: C-AUTHZ
+    name: "Tool/parameter/resource authorization"
+    batches: ["03", "05", "06", "21", "31"]
+    required_evidence: ["policy-conformance", "continuous-auth-evidence"]
+  - id: C-EXEC
+    name: "Isolated and bounded execution"
+    batches: ["07", "34"]
+    required_evidence: ["linux-isolation-report", "kill-switch-report"]
+  - id: C-CRED
+    name: "No raw target credentials to Agent"
+    batches: ["08"]
+    required_evidence: ["secret-exposure-tests"]
+  - id: C-TXN
+    name: "Idempotency and compensation"
+    batches: ["09", "29"]
+    required_evidence: ["failure-injection-ledger-report"]
+  - id: C-EVIDENCE
+    name: "Tamper-evident evidence and evaluator governance"
+    batches: ["10", "19"]
+    required_evidence: ["evidence-integrity-report", "evaluator-calibration"]
+  - id: C-SUPPLY
+    name: "Signed and traceable supply chain"
+    batches: ["20", "28"]
+    required_evidence: ["sbom", "provenance", "signature-report"]
+  - id: C-INCIDENT
+    name: "Containment, replay and recertification"
+    batches: ["21", "22", "33"]
+    required_evidence: ["incident-drill", "redteam-baseline"]
+  - id: C-RESILIENCE
+    name: "HA/DR and safe degradation"
+    batches: ["34"]
+    required_evidence: ["dr-restore-report", "chaos-report"]
+  - id: C-CLOSURE
+    name: "Full production certification"
+    batches: ["36"]
+    required_evidence: ["production-certificate"]

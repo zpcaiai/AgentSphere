@@ -1,0 +1,11 @@
+{
+  "schema_version": "agenttrust.evidence-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "security_event_sampling": 1.0,
+  "maximum_events_per_task": 100000,
+  "maximum_artifact_bytes": 67108864,
+  "require_signed_events": true,
+  "require_evidence_package_for_completed": true,
+  "evaluator_timeout_ms": 10000
+}

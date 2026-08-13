@@ -1,0 +1,10 @@
+{
+  "schema_version": "agenttrust.chaos-runner-config.v1",
+  "fail_closed": true,
+  "kubectl": "/usr/local/bin/kubectl",
+  "manifest_root": "/etc/agenttrust/chaos-experiments",
+  "allowed_context_pattern": "agenttrust-chaos-[a-z0-9-]+",
+  "allowed_namespaces": ["agenttrust-chaos-test"],
+  "scenarios": {"pod-kill":"pod-kill.yaml"},
+  "timeout_seconds": 300
+}

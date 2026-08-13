@@ -1,0 +1,28 @@
+[package]
+name = "agent-trust-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+[dependencies]
+agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-contracts = { path = "../contracts" }
+async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+http.workspace = true
+jsonschema.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_jcs.workspace = true
+sha2.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+[lints]
+workspace = true

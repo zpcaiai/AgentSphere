@@ -1,0 +1,9 @@
+{
+  "name": "@agenttrust/control-console",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {"build":"vue-tsc --noEmit && vite build","typecheck":"vue-tsc --noEmit"},
+  "dependencies": {"vue":"3.5.17"},
+  "devDependencies": {"@vitejs/plugin-vue":"6.0.0","typescript":"5.8.3","vite":"7.0.0","vue-tsc":"2.2.10"}
+}

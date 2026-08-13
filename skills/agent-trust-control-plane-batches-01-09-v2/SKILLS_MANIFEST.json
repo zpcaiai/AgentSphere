@@ -1,0 +1,223 @@
+{
+  "project": "agent-trust-control-plane",
+  "package_version": "2.0.0",
+  "skill_count": 9,
+  "batches": [
+    {
+      "batch": "01",
+      "skill": "agent-trust-contracts",
+      "title": "公共契约、Signed Goal、Plan与Authorization Lease",
+      "path": ".agents/skills/agent-trust-contracts/SKILL.md",
+      "dependencies": {
+        "contracts": [],
+        "implementation": [],
+        "runtime": [],
+        "optional": []
+      }
+    },
+    {
+      "batch": "02",
+      "skill": "agent-trust-gateway",
+      "title": "Rust Agent Gateway与Admission Control",
+      "path": ".agents/skills/agent-trust-gateway/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1
+        ],
+        "implementation": [
+          1
+        ],
+        "runtime": [
+          3,
+          4,
+          5,
+          6,
+          9,
+          10,
+          29
+        ],
+        "optional": [
+          15,
+          30,
+          34
+        ]
+      }
+    },
+    {
+      "batch": "03",
+      "skill": "agent-trust-action-ir",
+      "title": "Typed Unified Agent Action IR",
+      "path": ".agents/skills/agent-trust-action-ir/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1
+        ],
+        "implementation": [
+          1
+        ],
+        "runtime": [
+          5,
+          6,
+          29
+        ],
+        "optional": [
+          11,
+          20
+        ]
+      }
+    },
+    {
+      "batch": "04",
+      "skill": "agent-trust-identity-credentials",
+      "title": "Agent Identity与Workload Credential",
+      "path": ".agents/skills/agent-trust-identity-credentials/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1
+        ],
+        "implementation": [
+          1
+        ],
+        "runtime": [
+          2,
+          8,
+          29,
+          30
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "05",
+      "skill": "agent-trust-tool-registry",
+      "title": "Tool与Capability Registry",
+      "path": ".agents/skills/agent-trust-tool-registry/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          3
+        ],
+        "implementation": [
+          1,
+          3
+        ],
+        "runtime": [
+          6,
+          8,
+          11,
+          20,
+          30
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "06",
+      "skill": "agent-trust-policy-pep",
+      "title": "Policy Enforcement与Minimal Approval Kernel",
+      "path": ".agents/skills/agent-trust-policy-pep/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          3,
+          5
+        ],
+        "implementation": [
+          1,
+          3,
+          5
+        ],
+        "runtime": [
+          4,
+          17,
+          21,
+          29,
+          31
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "07",
+      "skill": "agent-trust-sandbox-runtime",
+      "title": "Sandbox Runtime、Runtime Supervisor与Kill Switch",
+      "path": ".agents/skills/agent-trust-sandbox-runtime/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          3,
+          6
+        ],
+        "implementation": [
+          1,
+          3,
+          6
+        ],
+        "runtime": [
+          8,
+          9,
+          10,
+          29,
+          34
+        ],
+        "optional": [
+          16
+        ]
+      }
+    },
+    {
+      "batch": "08",
+      "skill": "agent-trust-tool-credential-proxy",
+      "title": "Target Credential Broker与Tool Proxy",
+      "path": ".agents/skills/agent-trust-tool-credential-proxy/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          3,
+          4,
+          5,
+          6
+        ],
+        "implementation": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "runtime": [
+          9,
+          10,
+          15,
+          16,
+          29
+        ],
+        "optional": []
+      }
+    },
+    {
+      "batch": "09",
+      "skill": "agent-trust-transaction-ledger",
+      "title": "幂等、补偿事务与Unknown Outcome Recovery",
+      "path": ".agents/skills/agent-trust-transaction-ledger/SKILL.md",
+      "dependencies": {
+        "contracts": [
+          1,
+          3
+        ],
+        "implementation": [
+          1,
+          3,
+          5
+        ],
+        "runtime": [
+          7,
+          8,
+          10,
+          29
+        ],
+        "optional": []
+      }
+    }
+  ],
+  "package_range": "01-09"
+}

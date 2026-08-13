@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/sre/postgres-failover-report.schema.json",
+  "title": "PostgreSQL failover drill report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "topology", "postgres_version", "primary_lsn", "standby_replay_lsn_before_promotion", "checks", "rpo_lost_markers", "rto_milliseconds", "started_at", "completed_at", "production_evidence", "evidence_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.postgres-failover-report.v1"},
+    "release_id": {"type": "string", "minLength": 1, "maxLength": 80},
+    "topology": {"const": "SINGLE_HOST_TWO_INSTANCE_PHYSICAL_STREAMING"},
+    "postgres_version": {"type": "string", "minLength": 1},
+    "primary_lsn": {"type": "string", "pattern": "^[0-9A-F]+/[0-9A-F]+$"},
+    "standby_replay_lsn_before_promotion": {"type": "string", "pattern": "^[0-9A-F]+/[0-9A-F]+$"},
+    "checks": {"type": "object", "minProperties": 7},
+    "rpo_lost_markers": {"const": 0},
+    "rto_milliseconds": {"type": "integer", "minimum": 0},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "production_evidence": {"const": false},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

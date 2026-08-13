@@ -1,0 +1,14 @@
+{
+  "schema_version":"agenttrust.sandbox-profile.v1",
+  "profile_id":"coding-no-network",
+  "production_isolation_required":true,
+  "runtime":"gvisor",
+  "non_root":true,
+  "read_only_rootfs":true,
+  "network":"none",
+  "no_new_privileges":true,
+  "drop_all_capabilities":true,
+  "mounts":[{"source_kind":"task-workspace-snapshot","target":"/workspace","read_only":false}],
+  "limits":{"cpu_millis":2000,"memory_bytes":1073741824,"pids":128,"disk_bytes":5368709120,"timeout_ms":900000}
+}
+

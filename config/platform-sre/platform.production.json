@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.platform-sre-config.v1","profile":"production","fail_closed":true,"write_on_policy_outage":"DENY","write_on_identity_outage":"DENY","emergency_stop_local_journal":true,"bounded_queues":true,"restore_requires_integrity_and_ledger_reconciliation":true,"canary_and_rollback_required":true}

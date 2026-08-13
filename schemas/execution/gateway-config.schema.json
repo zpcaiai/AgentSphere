@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/gateway-config.schema.json",
+  "title": "Agent gateway bounded-admission configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "fail_closed", "profile", "data_listener", "management_listener", "identity_verifier", "global_concurrency", "max_body_bytes", "max_header_bytes", "max_headers", "per_tenant_concurrency", "per_agent_concurrency", "per_tenant_requests_per_minute", "require_idempotency_key", "idempotency_ttl_seconds", "max_idempotency_records", "max_idempotency_records_per_tenant", "request_timeout_ms", "downstream_timeout_ms", "circuit_failure_threshold", "circuit_open_ms", "max_stream_duration_ms"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.gateway-config.v1"},
+    "fail_closed": {"type": "boolean"},
+    "profile": {"enum": ["development", "production"]},
+    "data_listener": {"type": "string", "minLength": 3, "maxLength": 256},
+    "management_listener": {"type": "string", "minLength": 3, "maxLength": 256},
+    "identity_verifier": {"enum": ["dev-signed-explicit", "oidc-mtls-required"]},
+    "global_concurrency": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "max_body_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216},
+    "max_header_bytes": {"type": "integer", "minimum": 1024, "maximum": 262144},
+    "max_headers": {"type": "integer", "minimum": 1, "maximum": 256},
+    "per_tenant_concurrency": {"type": "integer", "minimum": 1, "maximum": 10000},
+    "per_agent_concurrency": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "per_tenant_requests_per_minute": {"type": "integer", "minimum": 1, "maximum": 10000000},
+    "require_idempotency_key": {"const": true},
+    "idempotency_ttl_seconds": {"type": "integer", "minimum": 60, "maximum": 604800},
+    "max_idempotency_records": {"type": "integer", "minimum": 1, "maximum": 10000000},
+    "max_idempotency_records_per_tenant": {"type": "integer", "minimum": 1, "maximum": 1000000},
+    "request_timeout_ms": {"type": "integer", "minimum": 100, "maximum": 300000},
+    "downstream_timeout_ms": {"type": "integer", "minimum": 100, "maximum": 300000},
+    "circuit_failure_threshold": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "circuit_open_ms": {"type": "integer", "minimum": 100, "maximum": 3600000},
+    "max_stream_duration_ms": {"type": "integer", "minimum": 1000, "maximum": 86400000}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"profile": {"const": "production"}}},
+      "then": {
+        "properties": {
+          "fail_closed": {"const": true},
+          "identity_verifier": {"const": "oidc-mtls-required"}
+        }
+      }
+    }
+  ]
+}

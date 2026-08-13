@@ -1,0 +1,44 @@
+version: "2.0.0"
+threats:
+  - id: T01
+    name: "Goal hijacking / intent drift"
+    control_batches: ["01", "03", "06", "21", "29", "33"]
+  - id: T02
+    name: "Tool misuse / excessive agency"
+    control_batches: ["05", "06", "09", "17", "21", "23", "24", "25", "26", "27"]
+  - id: T03
+    name: "Credential theft and lateral movement"
+    control_batches: ["04", "07", "08", "21", "33"]
+  - id: T04
+    name: "Sandbox escape / host compromise"
+    control_batches: ["07", "12", "21", "33", "34"]
+  - id: T05
+    name: "Repeated or unknown side effects"
+    control_batches: ["09", "10", "22", "29", "33"]
+  - id: T06
+    name: "Prompt injection and malicious content"
+    control_batches: ["12", "21", "32", "33"]
+  - id: T07
+    name: "Memory and knowledge poisoning"
+    control_batches: ["18", "20", "21", "32", "33"]
+  - id: T08
+    name: "Multi-agent privilege escalation"
+    control_batches: ["01", "04", "06", "13", "21", "29", "33"]
+  - id: T09
+    name: "Audit suppression / evidence tampering"
+    control_batches: ["07", "10", "19", "21", "22", "33"]
+  - id: T10
+    name: "Supply-chain compromise"
+    control_batches: ["05", "12", "20", "28", "30", "33"]
+  - id: T11
+    name: "Cross-tenant data exposure"
+    control_batches: ["02", "04", "06", "08", "18", "19", "30", "35"]
+  - id: T12
+    name: "Physical unsafe action"
+    control_batches: ["06", "07", "09", "16", "21", "24", "25", "33", "34"]
+  - id: T13
+    name: "Policy change regression"
+    control_batches: ["06", "19", "21", "31", "33", "36"]
+  - id: T14
+    name: "Control-plane outage / unsafe degradation"
+    control_batches: ["07", "09", "10", "22", "29", "34", "36"]

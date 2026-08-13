@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "07", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "cargo clippy --workspace --all-targets -- -D warnings", "exit_code": 0}, {"command": "AGENT_TRUST_ISOLATION_MODE=baseline ./scripts/run-linux-isolation-gate.sh with digest-pinned Alpine", "exit_code": 0}],
+  "tests": [{"name": "authorization replay, profile bounds, process control and artifact guard", "status": "PASS", "evidence_ref": "rust/crates/sandbox-runtime"}, {"name": "real Linux OCI cgroup v2, seccomp, non-root, read-only rootfs, network/metadata denial, PID and memory limits", "status": "PASS", "evidence_ref": "evidence/external-gates/linux-isolation-baseline.json"}, {"name": "production runsc binary digest, selected runtime, sandbox kernel separation and signed dedicated-host attestation fail-closed gate", "status": "PASS", "evidence_ref": "scripts/run-linux-isolation-gate.sh"}],
+  "evidence": ["sandbox-profiles", "docs/sandbox/production-requirements.md", "schemas/execution/linux-isolation-report.schema.json", "schemas/execution/dedicated-linux-host-attestation.schema.json", "evidence/external-gates/linux-isolation-baseline.json"],
+  "unresolved_risks": ["Docker Desktop Linux VM runc baseline passed and the production gate now requires signed dedicated-host plus runsc evidence, but the dedicated real-Linux gVisor/runsc execution remains NOT_RUN."], "verified_at": "2026-08-06T04:50:49Z"
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval-case.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "case_id", "request", "policy", "status", "decisions", "created_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.enterprise-approval.v1"},
+    "case_id": {"type": "string", "minLength": 1}, "request": {"type": "object"}, "policy": {"type": "object"},
+    "status": {"enum": ["PENDING", "APPROVED", "REJECTED", "REVOKED", "EXPIRED", "CONSUMED", "POST_REVIEW_REQUIRED"]},
+    "decisions": {"type": "array", "items": {"type": "object"}}, "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}, "post_review_due_at": {"type": ["string", "null"], "format": "date-time"}
+  }
+}

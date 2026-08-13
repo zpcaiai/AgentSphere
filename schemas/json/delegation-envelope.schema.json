@@ -1,0 +1,16 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://agenttrust.local/schemas/delegation-envelope.schema.json",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","parent_agent","child_agent","delegated_tools","delegated_resources","budget_ceiling_microunits","expiry"],
+  "properties":{
+    "schema_version":{"const":"agenttrust.contracts.v1"},
+    "parent_agent":{"$ref":"common.schema.json#/$defs/uuid"},
+    "child_agent":{"$ref":"common.schema.json#/$defs/uuid"},
+    "delegated_tools":{"type":"array","uniqueItems":true,"maxItems":1000,"items":{"$ref":"common.schema.json#/$defs/tool_ref"}},
+    "delegated_resources":{"type":"array","uniqueItems":true,"maxItems":10000,"items":{"type":"string","minLength":1,"maxLength":2048}},
+    "budget_ceiling_microunits":{"type":"integer","minimum":0},
+    "expiry":{"$ref":"common.schema.json#/$defs/timestamp"}
+  }
+}

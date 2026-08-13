@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/linux-isolation-report.schema.json",
+  "title": "Linux OCI isolation gate report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mode",
+    "image",
+    "server_kernel",
+    "runtime",
+    "checks",
+    "production_evidence",
+    "measured_at",
+    "evidence_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.linux-isolation-report.v1"},
+    "mode": {"enum": ["baseline", "production"]},
+    "image": {"type": "string", "pattern": "^.+@sha256:[0-9a-f]{64}$"},
+    "server_kernel": {"type": "string", "minLength": 1, "maxLength": 256},
+    "runtime": {"type": "string", "minLength": 1, "maxLength": 80},
+    "runsc_binary_digest": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|NOT_APPLICABLE)$"},
+    "runsc_version_digest": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|NOT_APPLICABLE)$"},
+    "dedicated_host_attestation_digest": {"type": "string", "pattern": "^(?:[0-9a-f]{64}|NOT_APPLICABLE)$"},
+    "sandbox_kernel": {"type": "string", "minLength": 1, "maxLength": 256},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "linux_oci_engine",
+        "cgroup_v2",
+        "seccomp_filter",
+        "non_root",
+        "read_only_rootfs",
+        "no_new_privileges",
+        "capabilities_dropped",
+        "network_namespace_none",
+        "metadata_denied",
+        "docker_socket_absent",
+        "host_home_absent",
+        "pid_limit_enforced",
+        "memory_limit_enforced",
+        "cleanup_verified"
+      ],
+      "properties": {
+        "linux_oci_engine": {"const": true},
+        "cgroup_v2": {"const": true},
+        "seccomp_filter": {"const": true},
+        "non_root": {"const": true},
+        "read_only_rootfs": {"const": true},
+        "no_new_privileges": {"const": true},
+        "capabilities_dropped": {"const": true},
+        "network_namespace_none": {"const": true},
+        "metadata_denied": {"const": true},
+        "docker_socket_absent": {"const": true},
+        "host_home_absent": {"const": true},
+        "pid_limit_enforced": {"const": true},
+        "memory_limit_enforced": {"const": true},
+        "cleanup_verified": {"const": true},
+        "dedicated_linux_host": {"type": "boolean"},
+        "runsc_binary_digest_verified": {"type": "boolean"},
+        "runsc_runtime_selected": {"type": "boolean"},
+        "sandbox_kernel_isolated_from_host": {"type": "boolean"},
+        "user_namespaces_available": {"type": "boolean"}
+      }
+    },
+    "production_evidence": {"type": "boolean"},
+    "measured_at": {"type": "string", "format": "date-time"},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"mode": {"const": "production"}}},
+      "then": {
+        "required": [
+          "runsc_binary_digest",
+          "runsc_version_digest",
+          "dedicated_host_attestation_digest",
+          "sandbox_kernel"
+        ],
+        "properties": {
+          "runtime": {"const": "runsc"},
+          "production_evidence": {"const": true},
+          "runsc_binary_digest": {"pattern": "^[0-9a-f]{64}$"},
+          "runsc_version_digest": {"pattern": "^[0-9a-f]{64}$"},
+          "dedicated_host_attestation_digest": {"pattern": "^[0-9a-f]{64}$"},
+          "checks": {
+            "required": [
+              "dedicated_linux_host",
+              "runsc_binary_digest_verified",
+              "runsc_runtime_selected",
+              "sandbox_kernel_isolated_from_host",
+              "user_namespaces_available"
+            ],
+            "properties": {
+              "dedicated_linux_host": {"const": true},
+              "runsc_binary_digest_verified": {"const": true},
+              "runsc_runtime_selected": {"const": true},
+              "sandbox_kernel_isolated_from_host": {"const": true},
+              "user_namespaces_available": {"const": true}
+            }
+          }
+        }
+      },
+      "else": {"properties": {"production_evidence": {"const": false}}}
+    }
+  ]
+}

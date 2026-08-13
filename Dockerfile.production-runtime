@@ -1,0 +1,12 @@
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY . .
+RUN cargo build --locked --release -p agent-trust-production-runtime
+
+FROM ${RUNTIME_BASE_IMAGE}
+COPY --from=build /src/target/release/agent-trust-production-runtime /usr/local/bin/agent-trust-production-runtime
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/agent-trust-production-runtime"]
+CMD ["/etc/agenttrust/production-runtime.json"]

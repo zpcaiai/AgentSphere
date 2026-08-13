@@ -1,0 +1,22 @@
+{
+  "schema_version": "agenttrust.task-transitions.v1",
+  "terminal_writer": "durable-orchestrator-transition-service",
+  "transitions": [
+    ["CREATED", "PLANNED"], ["PLANNED", "POLICY_CHECKED"],
+    ["POLICY_CHECKED", "APPROVAL_PENDING"], ["POLICY_CHECKED", "APPROVED"],
+    ["APPROVAL_PENDING", "APPROVED"], ["APPROVED", "RUNNING"],
+    ["RUNNING", "PAUSE_REQUESTED"], ["PAUSE_REQUESTED", "PAUSED"],
+    ["PAUSED", "RUNNING"], ["RUNNING", "CANCEL_REQUESTED"],
+    ["CANCEL_REQUESTED", "CANCELLING"], ["RUNNING", "KILL_REQUESTED"],
+    ["PAUSED", "KILL_REQUESTED"], ["KILL_REQUESTED", "KILLED"],
+    ["RUNNING", "VERIFYING"], ["VERIFYING", "COMPLETED"],
+    ["RUNNING", "COMPENSATING"], ["FAILED", "COMPENSATING"],
+    ["COMPENSATING", "ROLLED_BACK"]
+  ],
+  "guards": {
+    "VERIFYING->COMPLETED": ["evaluation.status == PASS", "all hard gates pass"],
+    "APPROVED->RUNNING": ["fresh policy decision", "matching unexpired approval when required"],
+    "COMPENSATING->ROLLED_BACK": ["compensation verification evidence exists"]
+  }
+}
+

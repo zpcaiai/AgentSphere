@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.agent-registry-config.v1","profile":"production","fail_closed":true,"require_owner":true,"require_sponsor":true,"require_bom":true,"discovery_is_registration":false,"maximum_page_size":100,"revocation_convergence_required":true,"cross_tenant_queries":false}

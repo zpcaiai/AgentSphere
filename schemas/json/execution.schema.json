@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://agenttrust.local/schemas/execution.schema.json",
+  "type":"object","additionalProperties":false,"required":["schema_version","execution_id","action_hash","idempotency_key","executor_profile","status","attempt"],
+  "properties":{"schema_version":{"const":"agenttrust.contracts.v1"},"execution_id":{"$ref":"common.schema.json#/$defs/uuid"},"action_hash":{"$ref":"common.schema.json#/$defs/hash"},"idempotency_key":{"type":"string","minLength":1,"maxLength":128},"executor_profile":{"type":"string","minLength":1},"status":{"$ref":"common.schema.json#/$defs/execution_status"},"attempt":{"type":"integer","minimum":0},"started_at":{"type":["string","null"],"format":"date-time"},"finished_at":{"type":["string","null"],"format":"date-time"},"result_ref":{"type":["string","null"]},"error_code":{"type":["string","null"]},"resource_version_before":{"type":["string","null"]},"resource_version_after":{"type":["string","null"]}}
+}
+

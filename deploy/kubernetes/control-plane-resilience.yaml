@@ -1,0 +1,31 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-control-plane
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: agenttrust-control-plane
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-default-deny
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: agenttrust-control-plane
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agenttrust-bounded-capacity
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "64"

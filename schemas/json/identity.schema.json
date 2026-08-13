@@ -1,0 +1,13 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://agenttrust.local/schemas/identity.schema.json",
+  "type":"object","additionalProperties":false,
+  "required":["schema_version","agent_type","agent_instance_id","organization_id","tenant_id","owner_subject","model_provider","model_id","agent_version","deployment_environment","trust_level","auth_context_ref","issued_at","expires_at"],
+  "properties":{
+    "schema_version":{"const":"agenttrust.contracts.v1"},"agent_type":{"type":"string","minLength":1,"maxLength":64},"agent_instance_id":{"$ref":"common.schema.json#/$defs/uuid"},
+    "organization_id":{"type":"string","minLength":1,"maxLength":128},"tenant_id":{"$ref":"common.schema.json#/$defs/uuid"},"owner_subject":{"type":"string","minLength":1,"maxLength":256},
+    "model_provider":{"type":"string","minLength":1,"maxLength":128},"model_id":{"type":"string","minLength":1,"maxLength":128},"agent_version":{"type":"string","minLength":1,"maxLength":64},
+    "deployment_environment":{"enum":["development","staging","production"]},"trust_level":{"enum":["development","verified","attested"]},"auth_context_ref":{"type":"string","minLength":1,"maxLength":256},
+    "issued_at":{"$ref":"common.schema.json#/$defs/timestamp"},"expires_at":{"$ref":"common.schema.json#/$defs/timestamp"}
+  }
+}
+

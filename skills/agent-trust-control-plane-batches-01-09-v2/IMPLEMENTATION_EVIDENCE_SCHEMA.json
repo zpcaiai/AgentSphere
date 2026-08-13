@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "agent-trust-implementation-status-v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project",
+    "batch",
+    "status",
+    "commit",
+    "commands",
+    "tests",
+    "evidence",
+    "unresolved_risks"
+  ],
+  "properties": {
+    "project": {
+      "const": "agent-trust-control-plane"
+    },
+    "batch": {
+      "type": "string",
+      "pattern": "^(0[1-9]|[12][0-9]|3[0-6])$"
+    },
+    "status": {
+      "enum": [
+        "NOT_STARTED",
+        "IN_PROGRESS",
+        "BLOCKED",
+        "EVIDENCE_VERIFIED"
+      ]
+    },
+    "commit": {
+      "type": "string",
+      "minLength": 7
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "command",
+          "exit_code"
+        ],
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "report": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "status"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "SKIP"
+            ]
+          },
+          "evidence_ref": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unresolved_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verified_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

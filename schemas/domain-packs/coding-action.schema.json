@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/domain-packs/coding-action.schema.json",
+  "title": "Coding Pack Action", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "repository_ref", "base_commit", "branch", "paths", "command", "effect_class"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.coding-pack.v1"}, "repository_ref": {"type": "string", "minLength": 1},
+    "base_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"}, "branch": {"type": "string", "minLength": 1},
+    "paths": {"type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": true, "items": {"type": "string", "pattern": "^(?!/)(?!.*\\.\\.).+$"}},
+    "command": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string"}},
+    "effect_class": {"enum": ["READ", "WRITE_REVERSIBLE", "WRITE_IRREVERSIBLE"]}
+  }
+}

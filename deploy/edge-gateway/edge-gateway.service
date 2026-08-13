@@ -1,0 +1,23 @@
+[Unit]
+Description=AgentTrust Industrial Edge Gateway
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+ExecStart=/usr/local/bin/edge-gateway --config /etc/agenttrust/edge.production.json
+User=agenttrust-edge
+Group=agenttrust-edge
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ReadWritePaths=/var/lib/agenttrust-edge
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

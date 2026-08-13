@@ -1,0 +1,3 @@
+# Gateway operations
+
+`/healthz` reports process liveness; `/readyz` reflects the downstream submission port without naming failed dependencies. Start the explicit local profile with `AGENTTRUST_PROFILE=development AGENTTRUST_ENABLE_DEV_VERIFIER=true`; authenticated development requests must also provide valid `x-dev-subject`, `x-dev-tenant`, and stable `x-dev-agent` identifiers. This mode is not production-capable. SIGTERM stops admission through Axum graceful shutdown. Use `python3 -m python.platform_sre.http_load_gate` for a bounded authenticated path baseline; the report records only header names and a body digest, never credential values. Record memory and a production-representative TLS workload separately.

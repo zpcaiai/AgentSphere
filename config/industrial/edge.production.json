@@ -1,0 +1,12 @@
+{
+  "schema_version": "agenttrust.industrial-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "write_mode": "READ_ONLY",
+  "maximum_inflight_writes": 1,
+  "telemetry_buffer_capacity": 10000,
+  "disconnect_behavior": "DENY_NEW_WRITES_ALLOW_SIGNED_SAFE_STOP",
+  "require_mtls": true,
+  "require_time_sync": true,
+  "device_credentials_exportable": false
+}

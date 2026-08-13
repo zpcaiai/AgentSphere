@@ -1,0 +1,3 @@
+# Gateway security boundary
+
+Data-plane requests pass global concurrency and header/body bounds, request/trace IDs, workload authentication, trusted tenant resolution, per-tenant and per-agent concurrency, per-tenant rate limits, deadline, bounded idempotency precheck, circuit breaker, and the Orchestrator submission port in that order. Tenant is never accepted solely from `X-Tenant-Id`. Query, cancel, kill, and stream paths use the same admission checks and carry tenant and owner. Idempotency replay entries have a TTL plus global and per-tenant capacity caps. Management metrics use a separate listener. Production startup rejects the development verifier.

@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.runtime-anomaly-config.v1","profile":"production","fail_closed":true,"maximum_trajectory_events":4096,"maximum_pending_signals":10000,"semantic_detector_can_kill":false,"continuous_authorization_required":true,"unknown_detector_response":"PAUSE_NEW_TOOLS"}

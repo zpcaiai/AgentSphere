@@ -1,0 +1,12 @@
+{
+  "schema_version": "agenttrust.mcp-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "maximum_servers": 256,
+  "maximum_tools_per_server": 512,
+  "maximum_inflight_per_server": 16,
+  "maximum_request_bytes": 1048576,
+  "maximum_result_bytes": 4194304,
+  "credential_transport": "opaque-handle-only",
+  "freeze_on_any_snapshot_drift": true
+}

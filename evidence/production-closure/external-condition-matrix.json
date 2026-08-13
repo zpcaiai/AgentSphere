@@ -1,0 +1,153 @@
+{
+  "schema_version": "agenttrust.external-condition-matrix.v1",
+  "release_id": "WORKTREE-NO-GIT",
+  "evaluated_at": "2026-08-06T05:01:53Z",
+  "overall_status": "IN_PROGRESS",
+  "production_evidence": false,
+  "eligible": false,
+  "conditions": [
+    {
+      "condition_id": "ENTERPRISE_IDP_JWKS",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["rust/crates/identity/src/lib.rs", "python/production_gates/live_integrations.py"],
+      "required_external_inputs": ["enterprise issuer and audience", "production JWKS and rotation window", "server-side subject, tenant and role mapping"]
+    },
+    {
+      "condition_id": "WORKLOAD_MTLS_CA",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["python/production_gates/external_services.py"],
+      "required_external_inputs": ["enterprise CA bundle", "workload client certificate", "permission-restricted private key", "real service hostname"]
+    },
+    {
+      "condition_id": "SECRET_BROKER_DYNAMIC_LEASES",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["rust/crates/tool-proxy/src/lib.rs", "python/production_gates/external_services.py"],
+      "required_external_inputs": ["mTLS Vault endpoint", "least-privilege probe token", "approved dynamic lease profile and path"]
+    },
+    {
+      "condition_id": "DEDICATED_LINUX_GVISOR",
+      "code_status": "IMPLEMENTED_FAIL_CLOSED_VERIFIER",
+      "external_status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "blocking": true,
+      "code_paths": ["scripts/run-linux-isolation-gate.sh", "schemas/execution/dedicated-linux-host-attestation.schema.json"],
+      "required_external_inputs": ["dedicated Linux host", "digest-pinned runsc", "signed root-owned host attestation", "digest-pinned OCI image"]
+    },
+    {
+      "condition_id": "PRODUCTION_MULTIZONE_TEMPORAL",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "blocking": true,
+      "code_paths": ["python/production_gates/live_integrations.py", "rust/crates/durable-orchestrator/src/lib.rs"],
+      "required_external_inputs": ["multi-zone Temporal endpoint", "digest-pinned Temporal CLI", "mTLS client identity", "witnessed failover and recovery window"]
+    },
+    {
+      "condition_id": "MANAGED_DATABASE_MULTI_ZONE",
+      "code_status": "IMPLEMENTED_FAIL_CLOSED_VERIFIER",
+      "external_status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "blocking": true,
+      "code_paths": ["python/platform_sre/postgres_failover_drill.py", "rust/crates/platform-sre/src/lib.rs"],
+      "required_external_inputs": ["managed multi-zone database", "deployment-owned failover authorization", "measured RPO and RTO", "post-failover integrity reconciliation"]
+    },
+    {
+      "condition_id": "LOCKED_RETENTION_OBJECT_STORAGE",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["python/production_gates/object_store_retention.py", "rust/crates/audit-retention/src/lib.rs"],
+      "required_external_inputs": ["managed S3-compatible endpoint", "versioned compliance-lock bucket", "protected object version", "least-privilege read-only probe credentials"]
+    },
+    {
+      "condition_id": "MODEL_GENERATION_STREAM_DLP_BILLING_RESIDENCY",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "FAIL_EXTERNAL_GATE",
+      "blocking": true,
+      "code_paths": ["rust/crates/model-gateway/src/lib.rs", "python/production_gates/external_services.py"],
+      "required_external_inputs": ["approved provider and exact model version", "provider usage and invoice export", "signed residency attestation", "production DLP acceptance corpus"]
+    },
+    {
+      "condition_id": "MCP_REAL_ENDPOINT",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["rust/crates/mcp-security-proxy/src/lib.rs", "python/production_gates/external_services.py"],
+      "required_external_inputs": ["approved HTTPS MCP endpoint", "approved tool schema digest", "publisher and SBOM evidence", "sandbox behavior observation"]
+    },
+    {
+      "condition_id": "A2A_REAL_ENDPOINT",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["rust/crates/a2a-agui-adapter/src/lib.rs", "python/production_gates/external_services.py"],
+      "required_external_inputs": ["approved HTTPS Agent Card", "task and streaming peer", "measured reconnect and revocation latency"]
+    },
+    {
+      "condition_id": "OPCUA_MQTT_MODBUS_REAL_ENDPOINTS",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["python/production_gates/industrial_protocols.py", "rust/crates/industrial-edge-gateway/src/lib.rs"],
+      "required_external_inputs": ["digest-pinned deployment protocol clients", "mTLS device endpoints", "reviewed address and register mappings", "safe read-only test window"]
+    },
+    {
+      "condition_id": "SUPERVISED_PHYSICAL_WRITE",
+      "code_status": "IMPLEMENTED_FAIL_CLOSED_VERIFIER",
+      "external_status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "blocking": true,
+      "code_paths": ["rust/crates/industrial-edge-gateway/src/lib.rs", "rust/crates/domain-risk-packs/industrial.rs", "rust/crates/production-closure/src/lib.rs"],
+      "required_external_inputs": ["on-site human supervisor", "signed single-use authorization", "live interlock and convergence evidence", "qualified industrial assurance signatures"]
+    },
+    {
+      "condition_id": "MULTIZONE_CONTROL_PLANE_TOPOLOGY",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["python/platform_sre/multizone_topology_gate.py", "schemas/sre/multizone-topology-report.schema.json"],
+      "required_external_inputs": ["production kubeconfig and context", "three ready failure zones", "complete workload allowlist", "independently reviewed topology scope"]
+    },
+    {
+      "condition_id": "NETWORK_STORAGE_CONTROL_PLANE_FAULTS",
+      "code_status": "IMPLEMENTED_FAIL_CLOSED_VERIFIER",
+      "external_status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "blocking": true,
+      "code_paths": ["python/platform_sre/chaos_runner.py", "python/platform_sre/kubernetes_recovery_drill.py", "rust/crates/production-closure/src/lib.rs"],
+      "required_external_inputs": ["approved production fault plan", "multi-zone network, storage and control-plane fault injection", "observed safety behavior", "signed RPO and RTO evidence"]
+    },
+    {
+      "condition_id": "SUSTAINED_PRODUCTION_LOAD",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["python/platform_sre/http_load_gate.py", "rust/crates/platform-sre/src/lib.rs"],
+      "required_external_inputs": ["representative workload and duration", "protected authentication header", "production SLO and capacity thresholds", "deployment approval"]
+    },
+    {
+      "condition_id": "CUSTOMER_EXPERT_INDEPENDENT_ACCEPTANCE",
+      "code_status": "IMPLEMENTED_FAIL_CLOSED_VERIFIER",
+      "external_status": "NOT_PROVIDED",
+      "blocking": true,
+      "code_paths": ["rust/crates/production-closure/src/lib.rs", "schemas/release/external-gate-assurance-attestation.schema.json", "schemas/release/domain-assurance-attestation.schema.json"],
+      "required_external_inputs": ["customer release authority signature", "qualified domain reviewer signatures", "independent auditor signature", "production change ticket and evidence digests"]
+    },
+    {
+      "condition_id": "IMMUTABLE_GIT_RELEASE_PROVENANCE",
+      "code_status": "IMPLEMENTED_AND_TESTED",
+      "external_status": "NOT_RUN_CONFIGURATION",
+      "blocking": true,
+      "code_paths": ["python/production_gates/git_provenance.py"],
+      "required_external_inputs": ["real Git repository", "approved immutable remote", "clean committed worktree", "verified commit signature and optionally signed release tag"]
+    }
+  ],
+  "summary": {
+    "condition_count": 17,
+    "code_gate_ready": 17,
+    "external_verified": 0
+  },
+  "production_closure_certificate": "NOT_ISSUED",
+  "matrix_digest": "667b71722d3b4769d5a20c786d787a641ec52c55e238686f8e4ea5f415519849"
+}

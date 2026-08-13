@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "11", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "skill package validators for batches 10-18", "exit_code": 0}, {"command": "python3 -m unittest python.production_gates.tests.test_industrial_protocols", "exit_code": 0}],
+  "tests": [{"name": "manifest permission, trust downgrade, mapping loss and version negotiation", "status": "PASS", "evidence_ref": "rust/crates/protocol-adapter-sdk"}, {"name": "digest-pinned external protocol client, fixed argv, strict redacted receipt and no-write enforcement", "status": "PASS", "evidence_ref": "python/production_gates/industrial_protocols.py"}],
+  "evidence": ["schemas/adapters/adapter-manifest.schema.json", "conformance-tests/adapters/echo-vectors.json", "docs/adapters/protocol-sdk.md", "python/production_gates/industrial_protocols.py"],
+  "unresolved_risks": ["Real production protocol clients/endpoints and Linux/WASI process-isolation evidence are NOT_RUN."], "verified_at": "2026-08-06T04:50:49Z"
+}

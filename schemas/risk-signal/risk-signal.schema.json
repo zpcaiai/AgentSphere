@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/risk-signal/risk-signal.schema.json",
+  "title": "Runtime Risk Signal",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "task_id", "sequence", "detector_version", "score", "reason_codes", "safe_feature_digest", "response_ceiling"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.risk-signal.v1"},
+    "tenant_id": {"type": "string", "minLength": 1}, "task_id": {"type": "string", "minLength": 1},
+    "sequence": {"type": "integer", "minimum": 1}, "detector_version": {"type": "string", "minLength": 1},
+    "score": {"type": "number", "minimum": 0, "maximum": 1},
+    "reason_codes": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string"}},
+    "safe_feature_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "response_ceiling": {"const": "REQUEST_CONTINUOUS_AUTHORIZATION"}
+  }
+}

@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.sensitive-pack-config.v1","profile":"production","fail_closed":true,"require_consent_for_sharing":true,"minor_mode":"CONSERVATIVE","dynamic_regional_directory_required":true,"hardcoded_hotlines_allowed":false,"manipulation":"DENY","human_handoff_fail_mode":"ESCALATE_AND_DISCLOSE_FAILURE"}

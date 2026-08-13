@@ -1,0 +1,86 @@
+{
+  "schema_version": "agenttrust.local-verification.v1",
+  "verified_at": "2026-08-06T05:01:53Z",
+  "scope": "batches-01-36-code-level",
+  "results": {
+    "rust_changed_crates": {
+      "status": "PASS",
+      "tests": 78,
+      "crates": ["audit-retention", "incident-release-gate", "agent-registry-posture", "policy-administration", "security-evaluation-lab", "platform-sre", "enterprise-control", "production-closure", "gateway", "integration-tests", "identity", "tool-proxy", "model-gateway"]
+    },
+    "rust_workspace_current_run": {"status": "PASS", "tests": 164},
+    "rust_clippy_current_run": {"status": "PASS", "warnings_denied": true},
+    "rustfmt_check": {"status": "PASS"},
+    "python_tests": {"status": "PASS", "count": 53},
+    "spring_boot_tests": {"status": "PASS", "count": 6, "java_release": 21, "warnings_denied": true},
+    "vue_production_build": {"status": "PASS", "modules": 15, "missing_or_unsafe_api_url": "DENIED_AT_BUILD"},
+    "enterprise_openapi_parity": {"status": "PASS", "governed_operations": 8},
+    "rego_tests_current_run": {
+      "status": "PASS",
+      "tests": 25,
+      "opa_version": "1.19.0",
+      "image": "openpolicyagent/opa@sha256:2f42ca765bb739b40fc23ee625b3287012acdf8120ad4fcbdab68433a17be144",
+      "isolation": "network-none/read-only/cap-drop-all/no-new-privileges"
+    },
+    "contract_languages": {"status": "PASS", "languages": ["rust", "python", "java", "typescript"]},
+    "contract_conformance": {"status": "PASS"},
+    "typescript_strict_compile": {"status": "PASS"},
+    "runtime_json_assets": {"status": "PASS", "count": 94},
+    "json_schemas": {"status": "PASS", "count": 59},
+    "implementation_status_files": {"status": "PASS", "count": 36},
+    "skill_package_validators": {"status": "PASS", "skills": 36},
+    "postgresql_17_migrations": {"status": "PASS", "migration_files": 33, "consecutive_applications": 2, "declared_tables": 99},
+    "enterprise_non_bypass_rls": {"status": "PASS", "role": "NOSUPERUSER NOBYPASSRLS", "cross_tenant_visibility": "DENIED", "transactional_idempotency": "PASS"},
+    "global_tenant_table_rls": {"status": "PASS", "tenant_tables": 84, "enable_rls": true, "force_rls": true},
+    "postgresql_rust_persistence_test": {"status": "PASS", "concurrent_reservations": 20, "migration_applications": 2},
+    "real_protocol_and_recovery_baselines": {
+      "status": "MIXED_PASS_FAIL_NOT_RUN_NON_PRODUCTION",
+      "production_evidence": false,
+      "external_baseline_reports": 10,
+      "linux_oci_isolation": "PASS_RUNC_DOCKER_DESKTOP_LINUX_VM",
+      "enterprise_iam_oidc": "NOT_RUN_CONFIGURATION",
+      "enterprise_workload_mtls": "NOT_RUN_CONFIGURATION",
+      "secret_broker_dynamic_leases": "NOT_RUN_CONFIGURATION",
+      "temporal_cli_workflow_lifecycle": "PASS_LOCAL_SERVER",
+      "temporal_production_mtls_multizone": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "object_store_s3_lifecycle": "PASS_LOCAL_MINIO",
+      "object_store_compliance_retention": "NOT_RUN_CONFIGURATION",
+      "model_provider_authenticated_catalog": "PASS_LIVE_OPENAI_118_MODELS_NO_PROMPT_SENT",
+      "model_generation_stream_billing_dlp_residency": "FAIL_LIVE_HTTP_429_PRODUCTION_EVIDENCE_FALSE",
+      "mcp_real_endpoint": "NOT_RUN_CONFIGURATION",
+      "a2a_real_endpoint": "NOT_RUN_CONFIGURATION",
+      "opcua_mqtt_modbus_real_endpoints": "NOT_RUN_CONFIGURATION",
+      "supervised_physical_write": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+      "postgres_physical_failover": "PASS_SINGLE_HOST_RPO_0_RTO_688_MS",
+      "encrypted_backup_isolated_restore": "PASS_SINGLE_HOST_RTO_157_MS",
+      "gateway_authenticated_admission_load": "PASS_500_REQUESTS_CONCURRENCY_8_P99_11_204_MS_EXPECTED_SAFE_404",
+      "kubernetes_pod_loss_recovery": "PASS_SINGLE_NODE_RTO_1335_MS",
+      "multizone_topology": "NOT_RUN_CONFIGURATION",
+      "sustained_production_load": "NOT_RUN_CONFIGURATION",
+      "immutable_git_provenance": "NOT_RUN_CONFIGURATION_WORKTREE_NO_GIT",
+      "evidence_root": "evidence/external-gates"
+    },
+    "domain_assurance_verifier": {
+      "status": "PASS_CODE_AND_NEGATIVE_TESTS",
+      "production_attestations": "NOT_PROVIDED"
+    },
+    "external_assurance_verifier": {
+      "status": "PASS_CODE_AND_NEGATIVE_TESTS",
+      "condition_matrix": "evidence/production-closure/external-condition-matrix.json",
+      "external_verified": 0
+    },
+    "production_closure_certificate": {
+      "status": "NOT_ISSUED",
+      "reason": "Required production-scoped real-environment and independent assurance gates and all Batch 01-35 EVIDENCE_VERIFIED statuses are absent."
+    }
+  },
+  "not_certified": [
+    "dedicated Linux gVisor/runsc isolation on a real Linux host",
+    "enterprise IdP/JWKS, workload mTLS CA, secret broker, production Temporal and managed database",
+    "managed compliance-lock object storage, real MCP/A2A/model generation and industrial protocol endpoints",
+    "authoritative CN standard compatibility",
+    "physical, energy, clinical and sensitive-interaction safety",
+    "multi-zone HA/DR, representative sustained production load/SLO, customer acceptance and independent certification",
+    "immutable signed Git release provenance and final Production Closure"
+  ]
+}

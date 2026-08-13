@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "range": "19-27",
+  "skills": [
+    {
+      "batch": "19",
+      "skill": "agent-trust-audit-retention",
+      "title": "审计留存、Control Catalog与Evidence Graph",
+      "lines": 196,
+      "bytes": 7864
+    },
+    {
+      "batch": "20",
+      "skill": "agent-trust-pack-supply-chain",
+      "title": "平台供应链与Domain Pack SDK Foundation",
+      "lines": 194,
+      "bytes": 7953
+    },
+    {
+      "batch": "21",
+      "skill": "agent-trust-runtime-anomaly-detection",
+      "title": "异常轨迹检测与Continuous Authorization",
+      "lines": 193,
+      "bytes": 7872
+    },
+    {
+      "batch": "22",
+      "skill": "agent-trust-incident-release-gate",
+      "title": "Incident、Replay与Release Gate Engine",
+      "lines": 198,
+      "bytes": 7830
+    },
+    {
+      "batch": "23",
+      "skill": "agent-trust-coding-risk-pack",
+      "title": "Coding Agent Risk Pack",
+      "lines": 194,
+      "bytes": 7960
+    },
+    {
+      "batch": "24",
+      "skill": "agent-trust-industrial-risk-pack",
+      "title": "Industrial Agent Risk Pack",
+      "lines": 193,
+      "bytes": 8112
+    },
+    {
+      "batch": "25",
+      "skill": "agent-trust-energy-risk-pack",
+      "title": "Energy Agent Risk Pack",
+      "lines": 192,
+      "bytes": 7895
+    },
+    {
+      "batch": "26",
+      "skill": "agent-trust-medical-risk-pack",
+      "title": "Medical Agent Risk Pack",
+      "lines": 194,
+      "bytes": 8221
+    },
+    {
+      "batch": "27",
+      "skill": "agent-trust-sensitive-interaction-pack",
+      "title": "Sensitive Interaction Risk Pack",
+      "lines": 194,
+      "bytes": 8364
+    }
+  ]
+}

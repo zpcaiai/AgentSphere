@@ -1,0 +1,21 @@
+{
+  "schema_version": "agenttrust.backup-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "encrypted": true,
+  "backup_root": "/var/lib/agenttrust/backups",
+  "object_roots": ["/var/lib/agenttrust/evidence-objects"],
+  "encryption_certificate": "/etc/agenttrust/backup-recipient.pem",
+  "decryption_private_key": "/run/secrets/backup-private-key.pem",
+  "restore_object_root": "/var/lib/agenttrust/isolated-restore/objects",
+  "binaries": {
+    "pg_dump": "/usr/bin/pg_dump",
+    "pg_restore": "/usr/bin/pg_restore",
+    "psql": "/usr/bin/psql",
+    "openssl": "/usr/bin/openssl"
+  },
+  "maximum_object_files": 1000000,
+  "maximum_object_bytes": 1099511627776,
+  "record_count_tables": ["orchestrator_tasks", "executions", "audit_chain_heads"],
+  "command_timeout_seconds": 14400
+}

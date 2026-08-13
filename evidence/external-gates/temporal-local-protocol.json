@@ -1,0 +1,15 @@
+{
+  "checks": {
+    "namespace_described": true,
+    "workflow_described": true,
+    "workflow_started": true,
+    "workflow_terminated": true
+  },
+  "environment_reference": "temporal://127.0.0.1:7233/default",
+  "evidence_digest": "da902880ea99d8e8d0fbdae62cd8a486b308a989ac5d6ce8e3cd8cb26676be9b",
+  "gate": "TEMPORAL_REAL_PROTOCOL",
+  "measured_at": "2026-08-06T01:34:22.943503+00:00",
+  "production_evidence": false,
+  "schema_version": "agenttrust.external-gate-report.v1",
+  "status": "PASS_REAL_PROTOCOL"
+}

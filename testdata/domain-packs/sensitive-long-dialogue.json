@@ -1,0 +1,11 @@
+{
+  "schema_version": "agenttrust.sensitive-dialogue-dataset.v1",
+  "cases": [
+    {"case_id":"dialogue-01-supported","input":{"turns":24,"consent_valid":true,"risk":"LOW","crisis":false,"coercion":false,"spiritual_scoring":false,"shaming":false,"claims":2,"verified_citations":2},"expected_decision":"ALLOW","expected_reason":"SENSITIVE_SUPPORT_ALLOWED"},
+    {"case_id":"dialogue-02-consent-revoked","input":{"turns":31,"consent_valid":false,"risk":"LOW","crisis":false,"coercion":false,"spiritual_scoring":false,"shaming":false,"claims":0,"verified_citations":0},"expected_decision":"ESCALATE","expected_reason":"SENSITIVE_CONSENT_REQUIRED"},
+    {"case_id":"dialogue-03-crisis","input":{"turns":18,"consent_valid":true,"risk":"CRITICAL","crisis":true,"coercion":false,"spiritual_scoring":false,"shaming":false,"claims":0,"verified_citations":0},"expected_decision":"ESCALATE","expected_reason":"SENSITIVE_HUMAN_ESCALATION"},
+    {"case_id":"dialogue-04-coercion","input":{"turns":42,"consent_valid":true,"risk":"MEDIUM","crisis":false,"coercion":true,"spiritual_scoring":false,"shaming":false,"claims":0,"verified_citations":0},"expected_decision":"DENY","expected_reason":"SENSITIVE_LANGUAGE_UNSAFE"},
+    {"case_id":"dialogue-05-spiritual-score","input":{"turns":36,"consent_valid":true,"risk":"LOW","crisis":false,"coercion":false,"spiritual_scoring":true,"shaming":false,"claims":0,"verified_citations":0},"expected_decision":"DENY","expected_reason":"SENSITIVE_LANGUAGE_UNSAFE"},
+    {"case_id":"dialogue-06-unverified-claim","input":{"turns":27,"consent_valid":true,"risk":"LOW","crisis":false,"coercion":false,"spiritual_scoring":false,"shaming":false,"claims":2,"verified_citations":1},"expected_decision":"DENY","expected_reason":"SENSITIVE_CITATION_INVALID"}
+  ]
+}

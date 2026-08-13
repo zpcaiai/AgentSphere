@@ -1,0 +1,12 @@
+{
+  "schema_version": "agenttrust.model-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "maximum_prompt_bytes": 4194304,
+  "maximum_output_bytes": 4194304,
+  "maximum_fallbacks": 2,
+  "require_data_policy_before_routing": true,
+  "allow_policy_downgrade_on_fallback": false,
+  "raw_prompt_logging": false,
+  "providers": []
+}

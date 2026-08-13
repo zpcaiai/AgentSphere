@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/dedicated-linux-host-attestation.schema.json",
+  "title": "Dedicated Linux host attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "hostname",
+    "environment",
+    "runtime",
+    "dedicated",
+    "issuer",
+    "issued_at",
+    "expires_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.dedicated-linux-host-attestation.v1"},
+    "hostname": {"type": "string", "minLength": 1, "maxLength": 253},
+    "environment": {"const": "production"},
+    "runtime": {"const": "runsc"},
+    "dedicated": {"const": true},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 200},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

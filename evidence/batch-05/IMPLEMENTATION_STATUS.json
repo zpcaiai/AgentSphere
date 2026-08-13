@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "05", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "cargo test -p agent-trust-integration-tests --test postgres_persistence -- --nocapture", "exit_code": 0}],
+  "tests": [{"name": "registry lifecycle, schema, tenant and revocation", "status": "PASS", "evidence_ref": "rust/crates/registry"}, {"name": "PostgreSQL 17 registry persistence", "status": "PASS", "evidence_ref": "isolated local PostgreSQL 17 integration"}],
+  "evidence": ["migrations/tool-registry/0001_tool_registry.sql", "docs/registry/lifecycle.md"],
+  "unresolved_risks": ["PostgreSQL HA, backup/restore and managed-service behavior are NOT_RUN."], "verified_at": "2026-08-05T11:49:35Z"
+}

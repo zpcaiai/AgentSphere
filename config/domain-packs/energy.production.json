@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.energy-pack-config.v1","profile":"production","fail_closed":true,"initial_mode":"SHADOW","candidate_planner_authoritative":false,"rust_constraint_validation":true,"ood_fallback":"ZERO_POWER_SAFE_FALLBACK_V1","hard_constraints_override_economics":true}

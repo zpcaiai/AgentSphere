@@ -1,0 +1,12 @@
+{
+  "schema_version": "agenttrust.external-gate-report.v1",
+  "gate": "MODEL-GENERATION",
+  "status": "FAIL",
+  "environment_reference": "configured-target",
+  "checks": {
+    "error_code": "GATE_HTTP_STATUS_429"
+  },
+  "production_evidence": false,
+  "measured_at": "2026-08-06T05:01:53.471343+00:00",
+  "evidence_digest": "7d55a18837b37e3dc26e7e5350da2f54d8486aa47c43ed678d2736565a0c0fb7"
+}

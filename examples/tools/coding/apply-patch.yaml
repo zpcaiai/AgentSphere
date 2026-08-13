@@ -1,0 +1,9 @@
+{
+  "schema_version":"agenttrust.registry.v1","tool_id":"coding.apply-patch","tool_version":"1.0.0","status":"DRAFT","domain":"coding","display_name":"Apply patch","description":"Apply a structured patch to a task workspace",
+  "input_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["patch_ref","baseline_sha","resource_version"],"properties":{"patch_ref":{"type":"string"},"baseline_sha":{"type":"string","pattern":"^[a-f0-9]{40,64}$"},"resource_version":{"type":"string"}}},
+  "output_schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["workspace_diff_ref"],"properties":{"workspace_diff_ref":{"type":"string"}}},
+  "effect_class":"COMPENSATABLE","risk_level":"MEDIUM","executor_profile":"coding-apply-patch","credential_profile":"none","approval_profile":"medium-default",
+  "compensation":{"tool":{"tool_id":"coding.restore-workspace","tool_version":"1.0.0"},"precondition_kind":"baseline_sha"},"limits":{"timeout_ms":120000,"max_result_bytes":10485760},
+  "network_profile_ref":"none","filesystem_profile_ref":"task-workspace-rw","implementation":{"kind":"oci_container","digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","executor_id":"structured-patch"}
+}
+

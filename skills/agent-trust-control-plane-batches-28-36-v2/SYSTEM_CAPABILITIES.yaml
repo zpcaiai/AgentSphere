@@ -1,0 +1,56 @@
+version: "2.0.0"
+capabilities:
+  contract_and_intent_integrity:
+    batches: ["01", "03"]
+  gateway_and_admission:
+    batches: ["02"]
+  workload_identity:
+    batches: ["04"]
+  tool_and_capability_governance:
+    batches: ["05"]
+  policy_enforcement_and_minimal_approval:
+    batches: ["06"]
+  sandbox_and_kill:
+    batches: ["07"]
+  target_credentials_and_proxy:
+    batches: ["08"]
+  transaction_safety:
+    batches: ["09"]
+  trace_evidence_and_evaluation:
+    batches: ["10"]
+  protocol_adapters:
+    batches: ["11", "12", "13", "14", "16"]
+  model_governance:
+    batches: ["15"]
+  enterprise_approval:
+    batches: ["17"]
+  data_governance:
+    batches: ["18"]
+  audit_and_compliance_evidence:
+    batches: ["19"]
+  supply_chain_and_pack_sdk:
+    batches: ["20"]
+  continuous_authorization:
+    batches: ["21"]
+  incident_and_release_gate_engine:
+    batches: ["22"]
+  domain_risk_packs:
+    batches: ["23", "24", "25", "26", "27"]
+  marketplace:
+    batches: ["28"]
+  durable_orchestration:
+    batches: ["29"]
+  agent_inventory_and_posture:
+    batches: ["30"]
+  policy_lifecycle:
+    batches: ["31"]
+  context_provenance:
+    batches: ["32"]
+  security_evaluation:
+    batches: ["33"]
+  platform_reliability:
+    batches: ["34"]
+  enterprise_management:
+    batches: ["35"]
+  production_closure:
+    batches: ["36"]

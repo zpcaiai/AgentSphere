@@ -1,0 +1,257 @@
+{
+  "version": "2.0.0",
+  "skills": [
+    {
+      "batch": "01",
+      "skill": "agent-trust-contracts",
+      "title": "公共契约、Signed Goal、Plan与Authorization Lease",
+      "lines": 390,
+      "bytes": 15491
+    },
+    {
+      "batch": "02",
+      "skill": "agent-trust-gateway",
+      "title": "Rust Agent Gateway与Admission Control",
+      "lines": 416,
+      "bytes": 12481
+    },
+    {
+      "batch": "03",
+      "skill": "agent-trust-action-ir",
+      "title": "Typed Unified Agent Action IR",
+      "lines": 458,
+      "bytes": 13676
+    },
+    {
+      "batch": "04",
+      "skill": "agent-trust-identity-credentials",
+      "title": "Agent Identity与Workload Credential",
+      "lines": 202,
+      "bytes": 9662
+    },
+    {
+      "batch": "05",
+      "skill": "agent-trust-tool-registry",
+      "title": "Tool与Capability Registry",
+      "lines": 446,
+      "bytes": 13376
+    },
+    {
+      "batch": "06",
+      "skill": "agent-trust-policy-pep",
+      "title": "Policy Enforcement与Minimal Approval Kernel",
+      "lines": 462,
+      "bytes": 12923
+    },
+    {
+      "batch": "07",
+      "skill": "agent-trust-sandbox-runtime",
+      "title": "Sandbox Runtime、Runtime Supervisor与Kill Switch",
+      "lines": 505,
+      "bytes": 15306
+    },
+    {
+      "batch": "08",
+      "skill": "agent-trust-tool-credential-proxy",
+      "title": "Target Credential Broker与Tool Proxy",
+      "lines": 204,
+      "bytes": 9310
+    },
+    {
+      "batch": "09",
+      "skill": "agent-trust-transaction-ledger",
+      "title": "幂等、补偿事务与Unknown Outcome Recovery",
+      "lines": 205,
+      "bytes": 8980
+    },
+    {
+      "batch": "10",
+      "skill": "agent-trust-trace-evaluator",
+      "title": "Trace、Evidence与Evaluator Governance",
+      "lines": 201,
+      "bytes": 8983
+    },
+    {
+      "batch": "11",
+      "skill": "agent-trust-protocol-adapter-sdk",
+      "title": "Protocol Adapter SDK与一致性测试",
+      "lines": 191,
+      "bytes": 7848
+    },
+    {
+      "batch": "12",
+      "skill": "agent-trust-mcp-security-proxy",
+      "title": "MCP Adapter与Security Proxy",
+      "lines": 194,
+      "bytes": 8070
+    },
+    {
+      "batch": "13",
+      "skill": "agent-trust-a2a-agui-adapter",
+      "title": "A2A与AG-UI Adapter",
+      "lines": 191,
+      "bytes": 7744
+    },
+    {
+      "batch": "14",
+      "skill": "agent-trust-cn-standard-adapter",
+      "title": "中国智能体标准Adapter",
+      "lines": 194,
+      "bytes": 7986
+    },
+    {
+      "batch": "15",
+      "skill": "agent-trust-model-gateway",
+      "title": "Unified Model Gateway与模型合规路由",
+      "lines": 196,
+      "bytes": 8275
+    },
+    {
+      "batch": "16",
+      "skill": "agent-trust-industrial-protocol-gateway",
+      "title": "工业协议Adapter与Edge Gateway",
+      "lines": 198,
+      "bytes": 8199
+    },
+    {
+      "batch": "17",
+      "skill": "agent-trust-human-approval",
+      "title": "Enterprise Human Approval与职责分离",
+      "lines": 194,
+      "bytes": 7922
+    },
+    {
+      "batch": "18",
+      "skill": "agent-trust-data-governance",
+      "title": "数据分级、跨域与部署治理",
+      "lines": 199,
+      "bytes": 8126
+    },
+    {
+      "batch": "19",
+      "skill": "agent-trust-audit-retention",
+      "title": "审计留存、Control Catalog与Evidence Graph",
+      "lines": 196,
+      "bytes": 7864
+    },
+    {
+      "batch": "20",
+      "skill": "agent-trust-pack-supply-chain",
+      "title": "平台供应链与Domain Pack SDK Foundation",
+      "lines": 194,
+      "bytes": 7953
+    },
+    {
+      "batch": "21",
+      "skill": "agent-trust-runtime-anomaly-detection",
+      "title": "异常轨迹检测与Continuous Authorization",
+      "lines": 193,
+      "bytes": 7872
+    },
+    {
+      "batch": "22",
+      "skill": "agent-trust-incident-release-gate",
+      "title": "Incident、Replay与Release Gate Engine",
+      "lines": 198,
+      "bytes": 7830
+    },
+    {
+      "batch": "23",
+      "skill": "agent-trust-coding-risk-pack",
+      "title": "Coding Agent Risk Pack",
+      "lines": 194,
+      "bytes": 7960
+    },
+    {
+      "batch": "24",
+      "skill": "agent-trust-industrial-risk-pack",
+      "title": "Industrial Agent Risk Pack",
+      "lines": 193,
+      "bytes": 8112
+    },
+    {
+      "batch": "25",
+      "skill": "agent-trust-energy-risk-pack",
+      "title": "Energy Agent Risk Pack",
+      "lines": 192,
+      "bytes": 7895
+    },
+    {
+      "batch": "26",
+      "skill": "agent-trust-medical-risk-pack",
+      "title": "Medical Agent Risk Pack",
+      "lines": 194,
+      "bytes": 8221
+    },
+    {
+      "batch": "27",
+      "skill": "agent-trust-sensitive-interaction-pack",
+      "title": "Sensitive Interaction Risk Pack",
+      "lines": 194,
+      "bytes": 8364
+    },
+    {
+      "batch": "28",
+      "skill": "agent-trust-domain-pack-sdk-marketplace",
+      "title": "Domain Pack Marketplace与Lifecycle Governance",
+      "lines": 200,
+      "bytes": 7816
+    },
+    {
+      "batch": "29",
+      "skill": "agent-trust-durable-orchestrator",
+      "title": "Durable Runtime Orchestrator与Continuous Task State",
+      "lines": 178,
+      "bytes": 7396
+    },
+    {
+      "batch": "30",
+      "skill": "agent-trust-agent-registry-posture",
+      "title": "Agent Registry、Discovery与Posture Management",
+      "lines": 172,
+      "bytes": 6559
+    },
+    {
+      "batch": "31",
+      "skill": "agent-trust-policy-administration",
+      "title": "Policy Administration、Simulation与Change Governance",
+      "lines": 176,
+      "bytes": 6333
+    },
+    {
+      "batch": "32",
+      "skill": "agent-trust-memory-prompt-provenance",
+      "title": "Memory、Prompt与Knowledge Provenance",
+      "lines": 170,
+      "bytes": 6526
+    },
+    {
+      "batch": "33",
+      "skill": "agent-trust-security-evaluation-lab",
+      "title": "Agent Security Evaluation与Red-Team Lab",
+      "lines": 170,
+      "bytes": 6413
+    },
+    {
+      "batch": "34",
+      "skill": "agent-trust-platform-sre",
+      "title": "Platform SRE、HA、DR与Deployment",
+      "lines": 175,
+      "bytes": 6632
+    },
+    {
+      "batch": "35",
+      "skill": "agent-trust-enterprise-control-console",
+      "title": "Enterprise Control API与Unified Management Console",
+      "lines": 178,
+      "bytes": 6493
+    },
+    {
+      "batch": "36",
+      "skill": "agent-trust-production-closure",
+      "title": "Full-System Production Closure与最终认证",
+      "lines": 184,
+      "bytes": 6845
+    }
+  ]
+}

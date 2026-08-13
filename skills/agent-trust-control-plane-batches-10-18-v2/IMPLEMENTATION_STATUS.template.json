@@ -1,0 +1,10 @@
+{
+  "project": "agent-trust-control-plane",
+  "batch": "01",
+  "status": "NOT_STARTED",
+  "commit": "UNSET",
+  "commands": [],
+  "tests": [],
+  "evidence": [],
+  "unresolved_risks": []
+}

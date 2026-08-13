@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "18", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "python3 scripts/validate-runtime-assets.py && python3 -m unittest discover -s python -p 'test_*.py'", "exit_code": 0}],
+  "tests": [{"name": "DLP encoded/compressed evasions, offline policy, labels and cross-domain single use", "status": "PASS", "evidence_ref": "rust/crates/data-governance"}, {"name": "deterministic unknown-data fail-closed classifier", "status": "PASS", "evidence_ref": "python/data_classifiers/tests"}],
+  "evidence": ["schemas/data-governance/data-label.schema.json", "config/data-governance/offline.production.json", "dlp/test-corpus/cases.json", "docs/data-governance/data-flow-and-retention.md"],
+  "unresolved_risks": ["Real offline network egress proof and object-store deletion/legal-hold behavior are NOT_RUN."], "verified_at": "2026-08-05T11:49:35Z"
+}

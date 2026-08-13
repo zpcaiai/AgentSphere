@@ -1,0 +1,39 @@
+{
+  "project":"agent-trust-control-plane","batch":"34","status":"IN_PROGRESS","commit":"WORKTREE-NO-GIT",
+  "commands":[
+    {"command":"cargo test --workspace --all-targets --quiet","exit_code":0},
+    {"command":"python3 -m python.platform_sre.postgres_failover_drill against PostgreSQL 17.5","exit_code":0},
+    {"command":"python3 -m python.platform_sre.backup_restore_drill with TLS and CMS AES-256","exit_code":0},
+    {"command":"python3 -m python.platform_sre.http_load_gate --requests 500 --concurrency 8 against authenticated admission path","exit_code":0},
+    {"command":"python3 -m python.platform_sre.kubernetes_recovery_drill against disposable Kind cluster","exit_code":0},
+    {"command":"python3 -m unittest python.platform_sre.tests.test_http_load_gate python.platform_sre.tests.test_multizone_topology_gate","exit_code":0}
+  ],
+  "tests":[
+    {"name":"dependency failure semantics, bounded capacity, recovery and upgrade gates","status":"PASS","evidence_ref":"rust/crates/platform-sre"},
+    {"name":"physical PostgreSQL streaming failover with RPO zero markers and RTO 688 ms","status":"PASS","evidence_ref":"evidence/external-gates/postgres-single-host-failover.json"},
+    {"name":"TLS encrypted backup and actual isolated database/object restore with record-count verification","status":"PASS","evidence_ref":"evidence/external-gates/backup-restore-local-drill.json"},
+    {"name":"gateway authenticated admission load: 500 expected safe 404 responses, concurrency 8, p99 11.204 ms","status":"PASS","evidence_ref":"evidence/external-gates/gateway-local-load.json"},
+    {"name":"real Kubernetes pod deletion, replacement UID ready and cleanup, RTO 1335 ms","status":"PASS","evidence_ref":"evidence/external-gates/kubernetes-local-recovery.json"},
+    {"name":"read-only three-zone ready topology, strict zone spread, disruption budget, digest-pinned images and pod security","status":"PASS","evidence_ref":"python/platform_sre/multizone_topology_gate.py"},
+    {"name":"duration-bound load pacing with secret headers sourced only by environment reference","status":"PASS","evidence_ref":"python/platform_sre/http_load_gate.py"}
+  ],
+  "evidence":[
+    "schemas/sre/recovery-drill.schema.json",
+    "schemas/sre/postgres-failover-report.schema.json",
+    "schemas/sre/backup-manifest.schema.json",
+    "schemas/sre/restore-verification.schema.json",
+    "schemas/sre/backup-restore-drill.schema.json",
+    "schemas/sre/http-load-report.schema.json",
+    "schemas/sre/kubernetes-recovery-drill.schema.json",
+    "schemas/sre/multizone-topology-report.schema.json",
+    "python/platform_sre/multizone_topology_gate.py",
+    "migrations/platform-sre/0034_platform_sre.sql",
+    "config/platform-sre/platform.production.json",
+    "evidence/external-gates/postgres-single-host-failover.json",
+    "evidence/external-gates/backup-restore-local-drill.json",
+    "evidence/external-gates/gateway-local-load.json",
+    "evidence/external-gates/kubernetes-local-recovery.json"
+  ],
+  "unresolved_risks":["Single-host failover, actual encrypted restore, local load and single-node Kubernetes pod-loss recovery passed with production_evidence=false. The multi-zone topology and sustained-load gates are implemented but lack production targets; multi-zone control-plane loss, representative sustained production load, network/storage chaos, deployment-owned KMS and independently signed RTO/RPO remain NOT_RUN."],
+  "verified_at":"2026-08-06T04:50:49Z"
+}

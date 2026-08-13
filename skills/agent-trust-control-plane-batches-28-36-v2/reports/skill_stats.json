@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "range": "28-36",
+  "skills": [
+    {
+      "batch": "28",
+      "skill": "agent-trust-domain-pack-sdk-marketplace",
+      "title": "Domain Pack Marketplace与Lifecycle Governance",
+      "lines": 200,
+      "bytes": 7816
+    },
+    {
+      "batch": "29",
+      "skill": "agent-trust-durable-orchestrator",
+      "title": "Durable Runtime Orchestrator与Continuous Task State",
+      "lines": 178,
+      "bytes": 7396
+    },
+    {
+      "batch": "30",
+      "skill": "agent-trust-agent-registry-posture",
+      "title": "Agent Registry、Discovery与Posture Management",
+      "lines": 172,
+      "bytes": 6559
+    },
+    {
+      "batch": "31",
+      "skill": "agent-trust-policy-administration",
+      "title": "Policy Administration、Simulation与Change Governance",
+      "lines": 176,
+      "bytes": 6333
+    },
+    {
+      "batch": "32",
+      "skill": "agent-trust-memory-prompt-provenance",
+      "title": "Memory、Prompt与Knowledge Provenance",
+      "lines": 170,
+      "bytes": 6526
+    },
+    {
+      "batch": "33",
+      "skill": "agent-trust-security-evaluation-lab",
+      "title": "Agent Security Evaluation与Red-Team Lab",
+      "lines": 170,
+      "bytes": 6413
+    },
+    {
+      "batch": "34",
+      "skill": "agent-trust-platform-sre",
+      "title": "Platform SRE、HA、DR与Deployment",
+      "lines": 175,
+      "bytes": 6632
+    },
+    {
+      "batch": "35",
+      "skill": "agent-trust-enterprise-control-console",
+      "title": "Enterprise Control API与Unified Management Console",
+      "lines": 178,
+      "bytes": 6493
+    },
+    {
+      "batch": "36",
+      "skill": "agent-trust-production-closure",
+      "title": "Full-System Production Closure与最终认证",
+      "lines": 184,
+      "bytes": 6845
+    }
+  ]
+}

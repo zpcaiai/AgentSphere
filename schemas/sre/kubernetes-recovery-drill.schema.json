@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/sre/kubernetes-recovery-drill.schema.json",
+  "title": "Kubernetes pod-loss recovery drill",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "context", "namespace", "image", "fault", "checks", "rto_milliseconds", "started_at", "completed_at", "production_evidence", "evidence_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.kubernetes-recovery-drill.v1"},
+    "context": {"type": "string", "pattern": "^kind-agenttrust-chaos-[a-z0-9-]+$"},
+    "namespace": {"type": "string", "pattern": "^agenttrust-chaos-[a-z0-9-]+$"},
+    "image": {"type": "string", "pattern": "^.+@sha256:[0-9a-f]{64}$"},
+    "fault": {"const": "POD_DELETE"},
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dedicated_context_allowlisted", "namespace_labeled", "initial_workload_available", "pod_uid_replaced", "replacement_ready", "cleanup_verified"],
+      "properties": {
+        "dedicated_context_allowlisted": {"const": true},
+        "namespace_labeled": {"const": true},
+        "initial_workload_available": {"const": true},
+        "pod_uid_replaced": {"const": true},
+        "replacement_ready": {"const": true},
+        "cleanup_verified": {"const": true}
+      }
+    },
+    "rto_milliseconds": {"type": "integer", "minimum": 0},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "production_evidence": {"const": false},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

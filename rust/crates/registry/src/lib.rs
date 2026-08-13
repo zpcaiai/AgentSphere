@@ -1,0 +1,1164 @@
+//! Immutable tool/capability manifests, strict schemas, revocation, and snapshots.
+
+use agent_trust_action_ir::RegistryPolicySnapshot;
+use agent_trust_contracts::{
+    EffectClass, RiskLevel, StrictJsonObject, TenantId, ToolId, ToolRef, ToolVersion,
+};
+use async_trait::async_trait;
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use chrono::{DateTime, Utc};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Row};
+use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::atomic::{AtomicU64, Ordering},
+};
+use thiserror::Error;
+use uuid::Uuid;
+
+pub const REGISTRY_SCHEMA_VERSION: &str = "agenttrust.registry.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ToolVersionStatus {
+    Draft,
+    Validated,
+    Signed,
+    Active,
+    Deprecated,
+    Revoked,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ImplementationKind {
+    WasmComponent,
+    OciContainer,
+    InternalService,
+    HttpProxy,
+    McpServer,
+    IndustrialGateway,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ManifestSignature {
+    pub publisher_id: String,
+    pub key_id: String,
+    pub algorithm: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CompensationBinding {
+    pub tool: ToolRef,
+    pub precondition_kind: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ToolLimits {
+    pub timeout_ms: u64,
+    pub max_result_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ToolImplementation {
+    pub kind: ImplementationKind,
+    pub digest: String,
+    pub executor_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ToolManifest {
+    pub schema_version: String,
+    pub tool_id: ToolId,
+    pub tool_version: ToolVersion,
+    pub status: ToolVersionStatus,
+    pub domain: String,
+    pub display_name: String,
+    pub description: String,
+    pub input_schema: Value,
+    pub output_schema: Value,
+    pub effect_class: EffectClass,
+    pub risk_level: RiskLevel,
+    pub executor_profile: String,
+    pub credential_profile: String,
+    pub approval_profile: String,
+    pub compensation: Option<CompensationBinding>,
+    pub limits: ToolLimits,
+    pub network_profile_ref: String,
+    pub filesystem_profile_ref: String,
+    pub implementation: ToolImplementation,
+    pub allowed_tenants: BTreeSet<TenantId>,
+    pub signature: Option<ManifestSignature>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CapabilityManifest {
+    pub schema_version: String,
+    pub capability_id: String,
+    pub capability_version: String,
+    pub description: String,
+    pub required_tools: Vec<ToolRef>,
+    pub optional_tools: Vec<ToolRef>,
+    pub risk_summary: RiskLevel,
+    pub supported_protocols: BTreeSet<String>,
+    pub allowed_tenants: BTreeSet<TenantId>,
+    pub signature: ManifestSignature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CapabilityDescriptor {
+    pub manifest: CapabilityManifest,
+    pub discovery_only: bool,
+    pub authorization_required: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct CapabilityQuery {
+    pub tenant_id: TenantId,
+    pub protocol: Option<String>,
+    pub maximum_risk: RiskLevel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedToolSnapshot {
+    pub schema_version: String,
+    pub tool_id: ToolId,
+    pub tool_version: ToolVersion,
+    pub schema_hash: String,
+    pub manifest_hash: String,
+    pub effect_class: EffectClass,
+    pub risk_level: RiskLevel,
+    pub executor_profile: String,
+    pub credential_profile: String,
+    pub approval_profile: String,
+    pub compensation: Option<CompensationBinding>,
+    pub limits: ToolLimits,
+    pub network_profile_ref: String,
+    pub filesystem_profile_ref: String,
+    pub implementation: ToolImplementation,
+    pub registry_revision: u64,
+    pub resolved_at: DateTime<Utc>,
+    pub snapshot_hash: String,
+    pub input_schema: Value,
+    pub output_schema: Value,
+}
+
+impl ResolvedToolSnapshot {
+    pub fn policy_snapshot(&self) -> RegistryPolicySnapshot {
+        RegistryPolicySnapshot {
+            snapshot_hash: self.snapshot_hash.clone(),
+            tool_id: self.tool_id.0.clone(),
+            tool_version: self.tool_version.0.clone(),
+            risk: self.risk_level,
+            effect: self.effect_class,
+            implementation_digest: self.implementation.digest.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistrySnapshot {
+    pub revision: u64,
+    pub tools: Vec<ResolvedToolSnapshot>,
+    pub snapshot_hash: String,
+    pub signed_at: DateTime<Utc>,
+}
+
+#[async_trait]
+pub trait ToolRegistry: Send + Sync {
+    async fn resolve_exact(
+        &self,
+        tenant: &TenantId,
+        tool: &ToolRef,
+    ) -> Result<ResolvedToolSnapshot, RegistryError>;
+    async fn validate_arguments(
+        &self,
+        snapshot: &ResolvedToolSnapshot,
+        args: &StrictJsonObject,
+    ) -> Result<(), RegistryError>;
+    async fn validate_output(
+        &self,
+        snapshot: &ResolvedToolSnapshot,
+        output: &Value,
+    ) -> Result<(), RegistryError>;
+    async fn discover_capabilities(
+        &self,
+        query: CapabilityQuery,
+    ) -> Result<Vec<CapabilityDescriptor>, RegistryError>;
+    async fn snapshot(
+        &self,
+        tenant: &TenantId,
+        refs: &[ToolRef],
+    ) -> Result<RegistrySnapshot, RegistryError>;
+    async fn is_revoked(&self, tool: &ToolRef, digest: &str) -> Result<bool, RegistryError>;
+}
+
+struct ToolRecord {
+    manifest: ToolManifest,
+    manifest_hash: String,
+    schema_hash: String,
+    revision: u64,
+}
+
+#[derive(Default)]
+pub struct InMemoryToolRegistry {
+    tools: RwLock<BTreeMap<ToolRef, ToolRecord>>,
+    capabilities: RwLock<BTreeMap<(String, String), CapabilityManifest>>,
+    publisher_keys: RwLock<BTreeMap<String, VerifyingKey>>,
+    revision: AtomicU64,
+    available: RwLock<bool>,
+}
+
+impl InMemoryToolRegistry {
+    pub fn new() -> Self {
+        Self {
+            available: RwLock::new(true),
+            ..Self::default()
+        }
+    }
+    pub fn add_publisher_key(&self, key_id: impl Into<String>, key: VerifyingKey) {
+        self.publisher_keys.write().insert(key_id.into(), key);
+    }
+    pub fn set_available(&self, available: bool) {
+        *self.available.write() = available;
+    }
+
+    pub fn create_draft(&self, mut manifest: ToolManifest) -> Result<(), RegistryError> {
+        manifest.status = ToolVersionStatus::Draft;
+        manifest.signature = None;
+        manifest
+            .tool_ref()
+            .validate_exact()
+            .map_err(|_| RegistryError::VersionRequired)?;
+        let mut tools = self.tools.write();
+        if tools.contains_key(&manifest.tool_ref()) {
+            return Err(RegistryError::VersionConflict);
+        }
+        let revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        let manifest_hash = manifest_hash(&manifest)?;
+        let schema_hash = schema_pair_hash(&manifest)?;
+        tools.insert(
+            manifest.tool_ref(),
+            ToolRecord {
+                manifest,
+                manifest_hash,
+                schema_hash,
+                revision,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn validate_version(&self, tool: &ToolRef) -> Result<(), RegistryError> {
+        let mut tools = self.tools.write();
+        {
+            let record = tools.get(tool).ok_or(RegistryError::ToolNotFound)?;
+            if record.manifest.status != ToolVersionStatus::Draft {
+                return Err(RegistryError::LifecycleInvalid);
+            }
+            validate_manifest(&record.manifest, &tools)?;
+        }
+        let record = tools.get_mut(tool).ok_or(RegistryError::ToolNotFound)?;
+        record.manifest.status = ToolVersionStatus::Validated;
+        record.revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        Ok(())
+    }
+
+    pub fn sign_version(
+        &self,
+        tool: &ToolRef,
+        publisher_id: String,
+        key_id: String,
+        key: &SigningKey,
+    ) -> Result<(), RegistryError> {
+        let mut tools = self.tools.write();
+        let record = tools.get_mut(tool).ok_or(RegistryError::ToolNotFound)?;
+        if record.manifest.status != ToolVersionStatus::Validated {
+            return Err(RegistryError::LifecycleInvalid);
+        }
+        let signature =
+            URL_SAFE_NO_PAD.encode(key.sign(record.manifest_hash.as_bytes()).to_bytes());
+        record.manifest.signature = Some(ManifestSignature {
+            publisher_id,
+            key_id,
+            algorithm: "Ed25519".into(),
+            signature,
+        });
+        record.manifest.status = ToolVersionStatus::Signed;
+        record.revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        Ok(())
+    }
+
+    pub fn activate(&self, tool: &ToolRef) -> Result<(), RegistryError> {
+        let mut tools = self.tools.write();
+        let record = tools.get_mut(tool).ok_or(RegistryError::ToolNotFound)?;
+        if record.manifest.status != ToolVersionStatus::Signed {
+            return Err(RegistryError::LifecycleInvalid);
+        }
+        verify_signature(record, &self.publisher_keys.read())?;
+        record.manifest.status = ToolVersionStatus::Active;
+        record.revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        Ok(())
+    }
+
+    pub fn deprecate(&self, tool: &ToolRef) -> Result<(), RegistryError> {
+        self.transition(
+            tool,
+            ToolVersionStatus::Active,
+            ToolVersionStatus::Deprecated,
+        )
+    }
+    pub fn revoke(&self, tool: &ToolRef) -> Result<(), RegistryError> {
+        let mut tools = self.tools.write();
+        let record = tools.get_mut(tool).ok_or(RegistryError::ToolNotFound)?;
+        if !matches!(
+            record.manifest.status,
+            ToolVersionStatus::Active | ToolVersionStatus::Deprecated
+        ) {
+            return Err(RegistryError::LifecycleInvalid);
+        }
+        record.manifest.status = ToolVersionStatus::Revoked;
+        record.revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        Ok(())
+    }
+    fn transition(
+        &self,
+        tool: &ToolRef,
+        from: ToolVersionStatus,
+        to: ToolVersionStatus,
+    ) -> Result<(), RegistryError> {
+        let mut tools = self.tools.write();
+        let record = tools.get_mut(tool).ok_or(RegistryError::ToolNotFound)?;
+        if record.manifest.status != from {
+            return Err(RegistryError::LifecycleInvalid);
+        }
+        record.manifest.status = to;
+        record.revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
+        Ok(())
+    }
+    pub fn register_capability(&self, manifest: CapabilityManifest) -> Result<(), RegistryError> {
+        if manifest.schema_version != REGISTRY_SCHEMA_VERSION {
+            return Err(RegistryError::SchemaInvalid);
+        }
+        self.capabilities.write().insert(
+            (
+                manifest.capability_id.clone(),
+                manifest.capability_version.clone(),
+            ),
+            manifest,
+        );
+        Ok(())
+    }
+}
+
+impl ToolManifest {
+    pub fn tool_ref(&self) -> ToolRef {
+        ToolRef {
+            tool_id: self.tool_id.clone(),
+            tool_version: self.tool_version.clone(),
+        }
+    }
+}
+
+fn manifest_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
+    let mut material = manifest.clone();
+    material.signature = None;
+    material.status = ToolVersionStatus::Draft;
+    Ok(hex::encode(Sha256::digest(
+        serde_jcs::to_vec(&material).map_err(|_| RegistryError::ManifestHashMismatch)?,
+    )))
+}
+fn schema_pair_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
+    Ok(hex::encode(Sha256::digest(
+        serde_jcs::to_vec(&(&manifest.input_schema, &manifest.output_schema))
+            .map_err(|_| RegistryError::SchemaInvalid)?,
+    )))
+}
+
+fn verify_signature(
+    record: &ToolRecord,
+    keys: &BTreeMap<String, VerifyingKey>,
+) -> Result<(), RegistryError> {
+    let signature = record
+        .manifest
+        .signature
+        .as_ref()
+        .ok_or(RegistryError::SignatureInvalid)?;
+    if signature.algorithm != "Ed25519" {
+        return Err(RegistryError::SignatureInvalid);
+    }
+    let key = keys
+        .get(&signature.key_id)
+        .ok_or(RegistryError::SignatureInvalid)?;
+    let raw = URL_SAFE_NO_PAD
+        .decode(&signature.signature)
+        .map_err(|_| RegistryError::SignatureInvalid)?;
+    let signature = Signature::from_slice(&raw).map_err(|_| RegistryError::SignatureInvalid)?;
+    key.verify(record.manifest_hash.as_bytes(), &signature)
+        .map_err(|_| RegistryError::SignatureInvalid)
+}
+
+fn validate_manifest(
+    manifest: &ToolManifest,
+    tools: &BTreeMap<ToolRef, ToolRecord>,
+) -> Result<(), RegistryError> {
+    if manifest.schema_version != REGISTRY_SCHEMA_VERSION {
+        return Err(RegistryError::SchemaInvalid);
+    }
+    validate_schema_security(&manifest.input_schema)?;
+    validate_schema_security(&manifest.output_schema)?;
+    compile_schema(&manifest.input_schema)?;
+    compile_schema(&manifest.output_schema)?;
+    if !manifest.implementation.digest.starts_with("sha256:")
+        || manifest.implementation.digest.len() != 71
+    {
+        return Err(RegistryError::ImplementationDigestMismatch);
+    }
+    if manifest.limits.timeout_ms == 0 || manifest.limits.max_result_bytes == 0 {
+        return Err(RegistryError::SchemaInvalid);
+    }
+    if manifest.effect_class == EffectClass::Pure && manifest.credential_profile != "none" {
+        return Err(RegistryError::CompensationInvalid);
+    }
+    if manifest.effect_class == EffectClass::Compensatable {
+        let binding = manifest
+            .compensation
+            .as_ref()
+            .ok_or(RegistryError::CompensationInvalid)?;
+        if !tools.contains_key(&binding.tool) && binding.tool != manifest.tool_ref() {
+            return Err(RegistryError::CompensationInvalid);
+        }
+    }
+    if manifest.effect_class == EffectClass::Irreversible
+        && (manifest.risk_level < RiskLevel::High || manifest.approval_profile == "none")
+    {
+        return Err(RegistryError::CompensationInvalid);
+    }
+    Ok(())
+}
+
+fn validate_schema_security(schema: &Value) -> Result<(), RegistryError> {
+    let root = schema.as_object().ok_or(RegistryError::SchemaInvalid)?;
+    if root.get("type").and_then(Value::as_str) == Some("object")
+        && root.get("additionalProperties") != Some(&Value::Bool(false))
+    {
+        return Err(RegistryError::SchemaInvalid);
+    }
+    fn walk(value: &Value, depth: usize) -> Result<(), RegistryError> {
+        if depth > 32 {
+            return Err(RegistryError::SchemaInvalid);
+        }
+        match value {
+            Value::Object(map) => {
+                if map
+                    .get("$ref")
+                    .and_then(Value::as_str)
+                    .is_some_and(|reference| {
+                        reference.starts_with("http://")
+                            || reference.starts_with("https://")
+                            || reference.starts_with("file:")
+                    })
+                {
+                    return Err(RegistryError::SchemaInvalid);
+                }
+                for child in map.values() {
+                    walk(child, depth + 1)?;
+                }
+            }
+            Value::Array(values) => {
+                for child in values {
+                    walk(child, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    walk(schema, 0)
+}
+
+fn compile_schema(schema: &Value) -> Result<jsonschema::Validator, RegistryError> {
+    jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(schema)
+        .map_err(|_| RegistryError::SchemaInvalid)
+}
+
+fn validate_instance(schema: &Value, instance: &Value, output: bool) -> Result<(), RegistryError> {
+    let validator = compile_schema(schema)?;
+    if validator.validate(instance).is_err() {
+        return Err(if output {
+            RegistryError::OutputInvalid
+        } else {
+            RegistryError::ArgumentInvalid
+        });
+    }
+    Ok(())
+}
+
+#[async_trait]
+impl ToolRegistry for InMemoryToolRegistry {
+    async fn resolve_exact(
+        &self,
+        tenant: &TenantId,
+        tool: &ToolRef,
+    ) -> Result<ResolvedToolSnapshot, RegistryError> {
+        if !*self.available.read() {
+            return Err(RegistryError::UnavailableFailClosed);
+        }
+        tool.validate_exact()
+            .map_err(|_| RegistryError::VersionRequired)?;
+        let tools = self.tools.read();
+        let record = tools.get(tool).ok_or(RegistryError::ToolNotFound)?;
+        match record.manifest.status {
+            ToolVersionStatus::Revoked => return Err(RegistryError::ToolRevoked),
+            ToolVersionStatus::Active => {}
+            _ => return Err(RegistryError::VersionNotActive),
+        }
+        if !record.manifest.allowed_tenants.is_empty()
+            && !record.manifest.allowed_tenants.contains(tenant)
+        {
+            return Err(RegistryError::ToolNotFound);
+        }
+        let mut snapshot = ResolvedToolSnapshot {
+            schema_version: REGISTRY_SCHEMA_VERSION.into(),
+            tool_id: record.manifest.tool_id.clone(),
+            tool_version: record.manifest.tool_version.clone(),
+            schema_hash: record.schema_hash.clone(),
+            manifest_hash: record.manifest_hash.clone(),
+            effect_class: record.manifest.effect_class,
+            risk_level: record.manifest.risk_level,
+            executor_profile: record.manifest.executor_profile.clone(),
+            credential_profile: record.manifest.credential_profile.clone(),
+            approval_profile: record.manifest.approval_profile.clone(),
+            compensation: record.manifest.compensation.clone(),
+            limits: record.manifest.limits.clone(),
+            network_profile_ref: record.manifest.network_profile_ref.clone(),
+            filesystem_profile_ref: record.manifest.filesystem_profile_ref.clone(),
+            implementation: record.manifest.implementation.clone(),
+            registry_revision: record.revision,
+            resolved_at: Utc::now(),
+            snapshot_hash: String::new(),
+            input_schema: record.manifest.input_schema.clone(),
+            output_schema: record.manifest.output_schema.clone(),
+        };
+        snapshot.snapshot_hash = snapshot_hash(&snapshot)?;
+        Ok(snapshot)
+    }
+    async fn validate_arguments(
+        &self,
+        snapshot: &ResolvedToolSnapshot,
+        args: &StrictJsonObject,
+    ) -> Result<(), RegistryError> {
+        validate_instance(&snapshot.input_schema, &Value::Object(args.clone()), false)
+    }
+    async fn validate_output(
+        &self,
+        snapshot: &ResolvedToolSnapshot,
+        output: &Value,
+    ) -> Result<(), RegistryError> {
+        validate_instance(&snapshot.output_schema, output, true)
+    }
+    async fn discover_capabilities(
+        &self,
+        query: CapabilityQuery,
+    ) -> Result<Vec<CapabilityDescriptor>, RegistryError> {
+        if !*self.available.read() {
+            return Err(RegistryError::UnavailableFailClosed);
+        }
+        Ok(self
+            .capabilities
+            .read()
+            .values()
+            .filter(|manifest| {
+                (manifest.allowed_tenants.is_empty()
+                    || manifest.allowed_tenants.contains(&query.tenant_id))
+                    && manifest.risk_summary <= query.maximum_risk
+                    && query
+                        .protocol
+                        .as_ref()
+                        .is_none_or(|protocol| manifest.supported_protocols.contains(protocol))
+            })
+            .cloned()
+            .map(|manifest| CapabilityDescriptor {
+                manifest,
+                discovery_only: true,
+                authorization_required: true,
+            })
+            .collect())
+    }
+    async fn snapshot(
+        &self,
+        tenant: &TenantId,
+        refs: &[ToolRef],
+    ) -> Result<RegistrySnapshot, RegistryError> {
+        let mut tools = Vec::with_capacity(refs.len());
+        for tool in refs {
+            tools.push(self.resolve_exact(tenant, tool).await?);
+        }
+        tools.sort_by(|a, b| (&a.tool_id, &a.tool_version).cmp(&(&b.tool_id, &b.tool_version)));
+        let revision = self.revision.load(Ordering::SeqCst);
+        let signed_at = Utc::now();
+        let snapshot_hash = hex::encode(Sha256::digest(
+            serde_jcs::to_vec(&(revision, &tools))
+                .map_err(|_| RegistryError::ManifestHashMismatch)?,
+        ));
+        Ok(RegistrySnapshot {
+            revision,
+            tools,
+            snapshot_hash,
+            signed_at,
+        })
+    }
+    async fn is_revoked(&self, tool: &ToolRef, digest: &str) -> Result<bool, RegistryError> {
+        if !*self.available.read() {
+            return Err(RegistryError::UnavailableFailClosed);
+        }
+        let tools = self.tools.read();
+        let record = tools.get(tool).ok_or(RegistryError::ToolNotFound)?;
+        Ok(record.manifest.status == ToolVersionStatus::Revoked
+            || record.manifest.implementation.digest != digest)
+    }
+}
+
+fn snapshot_hash(snapshot: &ResolvedToolSnapshot) -> Result<String, RegistryError> {
+    let mut material = snapshot.clone();
+    material.snapshot_hash.clear();
+    material.resolved_at = DateTime::UNIX_EPOCH;
+    Ok(hex::encode(Sha256::digest(
+        serde_jcs::to_vec(&material).map_err(|_| RegistryError::ManifestHashMismatch)?,
+    )))
+}
+
+pub struct PostgresRegistryStore {
+    pool: PgPool,
+}
+
+impl PostgresRegistryStore {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+    pub async fn insert_draft(
+        &self,
+        tenant: &TenantId,
+        manifest: &ToolManifest,
+    ) -> Result<(), RegistryError> {
+        if manifest.status != ToolVersionStatus::Draft || !manifest.allowed_tenants.contains(tenant)
+        {
+            return Err(RegistryError::SchemaInvalid);
+        }
+        let hash = manifest_hash(manifest)?;
+        let value = serde_json::to_value(manifest).map_err(|_| RegistryError::SchemaInvalid)?;
+        let tenant_uuid = Uuid::parse_str(&tenant.0).map_err(|_| RegistryError::SchemaInvalid)?;
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
+        sqlx::query("INSERT INTO tools (tenant_id, tool_id) VALUES ($1,$2) ON CONFLICT (tenant_id, tool_id) DO NOTHING")
+            .bind(tenant_uuid)
+            .bind(&manifest.tool_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
+        sqlx::query("INSERT INTO tool_versions (tenant_id, tool_id, tool_version, status, manifest, manifest_hash) VALUES ($1,$2,$3,'DRAFT',$4,$5)")
+            .bind(tenant_uuid).bind(&manifest.tool_id.0).bind(&manifest.tool_version.0).bind(value).bind(hash)
+            .execute(&mut *transaction).await.map_err(|_| RegistryError::StoreFailure)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
+        Ok(())
+    }
+    pub async fn load(
+        &self,
+        tenant: &TenantId,
+        tool: &ToolRef,
+    ) -> Result<ToolManifest, RegistryError> {
+        let tenant_uuid = Uuid::parse_str(&tenant.0).map_err(|_| RegistryError::SchemaInvalid)?;
+        let row = sqlx::query("SELECT manifest FROM tool_versions WHERE tenant_id=$1 AND tool_id=$2 AND tool_version=$3")
+            .bind(tenant_uuid).bind(&tool.tool_id.0).bind(&tool.tool_version.0).fetch_optional(&self.pool).await.map_err(|_| RegistryError::StoreFailure)?
+            .ok_or(RegistryError::ToolNotFound)?;
+        serde_json::from_value(
+            row.try_get("manifest")
+                .map_err(|_| RegistryError::StoreFailure)?,
+        )
+        .map_err(|_| RegistryError::SchemaInvalid)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryAdminContext {
+    pub tenant_id: TenantId,
+    pub subject: String,
+    pub can_write: bool,
+}
+
+#[async_trait]
+pub trait RegistryAdminAuthorizer: Send + Sync {
+    async fn authorize(
+        &self,
+        headers: &HeaderMap,
+        write: bool,
+    ) -> Result<RegistryAdminContext, RegistryError>;
+    fn production_ready(&self) -> bool;
+}
+
+#[derive(Clone)]
+pub struct RegistryApiState {
+    registry: Arc<InMemoryToolRegistry>,
+    authorizer: Arc<dyn RegistryAdminAuthorizer>,
+    publisher_id: String,
+    key_id: String,
+    signing_key: Arc<SigningKey>,
+}
+
+impl RegistryApiState {
+    pub fn new(
+        production: bool,
+        registry: Arc<InMemoryToolRegistry>,
+        authorizer: Arc<dyn RegistryAdminAuthorizer>,
+        publisher_id: String,
+        key_id: String,
+        signing_key: SigningKey,
+    ) -> Result<Self, RegistryError> {
+        if production && !authorizer.production_ready() {
+            return Err(RegistryError::ManagementIdentityNotConfigured);
+        }
+        registry.add_publisher_key(key_id.clone(), signing_key.verifying_key());
+        Ok(Self {
+            registry,
+            authorizer,
+            publisher_id,
+            key_id,
+            signing_key: Arc::new(signing_key),
+        })
+    }
+}
+
+pub fn registry_management_router(state: RegistryApiState) -> Router {
+    Router::new()
+        .route("/v1/tools:draft", post(api_create_draft))
+        .route(
+            "/v1/tools/{id}/versions/{version}:validate",
+            post(api_validate),
+        )
+        .route("/v1/tools/{id}/versions/{version}:sign", post(api_sign))
+        .route(
+            "/v1/tools/{id}/versions/{version}:activate",
+            post(api_activate),
+        )
+        .route(
+            "/v1/tools/{id}/versions/{version}:deprecate",
+            post(api_deprecate),
+        )
+        .route("/v1/tools/{id}/versions/{version}:revoke", post(api_revoke))
+        .route("/v1/tools/{id}/versions/{version}", get(api_get_tool))
+        .route("/v1/capabilities", get(api_capabilities))
+        .with_state(state)
+}
+
+async fn api_create_draft(
+    State(state): State<RegistryApiState>,
+    headers: HeaderMap,
+    Json(mut manifest): Json<ToolManifest>,
+) -> Result<StatusCode, RegistryApiError> {
+    let context = state.authorizer.authorize(&headers, true).await?;
+    if !context.can_write {
+        return Err(RegistryError::ManagementForbidden.into());
+    }
+    manifest.allowed_tenants = BTreeSet::from([context.tenant_id]);
+    state.registry.create_draft(manifest)?;
+    Ok(StatusCode::CREATED)
+}
+fn api_tool(id: String, version: String) -> ToolRef {
+    ToolRef {
+        tool_id: ToolId(id),
+        tool_version: ToolVersion(version),
+    }
+}
+async fn api_validate(
+    State(state): State<RegistryApiState>,
+    Path((id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, RegistryApiError> {
+    state.authorizer.authorize(&headers, true).await?;
+    state.registry.validate_version(&api_tool(id, version))?;
+    Ok(StatusCode::OK)
+}
+async fn api_sign(
+    State(state): State<RegistryApiState>,
+    Path((id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, RegistryApiError> {
+    state.authorizer.authorize(&headers, true).await?;
+    state.registry.sign_version(
+        &api_tool(id, version),
+        state.publisher_id.clone(),
+        state.key_id.clone(),
+        &state.signing_key,
+    )?;
+    Ok(StatusCode::OK)
+}
+async fn api_activate(
+    State(state): State<RegistryApiState>,
+    Path((id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, RegistryApiError> {
+    state.authorizer.authorize(&headers, true).await?;
+    state.registry.activate(&api_tool(id, version))?;
+    Ok(StatusCode::OK)
+}
+async fn api_deprecate(
+    State(state): State<RegistryApiState>,
+    Path((id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, RegistryApiError> {
+    state.authorizer.authorize(&headers, true).await?;
+    state.registry.deprecate(&api_tool(id, version))?;
+    Ok(StatusCode::OK)
+}
+async fn api_revoke(
+    State(state): State<RegistryApiState>,
+    Path((id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, RegistryApiError> {
+    state.authorizer.authorize(&headers, true).await?;
+    state.registry.revoke(&api_tool(id, version))?;
+    Ok(StatusCode::OK)
+}
+async fn api_get_tool(
+    State(state): State<RegistryApiState>,
+    Path((id, version)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<ResolvedToolSnapshot>, RegistryApiError> {
+    let context = state.authorizer.authorize(&headers, false).await?;
+    Ok(Json(
+        state
+            .registry
+            .resolve_exact(&context.tenant_id, &api_tool(id, version))
+            .await?,
+    ))
+}
+async fn api_capabilities(
+    State(state): State<RegistryApiState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<CapabilityDescriptor>>, RegistryApiError> {
+    let context = state.authorizer.authorize(&headers, false).await?;
+    Ok(Json(
+        state
+            .registry
+            .discover_capabilities(CapabilityQuery {
+                tenant_id: context.tenant_id,
+                protocol: None,
+                maximum_risk: RiskLevel::Critical,
+            })
+            .await?,
+    ))
+}
+
+pub struct RegistryApiError(RegistryError);
+impl From<RegistryError> for RegistryApiError {
+    fn from(value: RegistryError) -> Self {
+        Self(value)
+    }
+}
+impl IntoResponse for RegistryApiError {
+    fn into_response(self) -> Response {
+        let status = match self.0 {
+            RegistryError::ToolNotFound => StatusCode::NOT_FOUND,
+            RegistryError::VersionConflict => StatusCode::CONFLICT,
+            RegistryError::ManagementForbidden => StatusCode::FORBIDDEN,
+            RegistryError::SchemaInvalid
+            | RegistryError::VersionRequired
+            | RegistryError::CompensationInvalid => StatusCode::BAD_REQUEST,
+            _ => StatusCode::SERVICE_UNAVAILABLE,
+        };
+        (status, Json(serde_json::json!({"error":{"code":self.0.to_string(),"summary":"registry request rejected"}}))).into_response()
+    }
+}
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum RegistryError {
+    #[error("REGISTRY_TOOL_NOT_FOUND")]
+    ToolNotFound,
+    #[error("REGISTRY_VERSION_REQUIRED")]
+    VersionRequired,
+    #[error("REGISTRY_VERSION_NOT_ACTIVE")]
+    VersionNotActive,
+    #[error("REGISTRY_TOOL_REVOKED")]
+    ToolRevoked,
+    #[error("REGISTRY_SCHEMA_INVALID")]
+    SchemaInvalid,
+    #[error("REGISTRY_ARGUMENT_INVALID")]
+    ArgumentInvalid,
+    #[error("REGISTRY_OUTPUT_INVALID")]
+    OutputInvalid,
+    #[error("REGISTRY_MANIFEST_HASH_MISMATCH")]
+    ManifestHashMismatch,
+    #[error("REGISTRY_SIGNATURE_INVALID")]
+    SignatureInvalid,
+    #[error("REGISTRY_IMPLEMENTATION_DIGEST_MISMATCH")]
+    ImplementationDigestMismatch,
+    #[error("REGISTRY_COMPENSATION_INVALID")]
+    CompensationInvalid,
+    #[error("REGISTRY_UNAVAILABLE_FAIL_CLOSED")]
+    UnavailableFailClosed,
+    #[error("REGISTRY_VERSION_CONFLICT")]
+    VersionConflict,
+    #[error("REGISTRY_LIFECYCLE_INVALID")]
+    LifecycleInvalid,
+    #[error("REGISTRY_STORE_FAILURE")]
+    StoreFailure,
+    #[error("REGISTRY_MANAGEMENT_IDENTITY_NOT_CONFIGURED")]
+    ManagementIdentityNotConfigured,
+    #[error("REGISTRY_MANAGEMENT_FORBIDDEN")]
+    ManagementForbidden,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest(tenant: TenantId) -> ToolManifest {
+        ToolManifest {
+            schema_version: REGISTRY_SCHEMA_VERSION.into(),
+            tool_id: ToolId("coding.repo-read".into()),
+            tool_version: ToolVersion("1.0.0".into()),
+            status: ToolVersionStatus::Draft,
+            domain: "coding".into(),
+            display_name: "Repo read".into(),
+            description: "Read a repository path".into(),
+            input_schema: serde_json::json!({"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["path"],"properties":{"path":{"type":"string","maxLength":256}}}),
+            output_schema: serde_json::json!({"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","additionalProperties":false,"required":["content"],"properties":{"content":{"type":"string"}}}),
+            effect_class: EffectClass::Pure,
+            risk_level: RiskLevel::Low,
+            executor_profile: "coding-read".into(),
+            credential_profile: "none".into(),
+            approval_profile: "none".into(),
+            compensation: None,
+            limits: ToolLimits {
+                timeout_ms: 5000,
+                max_result_bytes: 4096,
+            },
+            network_profile_ref: "none".into(),
+            filesystem_profile_ref: "repo-ro".into(),
+            implementation: ToolImplementation {
+                kind: ImplementationKind::InternalService,
+                digest: format!("sha256:{}", "a".repeat(64)),
+                executor_id: "repo-reader".into(),
+            },
+            allowed_tenants: BTreeSet::from([tenant]),
+            signature: None,
+        }
+    }
+
+    fn active_registry(tenant: &TenantId) -> (InMemoryToolRegistry, ToolRef) {
+        let registry = InMemoryToolRegistry::new();
+        let key = SigningKey::from_bytes(&[4u8; 32]);
+        registry.add_publisher_key("publisher", key.verifying_key());
+        let manifest = manifest(tenant.clone());
+        let tool = manifest.tool_ref();
+        registry
+            .create_draft(manifest)
+            .unwrap_or_else(|_| panic!("draft"));
+        registry
+            .validate_version(&tool)
+            .unwrap_or_else(|_| panic!("validate"));
+        registry
+            .sign_version(&tool, "pub".into(), "publisher".into(), &key)
+            .unwrap_or_else(|_| panic!("sign"));
+        registry
+            .activate(&tool)
+            .unwrap_or_else(|_| panic!("activate"));
+        (registry, tool)
+    }
+
+    #[tokio::test]
+    async fn exact_active_version_and_schema_are_enforced() {
+        let tenant = TenantId::new();
+        let (registry, tool) = active_registry(&tenant);
+        let snapshot = registry
+            .resolve_exact(&tenant, &tool)
+            .await
+            .unwrap_or_else(|_| panic!("resolve"));
+        assert!(
+            registry
+                .validate_arguments(
+                    &snapshot,
+                    &serde_json::from_value(serde_json::json!({"path":"src"})).unwrap_or_default()
+                )
+                .await
+                .is_ok()
+        );
+        assert_eq!(
+            registry
+                .validate_arguments(
+                    &snapshot,
+                    &serde_json::from_value(serde_json::json!({"path":"src","token":"x"}))
+                        .unwrap_or_default()
+                )
+                .await,
+            Err(RegistryError::ArgumentInvalid)
+        );
+        let latest = ToolRef {
+            tool_id: tool.tool_id.clone(),
+            tool_version: ToolVersion("latest".into()),
+        };
+        assert_eq!(
+            registry.resolve_exact(&tenant, &latest).await,
+            Err(RegistryError::VersionRequired)
+        );
+    }
+
+    #[tokio::test]
+    async fn revocation_wins_over_snapshot_cache() {
+        let tenant = TenantId::new();
+        let (registry, tool) = active_registry(&tenant);
+        let snapshot = registry
+            .resolve_exact(&tenant, &tool)
+            .await
+            .unwrap_or_else(|_| panic!("resolve"));
+        registry.revoke(&tool).unwrap_or_else(|_| panic!("revoke"));
+        assert_eq!(
+            registry.resolve_exact(&tenant, &tool).await,
+            Err(RegistryError::ToolRevoked)
+        );
+        assert_eq!(
+            registry
+                .is_revoked(&tool, &snapshot.implementation.digest)
+                .await,
+            Ok(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn tenant_isolation_hides_tool_existence() {
+        let tenant = TenantId::new();
+        let other = TenantId::new();
+        let (registry, tool) = active_registry(&tenant);
+        assert_eq!(
+            registry.resolve_exact(&other, &tool).await,
+            Err(RegistryError::ToolNotFound)
+        );
+    }
+
+    #[test]
+    fn remote_schema_refs_are_rejected() {
+        let tenant = TenantId::new();
+        let registry = InMemoryToolRegistry::new();
+        let mut bad = manifest(tenant);
+        bad.input_schema = serde_json::json!({"type":"object","additionalProperties":false,"properties":{"x":{"$ref":"https://evil/schema"}}});
+        let tool = bad.tool_ref();
+        registry
+            .create_draft(bad)
+            .unwrap_or_else(|_| panic!("draft"));
+        assert_eq!(
+            registry.validate_version(&tool),
+            Err(RegistryError::SchemaInvalid)
+        );
+    }
+
+    struct UnreadyAuthorizer;
+
+    #[async_trait]
+    impl RegistryAdminAuthorizer for UnreadyAuthorizer {
+        async fn authorize(
+            &self,
+            _headers: &HeaderMap,
+            _write: bool,
+        ) -> Result<RegistryAdminContext, RegistryError> {
+            Err(RegistryError::ManagementForbidden)
+        }
+
+        fn production_ready(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn production_management_api_requires_real_authorizer() {
+        let result = RegistryApiState::new(
+            true,
+            Arc::new(InMemoryToolRegistry::new()),
+            Arc::new(UnreadyAuthorizer),
+            "publisher".into(),
+            "publisher-key".into(),
+            SigningKey::from_bytes(&[23u8; 32]),
+        );
+        assert!(matches!(
+            result,
+            Err(RegistryError::ManagementIdentityNotConfigured)
+        ));
+    }
+
+    #[test]
+    fn repository_json_schemas_are_valid_and_example_is_conformant() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap_or_else(|_| panic!("workspace root"));
+        let schema_dir = root.join("schemas/json");
+        let entries = std::fs::read_dir(&schema_dir).unwrap_or_else(|_| panic!("schema directory"));
+        for entry in entries {
+            let path = entry.unwrap_or_else(|_| panic!("schema entry")).path();
+            if path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            let schema: Value = serde_json::from_slice(
+                &std::fs::read(&path).unwrap_or_else(|_| panic!("schema file")),
+            )
+            .unwrap_or_else(|_| panic!("schema json"));
+            assert!(jsonschema::meta::is_valid(&schema), "{}", path.display());
+        }
+
+        let common: Value = serde_json::from_slice(
+            &std::fs::read(schema_dir.join("common.schema.json"))
+                .unwrap_or_else(|_| panic!("common schema")),
+        )
+        .unwrap_or_else(|_| panic!("common schema json"));
+        let registry = jsonschema::Registry::new()
+            .add(
+                "https://agenttrust.local/schemas/common.schema.json",
+                common,
+            )
+            .unwrap_or_else(|_| panic!("schema registry"))
+            .prepare()
+            .unwrap_or_else(|_| panic!("prepared schema registry"));
+        let goal_schema: Value = serde_json::from_slice(
+            &std::fs::read(schema_dir.join("signed-goal.schema.json"))
+                .unwrap_or_else(|_| panic!("goal schema")),
+        )
+        .unwrap_or_else(|_| panic!("goal schema json"));
+        let validator = jsonschema::options()
+            .with_registry(&registry)
+            .build(&goal_schema)
+            .unwrap_or_else(|_| panic!("goal validator"));
+        let example: Value = serde_json::from_slice(
+            &std::fs::read(root.join("schemas/examples/valid/signed-goal.json"))
+                .unwrap_or_else(|_| panic!("goal example")),
+        )
+        .unwrap_or_else(|_| panic!("goal example json"));
+        assert!(validator.is_valid(&example));
+    }
+}

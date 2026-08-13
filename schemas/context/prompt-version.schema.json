@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/context/prompt-version.schema.json",
+  "title": "Signed Prompt Version", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "prompt_id", "version", "content_digest", "provenance_digest", "key_id", "signature", "status"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.prompt-version.v1"}, "tenant_id": {"type": "string", "minLength": 1}, "prompt_id": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1}, "content_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "provenance_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "key_id": {"type": "string", "minLength": 1},
+    "signature": {"type": "string", "minLength": 16}, "status": {"enum": ["DRAFT", "ACTIVE", "ROLLED_BACK", "REVOKED"]}
+  }
+}

@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.policy-admin-config.v1","profile":"production","fail_closed":true,"static_analysis_required":true,"simulation_has_side_effects":false,"promotion_approvals":2,"canary_required":true,"automatic_rollback":true,"p0_p1_exceptions_allowed":false}

@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "17", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "tsc --strict --noEmit web/shared/agui-client.ts web/approval-console/src/approval-state.ts", "exit_code": 0}],
+  "tests": [{"name": "dual approval, exact binding, role/ownership recheck and atomic consumption", "status": "PASS", "evidence_ref": "rust/crates/enterprise-approval"}],
+  "evidence": ["migrations/enterprise-approval/0017_enterprise_approval.sql", "web/approval-console/src/ApprovalConsole.vue", "docs/approval/enterprise-approval.md"],
+  "unresolved_risks": ["Live PostgreSQL row-lock path, enterprise IdP/directory and notification providers are NOT_RUN."], "verified_at": "2026-08-05T11:49:35Z"
+}

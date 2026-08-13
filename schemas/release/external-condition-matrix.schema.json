@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/external-condition-matrix.schema.json",
+  "title": "Production external-condition execution matrix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "evaluated_at", "overall_status",
+    "production_evidence", "eligible", "conditions", "summary",
+    "production_closure_certificate", "matrix_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.external-condition-matrix.v1"},
+    "release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "overall_status": {"const": "IN_PROGRESS"},
+    "production_evidence": {"const": false},
+    "eligible": {"const": false},
+    "conditions": {
+      "type": "array", "minItems": 1, "maxItems": 128,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": [
+          "condition_id", "code_status", "external_status", "blocking",
+          "code_paths", "required_external_inputs"
+        ],
+        "properties": {
+          "condition_id": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,127}$"},
+          "code_status": {"enum": ["IMPLEMENTED_AND_TESTED", "IMPLEMENTED_FAIL_CLOSED_VERIFIER"]},
+          "external_status": {"enum": ["NOT_RUN_CONFIGURATION", "NOT_RUN_EXTERNAL_ENVIRONMENT", "NOT_PROVIDED", "FAIL_EXTERNAL_GATE"]},
+          "blocking": {"const": true},
+          "code_paths": {
+            "type": "array", "minItems": 1, "maxItems": 32,
+            "items": {"type": "string", "minLength": 1, "maxLength": 512},
+            "uniqueItems": true
+          },
+          "required_external_inputs": {
+            "type": "array", "minItems": 1, "maxItems": 32,
+            "items": {"type": "string", "minLength": 1, "maxLength": 512}
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["condition_count", "code_gate_ready", "external_verified"],
+      "properties": {
+        "condition_count": {"type": "integer", "minimum": 1},
+        "code_gate_ready": {"type": "integer", "minimum": 0},
+        "external_verified": {"const": 0}
+      }
+    },
+    "production_closure_certificate": {"const": "NOT_ISSUED"},
+    "matrix_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

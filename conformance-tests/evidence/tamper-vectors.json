@@ -1,0 +1,10 @@
+{
+  "schema_version": "agenttrust.evidence-conformance.v1",
+  "vectors": [
+    {"id": "unchanged", "mutation": "NONE", "expect_valid": true},
+    {"id": "payload-change", "mutation": "CHANGE_EVENT_SAFE_SUMMARY", "expect_valid": false},
+    {"id": "delete-event", "mutation": "DELETE_MIDDLE_EVENT", "expect_valid": false},
+    {"id": "reorder-events", "mutation": "SWAP_ADJACENT_EVENTS", "expect_valid": false},
+    {"id": "artifact-hash", "mutation": "CHANGE_ARTIFACT_HASH", "expect_valid": false}
+  ]
+}

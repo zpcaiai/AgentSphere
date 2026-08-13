@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/release/production-closure-certificate.schema.json",
+  "title": "Production Closure Certificate", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "certificate_id", "release_id", "scope_digest", "report_digest", "production_closure", "issued_at", "expires_at", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure.v1"}, "certificate_id": {"type": "string", "minLength": 1}, "release_id": {"type": "string", "minLength": 1},
+    "scope_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "report_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "production_closure": {"const": true}, "issued_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"},
+    "key_id": {"type": "string", "minLength": 1}, "signature": {"type": "string", "minLength": 16}
+  }
+}

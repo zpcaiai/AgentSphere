@@ -1,0 +1,34 @@
+{
+  "project": "agent-trust-control-plane",
+  "batch": "35",
+  "status": "IN_PROGRESS",
+  "commit": "WORKTREE-NO-GIT",
+  "commands": [
+    {"command": "cargo test -p agent-trust-enterprise-control", "exit_code": 0},
+    {"command": "mvn -f java/enterprise-control-api/pom.xml test", "exit_code": 0},
+    {"command": "VITE_CONTROL_API_URL=https://control-api.production.example npm run build --prefix web/control-console", "exit_code": 0},
+    {"command": "PostgreSQL 17: apply enterprise migrations twice and test NOSUPERUSER NOBYPASSRLS isolation/idempotency", "exit_code": 0},
+    {"command": "python3 scripts/validate-enterprise-api-contract.py", "exit_code": 0}
+  ],
+  "tests": [
+    {"name": "Rust tenant/admin/BFF/task status, webhook, quota, cost, API key, signed license and HTTPS integration", "status": "PASS", "count": 9, "evidence_ref": "rust/crates/enterprise-control"},
+    {"name": "Spring Java 21 canonical digest, action binding and API-key lifecycle", "status": "PASS", "count": 6, "evidence_ref": "java/enterprise-control-api/src/test"},
+    {"name": "forced RLS on all 84 tenant tables and transactional request idempotency under non-bypass role", "status": "PASS", "evidence_ref": "evidence/verification-summary.json"},
+    {"name": "Vue strict production build and governed OpenAPI parity", "status": "PASS", "evidence_ref": "web/control-console"},
+    {"name": "customer and independent-auditor enterprise acceptance signatures are required before real-environment evidence conversion", "status": "PASS", "evidence_ref": "rust/crates/production-closure/src/lib.rs"}
+  ],
+  "evidence": [
+    "schemas/enterprise/admin-action.schema.json",
+    "schemas/openapi/control-plane-v1.yaml",
+    "migrations/enterprise-control/0035_01_enterprise_control.sql",
+    "migrations/enterprise-control/0035_02_enterprise_security.sql",
+    "migrations/production-closure/0036_02_global_tenant_isolation.sql",
+    "config/enterprise-control/service.production.json",
+    "schemas/release/external-gate-assurance-attestation.schema.json",
+    "evidence/verification-summary.json"
+  ],
+  "unresolved_risks": [
+    "Enterprise IAM/SSO, authenticated browser E2E, live BFF authorities, real IAM/notification/ticketing/SIEM/Webhook delivery, customer release authority and independent-auditor signatures remain NOT_RUN/NOT_PROVIDED."
+  ],
+  "verified_at": "2026-08-06T04:50:49Z"
+}

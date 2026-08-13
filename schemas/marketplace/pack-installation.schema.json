@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/marketplace/pack-installation.schema.json",
+  "title": "Pack Installation", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "installation_id", "pack_id", "version", "environment", "permission_digest", "approval_id", "certificate_digest", "status"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.pack-installation.v1"}, "tenant_id": {"type": "string", "minLength": 1},
+    "installation_id": {"type": "string", "minLength": 1}, "pack_id": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1},
+    "environment": {"type": "string", "minLength": 1}, "permission_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "approval_id": {"type": ["string", "null"]}, "certificate_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "status": {"enum": ["PENDING_APPROVAL", "INSTALLED", "ACTIVE", "ROLLED_BACK", "REVOKED"]}
+  }
+}

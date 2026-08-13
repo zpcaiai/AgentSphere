@@ -1,0 +1,21 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://agenttrust.local/schemas/common.schema.json",
+  "type":"object",
+  "additionalProperties":false,
+  "properties":{"schema_version":{"const":"agenttrust.contracts.v1"}},
+  "required":["schema_version"],
+  "$defs":{
+    "uuid":{"type":"string","format":"uuid"},
+    "hash":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "timestamp":{"type":"string","format":"date-time"},
+    "tool_ref":{"type":"object","additionalProperties":false,"required":["tool_id","tool_version"],"properties":{"tool_id":{"type":"string","minLength":1,"maxLength":128},"tool_version":{"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"}}},
+    "risk_level":{"enum":["LOW","MEDIUM","HIGH","CRITICAL"]},
+    "effect_class":{"enum":["PURE","IDEMPOTENT","COMPENSATABLE","IRREVERSIBLE"]},
+    "decision":{"enum":["ALLOW","DENY","REQUIRE_APPROVAL","PAUSE","KILL"]},
+    "data_classification":{"enum":["PUBLIC","INTERNAL","CONFIDENTIAL","RESTRICTED","REGULATED"]},
+    "task_status":{"enum":["CREATED","PLANNED","POLICY_CHECKED","APPROVAL_PENDING","APPROVED","RUNNING","PAUSE_REQUESTED","PAUSED","CANCEL_REQUESTED","CANCELLING","KILL_REQUESTED","KILLED","VERIFYING","COMPLETED","DENIED","FAILED","EVALUATION_FAILED","COMPENSATING","ROLLED_BACK","NEEDS_HUMAN","MANUAL_RECOVERY_REQUIRED"]},
+    "execution_status":{"enum":["PREPARED","RUNNING","SUCCEEDED","FAILED","TIMED_OUT","CANCELLED","KILLED","COMPENSATING","COMPENSATED","COMPENSATION_FAILED","UNKNOWN"]}
+  }
+}
+

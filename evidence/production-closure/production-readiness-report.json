@@ -1,0 +1,62 @@
+{
+  "schema_version": "agenttrust.production-readiness-report.v1",
+  "release_id": "WORKTREE-NO-GIT",
+  "evaluated_at": "2026-08-06T05:01:53Z",
+  "eligible": false,
+  "batch_status_summary": {"IN_PROGRESS": 36, "EVIDENCE_VERIFIED": 0},
+  "local_code_gates": {
+    "rust_changed_crates": "PASS_78",
+    "rust_workspace_current_run": "PASS_164",
+    "rust_clippy_current_run": "PASS_DENY_WARNINGS",
+    "rustfmt": "PASS",
+    "python": "PASS_53",
+    "spring_boot_java21": "PASS_6",
+    "vue_production_build": "PASS",
+    "contracts": "PASS",
+    "enterprise_openapi_parity": "PASS",
+    "json_schemas": "PASS_59",
+    "runtime_json_assets": "PASS_94",
+    "postgresql_migrations_twice": "PASS_33",
+    "enterprise_non_bypass_rls": "PASS_LOCAL",
+    "global_tenant_table_rls": "PASS_84_ENABLE_FORCE",
+    "postgresql_rust_persistence": "PASS_LOCAL",
+    "current_rego_run": "PASS_25_OPA_1_19_0_PINNED"
+  },
+  "non_production_protocol_baselines": {
+    "linux_oci_runc": "PASS_PRODUCTION_EVIDENCE_FALSE",
+    "enterprise_iam_oidc": "NOT_RUN_CONFIGURATION",
+    "workload_mtls": "NOT_RUN_CONFIGURATION",
+    "secret_broker": "NOT_RUN_CONFIGURATION",
+    "temporal_local": "PASS_REAL_PROTOCOL_PRODUCTION_EVIDENCE_FALSE",
+    "s3_local_minio": "PASS_REAL_PROTOCOL_PRODUCTION_EVIDENCE_FALSE",
+    "model_provider_live_catalog": "PASS_REAL_PROTOCOL_PRODUCTION_EVIDENCE_FALSE",
+    "model_generation_stream_billing_dlp_residency": "FAIL_LIVE_HTTP_429_PRODUCTION_EVIDENCE_FALSE",
+    "managed_object_lock": "NOT_RUN_CONFIGURATION",
+    "mcp_a2a_industrial_endpoints": "NOT_RUN_CONFIGURATION",
+    "postgres_single_host_failover": "PASS_RPO_0_RTO_688_MS_PRODUCTION_EVIDENCE_FALSE",
+    "encrypted_backup_restore": "PASS_RTO_157_MS_PRODUCTION_EVIDENCE_FALSE",
+    "gateway_authenticated_admission_load": "PASS_500_P99_11_204_MS_EXPECTED_SAFE_404_PRODUCTION_EVIDENCE_FALSE",
+    "kubernetes_single_node_recovery": "PASS_RTO_1335_MS_PRODUCTION_EVIDENCE_FALSE",
+    "multizone_topology": "NOT_RUN_CONFIGURATION",
+    "sustained_production_load": "NOT_RUN_CONFIGURATION",
+    "immutable_git_provenance": "NOT_RUN_CONFIGURATION_WORKTREE_NO_GIT"
+  },
+  "external_condition_matrix": {
+    "ref": "evidence/production-closure/external-condition-matrix.json",
+    "condition_count": 17,
+    "code_gate_ready": 17,
+    "external_verified": 0
+  },
+  "blocking_reason_codes": [
+    "BATCH_01_35_NOT_EVIDENCE_VERIFIED",
+    "REAL_SUPPLY_CHAIN_GATE_NOT_RUN",
+    "REAL_MULTITENANT_GATE_NOT_RUN",
+    "REAL_DOMAIN_GATES_NOT_RUN",
+    "REAL_SECURITY_CAMPAIGN_NOT_RUN",
+    "REAL_MULTI_ZONE_HA_DR_RESTORE_NOT_RUN",
+    "REPRESENTATIVE_PRODUCTION_LOAD_NOT_RUN",
+    "REAL_ENTERPRISE_ACCEPTANCE_NOT_RUN",
+    "IMMUTABLE_GIT_PROVENANCE_NOT_CONFIGURED"
+  ],
+  "production_closure_certificate": "NOT_ISSUED"
+}

@@ -1,0 +1,21 @@
+services:
+  edge-gateway:
+    image: "agenttrust/edge-gateway@sha256:${AGENTTRUST_EDGE_GATEWAY_SHA256:?set approved 64-character image digest}"
+    read_only: true
+    user: "65532:65532"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    network_mode: "host"
+    volumes:
+      - ./edge.production.json:/etc/agenttrust/edge.json:ro
+      - edge-journal:/var/lib/agenttrust
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/edge-gateway", "health", "--config", "/etc/agenttrust/edge.json"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    pids_limit: 128
+    mem_limit: 512m
+volumes:
+  edge-journal: {}

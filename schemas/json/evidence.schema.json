@@ -1,0 +1,6 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://agenttrust.local/schemas/evidence.schema.json",
+  "type":"object","additionalProperties":false,"required":["schema_version","task_id","plan_hash","identity_refs","policy_decision_refs","approval_refs","execution_refs","artifact_refs","chain_head_hash","created_at"],
+  "properties":{"schema_version":{"const":"agenttrust.evidence.v1"},"task_id":{"$ref":"common.schema.json#/$defs/uuid"},"plan_hash":{"$ref":"common.schema.json#/$defs/hash"},"identity_refs":{"type":"array","items":{"type":"string"}},"policy_decision_refs":{"type":"array","items":{"type":"string"}},"approval_refs":{"type":"array","items":{"type":"string"}},"execution_refs":{"type":"array","items":{"type":"string"}},"artifact_refs":{"type":"array","items":{"type":"string"}},"chain_head_hash":{"$ref":"common.schema.json#/$defs/hash"},"created_at":{"$ref":"common.schema.json#/$defs/timestamp"}}
+}
+

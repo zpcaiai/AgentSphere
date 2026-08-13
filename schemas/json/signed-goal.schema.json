@@ -1,0 +1,18 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://agenttrust.local/schemas/signed-goal.schema.json",
+  "type":"object",
+  "additionalProperties":false,
+  "required":["schema_version","goal_id","normalized_goal","goal_hash","constraints","approved_by","signed_at","signer_key_id","signature"],
+  "properties":{
+    "schema_version":{"const":"agenttrust.contracts.v1"},
+    "goal_id":{"$ref":"common.schema.json#/$defs/uuid"},
+    "normalized_goal":{"type":"string","minLength":1,"maxLength":8192},
+    "goal_hash":{"$ref":"common.schema.json#/$defs/hash"},
+    "constraints":{"type":"object","additionalProperties":{"type":"string","maxLength":1024},"maxProperties":128},
+    "approved_by":{"type":"string","minLength":1,"maxLength":256},
+    "signed_at":{"$ref":"common.schema.json#/$defs/timestamp"},
+    "signer_key_id":{"type":"string","minLength":1,"maxLength":256},
+    "signature":{"type":"string","minLength":32,"maxLength":4096}
+  }
+}

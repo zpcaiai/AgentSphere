@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/domain-packs/medical-review.schema.json",
+  "title": "Medical Human Review", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "review_id", "patient_ref_hash", "care_relationship_digest", "recommendation_digest", "risk_level", "decision"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.medical-pack.v1"}, "tenant_id": {"type": "string", "minLength": 1},
+    "review_id": {"type": "string", "minLength": 1}, "patient_ref_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "care_relationship_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "recommendation_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "risk_level": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}, "decision": {"enum": ["PENDING", "APPROVED", "REJECTED", "ESCALATED"]}
+  }
+}

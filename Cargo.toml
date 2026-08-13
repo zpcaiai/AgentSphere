@@ -1,0 +1,90 @@
+[workspace]
+resolver = "2"
+members = [
+  "rust/crates/contracts",
+  "rust/crates/action-ir",
+  "rust/crates/gateway",
+  "rust/crates/identity",
+  "rust/crates/registry",
+  "rust/crates/policy-pep",
+  "rust/crates/sandbox-runtime",
+  "rust/crates/tool-proxy",
+  "rust/crates/transaction-ledger",
+  "rust/crates/evidence-evaluator",
+  "rust/crates/protocol-adapter-sdk",
+  "rust/crates/mcp-security-proxy",
+  "rust/crates/a2a-agui-adapter",
+  "rust/crates/cn-standard-adapter",
+  "rust/crates/model-gateway",
+  "rust/crates/industrial-edge-gateway",
+  "rust/crates/enterprise-approval",
+  "rust/crates/data-governance",
+  "rust/crates/audit-retention",
+  "rust/crates/pack-supply-chain",
+  "rust/crates/runtime-anomaly",
+  "rust/crates/incident-release-gate",
+  "rust/crates/domain-risk-packs",
+  "rust/crates/durable-orchestrator",
+  "rust/crates/agent-registry-posture",
+  "rust/crates/policy-administration",
+  "rust/crates/context-governance",
+  "rust/crates/pack-marketplace",
+  "rust/crates/security-evaluation-lab",
+  "rust/crates/platform-sre",
+  "rust/crates/enterprise-control",
+  "rust/crates/production-closure",
+  "rust/crates/production-runtime",
+  "rust/crates/integration-tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.89"
+
+[workspace.dependencies]
+async-trait = "0.1.89"
+axum = { version = "0.8.9", features = ["json", "macros"] }
+base64 = "0.22.1"
+chrono = { version = "0.4.41", features = ["serde"] }
+ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
+futures = "0.3.31"
+hex = "0.4.3"
+hmac = "0.12.1"
+http = "1.3.1"
+jsonschema = { version = "0.49.5", default-features = false }
+nix = { version = "0.30.1", features = ["signal", "process"] }
+parking_lot = "0.12.5"
+rand = "0.8.5"
+regex = "1.11.2"
+ring = "0.17.14"
+reqwest = { version = "0.12.23", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.143", features = ["arbitrary_precision"] }
+serde_jcs = "0.2.0"
+sha2 = "0.10.9"
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "json", "chrono", "uuid"] }
+thiserror = "2.0.16"
+tokio = { version = "1.47.1", features = ["full"] }
+tower = { version = "0.5.2", features = ["limit", "timeout", "util"] }
+tower-http = { version = "0.6.6", features = ["limit", "request-id", "trace"] }
+unicode-normalization = "0.1.24"
+url = { version = "2.5.7", features = ["serde"] }
+uuid = { version = "1.18.1", features = ["serde", "v4"] }
+zeroize = "1.9.0"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false

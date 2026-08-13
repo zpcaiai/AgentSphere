@@ -1,0 +1,9 @@
+{
+  "schema_version": "agenttrust.adapter-conformance.v1",
+  "vectors": [
+    {"id": "golden", "external_version": "1.0", "features": ["cancel", "stream"], "expect": "PASS"},
+    {"id": "unknown-critical-feature", "external_version": "1.0", "features": ["critical:ambient-authority"], "expect": "REJECT"},
+    {"id": "duplicate-message", "external_version": "1.0", "message_id": "same", "repeat": 2, "expect": "DEDUPLICATE"},
+    {"id": "stream-disconnect", "external_version": "1.0", "disconnect_after_sequence": 2, "expect": "EXPLICIT_INTERRUPTED_ERROR"}
+  ]
+}

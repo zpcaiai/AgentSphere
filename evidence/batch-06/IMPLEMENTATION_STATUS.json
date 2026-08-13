@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "06", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "./scripts/run-policy-tests.sh using digest-pinned official OPA 1.19.0 container", "exit_code": 0}, {"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}],
+  "tests": [{"name": "Rego common/coding/industrial/energy/medical/sensitive policy suite", "status": "PASS", "evidence_ref": "PASS 25/25"}, {"name": "PEP fail-closed, obligations and signed authorization", "status": "PASS", "evidence_ref": "rust/crates/policy-pep"}],
+  "evidence": ["policies", "docs/policy/enforcement-flow.md", "scripts/run-policy-tests.sh"],
+  "unresolved_risks": ["External OPA HA/service-failure and production bundle distribution evidence are NOT_RUN."], "verified_at": "2026-08-06T03:52:09Z"
+}

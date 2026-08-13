@@ -1,0 +1,1 @@
+//! Cross-batch integration tests.

@@ -1,0 +1,11 @@
+{
+  "schema_version": "agenttrust.a2a-agui-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "maximum_delegation_depth": 4,
+  "maximum_calls_per_token": 100,
+  "maximum_events_per_task": 10000,
+  "resume_token_ttl_seconds": 900,
+  "require_agent_card_publisher_verification": true,
+  "client_approval_events_authoritative": false
+}

@@ -1,0 +1,17 @@
+{
+  "checks": {
+    "authenticated": true,
+    "credentials_redacted": true,
+    "expected_model_present": true,
+    "model_catalog_received": true,
+    "model_count": 118,
+    "response_digest": "ff8a6580fb1c8ae8075a7e908b283cc391068237a1942d7c6134eee9e0554c29"
+  },
+  "environment_reference": "model-provider://api.openai.com",
+  "evidence_digest": "9b1fb7e9d20068106e70ad809a30c9b2807ba32cf2be97dae7f0c1dba3875486",
+  "gate": "MODEL_PROVIDER_REAL_PROTOCOL",
+  "measured_at": "2026-08-06T02:34:14.130060+00:00",
+  "production_evidence": false,
+  "schema_version": "agenttrust.external-gate-report.v1",
+  "status": "PASS_REAL_PROTOCOL"
+}

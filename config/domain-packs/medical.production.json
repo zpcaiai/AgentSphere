@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.medical-pack-config.v1","profile":"production","fail_closed":true,"tools":"READ_ONLY","require_care_relationship":true,"minimum_necessary_fields":true,"high_risk_human_review":true,"unknown_region_model":"DENY","clinical_certification":false}

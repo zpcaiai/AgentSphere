@@ -1,0 +1,9 @@
+{
+  "schema_version": "agenttrust.cn-adapter-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "active_version_packages": [],
+  "allow_unverified_standard_content": false,
+  "discovery_is_authorization": false,
+  "blocking_mapping_loss_severities": ["SECURITY_CRITICAL"]
+}

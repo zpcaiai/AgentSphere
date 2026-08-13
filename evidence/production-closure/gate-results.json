@@ -1,0 +1,35 @@
+{
+  "schema_version": "agenttrust.production-gate-results.v1",
+  "release_id": "WORKTREE-NO-GIT",
+  "scope_bound": false,
+  "external_condition_matrix_ref": "evidence/production-closure/external-condition-matrix.json",
+  "non_production_baseline_refs": [
+    "evidence/external-gates/linux-isolation-baseline.json",
+    "evidence/external-gates/enterprise-iam-not-run.json",
+    "evidence/external-gates/temporal-local-protocol.json",
+    "evidence/external-gates/object-store-local-s3.json",
+    "evidence/external-gates/model-provider-live-catalog.json",
+    "evidence/external-gates/postgres-single-host-failover.json",
+    "evidence/external-gates/backup-restore-local-drill.json",
+    "evidence/external-gates/gateway-local-load.json",
+    "evidence/external-gates/kubernetes-local-recovery.json"
+  ],
+  "gates": [
+    {"gate_id":"CONTRACT_COMPATIBILITY","result":"PASS_LOCAL","external_required":false,"evidence_ref":"evidence/verification-summary.json"},
+    {"gate_id":"SUPPLY_CHAIN_PROVENANCE","result":"NOT_RUN","external_required":true},
+    {"gate_id":"MULTITENANT_ISOLATION","result":"NOT_RUN","external_required":true},
+    {"gate_id":"IDEMPOTENCY_AND_RECOVERY","result":"NOT_RUN","external_required":true},
+    {"gate_id":"CONTINUOUS_AUTHORIZATION","result":"NOT_RUN","external_required":true},
+    {"gate_id":"DOMAIN_CODING","result":"NOT_RUN","external_required":true},
+    {"gate_id":"DOMAIN_INDUSTRIAL","result":"NOT_RUN","external_required":true},
+    {"gate_id":"DOMAIN_ENERGY","result":"NOT_RUN","external_required":true},
+    {"gate_id":"DOMAIN_MEDICAL","result":"NOT_RUN","external_required":true},
+    {"gate_id":"DOMAIN_SENSITIVE_INTERACTION","result":"NOT_RUN","external_required":true},
+    {"gate_id":"SECURITY_CAMPAIGN","result":"NOT_RUN","external_required":true},
+    {"gate_id":"HA_DR_RESTORE","result":"NOT_RUN","external_required":true},
+    {"gate_id":"UPGRADE_ROLLBACK","result":"NOT_RUN","external_required":true},
+    {"gate_id":"CONTROL_EVIDENCE_GRAPH","result":"NOT_RUN","external_required":true},
+    {"gate_id":"ENTERPRISE_ACCEPTANCE","result":"NOT_RUN","external_required":true}
+  ],
+  "eligible": false
+}

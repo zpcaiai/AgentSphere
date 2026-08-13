@@ -1,0 +1,21 @@
+[package]
+name = "agent-trust-cn-standard-adapter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+agent-trust-contracts = { path = "../contracts" }
+agent-trust-protocol-adapter-sdk = { path = "../protocol-adapter-sdk" }
+chrono.workspace = true
+jsonschema.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_jcs.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,12 @@
+# Agent Trust Control Plane implementation rules
+
+1. Treat `.agents/skills/*/SKILL.md` as implementation instructions, not evidence that features exist.
+2. Inspect and modify the current repository incrementally; do not create a parallel architecture.
+3. Never claim a batch is complete without real code, migrations, tests, commands, reports and evidence.
+4. Update `IMPLEMENTATION_STATUS.json`; only `EVIDENCE_VERIFIED` means complete.
+5. Do not skip security-negative, failure-injection, isolation, idempotency or recovery tests.
+6. Mock results cannot prove Linux isolation, real protocol compatibility, HA/DR, clinical validity or physical safety.
+7. Respect `DEPENDENCY_DAG.yaml`; distinguish build dependencies from runtime integrations.
+8. Any public contract change must update Batch 01 schemas, generated clients and compatibility tests.
+9. Any production action must pass Canonical Action IR, PEP, authorization, ledger and evidence paths.
+10. Task completion is written only through the durable orchestrator after evaluator hard gates.

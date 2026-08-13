@@ -1,0 +1,2 @@
+{"schema_version":"agenttrust.sandbox-profile.v1","profile_id":"wasm-plugin","production_isolation_required":true,"runtime":"wasmtime-component","network":"none","filesystem":"none","fuel":10000000,"memory_bytes":67108864,"timeout_ms":30000}
+

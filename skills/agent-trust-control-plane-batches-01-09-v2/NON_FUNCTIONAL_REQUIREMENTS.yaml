@@ -1,0 +1,23 @@
+version: "2.0.0"
+requirements:
+  - id: NFR-SEC-001
+    requirement: "Production execution must fail closed when authorization cannot be verified, except explicitly defined emergency safety actions."
+    owner_batches: ["06", "07", "21", "34"]
+  - id: NFR-TXN-001
+    requirement: "A repeated action with the same idempotency key must create at most one external side effect."
+    owner_batches: ["09", "29"]
+  - id: NFR-TRACE-001
+    requirement: "Every terminal task state must have a verifiable evidence package."
+    owner_batches: ["10", "19", "29", "36"]
+  - id: NFR-TENANT-001
+    requirement: "Tenant isolation applies to API, storage, cache, search, metrics, artifacts and exports."
+    owner_batches: ["02", "04", "18", "19", "30", "35"]
+  - id: NFR-RECOVERY-001
+    requirement: "RPO and RTO must be proven by restore drills, not configuration inspection."
+    owner_batches: ["34", "36"]
+  - id: NFR-PERF-001
+    requirement: "All queues, pools and buffers are bounded and expose saturation metrics."
+    owner_batches: ["02", "07", "10", "15", "16", "29", "34"]
+  - id: NFR-COMPAT-001
+    requirement: "Schema, protocol, policy and pack changes require compatibility tests and rollback paths."
+    owner_batches: ["01", "03", "11", "20", "28", "31", "36"]

@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "01", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "./scripts/generate-contracts.sh && ./scripts/check-generated.sh && python3 scripts/check-contract-parity.py && ./scripts/run-contract-conformance.sh", "exit_code": 0}],
+  "tests": [{"name": "four-language contract generation and conformance", "status": "PASS", "evidence_ref": "tests/conformance"}],
+  "evidence": ["schemas/contract-model.json", "schemas/proto/agenttrust/v1/contracts.proto", "generated"],
+  "unresolved_risks": ["Workspace has no Git metadata, so immutable commit provenance is unavailable."], "verified_at": "2026-08-05T11:49:35Z"
+}

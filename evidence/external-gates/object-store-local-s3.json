@@ -1,0 +1,16 @@
+{
+  "checks": {
+    "bucket_lifecycle": true,
+    "credentials_redacted": true,
+    "object_put_get_head_delete": true,
+    "payload_digest": "cb9aa3c5e9c871684dc530bbe37a4c7092cd12a3ebfcf02c7033f35caeb58232",
+    "payload_integrity": true
+  },
+  "environment_reference": "s3://127.0.0.1:19000",
+  "evidence_digest": "6cefb76cbe1bf49ab66da9551fabdb8775c48a852cad0a8653dd51ce97151b43",
+  "gate": "OBJECT_STORE_S3_REAL_PROTOCOL",
+  "measured_at": "2026-08-06T02:33:54.498059+00:00",
+  "production_evidence": false,
+  "schema_version": "agenttrust.external-gate-report.v1",
+  "status": "PASS_REAL_PROTOCOL"
+}

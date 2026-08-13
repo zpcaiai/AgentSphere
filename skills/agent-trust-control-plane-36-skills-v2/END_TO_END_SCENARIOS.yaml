@@ -1,0 +1,30 @@
+version: "2.0.0"
+scenarios:
+  - id: E2E-CODING
+    name: "Coding Agent patch, test, approval, PR and rollback"
+    batches: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "17", "20", "21", "23", "29", "33", "34", "36"]
+    required_status: EVIDENCE_VERIFIED
+  - id: E2E-INDUSTRIAL
+    name: "Industrial simulator setpoint prepare/approve/commit/verify/recover"
+    batches: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "16", "17", "20", "21", "24", "29", "33", "34", "36"]
+    required_status: EVIDENCE_VERIFIED
+  - id: E2E-ENERGY
+    name: "Energy optimization under hard constraints and fallback"
+    batches: ["06", "09", "10", "16", "20", "21", "25", "29", "33", "34", "36"]
+    required_status: EVIDENCE_VERIFIED
+  - id: E2E-MEDICAL
+    name: "Private clinical information assistance with human review"
+    batches: ["04", "06", "08", "10", "17", "18", "19", "20", "26", "29", "32", "33", "36"]
+    required_status: EVIDENCE_VERIFIED
+  - id: E2E-SENSITIVE
+    name: "Sensitive interaction with consent, citation and escalation"
+    batches: ["04", "06", "10", "17", "18", "19", "20", "27", "29", "32", "33", "36"]
+    required_status: EVIDENCE_VERIFIED
+  - id: E2E-MCP-ATTACK
+    name: "Malicious MCP schema drift, injection and exfiltration containment"
+    batches: ["05", "06", "07", "08", "10", "12", "20", "21", "22", "29", "32", "33", "36"]
+    required_status: EVIDENCE_VERIFIED
+  - id: E2E-DR
+    name: "Regional failure, recovery and evidence reconciliation"
+    batches: ["09", "10", "19", "22", "29", "34", "36"]
+    required_status: EVIDENCE_VERIFIED

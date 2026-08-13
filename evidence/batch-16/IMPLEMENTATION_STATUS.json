@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "16", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "cargo clippy --workspace --all-targets -- -D warnings", "exit_code": 0}, {"command": "python3 -m unittest python.production_gates.tests.test_industrial_protocols", "exit_code": 0}],
+  "tests": [{"name": "freshness/range/CAS/disconnect/safe-stop and protocol configuration", "status": "PASS", "evidence_ref": "rust/crates/industrial-edge-gateway"}, {"name": "OPC UA, MQTT and Modbus mTLS read-only external client boundary rejects unapproved binaries and write receipts", "status": "PASS", "evidence_ref": "python/production_gates/industrial_protocols.py"}],
+  "evidence": ["schemas/industrial/asset-channel.schema.json", "deploy/edge-gateway", "docs/industrial/edge-gateway-runbook.md", "python/production_gates/industrial_protocols.py"],
+  "unresolved_risks": ["Real OPC UA/MQTT/Modbus endpoints, PLC writes and Batch 24 limited-write site gate remain NOT_RUN."], "verified_at": "2026-08-06T04:50:49Z"
+}

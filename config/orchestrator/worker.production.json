@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.orchestrator-config.v1","profile":"production","fail_closed":true,"state_store":"POSTGRESQL","workflow_engine":"TEMPORAL","maximum_inflight_workflows":1000,"maximum_steps_per_task":10000,"command_idempotency_required":true,"kill_requires_supervisor_ack":true,"completion_requires_ledger_evaluator_evidence":true,"dev_in_memory_store":false}

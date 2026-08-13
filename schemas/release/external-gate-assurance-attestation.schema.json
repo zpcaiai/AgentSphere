@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/external-gate-assurance-attestation.schema.json",
+  "title": "Signed multi-party external production gate attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "attestation_id", "gate_id", "release_id", "scope_digest",
+    "environment_reference", "decision", "automated", "change_ticket",
+    "evidence_digests", "issued_at", "expires_at", "reviewers"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.external-gate-assurance-attestation.v1"},
+    "attestation_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "gate_id": {
+      "enum": [
+        "SUPPLY_CHAIN_PROVENANCE", "MULTITENANT_ISOLATION",
+        "IDEMPOTENCY_AND_RECOVERY", "CONTINUOUS_AUTHORIZATION", "DOMAIN_CODING",
+        "DOMAIN_ENERGY", "SECURITY_CAMPAIGN", "HA_DR_RESTORE", "UPGRADE_ROLLBACK",
+        "CONTROL_EVIDENCE_GRAPH", "ENTERPRISE_ACCEPTANCE"
+      ]
+    },
+    "release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "scope_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "environment_reference": {
+      "type": "string", "pattern": "^environment://production/.+$", "maxLength": 512
+    },
+    "decision": {"enum": ["APPROVED", "REJECTED"]},
+    "automated": {"const": false},
+    "change_ticket": {"type": "string", "minLength": 1, "maxLength": 256},
+    "evidence_digests": {
+      "type": "object", "minProperties": 1, "maxProperties": 512,
+      "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+    },
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "reviewers": {
+      "type": "array", "minItems": 2, "maxItems": 12,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["reviewer_id", "organization", "role", "key_id", "signature"],
+        "properties": {
+          "reviewer_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "organization": {"type": "string", "minLength": 1, "maxLength": 256},
+          "role": {
+            "enum": [
+              "RELEASE_ENGINEER", "INDEPENDENT_AUDITOR", "SECURITY_ENGINEER", "SRE",
+              "CODING_DOMAIN_OWNER", "ENERGY_DOMAIN_ENGINEER", "SAFETY_ENGINEER",
+              "RED_TEAM_LEAD", "SECURITY_OWNER", "DISASTER_RECOVERY_OWNER",
+              "COMPLIANCE_OWNER", "CUSTOMER_RELEASE_AUTHORITY"
+            ]
+          },
+          "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+          "signature": {"type": "string", "minLength": 80, "maxLength": 128}
+        }
+      }
+    }
+  }
+}

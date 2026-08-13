@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "10", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "cargo test -p agent-trust-integration-tests --test schema_assets", "exit_code": 0}],
+  "tests": [{"name": "event/artifact tamper, delete, reorder and hard-gate evaluation", "status": "PASS", "evidence_ref": "rust/crates/evidence-evaluator"}, {"name": "model-data signed evidence end-to-end", "status": "PASS", "evidence_ref": "rust/crates/integration-tests/tests/model_data_evidence.rs"}],
+  "evidence": ["schemas/evidence/evidence-package.schema.json", "docs/evaluation/evidence-and-evaluator.md", "rust/crates/evidence-evaluator/src/bin/verify-evidence.rs"],
+  "unresolved_risks": ["Real object store, OTel backend, evaluator calibration and completed-task coverage are NOT_RUN."], "verified_at": "2026-08-05T11:49:35Z"
+}

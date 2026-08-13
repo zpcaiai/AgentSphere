@@ -1,0 +1,1 @@
+{"schema_version":"agenttrust.coding-pack-config.v1","profile":"production","fail_closed":true,"arbitrary_shell":false,"protected_branch_direct_write":false,"network_default":"DENY","secret_path_access":"DENY","require_diff_and_test_evidence":true,"require_rollback":true}

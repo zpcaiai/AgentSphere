@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "03", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}],
+  "tests": [{"name": "strict JSON, canonical hash, signature and policy input", "status": "PASS", "evidence_ref": "rust/crates/action-ir"}],
+  "evidence": ["schemas/json/action.schema.json", "docs/action-ir/canonicalization.md"],
+  "unresolved_risks": ["Cross-implementation canonicalization corpus has not run against external implementations."], "verified_at": "2026-08-05T11:49:35Z"
+}

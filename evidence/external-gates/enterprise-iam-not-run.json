@@ -1,0 +1,12 @@
+{
+  "checks": {
+    "error_code": "OIDC_CONFIGURATION_NOT_CONFIGURED"
+  },
+  "environment_reference": "unconfigured",
+  "evidence_digest": "a74b9aaa47628c0e55053f487729ff6451196d342806ac99ae3c0c6772fca8c0",
+  "gate": "OIDC",
+  "measured_at": "2026-08-06T02:51:51.288238+00:00",
+  "production_evidence": false,
+  "schema_version": "agenttrust.external-gate-report.v1",
+  "status": "NOT_RUN_CONFIGURATION"
+}

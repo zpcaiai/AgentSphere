@@ -1,0 +1,7 @@
+{
+  "project": "agent-trust-control-plane", "batch": "13", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
+  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "tsc --strict --noEmit web/shared/agui-client.ts web/approval-console/src/approval-state.ts", "exit_code": 0}, {"command": "python3 -m unittest python.production_gates.tests.test_external_services", "exit_code": 0}],
+  "tests": [{"name": "delegation reduction/revocation, backend event ordering, resume and UI authorization separation", "status": "PASS", "evidence_ref": "rust/crates/a2a-agui-adapter"}, {"name": "bounded same-origin A2A Agent Card and skill discovery without task submission", "status": "PASS", "evidence_ref": "python/production_gates/external_services.py"}],
+  "evidence": ["schemas/a2a/agui-event.schema.json", "web/shared/agui-client.ts", "docs/a2a/delegation-threat-model.md", "docs/a2a/real-endpoint-gate.md"],
+  "unresolved_risks": ["A real A2A peer task, browser reconnect and distributed revocation latency evidence are NOT_RUN."], "verified_at": "2026-08-06T04:50:49Z"
+}
