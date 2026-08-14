@@ -30,7 +30,24 @@ final class ApiErrors {
         return response(HttpStatus.TOO_MANY_REQUESTS, error.getMessage());
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
+    @ExceptionHandler(ControlUnavailableException.class)
+    ResponseEntity<ErrorBody> unavailable(ControlUnavailableException error) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, error.getMessage());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ErrorBody> unreadable(HttpMessageNotReadableException error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof RequestBodyLimitFilter.RequestBodyTooLargeException) {
+                return response(HttpStatus.PAYLOAD_TOO_LARGE, "CONTROL_REQUEST_BODY_TOO_LARGE");
+            }
+            current = current.getCause();
+        }
+        return response(HttpStatus.BAD_REQUEST, "CONTROL_REQUEST_INVALID");
+    }
+
+    @ExceptionHandler({MethodArgumentNotValidException.class,
         MissingRequestHeaderException.class, MethodArgumentTypeMismatchException.class})
     ResponseEntity<ErrorBody> invalidRequest(Exception ignored) {
         return response(HttpStatus.BAD_REQUEST, "CONTROL_REQUEST_INVALID");

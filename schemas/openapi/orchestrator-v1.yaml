@@ -1,0 +1,680 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Durable Orchestrator API
+  version: 1.0.0
+  description: >-
+    Internal production API for durable admission, lifecycle commands, task queries,
+    event retrieval, and the authoritative Rust transition activity boundary.
+  x-agenttrust-transition-management:
+    defaultListen: 127.0.0.1
+    defaultPort: 9091
+    path: /ready
+    exposedRoutes: [/ready]
+    description: >-
+      Plain HTTP, separately bound management listener for dependency-aware readiness only.
+      Production deployments must restrict network access to platform health probes; the
+      transition data plane remains TLS 1.3 with mandatory client certificates.
+  x-agenttrust-transition-authentication:
+    bindingSchema: agenttrust.transition-token-bindings.v1
+    bindingFields: [client_identity, tenant_id, scope, token_sha256]
+    requiredScope: transitions:apply
+    description: >-
+      Each data-plane bearer is authorized only when its lowercase SHA-256 digest and the
+      verified client-certificate SAN, tenant, and scope exactly match one binding. The service
+      does not accept one global bearer as authority for every tenant.
+  x-agenttrust-worker-management:
+    defaultListen: 127.0.0.1
+    defaultPort: 9092
+    path: /ready
+    exposedRoutes: [/ready]
+    timeoutSeconds: 1.5
+    description: >-
+      Plain HTTP management listener for the Temporal worker. It returns ready only when
+      Temporal and the mTLS transition and execution dependencies all pass their strict
+      versioned JSON readiness contracts. Restrict access to platform health probes.
+servers:
+  - url: https://orchestrator.internal.example
+security:
+  - orchestratorServiceBearer: []
+    mutualTLS: []
+tags:
+  - name: Orchestrator
+  - name: Transition
+paths:
+  /ready:
+    get:
+      security: []
+      tags: [Orchestrator]
+      operationId: orchestratorReady
+      responses:
+        '200':
+          description: >-
+            PostgreSQL with the expected non-superuser RLS role, Temporal, transition, and
+            execution dependencies are reachable within the bounded readiness deadline.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [schema_version, ready]
+                properties:
+                  schema_version: {const: agenttrust.orchestrator-readiness.v1}
+                  ready: {const: true}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/actions:
+    post:
+      tags: [Orchestrator]
+      operationId: createTask
+      description: Admits an idempotent gateway envelope, starts its workflow, and durably signals START.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/IngressEnvelope'}
+      responses:
+        '200':
+          description: Action admitted and START requested.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/IngressReceipt'}
+        '400': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/actions/query:
+    post:
+      tags: [Orchestrator]
+      operationId: queryTask
+      requestBody: {$ref: '#/components/requestBodies/ActionScope'}
+      responses:
+        '200':
+          description: Authoritative Temporal state.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TaskView'}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/actions/start:
+    post: &commandOperation
+      tags: [Orchestrator]
+      operationId: startTask
+      requestBody: {$ref: '#/components/requestBodies/CommandScope'}
+      responses:
+        '200':
+          description: Command durably signaled.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CommandReceipt'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/actions/pause:
+    post:
+      <<: *commandOperation
+      operationId: pauseTask
+  /v1/actions/resume:
+    post:
+      <<: *commandOperation
+      operationId: resumeTask
+  /v1/actions/cancel:
+    post:
+      <<: *commandOperation
+      operationId: cancelTask
+  /v1/actions/kill:
+    post:
+      <<: *commandOperation
+      operationId: killTask
+  /v1/actions/checkpoint:
+    post:
+      <<: *commandOperation
+      operationId: checkpointTask
+  /v1/actions/verify:
+    post:
+      <<: *commandOperation
+      operationId: verifyTask
+  /v1/actions/complete:
+    post:
+      <<: *commandOperation
+      operationId: completeTask
+  /v1/tasks/list:
+    post:
+      tags: [Orchestrator]
+      operationId: listTasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/OwnerScope'}
+                - type: object
+                  properties:
+                    limit: {type: integer, minimum: 1, maximum: 100, default: 100}
+      responses:
+        '200':
+          description: Bounded task list.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tasks]
+                properties:
+                  tasks:
+                    type: array
+                    maxItems: 100
+                    items: {$ref: '#/components/schemas/TaskSummary'}
+        '400': {$ref: '#/components/responses/Error'}
+  /v1/tasks/events:
+    post:
+      tags: [Orchestrator]
+      operationId: taskEvents
+      security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      description: >-
+        The mTLS-authenticated BFF must supply tenant and actor headers exactly matching
+        tenant_id and owner in the compatibility request body.
+      parameters:
+        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/TaskScope'}
+                - type: object
+                  properties:
+                    limit: {type: integer, minimum: 1, maximum: 1000, default: 1000}
+      responses:
+        '200':
+          description: Submission and authoritative transition events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    maxItems: 1000
+                    items: {type: object, additionalProperties: true}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/tasks/transitions:
+    post:
+      tags: [Orchestrator]
+      operationId: authoritativeTaskTransitions
+      security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      description: >-
+        Returns only the tenant-bound authoritative transition ring and current Temporal state.
+        Submission and rejection audit entries are never mixed into this recovery surface.
+      parameters:
+        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - {$ref: '#/components/schemas/TaskScope'}
+                - type: object
+                  properties:
+                    limit: {type: integer, minimum: 1, maximum: 1000, default: 1000}
+      responses:
+        '200':
+          description: Current state plus bounded authoritative transition ring.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthoritativeTaskTransitions'}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/tasks/{task_id}/commands:
+    post:
+      tags: [Orchestrator]
+      operationId: submitBffTaskCommand
+      security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      description: >-
+        The TLS peer must match the configured enterprise-control-api DNS or SPIFFE SAN.
+        X-Tenant-Id and X-Actor-Subject are trusted only inside that exact service boundary.
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PublicTaskCommand'}
+      responses:
+        '200':
+          description: Authenticated, tenant-derived command accepted.
+          content: {application/json: {schema: {$ref: '#/components/schemas/CommandReceipt'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /v1/tasks/{task_id}/agui/events:
+    get:
+      tags: [Orchestrator]
+      operationId: resumeBffAguiEvents
+      security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      description: >-
+        Resumes signed events through the exact authenticated BFF workload identity. Cursor
+        gaps return safe_snapshot_required=true and an ahead-of-authority cursor is rejected.
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
+        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+        - {name: resume_token, in: query, schema: {type: string, pattern: '^[0-9]+$'}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
+      responses:
+        '200':
+          description: Signed, bounded AG-UI transition events.
+          content: {application/json: {schema: {$ref: '#/components/schemas/AguiResumeResponse'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /v1/tasks/stream-snapshot:
+    post:
+      tags: [Orchestrator]
+      operationId: taskStreamSnapshot
+      security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TaskScope'}
+      responses:
+        '200':
+          description: Gateway-compatible canonical JSON event strings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    maxItems: 1000
+                    items: {type: string, maxLength: 65536}
+        '404': {$ref: '#/components/responses/Error'}
+  /v1/transitions/apply:
+    post:
+      tags: [Transition]
+      operationId: applyAuthoritativeTransition
+      servers:
+        - url: https://transition.internal.example
+      security: [{transitionBearer: [], mutualTLS: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/TransitionRequest'}
+      responses:
+        '200':
+          description: Next authoritative state. Caller-supplied facts are not accepted.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkflowState'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '502': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    transitionBearer:
+      type: http
+      scheme: bearer
+    orchestratorServiceBearer:
+      type: http
+      scheme: bearer
+    mutualTLS:
+      type: mutualTLS
+  responses:
+    Error:
+      description: Stable fail-closed machine error.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              schema_version: {type: string}
+              error: {type: string, pattern: '^ORCHESTRATOR_[A-Z0-9_]+$'}
+  requestBodies:
+    ActionScope:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ActionScope'}
+    CommandScope:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CommandScope'}
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Digest:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    OwnerScope:
+      type: object
+      required: [tenant_id, owner]
+      properties:
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        owner: {type: string, minLength: 1, maxLength: 512}
+    ActionScope:
+      allOf:
+        - {$ref: '#/components/schemas/OwnerScope'}
+        - type: object
+          required: [action_id]
+          properties:
+            action_id: {$ref: '#/components/schemas/Uuid'}
+    TaskScope:
+      allOf:
+        - {$ref: '#/components/schemas/OwnerScope'}
+        - type: object
+          required: [task_id]
+          properties:
+            task_id: {$ref: '#/components/schemas/Uuid'}
+    CommandScope:
+      allOf:
+        - {$ref: '#/components/schemas/ActionScope'}
+        - type: object
+          properties:
+            command_id: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
+    IdentityContext:
+      type: object
+      additionalProperties: false
+      required: [subject, tenant_id, owner_subject, agent_instance_id, trust_level]
+      properties:
+        subject: {type: string, minLength: 1, maxLength: 512}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        owner_subject: {type: string, minLength: 1, maxLength: 512}
+        agent_instance_id: {$ref: '#/components/schemas/Uuid'}
+        trust_level: {type: string, minLength: 1, maxLength: 128}
+    TenantContext:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, quota_profile]
+      properties:
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        quota_profile: {type: string, minLength: 1, maxLength: 128}
+    TraceContext:
+      type: object
+      additionalProperties: false
+      required: [trace_id, parent_span_id, invalid_input_replaced]
+      properties:
+        trace_id: {type: string, pattern: '^[0-9A-Fa-f]{32}$'}
+        parent_span_id:
+          anyOf:
+            - {type: string, pattern: '^[0-9A-Fa-f]{16}$'}
+            - {type: 'null'}
+        invalid_input_replaced: {type: boolean}
+    IngressEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request_id, trace_context, identity_context, tenant_context, protocol,
+                 content_type, schema_version, idempotency_key, received_at, payload, payload_hash]
+      properties:
+        request_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$'}
+        trace_context: {$ref: '#/components/schemas/TraceContext'}
+        identity_context: {$ref: '#/components/schemas/IdentityContext'}
+        tenant_context: {$ref: '#/components/schemas/TenantContext'}
+        protocol: {const: HTTP}
+        content_type: {type: string, pattern: '^application/json(?:;.*)?$'}
+        schema_version: {const: agenttrust.gateway.v1}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$'}
+        received_at: {type: string, format: date-time}
+        payload:
+          type: array
+          maxItems: 1048576
+          items: {type: integer, minimum: 0, maximum: 255}
+        payload_hash: {$ref: '#/components/schemas/Digest'}
+    IngressReceipt:
+      type: object
+      additionalProperties: false
+      required: [action_id, task_id, accepted, start_requested]
+      properties:
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        accepted: {const: true}
+        start_requested: {const: true}
+    CommandReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, accepted, command_id, evidence_ref, evidence_digest,
+                 execution_pending]
+      properties:
+        schema_version: {const: agenttrust.command-receipt.v1}
+        accepted: {const: true}
+        command_id: {type: string, minLength: 1, maxLength: 256}
+        evidence_ref:
+          type: string
+          minLength: 1
+          maxLength: 2048
+          pattern: '^orchestrator-event://[0-9a-f-]+/[0-9a-f-]+/[1-9][0-9]*$'
+        evidence_digest: {$ref: '#/components/schemas/Digest'}
+        execution_pending:
+          const: true
+          description: Durable command acceptance is separate from process execution success.
+    TaskSummary:
+      type: object
+      required: [action_id, task_id, status, recovery_cursor, terminal]
+      properties:
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        status: {$ref: '#/components/schemas/TaskStatus'}
+        recovery_cursor: {type: integer, minimum: 0}
+        terminal: {type: boolean}
+    TaskView:
+      allOf:
+        - {$ref: '#/components/schemas/TaskSummary'}
+        - type: object
+          required: [tenant_id, owner_subject, evidence_refs]
+          properties:
+            tenant_id: {$ref: '#/components/schemas/Uuid'}
+            owner_subject: {type: string}
+            evidence_refs:
+              type: array
+              uniqueItems: true
+              items: {type: string, minLength: 1, maxLength: 2048}
+    AuthoritativeTaskTransitions:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, status, recovery_cursor, terminal,
+                 evidence_digest, occurred_at, transitions]
+      properties:
+        schema_version: {const: agenttrust.authoritative-task-transitions.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        status: {$ref: '#/components/schemas/TaskStatus'}
+        recovery_cursor: {type: integer, minimum: 0, maximum: 1000000}
+        terminal: {type: boolean}
+        evidence_digest:
+          anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]
+        occurred_at:
+          anyOf: [{type: string, format: date-time}, {type: 'null'}]
+        transitions:
+          type: array
+          maxItems: 1000
+          items: {$ref: '#/components/schemas/TransitionEvent'}
+    TransitionEvent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, command_id, from, to, recovery_cursor,
+                 evidence_digest, occurred_at]
+      properties:
+        schema_version: {const: agenttrust.orchestrator-state.v1}
+        event_id: {type: string, minLength: 1, maxLength: 256}
+        command_id: {type: string, minLength: 1, maxLength: 256}
+        from: {$ref: '#/components/schemas/TaskStatus'}
+        to: {$ref: '#/components/schemas/TaskStatus'}
+        recovery_cursor: {type: integer, minimum: 1, maximum: 1000000}
+        evidence_digest: {$ref: '#/components/schemas/Digest'}
+        occurred_at: {type: string, format: date-time}
+    TaskStatus:
+      type: string
+      enum: [CREATED, PLANNED, POLICY_CHECKED, APPROVAL_PENDING, APPROVED, RUNNING,
+             PAUSE_REQUESTED, PAUSED, CANCEL_REQUESTED, CANCELLING, KILL_REQUESTED,
+             KILLED, VERIFYING, COMPLETED, DENIED, FAILED, EVALUATION_FAILED,
+             COMPENSATING, ROLLED_BACK, NEEDS_HUMAN, MANUAL_RECOVERY_REQUIRED]
+    WorkflowCommand:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command_id, request_idempotency_key, tenant_id, task_id, command_type,
+                 expected_state_version, payload_digest, requested_by, requested_at]
+      properties:
+        schema_version: {const: agenttrust.orchestrator-command.v1}
+        command_id: {type: string, minLength: 1, maxLength: 256}
+        request_idempotency_key: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        command_type:
+          enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT, VERIFY, COMPLETE, NEEDS_HUMAN]
+        expected_state_version: {type: integer, minimum: 0}
+        payload_digest: {$ref: '#/components/schemas/Digest'}
+        requested_by: {type: string, minLength: 1, maxLength: 512}
+        requested_at: {type: string, format: date-time}
+    PublicTaskCommand:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command_id, command_type, expected_state_version, payload_digest]
+      properties:
+        schema_version: {const: agenttrust.orchestrator-command.v1}
+        command_id: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
+        command_type: {enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT, VERIFY, COMPLETE]}
+        expected_state_version: {type: integer, minimum: 0}
+        payload_digest: {$ref: '#/components/schemas/Digest'}
+    AguiEvent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, tenant_id, task_id, sequence, trace_id, kind, safe_payload, occurred_at, backend_signature]
+      properties:
+        schema_version: {const: agenttrust.a2a-agui.v1}
+        event_id: {type: string, minLength: 1, maxLength: 200}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        sequence: {type: integer, minimum: 1}
+        trace_id: {type: string, minLength: 1, maxLength: 256}
+        kind: {const: EXECUTION_STATUS}
+        safe_payload: {type: object, additionalProperties: true, maxProperties: 16}
+        occurred_at: {type: string, format: date-time}
+        backend_signature: {type: string, minLength: 16, maxLength: 4096}
+    AguiResumeResponse:
+      type: object
+      additionalProperties: false
+      required: [events, next_resume_token, safe_snapshot_required]
+      properties:
+        events: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/AguiEvent'}}
+        next_resume_token: {type: string, pattern: '^[0-9]+$'}
+        safe_snapshot_required: {type: boolean}
+    WorkflowState:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, action_id, status, recovery_cursor,
+                 terminal, evidence_refs, ingress_digest, action_materialization, has_side_effects,
+                 processed_commands, processed_command_fingerprints,
+                 processed_idempotency_keys, events]
+      properties:
+        schema_version: {const: agenttrust.orchestrator-state.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        status: {$ref: '#/components/schemas/TaskStatus'}
+        recovery_cursor: {type: integer, minimum: 0}
+        terminal: {type: boolean}
+        evidence_refs: {type: array, uniqueItems: true, items: {type: string}}
+        ingress_digest: {$ref: '#/components/schemas/Digest'}
+        action_materialization: {$ref: '#/components/schemas/ActionMaterializationRef'}
+        has_side_effects: {type: boolean}
+        execution:
+          anyOf:
+            - {$ref: '#/components/schemas/ExecutionRecord'}
+            - {type: 'null'}
+        processed_commands: {type: array, uniqueItems: true, maxItems: 10257, items: {type: string}}
+        processed_command_fingerprints:
+          type: object
+          maxProperties: 10257
+          additionalProperties: {$ref: '#/components/schemas/Digest'}
+        processed_idempotency_keys:
+          type: object
+          maxProperties: 10257
+          additionalProperties: {$ref: '#/components/schemas/Digest'}
+        events: {type: array, maxItems: 1024, items: {type: object}}
+    TransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, current, command]
+      properties:
+        schema_version: {const: agenttrust.transition-request.v1}
+        current: {$ref: '#/components/schemas/WorkflowState'}
+        command: {$ref: '#/components/schemas/WorkflowCommand'}
+    AuthoritativeFactQuery:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, action_id, command_id, command_type,
+                 recovery_cursor, ingress_digest, payload_digest, requested_by]
+      properties:
+        schema_version: {const: agenttrust.authoritative-fact-query.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        command_id: {type: string, minLength: 1, maxLength: 256}
+        command_type: {enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT, VERIFY, COMPLETE, NEEDS_HUMAN]}
+        recovery_cursor: {type: integer, minimum: 0}
+        ingress_digest: {$ref: '#/components/schemas/Digest'}
+        payload_digest: {$ref: '#/components/schemas/Digest'}
+        requested_by: {type: string, minLength: 1, maxLength: 512}
+    ActionMaterializationRef:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, action_id, payload_hash, store, uri]
+      properties:
+        schema_version: {const: agenttrust.action-materialization-ref.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        payload_hash: {$ref: '#/components/schemas/Digest'}
+        store: {const: ORCHESTRATOR_INGRESS_POSTGRESQL}
+        uri: {type: string, pattern: '^orchestrator-ingress://[0-9a-f-]+/[0-9a-f-]+$'}
+    ExecutionRecord:
+      type: object
+      additionalProperties: false
+      required: [ledger_execution_id, fence_digest, outcome_digest, status, evidence_refs]
+      properties:
+        ledger_execution_id: {type: string, minLength: 1, maxLength: 256}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        outcome_digest: {$ref: '#/components/schemas/Digest'}
+        status: {enum: [PREPARED, RUNNING, SUCCEEDED, FAILED, TIMED_OUT, CANCELLED, KILLED,
+                        COMPENSATING, COMPENSATED, COMPENSATION_FAILED, UNKNOWN]}
+        evidence_refs: {type: array, minItems: 1, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 2048}}
+    AuthoritativeFact:
+      type: object
+      additionalProperties: false
+      required: [schema_version, fact_kind, tenant_id, task_id, action_id, command_id,
+                 recovery_cursor, payload_digest, decision, immutable_digest, evidence_refs, valid_until]
+      properties:
+        schema_version: {const: agenttrust.authoritative-fact.v1}
+        fact_kind: {enum: [POLICY_CHECKPOINT, APPROVAL, CREDENTIAL_LEASE, EXECUTION_LEDGER,
+                           EVALUATOR, EVIDENCE, RUNTIME_SUPERVISOR]}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        command_id: {type: string, minLength: 1, maxLength: 256}
+        recovery_cursor: {type: integer, minimum: 0}
+        payload_digest: {$ref: '#/components/schemas/Digest'}
+        decision: {enum: [VERIFIED, GRANTED, ACTIVE, REVOKED, PASS, CONTAINED]}
+        immutable_digest: {$ref: '#/components/schemas/Digest'}
+        evidence_refs: {type: array, minItems: 1, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 2048}}
+        valid_until: {type: string, format: date-time}
+        attributes: {type: object, additionalProperties: {type: string}, maxProperties: 64}

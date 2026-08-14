@@ -1,10 +1,32 @@
 server:
   shutdown: graceful
   forward-headers-strategy: framework
+  max-http-request-header-size: 32KB
+  tomcat:
+    max-http-form-post-size: 1MB
+    max-swallow-size: 1MB
+  servlet.session:
+    # The browser console and API are separate HTTPS origins and the OIDC callback is
+    # cross-site. Exact CORS plus the header-bound CSRF token protects writes.
+    cookie: {secure: true, http-only: true, same-site: none}
+    timeout: 30m
 spring:
+  config.import: optional:configtree:/var/run/agenttrust/secrets/enterprise/
   lifecycle.timeout-per-shutdown-phase: 30s
+  session:
+    # Spring Session is an application-global opaque session store, deliberately not a tenant
+    # business table. It is never shared with another application; tenant authorization is
+    # reconstructed from the authenticated principal on every request.
+    store-type: jdbc
+    jdbc:
+      initialize-schema: never
+      cleanup-cron: "0 * * * * *"
   jackson:
     property-naming-strategy: SNAKE_CASE
+    parser:
+      strict-duplicate-detection: true
+    deserialization:
+      fail-on-unknown-properties: true
   datasource:
     url: ${AGENT_TRUST_DATABASE_URL}
     username: ${AGENT_TRUST_DATABASE_USER}
@@ -13,16 +35,28 @@ spring:
       maximum-pool-size: 20
       minimum-idle: 2
       connection-timeout: 3000
-  security.oauth2.resourceserver.jwt:
-    issuer-uri: ${AGENT_TRUST_IAM_ISSUER}
 management:
+  server:
+    address: 0.0.0.0
+    port: 9090
   endpoints.web.exposure.include: health,metrics,prometheus
-  endpoint.health.probes.enabled: true
+  endpoint.health:
+    probes.enabled: true
+    show-details: never
+    group:
+      liveness.include: livenessState
+      readiness.include: readinessState,db,pep,jwks,authorities
 agenttrust.control:
   console-origins: ${AGENT_TRUST_CONSOLE_ORIGINS}
-  service-token: ${AGENT_TRUST_SERVICE_TOKEN}
+  service-token-file: ${AGENT_TRUST_SERVICE_TOKEN_FILE}
   api-key-pepper: ${AGENT_TRUST_API_KEY_PEPPER}
+  iam-issuer: ${AGENT_TRUST_IAM_ISSUER}
+  iam-audience: ${AGENT_TRUST_IAM_AUDIENCE}
+  iam-authorization-endpoint: ${AGENT_TRUST_IAM_AUTHORIZATION_ENDPOINT}
+  iam-token-endpoint: ${AGENT_TRUST_IAM_TOKEN_ENDPOINT}
+  iam-user-info-endpoint: ${AGENT_TRUST_IAM_USERINFO_ENDPOINT}
   pep-endpoint: ${AGENT_TRUST_PEP_ENDPOINT}
+  jwks-endpoint: ${AGENT_TRUST_IAM_JWKS_ENDPOINT}
   authority-endpoints:
     agents: ${AGENT_TRUST_AGENT_REGISTRY_ENDPOINT}
     tasks: ${AGENT_TRUST_ORCHESTRATOR_ENDPOINT}
@@ -30,6 +64,24 @@ agenttrust.control:
     evidence: ${AGENT_TRUST_EVIDENCE_ENDPOINT}
     incidents: ${AGENT_TRUST_INCIDENT_ENDPOINT}
     policies: ${AGENT_TRUST_POLICY_ADMIN_ENDPOINT}
+    tools: ${AGENT_TRUST_TOOL_REGISTRY_ENDPOINT}
+    credentials: ${AGENT_TRUST_CREDENTIAL_SESSION_ENDPOINT}
+    packs: ${AGENT_TRUST_PACK_MARKETPLACE_ENDPOINT}
+    trace: ${AGENT_TRUST_TRACE_ENDPOINT}
+    compliance: ${AGENT_TRUST_COMPLIANCE_ENDPOINT}
+    audit: ${AGENT_TRUST_AUDIT_ENDPOINT}
+    sre: ${AGENT_TRUST_SRE_ENDPOINT}
+    deployments: ${AGENT_TRUST_DEPLOYMENT_ENDPOINT}
   maximum-page-size: 100
   authority-timeout-millis: 3000
+  maximum-authority-response-bytes: 8388608
+  agui-signing-key-file: ${AGENT_TRUST_AGUI_SIGNING_KEY_FILE}
+  agui-resume-hmac-key-file: ${AGENT_TRUST_AGUI_RESUME_HMAC_KEY_FILE}
+  agui-resume-ttl-seconds: 300
+  outbound-key-store: ${AGENT_TRUST_OUTBOUND_KEY_STORE}
+  outbound-key-store-password-file: ${AGENT_TRUST_OUTBOUND_KEY_STORE_PASSWORD_FILE}
+  outbound-trust-store: ${AGENT_TRUST_OUTBOUND_TRUST_STORE}
+  outbound-trust-store-password-file: ${AGENT_TRUST_OUTBOUND_TRUST_STORE_PASSWORD_FILE}
+  outbound-mtls-required: true
+  expected-database-role: ${AGENT_TRUST_DATABASE_EXPECTED_ROLE}
   database-tls-required: true

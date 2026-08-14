@@ -1,0 +1,26 @@
+ARG NODE_BUILDER_IMAGE
+ARG CONSOLE_BASE_IMAGE
+FROM ${NODE_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY web/control-console/package.json web/control-console/package-lock.json ./control-console/
+WORKDIR /src/control-console
+RUN npm ci --ignore-scripts
+COPY web/control-console/ /src/control-console/
+COPY web/approval-console/ /src/approval-console/
+COPY web/shared/ /src/shared/
+COPY deploy/console/nginx.conf /src/nginx.conf.template
+ARG VITE_CONTROL_API_URL
+ARG VITE_AGUI_VERIFY_KEY
+ENV VITE_CONTROL_API_URL=${VITE_CONTROL_API_URL}
+ENV VITE_AGUI_VERIFY_KEY=${VITE_AGUI_VERIFY_KEY}
+RUN node -e 'const raw=process.env.VITE_CONTROL_API_URL||""; const u=new URL(raw); const key=process.env.VITE_AGUI_VERIFY_KEY||""; const decoded=Buffer.from(key,"base64url"); if(raw!==raw.trim()||/["\x27|\\\s]/.test(raw)||u.protocol!=="https:"||u.username||u.password||u.search||u.hash)process.exit(78); if(!/^[A-Za-z0-9_-]{43}$/.test(key)||decoded.length!==32||decoded.toString("base64url")!==key)process.exit(78)' \
+    && npm run build -- --mode production \
+    && CONTROL_API_ORIGIN="$(node -p 'new URL(process.env.VITE_CONTROL_API_URL).origin')" \
+    && sed "s|@@CONTROL_API_ORIGIN@@|${CONTROL_API_ORIGIN}|g" /src/nginx.conf.template > /src/control-console/nginx.conf \
+    && ! grep -q '@@' /src/control-console/nginx.conf
+
+FROM ${CONSOLE_BASE_IMAGE}
+COPY --from=build /src/control-console/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/control-console/dist /usr/share/nginx/html
+USER 101:101
+EXPOSE 8080

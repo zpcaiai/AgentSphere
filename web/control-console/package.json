@@ -1,9 +1,34 @@
 {
   "name": "@agenttrust/control-console",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
-  "scripts": {"build":"vue-tsc --noEmit && vite build","typecheck":"vue-tsc --noEmit"},
-  "dependencies": {"vue":"3.5.17"},
-  "devDependencies": {"@vitejs/plugin-vue":"6.0.0","typescript":"5.8.3","vite":"7.0.0","vue-tsc":"2.2.10"}
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "generate:api": "openapi-typescript ../../schemas/openapi/control-plane-v1.yaml -o src/generated/control-plane-v1.d.ts",
+    "check:api": "npm run generate:api && git diff --exit-code -- src/generated/control-plane-v1.d.ts",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "check": "npm run typecheck && npm run test && npm run build",
+    "audit:prod": "npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org"
+  },
+  "dependencies": {
+    "vue": "3.5.17",
+    "vue-router": "4.5.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.54.1",
+    "@vitejs/plugin-vue": "6.0.0",
+    "@vue/test-utils": "2.4.6",
+    "jsdom": "26.1.0",
+    "openapi-typescript": "^7.9.1",
+    "typescript": "5.8.3",
+    "vite": "7.0.0",
+    "vitest": "3.2.4",
+    "vue-tsc": "2.2.10"
+  }
 }

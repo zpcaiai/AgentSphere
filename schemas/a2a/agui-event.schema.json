@@ -2,12 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentsphere.local/schemas/agui-event.schema.json",
   "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "event_id", "task_id", "sequence", "trace_id", "kind", "safe_payload", "backend_signature"],
+  "required": ["schema_version", "event_id", "tenant_id", "task_id", "sequence", "trace_id", "kind", "safe_payload", "occurred_at", "backend_signature"],
   "properties": {
     "schema_version": {"const": "agenttrust.a2a-agui.v1"}, "event_id": {"type": "string", "minLength": 1},
+    "tenant_id": {"type": "string", "format": "uuid"},
     "task_id": {"type": "string", "minLength": 1}, "sequence": {"type": "integer", "minimum": 1},
-    "trace_id": {"type": "string", "minLength": 1},
+    "trace_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "kind": {"enum": ["PLAN_UPDATED", "TOOL_REQUESTED", "APPROVAL_REQUIRED", "APPROVAL_RECORDED", "EXECUTION_STATUS", "ARTIFACT_AVAILABLE", "EVALUATION_UPDATED", "INCIDENT"]},
-    "safe_payload": {"type": "object"}, "backend_signature": {"type": "string", "minLength": 1}
+    "safe_payload": {"type": "object"}, "occurred_at": {"type": "string", "format": "date-time"},
+    "backend_signature": {"type": "string", "minLength": 1}
   }
 }

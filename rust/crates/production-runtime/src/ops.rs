@@ -444,7 +444,7 @@ impl EvidenceSourcePort for FilesystemEvidenceSource {
             .iter()
             .map(|item| item.batch)
             .collect::<BTreeSet<_>>();
-        if unique.len() != values.len() || values.iter().any(|item| !(1..=35).contains(&item.batch))
+        if unique.len() != values.len() || values.iter().any(|item| !(1..=36).contains(&item.batch))
         {
             return Err(ClosureError::ConfigurationInvalid);
         }

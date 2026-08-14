@@ -1,0 +1,1261 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenttrust-release-metadata
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+data:
+  release-id: "@@RELEASE_ID@@"
+  release-digest: "@@RELEASE_DIGEST@@"
+  evidence-bundle-digest: "@@EVIDENCE_BUNDLE_DIGEST@@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenttrust-production-runtime
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+data:
+  production-runtime.json: |
+@@RUNTIME_CONFIG@@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenttrust-orchestrator
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+data:
+  worker.production.json: |
+    {"schema_version":"agenttrust.orchestrator-config.v1","profile":"production","fail_closed":true,"state_store":"POSTGRESQL","workflow_engine":"TEMPORAL","maximum_inflight_workflows":1000,"maximum_steps_per_task":10000,"command_idempotency_required":true,"kill_requires_supervisor_ack":true,"completion_requires_ledger_evaluator_evidence":true,"dev_in_memory_store":false}
+  temporal-address: "@@TEMPORAL_ADDRESS@@"
+  temporal-namespace: "@@TEMPORAL_NAMESPACE@@"
+  temporal-task-queue: "@@TEMPORAL_TASK_QUEUE@@"
+  temporal-server-name: "@@TEMPORAL_SERVER_NAME@@"
+  execution-endpoint: "@@EXECUTION_ENDPOINT@@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenttrust-transition
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+data:
+  policy-fact-endpoint: "@@POLICY_FACT_ENDPOINT@@"
+  approval-fact-endpoint: "@@APPROVAL_FACT_ENDPOINT@@"
+  credential-fact-endpoint: "@@CREDENTIAL_FACT_ENDPOINT@@"
+  ledger-fact-endpoint: "@@LEDGER_FACT_ENDPOINT@@"
+  evaluator-fact-endpoint: "@@EVALUATOR_FACT_ENDPOINT@@"
+  evidence-fact-endpoint: "@@EVIDENCE_FACT_ENDPOINT@@"
+  supervisor-fact-endpoint: "@@SUPERVISOR_FACT_ENDPOINT@@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+data:
+  iam-issuer: "@@IAM_ISSUER@@"
+  iam-jwks-endpoint: "@@IAM_JWKS_ENDPOINT@@"
+  iam-audience: "@@IAM_AUDIENCE@@"
+  iam-authorization-endpoint: "@@IAM_AUTHORIZATION_ENDPOINT@@"
+  iam-token-endpoint: "@@IAM_TOKEN_ENDPOINT@@"
+  iam-userinfo-endpoint: "@@IAM_USERINFO_ENDPOINT@@"
+  console-origins: "https://@@CONSOLE_HOST@@"
+  pep-endpoint: "@@PEP_ENDPOINT@@"
+  agent-registry-endpoint: "@@AGENT_REGISTRY_ENDPOINT@@"
+  orchestrator-endpoint: "https://agenttrust-orchestrator"
+  approval-endpoint: "@@APPROVAL_AUTHORITY_ENDPOINT@@"
+  evidence-endpoint: "@@EVIDENCE_AUTHORITY_ENDPOINT@@"
+  incident-endpoint: "@@INCIDENT_AUTHORITY_ENDPOINT@@"
+  policy-admin-endpoint: "@@POLICY_ADMIN_ENDPOINT@@"
+  tool-registry-endpoint: "@@TOOL_REGISTRY_ENDPOINT@@"
+  credential-session-endpoint: "@@CREDENTIAL_SESSION_ENDPOINT@@"
+  pack-marketplace-endpoint: "@@PACK_MARKETPLACE_ENDPOINT@@"
+  trace-endpoint: "@@TRACE_ENDPOINT@@"
+  compliance-endpoint: "@@COMPLIANCE_ENDPOINT@@"
+  audit-endpoint: "@@AUDIT_ENDPOINT@@"
+  sre-endpoint: "@@SRE_ENDPOINT@@"
+  deployment-endpoint: "@@DEPLOYMENT_ENDPOINT@@"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agenttrust-envoy-runtime
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+data:
+  envoy.yaml: |
+    static_resources:
+      listeners:
+        - name: ingress
+          address: {socket_address: {address: 0.0.0.0, port_value: 8443}}
+          filter_chains:
+            - transport_socket:
+                name: envoy.transport_sockets.tls
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+                  require_client_certificate: true
+                  common_tls_context:
+                    tls_certificates:
+                      - certificate_chain: {filename: /etc/agenttrust/secrets/runtime/server-cert.pem}
+                        private_key: {filename: /etc/agenttrust/secrets/runtime/server-key.pem}
+                    validation_context: {trusted_ca: {filename: /etc/agenttrust/secrets/runtime/enterprise-ca.pem}}
+              filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                    stat_prefix: runtime_ingress
+                    request_headers_to_remove: [x-agenttrust-peer-certificate-sha256]
+                    request_headers_to_add:
+                      - header: {key: x-agenttrust-peer-certificate-sha256, value: "%DOWNSTREAM_PEER_FINGERPRINT_256%"}
+                        append_action: OVERWRITE_IF_EXISTS_OR_ADD
+                    route_config:
+                      name: runtime
+                      virtual_hosts:
+                        - name: runtime
+                          domains: ["*"]
+                          routes: [{match: {prefix: "/"}, route: {cluster: runtime, timeout: 30s}}]
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config: {"@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router}
+      clusters:
+        - name: runtime
+          type: STATIC
+          connect_timeout: 2s
+          load_assignment:
+            cluster_name: runtime
+            endpoints: [{lb_endpoints: [{endpoint: {address: {socket_address: {address: 127.0.0.1, port_value: 8080}}}}]}]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agenttrust-release-evidence
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+  annotations:
+    agenttrust.io/release-id: "@@RELEASE_ID@@"
+    agenttrust.io/evidence-bundle-digest: "@@EVIDENCE_BUNDLE_DIGEST@@"
+spec:
+  accessModes: [ReadOnlyMany]
+  storageClassName: ""
+  volumeName: "@@EVIDENCE_PV_NAME@@"
+  resources:
+    requests: {storage: "@@EVIDENCE_STORAGE_SIZE@@"}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-production-runtime
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_RUNTIME_ROLE@@"
+    objects: |
+      - {objectName: "server-cert.pem", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "server_certificate", filePermission: 0o440}
+      - {objectName: "server-key.pem", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "server_private_key", filePermission: 0o440}
+      - {objectName: "enterprise-ca.pem", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "enterprise_ca", filePermission: 0o440}
+      - {objectName: "industrial-ca.pem", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "industrial_ca", filePermission: 0o440}
+      - {objectName: "workload-identity.pem", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "workload_identity", filePermission: 0o440}
+      - {objectName: "industrial-identity.pem", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "industrial_identity", filePermission: 0o440}
+      - {objectName: "orchestrator.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "orchestrator_token", filePermission: 0o440}
+      - {objectName: "secret-broker.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "secret_broker_token", filePermission: 0o440}
+      - {objectName: "backup.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "backup_token", filePermission: 0o440}
+      - {objectName: "policy.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "policy_token", filePermission: 0o440}
+      - {objectName: "containment.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "containment_token", filePermission: 0o440}
+      - {objectName: "recertification.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "recertification_token", filePermission: 0o440}
+      - {objectName: "integration.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "integration_token", filePermission: 0o440}
+      - {objectName: "authority.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "authority_token", filePermission: 0o440}
+      - {objectName: "notification.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "notification_token", filePermission: 0o440}
+      - {objectName: "industrial.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "industrial_token", filePermission: 0o440}
+      - {objectName: "runtime-control.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "runtime_control_token", filePermission: 0o440}
+      - {objectName: "lifecycle.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "lifecycle_token", filePermission: 0o440}
+      - {objectName: "model-primary.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "model_primary_token", filePermission: 0o440}
+      - {objectName: "mcp-primary.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "mcp_primary_token", filePermission: 0o440}
+      - {objectName: "a2a-primary.token", secretPath: "@@VAULT_RUNTIME_PATH@@", secretKey: "a2a_primary_token", filePermission: 0o440}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-orchestrator
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_ORCHESTRATOR_ROLE@@"
+    objects: |
+      - {objectName: "database-url", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "database_url", filePermission: 0o440}
+      - {objectName: "database-ca.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "database_ca", filePermission: 0o440}
+      - {objectName: "server-cert.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "server_certificate", filePermission: 0o440}
+      - {objectName: "server-key.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "server_private_key", filePermission: 0o440}
+      - {objectName: "enterprise-ca.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "enterprise_ca", filePermission: 0o440}
+      - {objectName: "temporal-ca.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "temporal_ca", filePermission: 0o440}
+      - {objectName: "temporal-cert.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "temporal_certificate", filePermission: 0o440}
+      - {objectName: "temporal-key.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "temporal_private_key", filePermission: 0o440}
+      - {objectName: "transition-ca.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "transition_ca", filePermission: 0o440}
+      - {objectName: "transition-cert.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "transition_certificate", filePermission: 0o440}
+      - {objectName: "transition-key.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "transition_private_key", filePermission: 0o440}
+      - {objectName: "transition.token", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "transition_token", filePermission: 0o440}
+      - {objectName: "orchestrator-service.token", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "orchestrator_service_token", filePermission: 0o440}
+      - {objectName: "agui-signing-key.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "agui_signing_key", filePermission: 0o440}
+      - {objectName: "execution-ca.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "execution_ca", filePermission: 0o440}
+      - {objectName: "execution-cert.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "execution_certificate", filePermission: 0o440}
+      - {objectName: "execution-key.pem", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "execution_private_key", filePermission: 0o440}
+      - {objectName: "execution.token", secretPath: "@@VAULT_ORCHESTRATOR_PATH@@", secretKey: "execution_token", filePermission: 0o440}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-transition
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_TRANSITION_ROLE@@"
+    objects: |
+      - {objectName: "server-cert.pem", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "server_certificate", filePermission: 0o440}
+      - {objectName: "server-key.pem", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "server_private_key", filePermission: 0o440}
+      - {objectName: "enterprise-ca.pem", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "enterprise_ca", filePermission: 0o440}
+      - {objectName: "fact-ca.pem", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "fact_ca", filePermission: 0o440}
+      - {objectName: "fact-cert.pem", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "fact_certificate", filePermission: 0o440}
+      - {objectName: "fact-key.pem", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "fact_private_key", filePermission: 0o440}
+      - {objectName: "policy.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "policy_token", filePermission: 0o440}
+      - {objectName: "approval.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "approval_token", filePermission: 0o440}
+      - {objectName: "credential.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "credential_token", filePermission: 0o440}
+      - {objectName: "ledger.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "ledger_token", filePermission: 0o440}
+      - {objectName: "evaluator.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "evaluator_token", filePermission: 0o440}
+      - {objectName: "evidence.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "evidence_token", filePermission: 0o440}
+      - {objectName: "supervisor.token", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "supervisor_token", filePermission: 0o440}
+      - {objectName: "transition-token-bindings.json", secretPath: "@@VAULT_TRANSITION_PATH@@", secretKey: "transition_token_bindings", filePermission: 0o440}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-execution
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_EXECUTION_ROLE@@"
+    objects: |
+      - {objectName: "database-url", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "database_url", filePermission: 0o440}
+      - {objectName: "database-ca.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "database_ca", filePermission: 0o440}
+      - {objectName: "server-cert.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "server_certificate", filePermission: 0o440}
+      - {objectName: "server-key.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "server_private_key", filePermission: 0o440}
+      - {objectName: "caller-ca.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "caller_ca", filePermission: 0o440}
+      - {objectName: "client-ca.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "client_ca", filePermission: 0o440}
+      - {objectName: "client-cert.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "client_certificate", filePermission: 0o440}
+      - {objectName: "client-key.pem", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "client_private_key", filePermission: 0o440}
+      - {objectName: "execution-token-bindings.json", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "execution_token_bindings", filePermission: 0o440}
+      - {objectName: "approval.token", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "approval_token", filePermission: 0o440}
+      - {objectName: "approval-verification-keys.json", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "approval_verification_keys", filePermission: 0o440}
+      - {objectName: "pep.token", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "pep_token", filePermission: 0o440}
+      - {objectName: "tool.token", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "tool_token", filePermission: 0o440}
+      - {objectName: "evidence.token", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "evidence_token", filePermission: 0o440}
+      - {objectName: "pep-verification-keys.json", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "pep_verification_keys", filePermission: 0o440}
+      - {objectName: "evidence-verification-keys.json", secretPath: "@@VAULT_EXECUTION_PATH@@", secretKey: "evidence_verification_keys", filePermission: 0o440}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_ENTERPRISE_ROLE@@"
+    objects: |
+      - {objectName: "AGENT_TRUST_DATABASE_URL", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "database_jdbc_url", filePermission: 0o440}
+      - {objectName: "AGENT_TRUST_DATABASE_USER", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "database_username", filePermission: 0o440}
+      - {objectName: "AGENT_TRUST_DATABASE_PASSWORD", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "database_password", filePermission: 0o440}
+      - {objectName: "database-ca.pem", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "database_ca", filePermission: 0o440}
+      - {objectName: "AGENT_TRUST_API_KEY_PEPPER", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "api_key_pepper", filePermission: 0o440}
+      - {objectName: "service.token", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "service_token", filePermission: 0o440}
+      - {objectName: "AGENT_TRUST_CONSOLE_OIDC_CLIENT_ID", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "console_oidc_client_id", filePermission: 0o440}
+      - {objectName: "AGENT_TRUST_CONSOLE_OIDC_CLIENT_SECRET", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "console_oidc_client_secret", filePermission: 0o440}
+      - {objectName: "agui-signing-key.pem", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "agui_signing_key", filePermission: 0o440}
+      - {objectName: "agui-resume-hmac.key", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "agui_resume_hmac_key", filePermission: 0o440}
+      - {objectName: "outbound-keystore.p12", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "outbound_keystore", encoding: "base64", filePermission: 0o440}
+      - {objectName: "outbound-keystore-password", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "outbound_keystore_password", filePermission: 0o440}
+      - {objectName: "outbound-truststore.p12", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "outbound_truststore", encoding: "base64", filePermission: 0o440}
+      - {objectName: "outbound-truststore-password", secretPath: "@@VAULT_ENTERPRISE_PATH@@", secretKey: "outbound_truststore_password", filePermission: 0o440}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-migrations
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_MIGRATION_ROLE@@"
+    objects: |
+      - {objectName: "database-url", secretPath: "@@VAULT_MIGRATION_PATH@@", secretKey: "database_url", filePermission: 0o440}
+      - {objectName: "database-ca.pem", secretPath: "@@VAULT_MIGRATION_PATH@@", secretKey: "database_ca", filePermission: 0o440}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-production-runtime
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/name: agenttrust-enterprise-control, app.kubernetes.io/component: enterprise-api, app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@"}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-enterprise-control}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agenttrust-enterprise-control, app.kubernetes.io/component: enterprise-api, app.kubernetes.io/part-of: agenttrust-control-plane}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"}
+    spec:
+      serviceAccountName: agenttrust-enterprise-control
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - {maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-enterprise-control}}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-enterprise-control}}}
+      containers:
+        - name: api
+          image: "@@ENTERPRISE_IMAGE@@"
+          env:
+            - {name: SPRING_PROFILES_ACTIVE, value: production}
+            - {name: AGENT_TRUST_DATABASE_EXPECTED_ROLE, value: "@@ENTERPRISE_APPLICATION_ROLE@@"}
+            - {name: SPRING_CONFIG_IMPORT, value: "optional:configtree:/var/run/agenttrust/secrets/enterprise/"}
+            - {name: AGENT_TRUST_IAM_ISSUER, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: iam-issuer}}}
+            - {name: AGENT_TRUST_IAM_JWKS_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: iam-jwks-endpoint}}}
+            - {name: AGENT_TRUST_IAM_AUDIENCE, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: iam-audience}}}
+            - {name: AGENT_TRUST_IAM_AUTHORIZATION_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: iam-authorization-endpoint}}}
+            - {name: AGENT_TRUST_IAM_TOKEN_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: iam-token-endpoint}}}
+            - {name: AGENT_TRUST_IAM_USERINFO_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: iam-userinfo-endpoint}}}
+            - {name: AGENT_TRUST_CONSOLE_ORIGINS, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: console-origins}}}
+            - {name: AGENT_TRUST_PEP_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: pep-endpoint}}}
+            - {name: AGENT_TRUST_AGENT_REGISTRY_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: agent-registry-endpoint}}}
+            - {name: AGENT_TRUST_ORCHESTRATOR_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: orchestrator-endpoint}}}
+            - {name: AGENT_TRUST_APPROVAL_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: approval-endpoint}}}
+            - {name: AGENT_TRUST_EVIDENCE_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: evidence-endpoint}}}
+            - {name: AGENT_TRUST_INCIDENT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: incident-endpoint}}}
+            - {name: AGENT_TRUST_POLICY_ADMIN_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: policy-admin-endpoint}}}
+            - {name: AGENT_TRUST_TOOL_REGISTRY_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: tool-registry-endpoint}}}
+            - {name: AGENT_TRUST_CREDENTIAL_SESSION_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: credential-session-endpoint}}}
+            - {name: AGENT_TRUST_PACK_MARKETPLACE_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: pack-marketplace-endpoint}}}
+            - {name: AGENT_TRUST_TRACE_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: trace-endpoint}}}
+            - {name: AGENT_TRUST_COMPLIANCE_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: compliance-endpoint}}}
+            - {name: AGENT_TRUST_AUDIT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: audit-endpoint}}}
+            - {name: AGENT_TRUST_SRE_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: sre-endpoint}}}
+            - {name: AGENT_TRUST_DEPLOYMENT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-enterprise-control, key: deployment-endpoint}}}
+            - {name: AGENT_TRUST_SERVICE_TOKEN_FILE, value: /var/run/agenttrust/secrets/enterprise/service.token}
+            - {name: AGENT_TRUST_AGUI_SIGNING_KEY_FILE, value: /var/run/agenttrust/secrets/enterprise/agui-signing-key.pem}
+            - {name: AGENT_TRUST_AGUI_RESUME_HMAC_KEY_FILE, value: /var/run/agenttrust/secrets/enterprise/agui-resume-hmac.key}
+            - {name: AGENT_TRUST_OUTBOUND_KEY_STORE, value: /var/run/agenttrust/secrets/enterprise/outbound-keystore.p12}
+            - {name: AGENT_TRUST_OUTBOUND_KEY_STORE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/enterprise/outbound-keystore-password}
+            - {name: AGENT_TRUST_OUTBOUND_TRUST_STORE, value: /var/run/agenttrust/secrets/enterprise/outbound-truststore.p12}
+            - {name: AGENT_TRUST_OUTBOUND_TRUST_STORE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/enterprise/outbound-truststore-password}
+            - {name: AGENT_TRUST_OUTBOUND_MTLS_REQUIRED, value: "true"}
+            - {name: AGENT_TRUST_MAXIMUM_AUTHORITY_RESPONSE_BYTES, value: "1048576"}
+          ports: [{name: http, containerPort: 8080}, {name: management, containerPort: 9090}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 500m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          startupProbe: {httpGet: {path: /actuator/health/readiness, port: management}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 60}
+          readinessProbe: {httpGet: {path: /actuator/health/readiness, port: management}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /actuator/health/liveness, port: management}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts: [{name: secrets, mountPath: /var/run/agenttrust/secrets/enterprise, readOnly: true}, {name: tmp, mountPath: /tmp}]
+      volumes:
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-enterprise-control}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 128Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  selector: {app.kubernetes.io/name: agenttrust-enterprise-control}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-enterprise-control}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-console
+  labels: {app.kubernetes.io/name: agenttrust-console, app.kubernetes.io/component: console, app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations:
+    agenttrust.io/release-id: "@@RELEASE_ID@@"
+    agenttrust.io/control-api-url: "https://@@CONTROL_API_HOST@@"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-console}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agenttrust-console, app.kubernetes.io/component: console, app.kubernetes.io/part-of: agenttrust-control-plane}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"}
+    spec:
+      serviceAccountName: agenttrust-console
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - {maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-console}}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-console}}}
+      containers:
+        - name: console
+          image: "@@CONSOLE_IMAGE@@"
+          ports: [{name: http, containerPort: 8080}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 100m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
+          startupProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 30}
+          readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts:
+            - {name: nginx-cache, mountPath: /var/cache/nginx}
+            - {name: nginx-run, mountPath: /var/run}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: nginx-cache, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+        - {name: nginx-run, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 16Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenttrust-console
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  selector: {app.kubernetes.io/name: agenttrust-console}
+  ports: [{name: http, port: 8080, targetPort: http}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-console
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-console}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: "@@INGRESS_CLASS@@"
+  tls: [{hosts: ["@@CONTROL_API_HOST@@"], secretName: "@@CONTROL_API_TLS_SECRET@@"}]
+  rules:
+    - host: "@@CONTROL_API_HOST@@"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: agenttrust-enterprise-control, port: {number: 8080}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agenttrust-console
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/proxy-body-size: 1m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: "@@INGRESS_CLASS@@"
+  tls: [{hosts: ["@@CONSOLE_HOST@@"], secretName: "@@CONSOLE_TLS_SECRET@@"}]
+  rules:
+    - host: "@@CONSOLE_HOST@@"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: {service: {name: agenttrust-console, port: {number: 8080}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-orchestrator-api
+  labels: {app.kubernetes.io/name: agenttrust-orchestrator-api, app.kubernetes.io/component: orchestrator-api, app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@"}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-orchestrator-api}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agenttrust-orchestrator-api, app.kubernetes.io/component: orchestrator-api, app.kubernetes.io/part-of: agenttrust-control-plane}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"}
+    spec:
+      serviceAccountName: agenttrust-orchestrator
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - {maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-orchestrator-api}}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-orchestrator-api}}}
+      containers:
+        - name: api
+          image: "@@ORCHESTRATOR_IMAGE@@"
+          args: ["--listen", "0.0.0.0", "--port", "8081"]
+          env:
+            - {name: AGENT_TRUST_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/orchestrator/database-url}
+            - {name: AGENT_TRUST_ORCHESTRATOR_DATABASE_EXPECTED_ROLE, value: "@@ORCHESTRATOR_APPLICATION_ROLE@@"}
+            - {name: AGENT_TRUST_TEMPORAL_ADDRESS, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-address}}}
+            - {name: AGENT_TRUST_TEMPORAL_NAMESPACE, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-namespace}}}
+            - {name: AGENT_TRUST_TEMPORAL_TASK_QUEUE, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-task-queue}}}
+            - {name: AGENT_TRUST_TEMPORAL_SERVER_NAME, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-server-name}}}
+            - {name: AGENT_TRUST_TEMPORAL_CA_FILE, value: /var/run/agenttrust/secrets/orchestrator/temporal-ca.pem}
+            - {name: AGENT_TRUST_TEMPORAL_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/orchestrator/temporal-cert.pem}
+            - {name: AGENT_TRUST_TEMPORAL_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/temporal-key.pem}
+            - {name: AGENT_TRUST_ORCHESTRATOR_TLS_CA_FILE, value: /var/run/agenttrust/secrets/orchestrator/enterprise-ca.pem}
+            - {name: AGENT_TRUST_ORCHESTRATOR_TLS_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/orchestrator/server-cert.pem}
+            - {name: AGENT_TRUST_ORCHESTRATOR_TLS_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/server-key.pem}
+            - {name: AGENT_TRUST_ORCHESTRATOR_RUNTIME_CLIENT_IDENTITIES, value: "@@ORCHESTRATOR_RUNTIME_CLIENT_IDENTITIES@@"}
+            - {name: AGENT_TRUST_ORCHESTRATOR_BFF_CLIENT_IDENTITIES, value: "@@ORCHESTRATOR_BFF_CLIENT_IDENTITIES@@"}
+            - {name: AGENT_TRUST_ORCHESTRATOR_SERVICE_TOKEN_FILE, value: /var/run/agenttrust/secrets/orchestrator/orchestrator-service.token}
+            - {name: AGENT_TRUST_AGUI_SIGNING_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/agui-signing-key.pem}
+            - {name: AGENT_TRUST_TRANSITION_ENDPOINT, value: "https://agenttrust-transition/v1/transitions/apply"}
+            - {name: AGENT_TRUST_TRANSITION_CA_FILE, value: /var/run/agenttrust/secrets/orchestrator/transition-ca.pem}
+            - {name: AGENT_TRUST_TRANSITION_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/orchestrator/transition-cert.pem}
+            - {name: AGENT_TRUST_TRANSITION_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/transition-key.pem}
+            - {name: AGENT_TRUST_TRANSITION_TOKEN_FILE, value: /var/run/agenttrust/secrets/orchestrator/transition.token}
+            - {name: AGENT_TRUST_EXECUTION_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: execution-endpoint}}}
+            - {name: AGENT_TRUST_EXECUTION_CA_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution-ca.pem}
+            - {name: AGENT_TRUST_EXECUTION_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution-cert.pem}
+            - {name: AGENT_TRUST_EXECUTION_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution-key.pem}
+            - {name: AGENT_TRUST_EXECUTION_TOKEN_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution.token}
+          ports: [{name: https, containerPort: 8081}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 250m, memory: 256Mi}, limits: {cpu: "2", memory: 1Gi}}
+          startupProbe: {httpGet: {path: /ready, port: https, scheme: HTTPS}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 60}
+          readinessProbe: {httpGet: {path: /ready, port: https, scheme: HTTPS}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {tcpSocket: {port: https}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts: [{name: secrets, mountPath: /var/run/agenttrust/secrets/orchestrator, readOnly: true}, {name: tmp, mountPath: /tmp}]
+      volumes:
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-orchestrator}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenttrust-orchestrator
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  selector: {app.kubernetes.io/name: agenttrust-orchestrator-api}
+  ports: [{name: https, port: 443, targetPort: https}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-orchestrator-api
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-orchestrator-api}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-temporal-worker
+  labels: {app.kubernetes.io/name: agenttrust-temporal-worker, app.kubernetes.io/component: temporal-worker, app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@"}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 1, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-temporal-worker}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agenttrust-temporal-worker, app.kubernetes.io/component: temporal-worker, app.kubernetes.io/part-of: agenttrust-control-plane}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"}
+    spec:
+      serviceAccountName: agenttrust-orchestrator
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 120
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - {maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-temporal-worker}}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-temporal-worker}}}
+      containers:
+        - name: worker
+          image: "@@ORCHESTRATOR_IMAGE@@"
+          command: ["python", "-m", "python.durable_worker.worker"]
+          args:
+            - --config
+            - /etc/agenttrust/orchestrator/worker.production.json
+            - --ca-file
+            - /var/run/agenttrust/secrets/orchestrator/transition-ca.pem
+            - --certificate-file
+            - /var/run/agenttrust/secrets/orchestrator/transition-cert.pem
+            - --private-key-file
+            - /var/run/agenttrust/secrets/orchestrator/transition-key.pem
+            - --management-listen
+            - 0.0.0.0
+            - --management-port
+            - "9092"
+          env:
+            - {name: AGENT_TRUST_TEMPORAL_ADDRESS, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-address}}}
+            - {name: AGENT_TRUST_TEMPORAL_NAMESPACE, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-namespace}}}
+            - {name: AGENT_TRUST_TEMPORAL_TASK_QUEUE, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-task-queue}}}
+            - {name: AGENT_TRUST_TEMPORAL_SERVER_NAME, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: temporal-server-name}}}
+            - {name: AGENT_TRUST_TEMPORAL_CA_FILE, value: /var/run/agenttrust/secrets/orchestrator/temporal-ca.pem}
+            - {name: AGENT_TRUST_TEMPORAL_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/orchestrator/temporal-cert.pem}
+            - {name: AGENT_TRUST_TEMPORAL_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/temporal-key.pem}
+            - {name: AGENT_TRUST_TRANSITION_ENDPOINT, value: "https://agenttrust-transition/v1/transitions/apply"}
+            - {name: AGENT_TRUST_TRANSITION_TOKEN_FILE, value: /var/run/agenttrust/secrets/orchestrator/transition.token}
+            - {name: AGENT_TRUST_EXECUTION_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-orchestrator, key: execution-endpoint}}}
+            - {name: AGENT_TRUST_EXECUTION_CA_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution-ca.pem}
+            - {name: AGENT_TRUST_EXECUTION_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution-cert.pem}
+            - {name: AGENT_TRUST_EXECUTION_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution-key.pem}
+            - {name: AGENT_TRUST_EXECUTION_TOKEN_FILE, value: /var/run/agenttrust/secrets/orchestrator/execution.token}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 250m, memory: 256Mi}, limits: {cpu: "2", memory: 1Gi}}
+          ports: [{name: management, containerPort: 9092}]
+          startupProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 60}
+          readinessProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {tcpSocket: {port: management}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts:
+            - {name: orchestrator-config, mountPath: /etc/agenttrust/orchestrator/worker.production.json, subPath: worker.production.json, readOnly: true}
+            - {name: secrets, mountPath: /var/run/agenttrust/secrets/orchestrator, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: orchestrator-config, configMap: {name: agenttrust-orchestrator}}
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-orchestrator}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-temporal-worker
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-temporal-worker}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-transition
+  labels: {app.kubernetes.io/name: agenttrust-transition, app.kubernetes.io/component: transition, app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@"}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-transition}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agenttrust-transition, app.kubernetes.io/component: transition, app.kubernetes.io/part-of: agenttrust-control-plane}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"}
+    spec:
+      serviceAccountName: agenttrust-transition
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - {maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-transition}}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-transition}}}
+      containers:
+        - name: transition
+          image: "@@TRANSITION_IMAGE@@"
+          args: ["--listen", "0.0.0.0", "--port", "8082", "--management-listen", "0.0.0.0", "--management-port", "9091"]
+          env:
+            - {name: AGENT_TRUST_TRANSITION_TLS_CA_FILE, value: /var/run/agenttrust/secrets/transition/enterprise-ca.pem}
+            - {name: AGENT_TRUST_TRANSITION_TLS_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/transition/server-cert.pem}
+            - {name: AGENT_TRUST_TRANSITION_TLS_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/transition/server-key.pem}
+            - {name: AGENT_TRUST_FACT_CA_FILE, value: /var/run/agenttrust/secrets/transition/fact-ca.pem}
+            - {name: AGENT_TRUST_FACT_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/transition/fact-cert.pem}
+            - {name: AGENT_TRUST_FACT_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/transition/fact-key.pem}
+            - {name: AGENT_TRUST_TRANSITION_CLIENT_IDENTITIES, value: "@@TRANSITION_CLIENT_IDENTITIES@@"}
+            - {name: AGENT_TRUST_TRANSITION_TOKEN_BINDINGS_FILE, value: /var/run/agenttrust/secrets/transition/transition-token-bindings.json}
+            - {name: AGENT_TRUST_POLICY_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: policy-fact-endpoint}}}
+            - {name: AGENT_TRUST_APPROVAL_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: approval-fact-endpoint}}}
+            - {name: AGENT_TRUST_CREDENTIAL_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: credential-fact-endpoint}}}
+            - {name: AGENT_TRUST_LEDGER_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: ledger-fact-endpoint}}}
+            - {name: AGENT_TRUST_EVALUATOR_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: evaluator-fact-endpoint}}}
+            - {name: AGENT_TRUST_EVIDENCE_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: evidence-fact-endpoint}}}
+            - {name: AGENT_TRUST_SUPERVISOR_FACT_ENDPOINT, valueFrom: {configMapKeyRef: {name: agenttrust-transition, key: supervisor-fact-endpoint}}}
+            - {name: AGENT_TRUST_POLICY_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/policy.token}
+            - {name: AGENT_TRUST_APPROVAL_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/approval.token}
+            - {name: AGENT_TRUST_CREDENTIAL_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/credential.token}
+            - {name: AGENT_TRUST_LEDGER_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/ledger.token}
+            - {name: AGENT_TRUST_EVALUATOR_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/evaluator.token}
+            - {name: AGENT_TRUST_EVIDENCE_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/evidence.token}
+            - {name: AGENT_TRUST_SUPERVISOR_FACT_TOKEN_FILE, value: /var/run/agenttrust/secrets/transition/supervisor.token}
+          ports: [{name: https, containerPort: 8082}, {name: management, containerPort: 9091}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 250m, memory: 256Mi}, limits: {cpu: "2", memory: 1Gi}}
+          startupProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 60}
+          readinessProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {tcpSocket: {port: https}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts: [{name: secrets, mountPath: /var/run/agenttrust/secrets/transition, readOnly: true}]
+      volumes:
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-transition}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenttrust-transition
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  selector: {app.kubernetes.io/name: agenttrust-transition}
+  ports: [{name: https, port: 443, targetPort: https}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-transition
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-transition}}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-execution
+  labels: {app.kubernetes.io/name: agenttrust-execution, app.kubernetes.io/component: execution, app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@"}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-execution}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: agenttrust-execution, app.kubernetes.io/component: execution, app.kubernetes.io/part-of: agenttrust-control-plane}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"}
+    spec:
+      serviceAccountName: agenttrust-execution
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 120
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - {maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-execution}}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-execution}}}
+      containers:
+        - name: execution
+          image: "@@EXECUTION_IMAGE@@"
+          args: ["--listen", "0.0.0.0", "--port", "8083", "--management-listen", "0.0.0.0", "--management-port", "9093"]
+          env:
+            - {name: AGENT_TRUST_EXECUTION_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/execution/database-url}
+            - {name: AGENT_TRUST_EXECUTION_DATABASE_CA_FILE, value: /var/run/agenttrust/secrets/execution/database-ca.pem}
+            - {name: AGENT_TRUST_EXECUTION_DATABASE_EXPECTED_ROLE, value: "@@EXECUTION_APPLICATION_ROLE@@"}
+            - {name: AGENT_TRUST_EXECUTION_TLS_CA_FILE, value: /var/run/agenttrust/secrets/execution/caller-ca.pem}
+            - {name: AGENT_TRUST_EXECUTION_TLS_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/execution/server-cert.pem}
+            - {name: AGENT_TRUST_EXECUTION_TLS_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/execution/server-key.pem}
+            - {name: AGENT_TRUST_EXECUTION_CLIENT_IDENTITIES, value: "@@EXECUTION_CLIENT_IDENTITIES@@"}
+            - {name: AGENT_TRUST_EXECUTION_TOKEN_BINDINGS_FILE, value: /var/run/agenttrust/secrets/execution/execution-token-bindings.json}
+            - {name: AGENT_TRUST_EXECUTION_CLIENT_CA_FILE, value: /var/run/agenttrust/secrets/execution/client-ca.pem}
+            - {name: AGENT_TRUST_EXECUTION_CLIENT_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/execution/client-cert.pem}
+            - {name: AGENT_TRUST_EXECUTION_CLIENT_PRIVATE_KEY_FILE, value: /var/run/agenttrust/secrets/execution/client-key.pem}
+            - {name: AGENT_TRUST_EXECUTION_APPROVAL_ENDPOINT, value: "@@EXECUTION_APPROVAL_ENDPOINT@@"}
+            - {name: AGENT_TRUST_EXECUTION_APPROVAL_TOKEN_FILE, value: /var/run/agenttrust/secrets/execution/approval.token}
+            - {name: AGENT_TRUST_EXECUTION_APPROVAL_VERIFICATION_KEYS_FILE, value: /var/run/agenttrust/secrets/execution/approval-verification-keys.json}
+            - {name: AGENT_TRUST_EXECUTION_APPROVAL_READINESS_SCHEMA, value: "@@EXECUTION_APPROVAL_READINESS_SCHEMA@@"}
+            - {name: AGENT_TRUST_EXECUTION_PEP_ENDPOINT, value: "@@EXECUTION_PEP_ENDPOINT@@"}
+            - {name: AGENT_TRUST_EXECUTION_PEP_TOKEN_FILE, value: /var/run/agenttrust/secrets/execution/pep.token}
+            - {name: AGENT_TRUST_EXECUTION_PEP_VERIFICATION_KEYS_FILE, value: /var/run/agenttrust/secrets/execution/pep-verification-keys.json}
+            - {name: AGENT_TRUST_EXECUTION_PEP_READINESS_SCHEMA, value: "@@EXECUTION_PEP_READINESS_SCHEMA@@"}
+            - {name: AGENT_TRUST_EXECUTION_TOOL_ENDPOINT, value: "@@EXECUTION_TOOL_ENDPOINT@@"}
+            - {name: AGENT_TRUST_EXECUTION_TOOL_TOKEN_FILE, value: /var/run/agenttrust/secrets/execution/tool.token}
+            - {name: AGENT_TRUST_EXECUTION_TOOL_READINESS_SCHEMA, value: "@@EXECUTION_TOOL_READINESS_SCHEMA@@"}
+            - {name: AGENT_TRUST_EXECUTION_EVIDENCE_ENDPOINT, value: "@@EXECUTION_EVIDENCE_ENDPOINT@@"}
+            - {name: AGENT_TRUST_EXECUTION_EVIDENCE_TOKEN_FILE, value: /var/run/agenttrust/secrets/execution/evidence.token}
+            - {name: AGENT_TRUST_EXECUTION_EVIDENCE_VERIFICATION_KEYS_FILE, value: /var/run/agenttrust/secrets/execution/evidence-verification-keys.json}
+            - {name: AGENT_TRUST_EXECUTION_EVIDENCE_READINESS_SCHEMA, value: "@@EXECUTION_EVIDENCE_READINESS_SCHEMA@@"}
+          ports: [{name: https, containerPort: 8083}, {name: management, containerPort: 9093}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 500m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          startupProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 60}
+          readinessProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {tcpSocket: {port: https}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts:
+            - {name: secrets, mountPath: /var/run/agenttrust/secrets/execution, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-execution}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenttrust-execution
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  selector: {app.kubernetes.io/name: agenttrust-execution}
+  ports: [{name: https, port: 443, targetPort: https}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-execution
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-execution}}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "agenttrust-migrate-@@RELEASE_NAME@@"
+  labels:
+    app.kubernetes.io/name: agenttrust-migrations
+    app.kubernetes.io/component: migrations
+    app.kubernetes.io/part-of: agenttrust-control-plane
+    agenttrust.io/apply-phase: migration
+  annotations:
+    agenttrust.io/release-id: "@@RELEASE_ID@@"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agenttrust-migrations
+        app.kubernetes.io/component: migrations
+        app.kubernetes.io/part-of: agenttrust-control-plane
+    spec:
+      serviceAccountName: agenttrust-migrations
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: migrate
+          image: "@@MIGRATION_IMAGE@@"
+          args: ["--apply"]
+          env:
+            - {name: AGENT_TRUST_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/database-url}
+            - {name: AGENT_TRUST_DATABASE_CA_FILE, value: /var/run/agenttrust/secrets/database-ca.pem}
+            - {name: AGENT_TRUST_RELEASE_ID, value: "@@RELEASE_ID@@"}
+            - {name: AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS, value: "10"}
+            - {name: AGENT_TRUST_ENTERPRISE_APPLICATION_ROLE, value: "@@ENTERPRISE_APPLICATION_ROLE@@"}
+            - {name: AGENT_TRUST_ORCHESTRATOR_APPLICATION_ROLE, value: "@@ORCHESTRATOR_APPLICATION_ROLE@@"}
+            - {name: AGENT_TRUST_EXECUTION_APPLICATION_ROLE, value: "@@EXECUTION_APPLICATION_ROLE@@"}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          volumeMounts:
+            - {name: secrets, mountPath: /var/run/agenttrust/secrets, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-migrations}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agenttrust-production-runtime
+  labels:
+    app.kubernetes.io/name: agenttrust-production-runtime
+    app.kubernetes.io/component: runtime
+    app.kubernetes.io/part-of: agenttrust-control-plane
+    agenttrust.io/apply-phase: workload
+  annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@"}
+spec:
+  replicas: 3
+  revisionHistoryLimit: 10
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-production-runtime}}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agenttrust-production-runtime
+        app.kubernetes.io/component: runtime
+        app.kubernetes.io/part-of: agenttrust-control-plane
+      annotations:
+        agenttrust.io/release-id: "@@RELEASE_ID@@"
+        agenttrust.io/release-digest: "@@RELEASE_DIGEST@@"
+    spec:
+      serviceAccountName: agenttrust-production-runtime
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, fsGroupChangePolicy: OnRootMismatch, seccompProfile: {type: RuntimeDefault}}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 3
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-production-runtime}}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-production-runtime}}
+      initContainers:
+        - name: verify-release-evidence
+          image: "@@UTILITY_IMAGE@@"
+          command: ["/bin/sh", "-ec"]
+          args:
+            - |
+              test "$(cat /evidence/release-id)" = "$RELEASE_ID"
+              test -s /evidence/batch-statuses.json
+              test -s /evidence/gate-evidence.json
+              test -s /evidence/residual-risks.json
+              test -s /evidence/exceptions.json
+              test -s /evidence/SHA256SUMS
+              test "$(sha256sum /evidence/SHA256SUMS | awk '{print $1}')" = "$BUNDLE_DIGEST"
+              cd /evidence && sha256sum -c SHA256SUMS
+          env:
+            - {name: RELEASE_ID, value: "@@RELEASE_ID@@"}
+            - {name: BUNDLE_DIGEST, value: "@@EVIDENCE_BUNDLE_DIGEST@@"}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          volumeMounts: [{name: evidence, mountPath: /evidence, readOnly: true}]
+      containers:
+        - name: runtime
+          image: "@@RUNTIME_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args: ["/etc/agenttrust/config/production-runtime.json"]
+          ports:
+            - {name: data, containerPort: 8080}
+            - {name: management, containerPort: 9090}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 500m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
+          startupProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 30}
+          readinessProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /health, port: management}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts:
+            - {name: runtime-config, mountPath: /etc/agenttrust/config/production-runtime.json, subPath: production-runtime.json, readOnly: true}
+            - {name: secrets, mountPath: /etc/agenttrust/secrets/runtime, readOnly: true}
+            - {name: evidence, mountPath: /var/lib/agenttrust/evidence, readOnly: true}
+        - name: mtls-ingress
+          image: "@@ENVOY_IMAGE@@"
+          args: ["-c", "/etc/envoy/envoy.yaml", "--concurrency", "2"]
+          ports: [{name: https, containerPort: 8443}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+          readinessProbe: {tcpSocket: {port: https}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {tcpSocket: {port: https}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts:
+            - {name: envoy-config, mountPath: /etc/envoy, readOnly: true}
+            - {name: secrets, mountPath: /etc/agenttrust/secrets/runtime, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: runtime-config, configMap: {name: agenttrust-production-runtime}}
+        - {name: envoy-config, configMap: {name: agenttrust-envoy-runtime}}
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-production-runtime}}
+        - {name: evidence, persistentVolumeClaim: {claimName: agenttrust-release-evidence, readOnly: true}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agenttrust-production-runtime
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  selector: {app.kubernetes.io/name: agenttrust-production-runtime}
+  ports: [{name: https, port: 443, targetPort: https}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agenttrust-production-runtime
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+spec:
+  minAvailable: 2
+  selector: {matchLabels: {app.kubernetes.io/name: agenttrust-production-runtime}}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-orchestrator
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-transition
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-enterprise-control
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-console
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-execution
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-migrations
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-default-deny
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/part-of: agenttrust-control-plane}}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-dns-egress
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/part-of: agenttrust-control-plane}}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    # Explicit resolver address covers NodeLocal DNSCache and CNI implementations that
+    # enforce policy before/after Service DNAT differently. The renderer requires /32 or /128.
+    - to: [{ipBlock: {cidr: "@@DNS_CIDR@@"}}]
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-runtime-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: runtime}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {agenttrust.io/ingress: enabled}}
+      ports: [{protocol: TCP, port: 8443}]
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 8443}, {protocol: TCP, port: 9090}]
+  egress:
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/component: orchestrator-api}}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8081}]
+    - to: [{ipBlock: {cidr: "@@TRUSTED_SERVICE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-orchestrator-api-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: orchestrator-api}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/component: runtime}}}]
+      ports: [{protocol: TCP, port: 8081}]
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 8081}]
+    - from: [{podSelector: {matchLabels: {app.kubernetes.io/component: enterprise-api}}}]
+      ports: [{protocol: TCP, port: 8081}]
+  egress:
+    - to: [{ipBlock: {cidr: "@@DATABASE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: "@@TEMPORAL_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 7233}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/component: transition}}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8082}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/component: execution}}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8083}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-temporal-worker-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: temporal-worker}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 9092}]
+  egress:
+    - to: [{ipBlock: {cidr: "@@TEMPORAL_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 7233}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/component: transition}}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8082}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/component: execution}}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8083}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-transition-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: transition}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/component: temporal-worker}}
+        - podSelector: {matchLabels: {app.kubernetes.io/component: orchestrator-api}}
+      ports: [{protocol: TCP, port: 8082}]
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 9091}]
+  egress:
+    - to: [{ipBlock: {cidr: "@@TRUSTED_SERVICE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8443}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-execution-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: execution}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/component: temporal-worker}}
+        - podSelector: {matchLabels: {app.kubernetes.io/component: orchestrator-api}}
+      ports: [{protocol: TCP, port: 8083}]
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 9093}]
+  egress:
+    - to: [{ipBlock: {cidr: "@@DATABASE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: "@@EXECUTION_APPROVAL_CIDR@@"}}]
+      ports: [{protocol: TCP, port: @@EXECUTION_APPROVAL_PORT@@}]
+    - to: [{ipBlock: {cidr: "@@EXECUTION_PEP_CIDR@@"}}]
+      ports: [{protocol: TCP, port: @@EXECUTION_PEP_PORT@@}]
+    - to: [{ipBlock: {cidr: "@@EXECUTION_TOOL_CIDR@@"}}]
+      ports: [{protocol: TCP, port: @@EXECUTION_TOOL_PORT@@}]
+    - to: [{ipBlock: {cidr: "@@EXECUTION_EVIDENCE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: @@EXECUTION_EVIDENCE_PORT@@}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-enterprise-control-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: enterprise-api}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {agenttrust.io/ingress: enabled}}}]
+      ports: [{protocol: TCP, port: 8080}]
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 9090}]
+  egress:
+    - to: [{ipBlock: {cidr: "@@DATABASE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 5432}]
+    - to: [{ipBlock: {cidr: "@@TRUSTED_SERVICE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8443}]
+    - to: [{podSelector: {matchLabels: {app.kubernetes.io/component: orchestrator-api}}}]
+      ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8081}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-console-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: console}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: [{namespaceSelector: {matchLabels: {agenttrust.io/ingress: enabled}}}]
+      ports: [{protocol: TCP, port: 8080}]
+    - from: [{ipBlock: {cidr: "@@NODE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 8080}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-migration-network
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {matchLabels: {app.kubernetes.io/component: migrations}}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - to: [{ipBlock: {cidr: "@@DATABASE_CIDR@@"}}]
+      ports: [{protocol: TCP, port: 5432}]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agenttrust-bounded-capacity
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  hard:
+    requests.cpu: "12"
+    requests.memory: 24Gi
+    limits.cpu: "32"
+    limits.memory: 48Gi
+    pods: "96"
+    persistentvolumeclaims: "4"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: agenttrust-container-bounds
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  limits:
+    - type: Container
+      defaultRequest: {cpu: 100m, memory: 128Mi}
+      default: {cpu: "1", memory: 1Gi}
+      max: {cpu: "4", memory: 4Gi}

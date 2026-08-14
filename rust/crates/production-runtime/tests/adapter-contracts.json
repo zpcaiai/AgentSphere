@@ -1,0 +1,220 @@
+{
+  "schema_version": "agenttrust.production-adapter-contracts.v1",
+  "external_evidence_required": true,
+  "adapters": [
+    {
+      "family_id": "identity",
+      "adapter": "ProductionIdentityVerifier",
+      "trait": "IdentityVerifierPort",
+      "auxiliary_traits": [{"adapter": "RefreshingJwksProvider", "trait": "FederatedTrustBundleProvider"}],
+      "source": "rust/crates/production-runtime/src/adapters.rs",
+      "config_binding": {"kind": "identity_jwks", "selector": "identity.jwks_endpoint", "client_identity_required": false, "token_required": false},
+      "operations": [
+        {"scope": "impl RefreshingJwksProvider", "method": "GET", "wire_path": "&self.path", "transport_call": ".get_bytes_blocking("}
+      ]
+    },
+    {
+      "family_id": "orchestrator",
+      "adapter": "HttpOrchestratorAdapter",
+      "trait": "OrchestratorSubmissionPort",
+      "auxiliary_traits": [{"adapter": "ProductionOrchestratorBinding", "trait": "OrchestratorSubmissionPort"}],
+      "source": "rust/crates/production-runtime/src/adapters.rs",
+      "config_binding": {"kind": "endpoint", "selector": "orchestrator", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions", "transport_call": ".post_json("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/query", "transport_call": ".post_json("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/cancel", "transport_call": ".post_json("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/kill", "transport_call": ".post_json("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/tasks/stream-snapshot", "transport_call": ".post_json("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "GET", "wire_path": "/ready", "transport_call": ".get_bytes("}
+      ]
+    },
+    {
+      "family_id": "model",
+      "adapter": "ProductionModelAdapter",
+      "trait": "ModelProviderAdapter",
+      "auxiliary_traits": [{"adapter": "ControlledModelTransport", "trait": "ProviderWireTransport"}],
+      "source": "rust/crates/production-runtime/src/adapters.rs",
+      "config_binding": {"kind": "endpoint_prefix", "selector": "model:", "client_identity_required": false, "token_required": true},
+      "operations": [
+        {"scope": "impl ModelProviderAdapter for ProductionModelAdapter", "method": "POST", "wire_path": "/v1/chat/completions", "transport_call": ".post_json("},
+        {"scope": "impl ModelProviderAdapter for ProductionModelAdapter", "method": "POST", "wire_path": "/v1/chat/completions", "transport_call": ".post_json_bytes("},
+        {"scope": "impl ModelProviderAdapter for ProductionModelAdapter", "method": "POST", "wire_path": "/v1/embeddings", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "secret_broker",
+      "adapter": "SecretBrokerCredentialLifecycle",
+      "trait": "CredentialLifecyclePort",
+      "source": "rust/crates/production-runtime/src/adapters.rs",
+      "config_binding": {"kind": "endpoint", "selector": "secret_broker", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl CredentialLifecyclePort for SecretBrokerCredentialLifecycle", "method": "POST", "wire_path": "/v1/leases/revoke", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "industrial",
+      "adapter": "HttpIndustrialAdapter",
+      "trait": "IndustrialAdapter",
+      "source": "rust/crates/production-runtime/src/adapters.rs",
+      "config_binding": {"kind": "endpoint", "selector": "industrial", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl IndustrialAdapter for HttpIndustrialAdapter", "method": "POST", "wire_path": "/v1/industrial/read", "transport_call": ".post_json("},
+        {"scope": "impl IndustrialAdapter for HttpIndustrialAdapter", "method": "POST", "wire_path": "/v1/industrial/compare-and-set", "transport_call": ".post_json("},
+        {"scope": "impl IndustrialAdapter for HttpIndustrialAdapter", "method": "POST", "wire_path": "/v1/industrial/safe-stop", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "backup",
+      "adapter": "HttpBackupPort",
+      "trait": "BackupPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "backup", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl BackupPort for HttpBackupPort", "method": "POST", "wire_path": "/v1/backups/database", "transport_call": ".post_json_blocking("},
+        {"scope": "impl BackupPort for HttpBackupPort", "method": "POST", "wire_path": "/v1/backups/objects", "transport_call": ".post_json_blocking("},
+        {"scope": "impl BackupPort for HttpBackupPort", "method": "POST", "wire_path": "/v1/backups/ledger-head", "transport_call": ".post_json_blocking("},
+        {"scope": "impl BackupPort for HttpBackupPort", "method": "POST", "wire_path": "/v1/backups/key-recovery", "transport_call": ".post_json_blocking("}
+      ]
+    },
+    {
+      "family_id": "policy_distribution",
+      "adapter": "HttpPolicyDistributionPort",
+      "trait": "PolicyDistributionPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "policy_distribution", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl PolicyDistributionPort for HttpPolicyDistributionPort", "method": "POST", "wire_path": "/v1/policy/bundles", "transport_call": ".post_json_blocking("}
+      ]
+    },
+    {
+      "family_id": "containment",
+      "adapter": "HttpContainmentPort",
+      "trait": "ContainmentPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "containment", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl ContainmentPort for HttpContainmentPort", "method": "POST", "wire_path": "/v1/containment/tasks/kill", "transport_call": ".post_json("},
+        {"scope": "impl ContainmentPort for HttpContainmentPort", "method": "POST", "wire_path": "/v1/containment/credentials/revoke", "transport_call": ".post_json("},
+        {"scope": "impl ContainmentPort for HttpContainmentPort", "method": "POST", "wire_path": "/v1/containment/integrations/isolate", "transport_call": ".post_json("},
+        {"scope": "impl ContainmentPort for HttpContainmentPort", "method": "POST", "wire_path": "/v1/containment/artifacts/freeze", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "recertification",
+      "adapter": "HttpRecertificationPort",
+      "trait": "RecertificationPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "recertification", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl RecertificationPort for HttpRecertificationPort", "method": "POST", "wire_path": "/v1/recertification/campaigns", "transport_call": ".post_json("},
+        {"scope": "impl RecertificationPort for HttpRecertificationPort", "method": "POST", "wire_path": "/v1/recertification/control-evidence", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "enterprise_integration",
+      "adapter": "HttpEnterpriseIntegration",
+      "trait": "IntegrationPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "enterprise_integration", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl IntegrationPort for HttpEnterpriseIntegration", "method": "POST", "wire_path": "/v1/integrations/deliver", "transport_call": ".post_json_blocking("}
+      ]
+    },
+    {
+      "family_id": "authority",
+      "adapter": "HttpAuthoritativeService",
+      "trait": "AuthoritativeServicePort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "authority", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl AuthoritativeServicePort for HttpAuthoritativeService", "method": "POST", "wire_path": "/v1/authority/query", "transport_call": ".post_json_blocking("}
+      ]
+    },
+    {
+      "family_id": "notification",
+      "adapter": "HttpNotificationAdapter",
+      "trait": "NotificationAdapter",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "notification", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl NotificationAdapter for HttpNotificationAdapter", "method": "POST", "wire_path": "/v1/notifications", "transport_call": ".post_json_blocking("}
+      ]
+    },
+    {
+      "family_id": "evidence",
+      "adapter": "FilesystemEvidenceSource",
+      "trait": "EvidenceSourcePort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "evidence_files", "selector": "evidence_files", "client_identity_required": false, "token_required": false},
+      "operations": [
+        {"scope": "impl EvidenceSourcePort for FilesystemEvidenceSource", "method": "FILE_READ", "wire_path": "&self.files.batch_statuses", "transport_call": "read_json("},
+        {"scope": "impl EvidenceSourcePort for FilesystemEvidenceSource", "method": "FILE_READ", "wire_path": "&self.files.gate_evidence", "transport_call": "read_json("},
+        {"scope": "impl EvidenceSourcePort for FilesystemEvidenceSource", "method": "FILE_READ", "wire_path": "&self.files.residual_risks", "transport_call": "read_json("},
+        {"scope": "impl EvidenceSourcePort for FilesystemEvidenceSource", "method": "FILE_READ", "wire_path": "&self.files.exceptions", "transport_call": "read_json("}
+      ]
+    },
+    {
+      "family_id": "mcp",
+      "adapter": "HttpMcpTransport",
+      "trait": "ControlledMcpTransport",
+      "source": "rust/crates/production-runtime/src/protocols.rs",
+      "config_binding": {"kind": "endpoint_prefix", "selector": "mcp:", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl ControlledMcpTransport for HttpMcpTransport", "method": "POST", "wire_path": "/v1/mcp/tools/call", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "a2a",
+      "adapter": "A2aPeerClient",
+      "trait": null,
+      "inherent_methods": ["agent_card", "submit", "stream_snapshot"],
+      "source": "rust/crates/production-runtime/src/protocols.rs",
+      "config_binding": {"kind": "endpoint_prefix", "selector": "a2a:", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl A2aPeerClient", "method": "GET", "wire_path": "/.well-known/agent-card.json", "transport_call": ".get_bytes("},
+        {"scope": "impl A2aPeerClient", "method": "POST", "wire_path": "/v1/a2a/tasks", "transport_call": ".post_json("},
+        {"scope": "impl A2aPeerClient", "method": "POST", "wire_path": "/v1/a2a/tasks/stream-snapshot", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "runtime_control",
+      "adapter": "HttpRuntimeControlPort",
+      "trait": "RuntimeControlPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "runtime_control", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl HttpRuntimeControlPort", "method": "POST", "wire_path": "/v1/runtime/control", "transport_call": ".post_json("}
+      ]
+    },
+    {
+      "family_id": "lifecycle",
+      "adapter": "HttpLifecyclePropagationPort",
+      "trait": "LifecyclePropagationPort",
+      "source": "rust/crates/production-runtime/src/ops.rs",
+      "config_binding": {"kind": "endpoint", "selector": "lifecycle", "client_identity_required": true, "token_required": true},
+      "operations": [
+        {"scope": "impl HttpLifecyclePropagationPort", "method": "POST", "wire_path": "/v1/lifecycle/{operation}", "transport_call": ".post_json_blocking("}
+      ]
+    }
+  ],
+  "condition_tests": [
+    {"condition_id": "ENTERPRISE_IDP_JWKS", "probes": [{"path": "rust/crates/identity/src/lib.rs", "test": "enterprise_jwks_supports_eddsa_es256_and_rs256_material"}]},
+    {"condition_id": "WORKLOAD_MTLS_CA", "probes": [{"path": "python/production_gates/tests/test_external_services.py", "test": "test_mtls_requires_private_permissions_and_reports_only_digests"}]},
+    {"condition_id": "SECRET_BROKER_DYNAMIC_LEASES", "probes": [{"path": "python/production_gates/tests/test_external_services.py", "test": "test_vault_health_token_and_dynamic_lease_lifecycle"}]},
+    {"condition_id": "DEDICATED_LINUX_GVISOR", "probes": [{"path": "rust/crates/sandbox-runtime/src/lib.rs", "test": "macos_cannot_claim_gvisor_production_isolation"}], "runtime_symbols": [{"path": "scripts/run-linux-isolation-gate.sh", "symbols": ["AGENT_TRUST_RUNSC_BINARY", "--runtime runsc", "production_evidence=true"]}]},
+    {"condition_id": "PRODUCTION_MULTIZONE_TEMPORAL", "probes": [{"path": "python/durable_worker/tests/test_worker.py", "test": "test_duplicate_signal_is_idempotent_and_conflict_is_rejected"}, {"path": "python/durable_worker/tests/test_orchestrator_api.py", "test": "test_owner_is_enforced_for_query_and_control"}]},
+    {"condition_id": "MANAGED_DATABASE_MULTI_ZONE", "probes": [{"path": "python/platform_sre/tests/test_postgres_failover_drill.py", "test": "test_broad_or_relative_work_root_is_denied_before_execution"}], "runtime_symbols": [{"path": "python/platform_sre/postgres_failover_drill.py", "symbols": ["pg_basebackup", "promote", "production_evidence\": False"]}]},
+    {"condition_id": "LOCKED_RETENTION_OBJECT_STORAGE", "probes": [{"path": "python/production_gates/tests/test_object_store_retention.py", "test": "test_compliance_retention_and_versioning_are_verified_read_only"}]},
+    {"condition_id": "MODEL_GENERATION_STREAM_DLP_BILLING_RESIDENCY", "probes": [{"path": "rust/crates/production-runtime/src/adapters.rs", "test": "parses_real_sse_chunks_and_usage"}, {"path": "rust/crates/model-gateway/src/lib.rs", "test": "secrets_and_concurrent_overspend_are_denied"}]},
+    {"condition_id": "MCP_REAL_ENDPOINT", "probes": [{"path": "rust/crates/production-runtime/src/protocols.rs", "test": "empty_peer_sets_fail_closed"}]},
+    {"condition_id": "A2A_REAL_ENDPOINT", "probes": [{"path": "rust/crates/production-runtime/src/protocols.rs", "test": "agent_card_digest_is_exact_sha256"}]},
+    {"condition_id": "OPCUA_MQTT_MODBUS_REAL_ENDPOINTS", "probes": [{"path": "python/production_gates/tests/test_industrial_protocols.py", "test": "test_digest_bound_mtls_read_receipt_passes_without_value_or_credentials"}]},
+    {"condition_id": "SUPERVISED_PHYSICAL_WRITE", "probes": [{"path": "rust/crates/integration-tests/tests/industrial_control_loop.rs", "test": "industrial_prepare_authorize_proxy_execute_and_ledger_finalize"}]},
+    {"condition_id": "MULTIZONE_CONTROL_PLANE_TOPOLOGY", "probes": [{"path": "python/platform_sre/tests/test_multizone_topology_gate.py", "test": "test_three_zone_ready_hardened_workload_passes_read_only_gate"}]},
+    {"condition_id": "NETWORK_STORAGE_CONTROL_PLANE_FAULTS", "probes": [{"path": "python/platform_sre/tests/test_chaos_runner.py", "test": "test_production_context_is_denied"}]},
+    {"condition_id": "SUSTAINED_PRODUCTION_LOAD", "probes": [{"path": "python/platform_sre/tests/test_http_load_gate.py", "test": "test_real_local_http_concurrency_is_measured"}]},
+    {"condition_id": "CUSTOMER_EXPERT_INDEPENDENT_ACCEPTANCE", "probes": [{"path": "rust/crates/production-closure/src/lib.rs", "test": "customer_and_independent_reviewer_sign_enterprise_acceptance"}, {"path": "rust/crates/production-closure/src/lib.rs", "test": "external_assurance_rejects_same_organization_wrong_role_and_tampering"}]},
+    {"condition_id": "IMMUTABLE_GIT_RELEASE_PROVENANCE", "probes": [{"path": "python/production_gates/tests/test_git_provenance.py", "test": "test_real_git_objects_cleanliness_and_remote_are_verified"}, {"path": "python/production_gates/tests/test_render_production_runtime.py", "test": "test_rejects_worktree_release"}]}
+  ]
+}

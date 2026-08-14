@@ -1,0 +1,9 @@
+ARG POSTGRES_CLIENT_IMAGE
+FROM ${POSTGRES_CLIENT_IMAGE}
+WORKDIR /opt/agenttrust
+COPY migrations /opt/agenttrust/migrations
+COPY scripts/run-production-migrations.sh /usr/local/bin/run-production-migrations
+RUN chmod 0555 /usr/local/bin/run-production-migrations \
+    && find /opt/agenttrust/migrations -type f -exec chmod 0444 {} +
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/run-production-migrations"]

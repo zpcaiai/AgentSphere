@@ -1,0 +1,14 @@
+ARG MAVEN_BUILDER_IMAGE
+ARG JAVA_RUNTIME_IMAGE
+FROM ${MAVEN_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY java/enterprise-control-api/pom.xml ./pom.xml
+RUN mvn --batch-mode --no-transfer-progress dependency:go-offline
+COPY java/enterprise-control-api/src ./src
+RUN mvn --batch-mode --no-transfer-progress package
+
+FROM ${JAVA_RUNTIME_IMAGE}
+WORKDIR /app
+COPY --from=build /src/target/enterprise-control-api-0.1.0.jar /app/enterprise-control-api.jar
+USER nonroot:nonroot
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-jar", "/app/enterprise-control-api.jar"]

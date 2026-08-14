@@ -41,6 +41,7 @@ pub struct ExecutionIntent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ExecutionFence {
+    pub tenant_id: TenantId,
     pub execution_id: ExecutionId,
     pub token: u64,
 }
@@ -91,6 +92,7 @@ pub struct ManualRecoveryCase {
 
 #[async_trait]
 pub trait ExecutionLedger: Send + Sync {
+    async fn ready(&self) -> bool;
     async fn reserve(&self, intent: ExecutionIntent) -> Result<Reservation, LedgerError>;
     async fn mark_started(
         &self,
@@ -118,9 +120,22 @@ pub trait ExecutionLedger: Send + Sync {
         fence: &ExecutionFence,
         case: ManualRecoveryCase,
     ) -> Result<(), LedgerError>;
-    async fn get(&self, execution_id: &ExecutionId) -> Result<ExecutionRecord, LedgerError>;
+    async fn get(
+        &self,
+        tenant_id: &TenantId,
+        execution_id: &ExecutionId,
+    ) -> Result<ExecutionRecord, LedgerError>;
+    /// Durable locator for the latest ledger outbox event that represents this record.
+    /// Callers use this as a ledger fact reference; it is not a substitute for signed
+    /// execution evidence.
+    async fn status_event_ref(
+        &self,
+        tenant_id: &TenantId,
+        execution_id: &ExecutionId,
+    ) -> Result<String, LedgerError>;
     async fn stale_non_terminal(
         &self,
+        tenant_id: &TenantId,
         before: DateTime<Utc>,
     ) -> Result<Vec<ExecutionRecord>, LedgerError>;
 }
@@ -229,10 +244,11 @@ impl InMemoryExecutionLedger {
         self.state.lock().outbox.clone()
     }
     pub fn snapshot(&self) -> Result<Vec<u8>, LedgerError> {
-        serde_json::to_vec(&self.state.lock().by_execution).map_err(|_| LedgerError::StoreFailure)
+        let state = self.state.lock();
+        serde_json::to_vec(&(&state.by_execution, &state.outbox)).map_err(|_| LedgerError::StoreFailure)
     }
     pub fn from_snapshot(bytes: &[u8]) -> Result<Self, LedgerError> {
-        let by_execution: BTreeMap<ExecutionId, ExecutionRecord> =
+        let (by_execution, outbox): (BTreeMap<ExecutionId, ExecutionRecord>, Vec<OutboxEvent>) =
             serde_json::from_slice(bytes).map_err(|_| LedgerError::StoreFailure)?;
         let mut by_idempotency = BTreeMap::new();
         let mut max_fence = 0;
@@ -250,7 +266,7 @@ impl InMemoryExecutionLedger {
             state: Mutex::new(MemoryState {
                 by_execution,
                 by_idempotency,
-                outbox: vec![],
+                outbox,
             }),
             next_fence: AtomicU64::new(max_fence + 1),
         })
@@ -268,7 +284,7 @@ impl InMemoryExecutionLedger {
             .by_execution
             .get_mut(&fence.execution_id)
             .ok_or(LedgerError::NotFound)?;
-        if record.fence_token != fence.token {
+        if record.intent.tenant_id != fence.tenant_id || record.fence_token != fence.token {
             return Err(LedgerError::StaleFence);
         }
         if !allowed.contains(&record.status) {
@@ -292,6 +308,9 @@ impl InMemoryExecutionLedger {
 
 #[async_trait]
 impl ExecutionLedger for InMemoryExecutionLedger {
+    async fn ready(&self) -> bool {
+        true
+    }
     async fn reserve(&self, intent: ExecutionIntent) -> Result<Reservation, LedgerError> {
         validate_intent(&intent)?;
         let key = (intent.tenant_id.clone(), intent.idempotency_key.clone());
@@ -307,6 +326,7 @@ impl ExecutionLedger for InMemoryExecutionLedger {
             return Ok(Reservation {
                 execution_id: execution_id.clone(),
                 fence: ExecutionFence {
+                    tenant_id: existing.intent.tenant_id.clone(),
                     execution_id,
                     token: existing.fence_token,
                 },
@@ -315,6 +335,7 @@ impl ExecutionLedger for InMemoryExecutionLedger {
             });
         }
         let execution_id = ExecutionId::new();
+        let tenant_id = intent.tenant_id.clone();
         let fence_token = self.next_fence.fetch_add(1, Ordering::SeqCst);
         let now = Utc::now();
         let record = ExecutionRecord {
@@ -344,6 +365,7 @@ impl ExecutionLedger for InMemoryExecutionLedger {
         Ok(Reservation {
             execution_id: execution_id.clone(),
             fence: ExecutionFence {
+                tenant_id,
                 execution_id,
                 token: fence_token,
             },
@@ -414,16 +436,40 @@ impl ExecutionLedger for InMemoryExecutionLedger {
             |record| record.manual_recovery = Some(case),
         )
     }
-    async fn get(&self, id: &ExecutionId) -> Result<ExecutionRecord, LedgerError> {
-        self.state
+    async fn get(
+        &self,
+        tenant_id: &TenantId,
+        id: &ExecutionId,
+    ) -> Result<ExecutionRecord, LedgerError> {
+        let record = self
+            .state
             .lock()
             .by_execution
             .get(id)
             .cloned()
-            .ok_or(LedgerError::NotFound)
+            .ok_or(LedgerError::NotFound)?;
+        if &record.intent.tenant_id != tenant_id {
+            return Err(LedgerError::NotFound);
+        }
+        Ok(record)
+    }
+    async fn status_event_ref(
+        &self,
+        tenant_id: &TenantId,
+        execution_id: &ExecutionId,
+    ) -> Result<String, LedgerError> {
+        let state = self.state.lock();
+        let record = state.by_execution.get(execution_id).ok_or(LedgerError::NotFound)?;
+        if &record.intent.tenant_id != tenant_id {
+            return Err(LedgerError::NotFound);
+        }
+        let event = state.outbox.iter().rev().find(|event| &event.execution_id == execution_id)
+            .ok_or(LedgerError::NotFound)?;
+        Ok(format!("ledger-event:{}", event.event_id))
     }
     async fn stale_non_terminal(
         &self,
+        tenant_id: &TenantId,
         before: DateTime<Utc>,
     ) -> Result<Vec<ExecutionRecord>, LedgerError> {
         Ok(self
@@ -432,7 +478,8 @@ impl ExecutionLedger for InMemoryExecutionLedger {
             .by_execution
             .values()
             .filter(|record| {
-                record.updated_at <= before
+                &record.intent.tenant_id == tenant_id
+                    && record.updated_at <= before
                     && matches!(
                         record.status,
                         ExecutionStatus::Running | ExecutionStatus::Unknown
@@ -498,11 +545,16 @@ impl<L: ExecutionLedger, O: OutcomeResolver> RecoveryScanner<L, O> {
     pub fn new(ledger: Arc<L>, resolver: Arc<O>) -> Self {
         Self { ledger, resolver }
     }
-    pub async fn reconcile(&self, before: DateTime<Utc>) -> Result<usize, LedgerError> {
-        let stale = self.ledger.stale_non_terminal(before).await?;
+    pub async fn reconcile(
+        &self,
+        tenant_id: &TenantId,
+        before: DateTime<Utc>,
+    ) -> Result<usize, LedgerError> {
+        let stale = self.ledger.stale_non_terminal(tenant_id, before).await?;
         let mut reconciled = 0;
         for record in stale {
             let fence = ExecutionFence {
+                tenant_id: record.intent.tenant_id.clone(),
                 execution_id: record.execution_id.clone(),
                 token: record.fence_token,
             };
@@ -554,6 +606,26 @@ impl PostgresExecutionLedger {
 
 #[async_trait]
 impl ExecutionLedger for PostgresExecutionLedger {
+    async fn ready(&self) -> bool {
+        tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            sqlx::query_scalar::<_, bool>(
+                "SELECT \
+                 has_table_privilege(current_user,'executions','SELECT') AND \
+                 has_table_privilege(current_user,'executions','INSERT') AND \
+                 has_table_privilege(current_user,'executions','UPDATE') AND \
+                 has_table_privilege(current_user,'idempotency_records','INSERT') AND \
+                 has_table_privilege(current_user,'execution_outbox','SELECT') AND \
+                 has_table_privilege(current_user,'execution_outbox','INSERT') AND \
+                 has_sequence_privilege(current_user,'execution_fence_seq','USAGE')",
+            )
+            .fetch_one(&self.pool),
+        )
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(false)
+    }
     async fn reserve(&self, intent: ExecutionIntent) -> Result<Reservation, LedgerError> {
         validate_intent(&intent)?;
         let tenant_uuid =
@@ -565,6 +637,11 @@ impl ExecutionLedger for PostgresExecutionLedger {
         let mut transaction = self
             .pool
             .begin()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&intent.tenant_id.0)
+            .execute(&mut *transaction)
             .await
             .map_err(|_| LedgerError::StoreFailure)?;
         sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
@@ -583,7 +660,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
             let execution_id = ExecutionId(stored_execution_id.to_string()); let token: i64 = row.try_get("fence_token").map_err(|_| LedgerError::StoreFailure)?;
             let status = parse_status(row.try_get::<String, _>("status").map_err(|_| LedgerError::StoreFailure)?.as_str())?;
             transaction.commit().await.map_err(|_| LedgerError::StoreFailure)?;
-            return Ok(Reservation { execution_id: execution_id.clone(), fence: ExecutionFence { execution_id, token: token as u64 }, existing: true, status });
+            return Ok(Reservation { execution_id: execution_id.clone(), fence: ExecutionFence { tenant_id: intent.tenant_id.clone(), execution_id, token: token as u64 }, existing: true, status });
         }
         let execution_uuid = Uuid::new_v4();
         let execution_id = ExecutionId(execution_uuid.to_string());
@@ -603,8 +680,8 @@ impl ExecutionLedger for PostgresExecutionLedger {
             .execute(&mut *transaction)
             .await
             .map_err(|_| LedgerError::StoreFailure)?;
-        sqlx::query("INSERT INTO execution_outbox (event_id, execution_id, event_type, payload, created_at) VALUES ($1,$2,'EXECUTION_RESERVED','{}'::jsonb,now())")
-            .bind(Uuid::new_v4()).bind(execution_uuid).execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?;
+        sqlx::query("INSERT INTO execution_outbox (event_id, tenant_id, execution_id, event_type, payload, created_at) VALUES ($1,$2,$3,'EXECUTION_RESERVED','{}'::jsonb,now())")
+            .bind(Uuid::new_v4()).bind(tenant_uuid).bind(execution_uuid).execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?;
         transaction
             .commit()
             .await
@@ -612,6 +689,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
         Ok(Reservation {
             execution_id: execution_id.clone(),
             fence: ExecutionFence {
+                tenant_id: intent.tenant_id,
                 execution_id,
                 token: fence_token as u64,
             },
@@ -632,6 +710,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
             operation.as_deref(),
             None,
             None,
+            None,
         )
         .await
     }
@@ -647,6 +726,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
             "RUNNING,UNKNOWN",
             "SUCCEEDED",
             None,
+            None,
             Some(&result),
             Some(&evidence),
         )
@@ -658,6 +738,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
             fence,
             "RUNNING",
             "FAILED",
+            None,
             Some(&error),
             None,
             None,
@@ -670,6 +751,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
             fence,
             "RUNNING",
             "UNKNOWN",
+            None,
             Some(&error),
             None,
             None,
@@ -689,13 +771,21 @@ impl ExecutionLedger for PostgresExecutionLedger {
             .begin()
             .await
             .map_err(|_| LedgerError::StoreFailure)?;
-        let changed = sqlx::query("UPDATE executions SET manual_recovery=$3, updated_at=now() WHERE execution_id=$1 AND fence_token=$2 AND status IN ('RUNNING','UNKNOWN','COMPENSATION_FAILED')")
-            .bind(execution_uuid).bind(fence.token as i64).bind(value.clone()).execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?.rows_affected();
+        let tenant_uuid =
+            Uuid::parse_str(&fence.tenant_id.0).map_err(|_| LedgerError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&fence.tenant_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        let changed = sqlx::query("UPDATE executions SET manual_recovery=$4, updated_at=now() WHERE tenant_id=$1 AND execution_id=$2 AND fence_token=$3 AND status IN ('RUNNING','UNKNOWN','COMPENSATION_FAILED')")
+            .bind(tenant_uuid).bind(execution_uuid).bind(fence.token as i64).bind(value.clone()).execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?.rows_affected();
         if changed != 1 {
             return Err(LedgerError::StaleFence);
         }
-        sqlx::query("INSERT INTO execution_outbox (event_id, execution_id, event_type, payload, created_at) VALUES ($1,$2,'MANUAL_RECOVERY_REQUIRED',$3,now())")
+        sqlx::query("INSERT INTO execution_outbox (event_id, tenant_id, execution_id, event_type, payload, created_at) VALUES ($1,$2,$3,'MANUAL_RECOVERY_REQUIRED',$4,now())")
             .bind(Uuid::new_v4())
+            .bind(tenant_uuid)
             .bind(execution_uuid)
             .bind(value)
             .execute(&mut *transaction)
@@ -706,19 +796,74 @@ impl ExecutionLedger for PostgresExecutionLedger {
             .await
             .map_err(|_| LedgerError::StoreFailure)
     }
-    async fn get(&self, execution_id: &ExecutionId) -> Result<ExecutionRecord, LedgerError> {
+    async fn get(
+        &self,
+        tenant_id: &TenantId,
+        execution_id: &ExecutionId,
+    ) -> Result<ExecutionRecord, LedgerError> {
+        let tenant_uuid = Uuid::parse_str(&tenant_id.0).map_err(|_| LedgerError::NotFound)?;
         let execution_uuid = Uuid::parse_str(&execution_id.0).map_err(|_| LedgerError::NotFound)?;
-        let row = sqlx::query("SELECT intent, execution_id, fence_token, status, attempt, external_operation_id, result_ref, evidence_ref, last_error_code, created_at, updated_at, manual_recovery FROM executions WHERE execution_id=$1")
-            .bind(execution_uuid).fetch_optional(&self.pool).await.map_err(|_| LedgerError::StoreFailure)?.ok_or(LedgerError::NotFound)?;
-        row_to_record(row)
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&tenant_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        let row = sqlx::query("SELECT intent, execution_id, fence_token, status, attempt, external_operation_id, result_ref, evidence_ref, last_error_code, created_at, updated_at, manual_recovery FROM executions WHERE tenant_id=$1 AND execution_id=$2")
+            .bind(tenant_uuid).bind(execution_uuid).fetch_optional(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?.ok_or(LedgerError::NotFound)?;
+        let record = row_to_record(row)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        Ok(record)
+    }
+    async fn status_event_ref(
+        &self,
+        tenant_id: &TenantId,
+        execution_id: &ExecutionId,
+    ) -> Result<String, LedgerError> {
+        let tenant_uuid = Uuid::parse_str(&tenant_id.0).map_err(|_| LedgerError::NotFound)?;
+        let execution_uuid = Uuid::parse_str(&execution_id.0).map_err(|_| LedgerError::NotFound)?;
+        let mut transaction = self.pool.begin().await.map_err(|_| LedgerError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&tenant_id.0).execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?;
+        let event_id = sqlx::query_scalar::<_, Uuid>(
+            "SELECT event_id FROM execution_outbox WHERE tenant_id=$1 AND execution_id=$2 ORDER BY created_at DESC,event_id DESC LIMIT 1",
+        )
+        .bind(tenant_uuid).bind(execution_uuid).fetch_optional(&mut *transaction).await
+        .map_err(|_| LedgerError::StoreFailure)?.ok_or(LedgerError::NotFound)?;
+        transaction.commit().await.map_err(|_| LedgerError::StoreFailure)?;
+        Ok(format!("ledger-event:{event_id}"))
     }
     async fn stale_non_terminal(
         &self,
+        tenant_id: &TenantId,
         before: DateTime<Utc>,
     ) -> Result<Vec<ExecutionRecord>, LedgerError> {
-        let rows = sqlx::query("SELECT intent, execution_id, fence_token, status, attempt, external_operation_id, result_ref, evidence_ref, last_error_code, created_at, updated_at, manual_recovery FROM executions WHERE status IN ('RUNNING','UNKNOWN') AND updated_at <= $1 ORDER BY updated_at LIMIT 100")
-            .bind(before).fetch_all(&self.pool).await.map_err(|_| LedgerError::StoreFailure)?;
-        rows.into_iter().map(row_to_record).collect()
+        let tenant_uuid = Uuid::parse_str(&tenant_id.0).map_err(|_| LedgerError::NotFound)?;
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&tenant_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        let rows = sqlx::query("SELECT intent, execution_id, fence_token, status, attempt, external_operation_id, result_ref, evidence_ref, last_error_code, created_at, updated_at, manual_recovery FROM executions WHERE tenant_id=$1 AND status IN ('RUNNING','UNKNOWN') AND updated_at <= $2 ORDER BY updated_at LIMIT 100")
+            .bind(tenant_uuid).bind(before).fetch_all(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?;
+        let records = rows.into_iter().map(row_to_record).collect();
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        records
     }
 }
 
@@ -727,25 +872,33 @@ async fn pg_transition(
     fence: &ExecutionFence,
     allowed_csv: &str,
     next: &str,
-    detail: Option<&str>,
+    external_operation_id: Option<&str>,
+    error_code: Option<&str>,
     result: Option<&str>,
     evidence: Option<&str>,
 ) -> Result<(), LedgerError> {
     let allowed: Vec<&str> = allowed_csv.split(',').collect();
     let execution_uuid =
         Uuid::parse_str(&fence.execution_id.0).map_err(|_| LedgerError::StoreFailure)?;
+    let tenant_uuid = Uuid::parse_str(&fence.tenant_id.0).map_err(|_| LedgerError::StoreFailure)?;
     let mut transaction = pool.begin().await.map_err(|_| LedgerError::StoreFailure)?;
-    let changed = sqlx::query("UPDATE executions SET status=$3, external_operation_id=COALESCE($4,external_operation_id), last_error_code=CASE WHEN $3 IN ('FAILED','UNKNOWN') THEN $4 ELSE last_error_code END, result_ref=COALESCE($5,result_ref), evidence_ref=COALESCE($6,evidence_ref), attempt=CASE WHEN $3='RUNNING' THEN attempt+1 ELSE attempt END, updated_at=now() WHERE execution_id=$1 AND fence_token=$2 AND status = ANY($7)")
-        .bind(execution_uuid).bind(fence.token as i64).bind(next).bind(detail).bind(result).bind(evidence).bind(&allowed)
+    sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+        .bind(&fence.tenant_id.0)
+        .execute(&mut *transaction)
+        .await
+        .map_err(|_| LedgerError::StoreFailure)?;
+    let changed = sqlx::query("UPDATE executions SET status=$4, external_operation_id=COALESCE($5,external_operation_id), last_error_code=COALESCE($6,last_error_code), result_ref=COALESCE($7,result_ref), evidence_ref=COALESCE($8,evidence_ref), attempt=CASE WHEN $4='RUNNING' THEN attempt+1 ELSE attempt END, updated_at=now() WHERE tenant_id=$1 AND execution_id=$2 AND fence_token=$3 AND status = ANY($9)")
+        .bind(tenant_uuid).bind(execution_uuid).bind(fence.token as i64).bind(next).bind(external_operation_id).bind(error_code).bind(result).bind(evidence).bind(&allowed)
         .execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?.rows_affected();
     if changed != 1 {
         return Err(LedgerError::StaleFence);
     }
-    sqlx::query("INSERT INTO execution_outbox (event_id, execution_id, event_type, payload, created_at) VALUES ($1,$2,$3,$4,now())")
+    sqlx::query("INSERT INTO execution_outbox (event_id, tenant_id, execution_id, event_type, payload, created_at) VALUES ($1,$2,$3,$4,$5,now())")
         .bind(Uuid::new_v4())
+        .bind(tenant_uuid)
         .bind(execution_uuid)
         .bind(format!("EXECUTION_{next}"))
-        .bind(serde_json::json!({"status": next, "detail": detail, "result_ref": result, "evidence_ref": evidence}))
+        .bind(serde_json::json!({"status": next, "external_operation_id": external_operation_id, "error_code": error_code, "result_ref": result, "evidence_ref": evidence}))
         .execute(&mut *transaction)
         .await
         .map_err(|_| LedgerError::StoreFailure)?;
@@ -942,13 +1095,13 @@ mod tests {
         let scanner = RecoveryScanner::new(restarted.clone(), Arc::new(Resolver));
         assert_eq!(
             scanner
-                .reconcile(Utc::now() + chrono::Duration::seconds(1))
+                .reconcile(&base.tenant_id, Utc::now() + chrono::Duration::seconds(1),)
                 .await,
             Ok(1)
         );
         assert_eq!(
             restarted
-                .get(&reservation.execution_id)
+                .get(&base.tenant_id, &reservation.execution_id)
                 .await
                 .map(|record| record.status),
             Ok(ExecutionStatus::Succeeded)

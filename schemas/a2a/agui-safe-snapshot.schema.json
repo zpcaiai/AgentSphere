@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/agui-safe-snapshot.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "task_id",
+    "sequence",
+    "safe_state",
+    "next_resume_token",
+    "generated_at",
+    "backend_signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.agui-safe-snapshot.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "sequence": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "safe_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$"},
+        "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "occurred_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "next_resume_token": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "backend_signature": {"type": "string", "minLength": 16, "maxLength": 4096}
+  }
+}

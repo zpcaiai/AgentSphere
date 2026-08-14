@@ -18,10 +18,12 @@ import java.util.UUID;
 public final class AdminModels {
     private AdminModels() {}
 
-    public record PrincipalContext(String subject, UUID tenantId, Set<String> roles, Set<String> projectIds) {
+    public record PrincipalContext(String subject, UUID tenantId, Set<String> roles,
+                                   Set<String> projectIds, Set<String> approvalIds) {
         public PrincipalContext {
             roles = Set.copyOf(roles);
             projectIds = Set.copyOf(projectIds);
+            approvalIds = Set.copyOf(approvalIds);
         }
     }
 
@@ -80,6 +82,33 @@ public final class AdminModels {
 
     public record ApiKeyIssueResponse(String schemaVersion, UUID apiKeyId, String oneTimeSecret,
                                       Instant createdAt, Instant expiresAt, Set<String> scopes) {}
+
+    public record TaskCommand(@JsonProperty("schema_version") @NotBlank String schemaVersion,
+                              @NotBlank @Size(max = 128) String commandId,
+                              @NotBlank @Pattern(regexp = "^(START|PAUSE|RESUME|CANCEL|KILL|CHECKPOINT)$")
+                              String commandType,
+                              @PositiveOrZero long expectedStateVersion,
+                              @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String payloadDigest) {}
+
+    public record PolicySimulationRequest(
+        @JsonProperty("schema_version") @NotBlank String schemaVersion,
+        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String candidateDigest,
+        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String corpusDigest,
+        @Positive @jakarta.validation.constraints.Max(10000) int maximumCases) {}
+
+    public record PolicyPromotionRequest(
+        @JsonProperty("schema_version") @NotBlank String schemaVersion,
+        @NotBlank @Size(max = 200) String bundleVersion,
+        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String impactReportDigest,
+        @NotBlank @Pattern(regexp = "^(CANARY|PRODUCTION)$") String environment) {}
+
+    public record ApprovalIntent(
+        @JsonProperty("schema_version") @NotBlank String schemaVersion,
+        @NotNull UUID caseId,
+        @NotBlank @Pattern(regexp = "^(APPROVE|REJECT)$") String decision,
+        @NotBlank @Size(max = 2000) String reason,
+        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String observedActionHash,
+        @NotBlank @Size(max = 512) String observedResourceVersion) {}
 
     public record AdminIntent(@JsonProperty("schema_version") @NotBlank String schemaVersion,
                               @NotNull UUID actionId,

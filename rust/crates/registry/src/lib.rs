@@ -255,8 +255,8 @@ impl InMemoryToolRegistry {
             return Err(RegistryError::VersionConflict);
         }
         let revision = self.revision.fetch_add(1, Ordering::SeqCst) + 1;
-        let manifest_hash = manifest_hash(&manifest)?;
-        let schema_hash = schema_pair_hash(&manifest)?;
+        let manifest_hash = canonical_manifest_hash(&manifest)?;
+        let schema_hash = canonical_schema_pair_hash(&manifest)?;
         tools.insert(
             manifest.tool_ref(),
             ToolRecord {
@@ -276,7 +276,7 @@ impl InMemoryToolRegistry {
             if record.manifest.status != ToolVersionStatus::Draft {
                 return Err(RegistryError::LifecycleInvalid);
             }
-            validate_manifest(&record.manifest, &tools)?;
+            validate_tool_manifest(&record.manifest, &tools)?;
         }
         let record = tools.get_mut(tool).ok_or(RegistryError::ToolNotFound)?;
         record.manifest.status = ToolVersionStatus::Validated;
@@ -380,7 +380,7 @@ impl ToolManifest {
     }
 }
 
-fn manifest_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
+pub fn canonical_manifest_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
     let mut material = manifest.clone();
     material.signature = None;
     material.status = ToolVersionStatus::Draft;
@@ -388,7 +388,7 @@ fn manifest_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
         serde_jcs::to_vec(&material).map_err(|_| RegistryError::ManifestHashMismatch)?,
     )))
 }
-fn schema_pair_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
+pub fn canonical_schema_pair_hash(manifest: &ToolManifest) -> Result<String, RegistryError> {
     Ok(hex::encode(Sha256::digest(
         serde_jcs::to_vec(&(&manifest.input_schema, &manifest.output_schema))
             .map_err(|_| RegistryError::SchemaInvalid)?,
@@ -418,10 +418,24 @@ fn verify_signature(
         .map_err(|_| RegistryError::SignatureInvalid)
 }
 
-fn validate_manifest(
+fn validate_tool_manifest(
     manifest: &ToolManifest,
     tools: &BTreeMap<ToolRef, ToolRecord>,
 ) -> Result<(), RegistryError> {
+    validate_manifest_shape(manifest)?;
+    if manifest.effect_class == EffectClass::Compensatable {
+        let binding = manifest
+            .compensation
+            .as_ref()
+            .ok_or(RegistryError::CompensationInvalid)?;
+        if !tools.contains_key(&binding.tool) && binding.tool != manifest.tool_ref() {
+            return Err(RegistryError::CompensationInvalid);
+        }
+    }
+    Ok(())
+}
+
+fn validate_manifest_shape(manifest: &ToolManifest) -> Result<(), RegistryError> {
     if manifest.schema_version != REGISTRY_SCHEMA_VERSION {
         return Err(RegistryError::SchemaInvalid);
     }
@@ -440,14 +454,8 @@ fn validate_manifest(
     if manifest.effect_class == EffectClass::Pure && manifest.credential_profile != "none" {
         return Err(RegistryError::CompensationInvalid);
     }
-    if manifest.effect_class == EffectClass::Compensatable {
-        let binding = manifest
-            .compensation
-            .as_ref()
-            .ok_or(RegistryError::CompensationInvalid)?;
-        if !tools.contains_key(&binding.tool) && binding.tool != manifest.tool_ref() {
-            return Err(RegistryError::CompensationInvalid);
-        }
+    if manifest.effect_class == EffectClass::Compensatable && manifest.compensation.is_none() {
+        return Err(RegistryError::CompensationInvalid);
     }
     if manifest.effect_class == EffectClass::Irreversible
         && (manifest.risk_level < RiskLevel::High || manifest.approval_profile == "none")
@@ -455,6 +463,56 @@ fn validate_manifest(
         return Err(RegistryError::CompensationInvalid);
     }
     Ok(())
+}
+
+/// Reconstructs the immutable execution snapshot from an ACTIVE persisted manifest.
+/// Production composition uses this instead of reimplementing Registry validation or hashes.
+pub fn resolved_snapshot_from_active_manifest(
+    tenant: &TenantId,
+    manifest: &ToolManifest,
+    compensation_target_active: bool,
+) -> Result<ResolvedToolSnapshot, RegistryError> {
+    if manifest.status != ToolVersionStatus::Active
+        || (!manifest.allowed_tenants.is_empty() && !manifest.allowed_tenants.contains(tenant))
+    {
+        return Err(RegistryError::VersionNotActive);
+    }
+    validate_manifest_shape(manifest)?;
+    if manifest.effect_class == EffectClass::Compensatable
+        && manifest
+            .compensation
+            .as_ref()
+            .is_some_and(|binding| binding.tool != manifest.tool_ref())
+        && !compensation_target_active
+    {
+        return Err(RegistryError::CompensationInvalid);
+    }
+    let mut snapshot = ResolvedToolSnapshot {
+        schema_version: REGISTRY_SCHEMA_VERSION.into(),
+        tool_id: manifest.tool_id.clone(),
+        tool_version: manifest.tool_version.clone(),
+        schema_hash: canonical_schema_pair_hash(manifest)?,
+        manifest_hash: canonical_manifest_hash(manifest)?,
+        effect_class: manifest.effect_class,
+        risk_level: manifest.risk_level,
+        executor_profile: manifest.executor_profile.clone(),
+        credential_profile: manifest.credential_profile.clone(),
+        approval_profile: manifest.approval_profile.clone(),
+        compensation: manifest.compensation.clone(),
+        limits: manifest.limits.clone(),
+        network_profile_ref: manifest.network_profile_ref.clone(),
+        filesystem_profile_ref: manifest.filesystem_profile_ref.clone(),
+        implementation: manifest.implementation.clone(),
+        // The persisted ACTIVE row is authoritative and immutable, but is not itself a
+        // signed registry snapshot. Revision 0 explicitly means row-bound resolution.
+        registry_revision: 0,
+        resolved_at: Utc::now(),
+        snapshot_hash: String::new(),
+        input_schema: manifest.input_schema.clone(),
+        output_schema: manifest.output_schema.clone(),
+    };
+    snapshot.snapshot_hash = snapshot_hash(&snapshot)?;
+    Ok(snapshot)
 }
 
 fn validate_schema_security(schema: &Value) -> Result<(), RegistryError> {
@@ -504,7 +562,11 @@ fn compile_schema(schema: &Value) -> Result<jsonschema::Validator, RegistryError
         .map_err(|_| RegistryError::SchemaInvalid)
 }
 
-fn validate_instance(schema: &Value, instance: &Value, output: bool) -> Result<(), RegistryError> {
+pub fn validate_schema_instance(
+    schema: &Value,
+    instance: &Value,
+    output: bool,
+) -> Result<(), RegistryError> {
     let validator = compile_schema(schema)?;
     if validator.validate(instance).is_err() {
         return Err(if output {
@@ -570,14 +632,14 @@ impl ToolRegistry for InMemoryToolRegistry {
         snapshot: &ResolvedToolSnapshot,
         args: &StrictJsonObject,
     ) -> Result<(), RegistryError> {
-        validate_instance(&snapshot.input_schema, &Value::Object(args.clone()), false)
+        validate_schema_instance(&snapshot.input_schema, &Value::Object(args.clone()), false)
     }
     async fn validate_output(
         &self,
         snapshot: &ResolvedToolSnapshot,
         output: &Value,
     ) -> Result<(), RegistryError> {
-        validate_instance(&snapshot.output_schema, output, true)
+        validate_schema_instance(&snapshot.output_schema, output, true)
     }
     async fn discover_capabilities(
         &self,
@@ -667,12 +729,17 @@ impl PostgresRegistryStore {
         {
             return Err(RegistryError::SchemaInvalid);
         }
-        let hash = manifest_hash(manifest)?;
+        let hash = canonical_manifest_hash(manifest)?;
         let value = serde_json::to_value(manifest).map_err(|_| RegistryError::SchemaInvalid)?;
         let tenant_uuid = Uuid::parse_str(&tenant.0).map_err(|_| RegistryError::SchemaInvalid)?;
         let mut transaction = self
             .pool
             .begin()
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&tenant.0)
+            .execute(&mut *transaction)
             .await
             .map_err(|_| RegistryError::StoreFailure)?;
         sqlx::query("INSERT INTO tools (tenant_id, tool_id) VALUES ($1,$2) ON CONFLICT (tenant_id, tool_id) DO NOTHING")
@@ -696,14 +763,29 @@ impl PostgresRegistryStore {
         tool: &ToolRef,
     ) -> Result<ToolManifest, RegistryError> {
         let tenant_uuid = Uuid::parse_str(&tenant.0).map_err(|_| RegistryError::SchemaInvalid)?;
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
+        sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
+            .bind(&tenant.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
         let row = sqlx::query("SELECT manifest FROM tool_versions WHERE tenant_id=$1 AND tool_id=$2 AND tool_version=$3")
-            .bind(tenant_uuid).bind(&tool.tool_id.0).bind(&tool.tool_version.0).fetch_optional(&self.pool).await.map_err(|_| RegistryError::StoreFailure)?
+            .bind(tenant_uuid).bind(&tool.tool_id.0).bind(&tool.tool_version.0).fetch_optional(&mut *transaction).await.map_err(|_| RegistryError::StoreFailure)?
             .ok_or(RegistryError::ToolNotFound)?;
-        serde_json::from_value(
+        let manifest = serde_json::from_value(
             row.try_get("manifest")
                 .map_err(|_| RegistryError::StoreFailure)?,
         )
-        .map_err(|_| RegistryError::SchemaInvalid)
+        .map_err(|_| RegistryError::SchemaInvalid)?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| RegistryError::StoreFailure)?;
+        Ok(manifest)
     }
 }
 

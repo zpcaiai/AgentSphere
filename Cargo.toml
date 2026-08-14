@@ -68,7 +68,7 @@ sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio
 thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["full"] }
 tower = { version = "0.5.2", features = ["limit", "timeout", "util"] }
-tower-http = { version = "0.6.6", features = ["limit", "request-id", "trace"] }
+tower-http = { version = "0.6.6", features = ["limit", "request-id", "timeout", "trace"] }
 unicode-normalization = "0.1.24"
 url = { version = "2.5.7", features = ["serde"] }
 uuid = { version = "1.18.1", features = ["serde", "v4"] }

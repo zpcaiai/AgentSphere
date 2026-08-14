@@ -1,15 +1,22 @@
 //! Authoritative durable Task/Step state machine and continuous authorization checkpoints.
 
+pub mod facts;
+pub mod runtime;
+
 use agent_trust_contracts::{
-    AuthorizationLease, EvaluationResult, ExecutionId, ExecutionStatus, PlanManifest, SignedGoal,
-    StateTransitionGuard, TaskId, TaskStatus, TenantId,
+    AuthorizationLease, EvaluationResult, ExecutionId, PlanManifest, SignedGoal, TaskId,
+    TaskStatus, TenantId,
 };
+#[cfg(test)]
+use agent_trust_contracts::{ExecutionStatus, StateTransitionGuard};
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
+#[cfg(test)]
 use uuid::Uuid;
 
 pub const ORCHESTRATOR_SCHEMA_VERSION: &str = "agenttrust.orchestrator.v1";
@@ -79,8 +86,9 @@ pub struct WorkflowCommand {
     pub requested_at: DateTime<Utc>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct WorkflowFacts {
+struct WorkflowFacts {
     pub schema_version: String,
     pub ledger_status: Option<ExecutionStatus>,
     pub evaluation: Option<EvaluationResult>,
@@ -290,7 +298,8 @@ impl TaskTransitionService {
         Ok(())
     }
 
-    pub fn request_transition(
+    #[cfg(test)]
+    fn request_transition(
         &self,
         command: WorkflowCommand,
         facts: WorkflowFacts,
@@ -305,6 +314,10 @@ impl TaskTransitionService {
         }
         if command.expected_recovery_cursor != record.recovery_cursor {
             return Err(OrchestratorError::ConcurrentCommand);
+        }
+        let mut events = self.events.lock();
+        if events.len() >= self.maximum_events {
+            return Err(OrchestratorError::CapacityExceeded);
         }
         let to = target_status(&command.kind);
         if requires_authorization(to) {
@@ -372,11 +385,6 @@ impl TaskTransitionService {
             occurred_at: record.updated_at,
         };
         let result = record.clone();
-        drop(tasks);
-        let mut events = self.events.lock();
-        if events.len() >= self.maximum_events {
-            return Err(OrchestratorError::CapacityExceeded);
-        }
         events.push(event);
         Ok(result)
     }
@@ -422,6 +430,33 @@ impl TaskTransitionService {
             .ok_or(OrchestratorError::NotFound)
     }
 
+    pub fn events_for(
+        &self,
+        tenant: &TenantId,
+        task: &TaskId,
+        after_recovery_cursor: u64,
+        limit: usize,
+    ) -> Result<Vec<WorkflowEvent>, OrchestratorError> {
+        if limit == 0 || limit > self.maximum_events {
+            return Err(OrchestratorError::ConfigurationInvalid);
+        }
+        if !self
+            .tasks
+            .lock()
+            .contains_key(&(tenant.clone(), task.clone()))
+        {
+            return Err(OrchestratorError::NotFound);
+        }
+        Ok(self
+            .events
+            .lock()
+            .iter()
+            .filter(|event| event.task_id == *task && event.recovery_cursor > after_recovery_cursor)
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
     pub fn snapshot(&self) -> Result<Vec<u8>, OrchestratorError> {
         serde_json::to_vec(&OrchestratorSnapshot {
             schema_version: ORCHESTRATOR_SCHEMA_VERSION.into(),
@@ -458,6 +493,7 @@ impl TaskTransitionService {
     }
 }
 
+#[cfg(test)]
 fn validate_command(
     command: &WorkflowCommand,
     facts: &WorkflowFacts,
@@ -473,6 +509,7 @@ fn validate_command(
     }
 }
 
+#[cfg(test)]
 fn target_status(kind: &WorkflowCommandKind) -> TaskStatus {
     match kind {
         WorkflowCommandKind::Plan { .. } => TaskStatus::Planned,
@@ -494,6 +531,7 @@ fn target_status(kind: &WorkflowCommandKind) -> TaskStatus {
     }
 }
 
+#[cfg(test)]
 fn requires_authorization(status: TaskStatus) -> bool {
     matches!(
         status,
@@ -501,6 +539,7 @@ fn requires_authorization(status: TaskStatus) -> bool {
     )
 }
 
+#[cfg(test)]
 fn digest_strings(values: &BTreeSet<String>) -> String {
     let joined = values.iter().cloned().collect::<Vec<_>>().join("\n");
     Sha256::digest(joined.as_bytes())

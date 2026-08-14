@@ -11,6 +11,7 @@ import com.agenttrust.control.AdminModels.ProjectRequest;
 import com.agenttrust.control.AdminModels.QuotaConsumeRequest;
 import com.agenttrust.control.AdminModels.QuotaUsageResponse;
 import com.agenttrust.control.AdminModels.TenantRequest;
+import com.agenttrust.control.AdminModels.ApprovalIntent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -48,7 +49,8 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, request);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 201)) {
                 return;
             }
             if (repository.createTenant(principal.tenantId(), request) != 1) {
@@ -69,7 +71,8 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, request);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 201)) {
                 return;
             }
             if (repository.createOrganization(principal.tenantId(), request) != 1) {
@@ -90,7 +93,8 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, request);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 201)) {
                 return;
             }
             if (repository.createProject(principal.tenantId(), request) != 1) {
@@ -116,7 +120,8 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, request);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 201)) {
                 return;
             }
             if (repository.createIntegration(principal.tenantId(), request) != 1) {
@@ -173,7 +178,8 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, request);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 202)) {
                 return;
             }
             if (repository.recordCost(principal.tenantId(), request) != 1) {
@@ -227,7 +233,8 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, apiKeyId);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 204)) {
                 return;
             }
             if (repository.revokeApiKey(principal.tenantId(), apiKeyId, reason) != 1) {
@@ -246,13 +253,121 @@ public final class EnterpriseService {
         String requestDigest = requestDigest(intent, reason, null);
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
+            if (isExactVoidReplay(repository.reserveIdempotency(
+                principal.tenantId(), key, requestDigest), 202)) {
                 return;
             }
             writeAudit(intent, decision, reason);
             completeVoid(principal, key, 202);
         });
     }
+
+    public RemoteAuthorization authorizeRemoteAction(PrincipalContext principal, AdminIntent intent,
+                                                       String reason, String key, Object payload,
+                                                       String operation, String resource,
+                                                       Set<String> requiredRoles) {
+        requireReason(reason);
+        requireOperation(intent, operation, resource);
+        requireContext(principal, intent, requiredRoles, true);
+        requireActionDigest(intent, reason, payload);
+        var decision = pep.authorize(principal, intent, key);
+        String digest = requestDigest(intent, reason, payload);
+        var reservation = transactions.execute(status -> {
+            repository.enterTenant(principal.tenantId());
+            var value = repository.reserveRemoteAction(principal.tenantId(), key, digest,
+                intent, payload);
+            if (value.created()) {
+                writeAudit(intent, decision, reason);
+            }
+            return value;
+        });
+        if (reservation == null) {
+            throw new ConflictException("CONTROL_TRANSACTION_FAILED");
+        }
+        return new RemoteAuthorization(principal.tenantId(), key, reservation.dispatch(),
+            reservation.completed(), reservation.attempt(), reservation.responsePayload(),
+            reservation.evidenceRef());
+    }
+
+    public void completeRemoteAction(RemoteAuthorization authorization, Object response,
+                                     String evidenceRef) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishRemoteAction(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "COMPLETED", response, evidenceRef);
+        });
+    }
+
+    public void markRemoteUnknown(RemoteAuthorization authorization, String reasonCode) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishRemoteAction(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "UNKNOWN", Map.of("safe_error_code", reasonCode), null);
+        });
+    }
+
+    public void markRemoteFailed(RemoteAuthorization authorization, String reasonCode) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishRemoteAction(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "FAILED", Map.of("safe_error_code", reasonCode), null);
+        });
+    }
+
+    public ApprovalAuthorization authorizeApprovalIntent(PrincipalContext principal,
+                                                           ApprovalIntent intent, String key) {
+        if (!"agenttrust.approval-intent.v1".equals(intent.schemaVersion())
+            || !principal.roles().contains("approver")) {
+            throw new ControlDeniedException("CONTROL_APPROVAL_DENIED");
+        }
+        var decision = pep.authorizeApproval(principal, intent, key);
+        String digest = canonicalDigest.digest(Map.of("tenant_id", principal.tenantId(),
+            "actor", principal.subject(), "approval_intent", intent));
+        var reservation = transactions.execute(status -> {
+            repository.enterTenant(principal.tenantId());
+            return repository.reserveApprovalIntent(principal.tenantId(), key, digest,
+                principal.subject(), intent);
+        });
+        if (reservation == null) {
+            throw new ConflictException("CONTROL_TRANSACTION_FAILED");
+        }
+        return new ApprovalAuthorization(principal.tenantId(), key, reservation.dispatch(),
+            reservation.completed(), reservation.attempt(), decision.evidenceRef(),
+            reservation.evidenceRef());
+    }
+
+    public void completeApprovalIntent(ApprovalAuthorization authorization, String evidenceRef) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "COMPLETED", evidenceRef);
+        });
+    }
+
+    public void markApprovalUnknown(ApprovalAuthorization authorization) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "UNKNOWN", authorization.pepEvidenceRef(),
+                "CONTROL_APPROVAL_OUTCOME_UNKNOWN");
+        });
+    }
+
+    public void markApprovalFailed(ApprovalAuthorization authorization, String reasonCode) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "FAILED", null, reasonCode);
+        });
+    }
+
+    public record RemoteAuthorization(UUID tenantId, String key, boolean dispatch,
+                                      boolean completed, int attempt,
+                                      com.fasterxml.jackson.databind.JsonNode completedResponse,
+                                      String completedEvidenceRef) {}
+    public record ApprovalAuthorization(UUID tenantId, String key, boolean dispatch,
+                                        boolean completed, int attempt, String pepEvidenceRef,
+                                        String completedEvidenceRef) {}
 
     private String requestDigest(AdminIntent intent, String reason, Object request) {
         Map<String, Object> values = new LinkedHashMap<>();
@@ -274,6 +389,20 @@ public final class EnterpriseService {
     private void completeVoid(PrincipalContext principal, String key, int status) {
         repository.completeIdempotency(principal.tenantId(), key, status,
             Map.of("completed", true));
+    }
+
+    static boolean isExactVoidReplay(EnterpriseRepository.IdempotencyReservation reservation,
+                                     int expectedStatus) {
+        if (!reservation.replay()) {
+            return false;
+        }
+        var payload = reservation.responsePayload();
+        if (reservation.responseStatus() != expectedStatus || payload == null || !payload.isObject()
+            || payload.size() != 1 || !payload.path("completed").isBoolean()
+            || !payload.path("completed").booleanValue()) {
+            throw new ConflictException("CONTROL_IDEMPOTENCY_RESPONSE_INVALID");
+        }
+        return true;
     }
 
     private void writeAudit(AdminIntent intent, AdminModels.AuthorizationDecision decision,
@@ -298,6 +427,7 @@ public final class EnterpriseService {
             || !principal.subject().equals(intent.requestedBy())
             || !principal.roles().containsAll(roles)
             || intent.projectId() != null && !principal.projectIds().contains(intent.projectId())
+            || !principal.approvalIds().containsAll(intent.approvalIds())
             || separation && intent.approvalIds().isEmpty()) {
             throw new ControlDeniedException("CONTROL_ADMIN_DENIED");
         }

@@ -13,11 +13,20 @@ export default defineConfig(({ mode }) => {
     if (controlApiUrl.protocol !== "https:" || controlApiUrl.username || controlApiUrl.password) {
       throw new Error("VITE_CONTROL_API_URL must use HTTPS and must not contain credentials");
     }
+    if (!/^[A-Za-z0-9_-]{43}$/.test(env.VITE_AGUI_VERIFY_KEY ?? "")) {
+      throw new Error("VITE_AGUI_VERIFY_KEY must be a base64url Ed25519 public key for production builds");
+    }
   }
 
   return {
     plugins: [vue()],
     build: { sourcemap: false, target: "es2022" },
     server: { host: "127.0.0.1", strictPort: true },
+    test: {
+      environment: "jsdom",
+      setupFiles: ["./src/test/setup.ts"],
+      include: ["src/**/*.test.ts"],
+      coverage: { reporter: ["text", "json-summary"] },
+    },
   };
 });

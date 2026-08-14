@@ -13,7 +13,7 @@ use thiserror::Error;
 
 pub const CLOSURE_SCHEMA_VERSION: &str = "agenttrust.production-closure.v1";
 pub const REQUIRED_BATCH_FIRST: u8 = 1;
-pub const REQUIRED_BATCH_LAST: u8 = 35;
+pub const REQUIRED_BATCH_LAST: u8 = 36;
 pub const DOMAIN_ASSURANCE_SCHEMA_VERSION: &str = "agenttrust.domain-assurance-attestation.v1";
 pub const EXTERNAL_GATE_ASSURANCE_SCHEMA_VERSION: &str =
     "agenttrust.external-gate-assurance-attestation.v1";
@@ -1133,7 +1133,7 @@ mod tests {
         let report =
             ClosureRunner::evaluate(&input, now).unwrap_or_else(|error| panic!("report: {error}"));
         assert!(!report.eligible);
-        assert!(report.blockers.contains("BATCH_35_MISSING"));
+        assert!(report.blockers.contains("BATCH_36_MISSING"));
         let authority = ClosureAuthority::new("closure-key", SigningKey::from_bytes(&[71_u8; 32]))
             .unwrap_or_else(|error| panic!("authority: {error}"));
         assert_eq!(

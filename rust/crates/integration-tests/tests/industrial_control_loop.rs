@@ -387,7 +387,7 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
         .execute(AuthorizedToolRequest {
             authorization,
             tool: snapshot,
-            tenant_id: tenant,
+            tenant_id: tenant.clone(),
             workload_credential: credential,
             operation: "commit_setpoint".into(),
             resource: "plant/asset-1/setpoint".into(),
@@ -409,7 +409,7 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
     assert_eq!(audit.events.read().len(), 1);
     assert_eq!(
         ledger
-            .get(&reservation.execution_id)
+            .get(&tenant, &reservation.execution_id)
             .await
             .map(|record| record.status),
         Ok(ExecutionStatus::Succeeded)

@@ -8,10 +8,34 @@ servers:
 security:
   - workloadIdentity: []
 paths:
+  /session:
+    get:
+      operationId: getConsoleSession
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      responses:
+        '200':
+          description: Tenant-bound server-side console session and CSRF binding
+          headers:
+            Cache-Control: {schema: {type: string, const: no-store}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/ConsoleSession'}}}
+  /session/logout:
+    post:
+      operationId: logoutConsoleSession
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '204': {description: Server-side session invalidated and browser cookies expired}
   /tenants/{tenantId}:
     post:
       operationId: createTenant
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -27,7 +51,9 @@ paths:
   /tenants/{tenantId}/organizations:
     post:
       operationId: createOrganization
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -43,7 +69,9 @@ paths:
   /tenants/{tenantId}/projects:
     post:
       operationId: createProject
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -59,7 +87,9 @@ paths:
   /tenants/{tenantId}/integrations:
     post:
       operationId: createIntegration
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -75,7 +105,9 @@ paths:
   /tenants/{tenantId}/quota/consume:
     post:
       operationId: consumeTenantQuota
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -93,7 +125,9 @@ paths:
   /tenants/{tenantId}/costs:
     post:
       operationId: recordTenantCost
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -109,7 +143,9 @@ paths:
   /tenants/{tenantId}/api-keys:
     post:
       operationId: issueApiKey
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -127,7 +163,9 @@ paths:
   /tenants/{tenantId}/api-keys/{apiKeyId}/revoke:
     post:
       operationId: revokeApiKey
-      security: [{enterpriseJwt: []}]
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - {name: apiKeyId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -144,39 +182,155 @@ paths:
   /tenants/{tenantId}/tasks/{taskId}/commands:
     post:
       operationId: submitTaskCommand
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/TaskId'
         - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/TaskCommand'}
+            schema: {$ref: '#/components/schemas/GovernedTaskCommand'}
       responses:
-        '202': {description: Command accepted for authoritative transition}
+        '202':
+          description: >-
+            Command durably accepted after the exact orchestrator receipt and remote evidence
+            reference are verified. Process execution remains pending and is not claimed here;
+            completed idempotent replays return the same status without redispatch.
         '409': {description: State version conflict or duplicate content mismatch}
         '429': {description: Bounded queue full}
+        '503': {description: Acceptance is unverified, still in progress, or outcome remains UNKNOWN}
   /tenants/{tenantId}/agents:
     get:
       operationId: listAgentInventory
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - {name: cursor, in: query, schema: {type: string}}
         - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
       responses:
-        '200': {description: Tenant-scoped authoritative inventory page}
+        '200':
+          description: Tenant-scoped authoritative inventory page
+          content: {application/json: {schema: {$ref: '#/components/schemas/AuthorityPayload'}}}
   /tenants/{tenantId}/policies/{bundleId}/simulate:
     post:
       operationId: simulatePolicyBundle
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - {name: bundleId, in: path, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PolicySimulationRequest'}
       responses:
-        '200': {description: Side-effect-free impact report}
+        '200':
+          description: Side-effect-free impact report
+          content: {application/json: {schema: {$ref: '#/components/schemas/AuthorityPayload'}}}
+  /tenants/{tenantId}/policies/{bundleId}/promotions:
+    post:
+      operationId: promotePolicyBundle
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: bundleId, in: path, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernedPolicyPromotion'}
+      responses:
+        '202': {description: Governed promotion dispatched to the authoritative policy service}
+        '403': {description: Authorization or separation-of-duties denial}
+        '503': {description: Outcome remains UNKNOWN and safe to retry with the same key}
+  /tenants/{tenantId}/approvals/{caseId}/intents:
+    post:
+      operationId: submitApprovalIntent
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: caseId, in: path, required: true, schema: {type: string, format: uuid}}
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ApprovalIntentEnvelope'}
+      responses:
+        '202': {description: Intent accepted only after a verified backend approval event}
+        '403': {description: Approver authorization, binding, or SoD denial}
+        '503': {description: Approval outcome remains UNKNOWN}
+  /tenants/{tenantId}/tasks/{taskId}/agui/events:
+    get:
+      operationId: resumeTaskEvents
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/TaskId'
+        - {name: resume_token, in: query, schema: {type: string, maxLength: 2048}}
+        - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Bounded signed AG-UI resume page
+          content: {application/json: {schema: {$ref: '#/components/schemas/AguiResumeResponse'}}}
+  /tenants/{tenantId}/tasks/{taskId}/agui/snapshot:
+    get:
+      operationId: getTaskSafeSnapshot
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Signed tenant/task-bound safe snapshot and resume cursor
+          content: {application/json: {schema: {$ref: '#/components/schemas/AguiSafeSnapshot'}}}
+        '403': {description: Tenant, task ownership, or query authorization denied}
+  /tenants/{tenantId}/dashboard:
+    get:
+      operationId: getEnterpriseDashboard
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: resource
+          in: query
+          description: >-
+            Bounded view selector forwarded only as a query value to each allowlisted
+            authority-specific collection route; it is never interpolated into a path.
+          schema: {type: string, default: summary, minLength: 1, maxLength: 100, pattern: '^[a-z][a-z0-9_-]{0,99}$'}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200':
+          description: Partial-failure-explicit authoritative dashboard
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseDashboard'}}}
   /tenants/{tenantId}/admin/actions:
     post:
       operationId: submitAdminIntent
+      security:
+        - enterpriseJwt: []
+        - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -197,12 +351,30 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    oidcSession:
+      type: apiKey
+      in: cookie
+      name: SESSION
   parameters:
     TenantId: {name: tenantId, in: path, required: true, schema: {type: string, minLength: 1}}
-    TaskId: {name: taskId, in: path, required: true, schema: {type: string, minLength: 1}}
+    TaskId: {name: taskId, in: path, required: true, schema: {type: string, format: uuid}}
     IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
     CsrfToken: {name: X-XSRF-TOKEN, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 4096}}
   schemas:
+    ConsoleSession:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, subject, roles, project_ids, approval_ids,
+        csrf_header_name, csrf_token]
+      properties:
+        schema_version: {const: agenttrust.enterprise-session.v1}
+        tenant_id: {type: string, format: uuid}
+        subject: {type: string, minLength: 1, maxLength: 300}
+        roles: {type: array, maxItems: 64, items: {type: string, maxLength: 100}}
+        project_ids: {type: array, maxItems: 1000, items: {type: string, maxLength: 200}}
+        approval_ids: {type: array, maxItems: 16, items: {type: string, maxLength: 200}}
+        csrf_header_name: {const: X-XSRF-TOKEN}
+        csrf_token: {type: string, minLength: 1, maxLength: 4096}
     TaskCommand:
       type: object
       additionalProperties: false
@@ -213,6 +385,129 @@ components:
         command_type: {enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT]}
         expected_state_version: {type: integer, minimum: 0}
         payload_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    GovernedTaskCommand:
+      type: object
+      additionalProperties: false
+      required: [command, intent, reason]
+      properties:
+        command: {$ref: '#/components/schemas/TaskCommand'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    PolicySimulationRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, candidate_digest, corpus_digest, maximum_cases]
+      properties:
+        schema_version: {const: agenttrust.policy-simulation-request.v1}
+        candidate_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        corpus_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        maximum_cases: {type: integer, minimum: 1, maximum: 10000}
+    PolicyPromotionRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, bundle_version, impact_report_digest, environment]
+      properties:
+        schema_version: {const: agenttrust.policy-promotion-request.v1}
+        bundle_version: {type: string, minLength: 1, maxLength: 200}
+        impact_report_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        environment: {enum: [CANARY, PRODUCTION]}
+    GovernedPolicyPromotion:
+      type: object
+      additionalProperties: false
+      required: [promotion, intent, reason]
+      properties:
+        promotion: {$ref: '#/components/schemas/PolicyPromotionRequest'}
+        intent: {$ref: '#/components/schemas/AdminAction'}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+    ApprovalIntent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, case_id, decision, reason, observed_action_hash, observed_resource_version]
+      properties:
+        schema_version: {const: agenttrust.approval-intent.v1}
+        case_id: {type: string, format: uuid}
+        decision: {enum: [APPROVE, REJECT]}
+        reason: {type: string, minLength: 1, maxLength: 2000}
+        observed_action_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        observed_resource_version: {type: string, minLength: 1, maxLength: 512}
+    ApprovalIntentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [approval_intent]
+      properties:
+        approval_intent: {$ref: '#/components/schemas/ApprovalIntent'}
+    AuthorityPayload:
+      type: object
+      minProperties: 1
+      maxProperties: 256
+      additionalProperties: true
+    AuthoritySection:
+      type: object
+      additionalProperties: false
+      required: [schema_version, section, authoritative, available, data, data_digest, fetched_at]
+      properties:
+        schema_version: {const: agenttrust.authority-view.v1}
+        section: {type: string}
+        authoritative: {const: true}
+        available: {type: boolean}
+        data: {type: [object, array, 'null']}
+        data_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        safe_error_code: {enum: [AUTHORITATIVE_SOURCE_UNAVAILABLE]}
+        fetched_at: {type: string, format: date-time}
+    EnterpriseDashboard:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, sections, complete, unavailable_sections, generated_at]
+      properties:
+        schema_version: {const: agenttrust.enterprise-dashboard.v1}
+        tenant_id: {type: string, format: uuid}
+        sections: {type: object, additionalProperties: {$ref: '#/components/schemas/AuthoritySection'}}
+        complete: {type: boolean}
+        unavailable_sections: {type: array, uniqueItems: true, items: {type: string}}
+        generated_at: {type: string, format: date-time}
+    AguiEvent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, tenant_id, task_id, sequence, trace_id, kind, safe_payload, occurred_at, backend_signature]
+      properties:
+        schema_version: {const: agenttrust.a2a-agui.v1}
+        event_id: {type: string, minLength: 1, maxLength: 200}
+        tenant_id: {type: string, format: uuid}
+        task_id: {type: string, minLength: 1, maxLength: 200}
+        sequence: {type: integer, minimum: 1}
+        trace_id: {type: string, minLength: 1, maxLength: 256}
+        kind: {enum: [PLAN_UPDATED, TOOL_REQUESTED, APPROVAL_REQUIRED, APPROVAL_RECORDED, EXECUTION_STATUS, ARTIFACT_AVAILABLE, EVALUATION_UPDATED, INCIDENT]}
+        safe_payload: {type: object, maxProperties: 256, additionalProperties: true}
+        occurred_at: {type: string, format: date-time}
+        backend_signature: {type: string, minLength: 16, maxLength: 4096}
+    AguiResumeResponse:
+      type: object
+      additionalProperties: false
+      required: [events, next_resume_token, safe_snapshot_required]
+      properties:
+        events: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/AguiEvent'}}
+        next_resume_token: {type: string, maxLength: 2048}
+        safe_snapshot_required: {type: boolean}
+    AguiSafeSnapshot:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, sequence, safe_state, next_resume_token, generated_at, backend_signature]
+      properties:
+        schema_version: {const: agenttrust.agui-safe-snapshot.v1}
+        tenant_id: {type: string, format: uuid}
+        task_id: {type: string, minLength: 1, maxLength: 200}
+        sequence: {type: integer, minimum: 0}
+        safe_state:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: {type: string, pattern: '^[A-Z][A-Z0-9_]{0,63}$'}
+            evidence_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+            occurred_at: {type: string, format: date-time}
+        next_resume_token: {type: string, minLength: 1, maxLength: 2048}
+        generated_at: {type: string, format: date-time}
+        backend_signature: {type: string, minLength: 16, maxLength: 4096}
     AdminAction:
       type: object
       additionalProperties: false

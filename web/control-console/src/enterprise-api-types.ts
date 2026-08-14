@@ -1,76 +1,52 @@
-export interface QuotaSpec {
-  maximum_active_tasks: number;
-  maximum_export_records: number;
-  maximum_webhooks: number;
-  maximum_api_requests_per_minute: number;
+import type { components } from "./generated/control-plane-v1";
+
+type Schemas = components["schemas"];
+export type QuotaSpec = Schemas["QuotaSpec"];
+export type TenantRequest = Schemas["TenantRequest"];
+export type OrganizationRequest = Schemas["OrganizationRequest"];
+export type ProjectRequest = Schemas["ProjectRequest"];
+export type IntegrationRequest = Schemas["IntegrationRequest"];
+export type QuotaConsumeRequest = Schemas["QuotaConsumeRequest"];
+export type QuotaUsage = Schemas["QuotaUsage"];
+export type CostUsageRequest = Schemas["CostUsageRequest"];
+export type ApiKeyIssueRequest = Schemas["ApiKeyIssueRequest"];
+export type ApiKeyIssueResponse = Schemas["ApiKeyIssueResponse"];
+
+export interface AuthorityPage<T> {
+  schema_version: string;
+  authoritative: true;
+  items: T[];
+  next_cursor: string | null;
 }
 
-export interface TenantRequest {
-  display_name: string;
-  owner_subject: string;
-  data_region: string;
-  quota: QuotaSpec;
+export interface AgentInventoryItem {
+  agent_id: string;
+  version?: string;
+  posture?: string;
+  safe_summary?: string;
+  [key: string]: unknown;
 }
 
-export interface OrganizationRequest {
-  organization_id: string;
-  display_name: string;
-  sponsor_subject: string;
+export type TaskCommand = Schemas["TaskCommand"];
+export type PolicySimulationRequest = Schemas["PolicySimulationRequest"];
+
+export interface PolicySimulationResult {
+  schema_version: string;
+  authoritative: true;
+  impact_report_digest: string;
+  safe_summary: string;
 }
 
-export interface ProjectRequest {
-  project_id: string;
-  organization_id: string;
-  owner_subject: string;
-  environments: string[];
-}
+export type PolicyPromotionRequest = Schemas["PolicyPromotionRequest"];
 
-export interface IntegrationRequest {
-  integration_id: string;
-  kind: "IAM" | "NOTIFICATION" | "TICKETING" | "SIEM" | "WEBHOOK";
-  endpoint: string;
-  secret_ref: string;
-  configuration_digest: string;
-  active: boolean;
-}
-
-export interface QuotaConsumeRequest {
-  quota_key: string;
-  window_started_at: string;
-  amount: number;
-  limit: number;
-}
-
-export interface QuotaUsage {
-  schema_version: "agenttrust.quota-usage.v1";
-  tenant_id: string;
-  quota_key: string;
-  window_started_at: string;
-  used: number;
-  limit: number;
-}
-
-export interface CostUsageRequest {
-  usage_id: string;
-  project_id: string;
-  meter: string;
-  quantity: number;
-  unit_cost_micros: number;
-  source_digest: string;
-  recorded_at: string;
-}
-
-export interface ApiKeyIssueRequest {
-  project_id: string | null;
-  scopes: string[];
-  expires_at: string;
-}
-
-export interface ApiKeyIssueResponse {
-  schema_version: "agenttrust.api-key.v1";
-  api_key_id: string;
-  one_time_secret: string;
-  created_at: string;
-  expires_at: string;
-  scopes: string[];
-}
+export type GovernedWriteCommand =
+  | { kind: "CREATE_TENANT"; resource: string; payload: TenantRequest; reason: string }
+  | { kind: "CREATE_ORGANIZATION"; resource: string; payload: OrganizationRequest; reason: string }
+  | { kind: "CREATE_PROJECT"; resource: string; payload: ProjectRequest; reason: string }
+  | { kind: "CREATE_INTEGRATION"; resource: string; payload: IntegrationRequest; reason: string }
+  | { kind: "CONSUME_QUOTA"; resource: string; payload: QuotaConsumeRequest; reason: string }
+  | { kind: "RECORD_COST"; resource: string; payload: CostUsageRequest; reason: string }
+  | { kind: "ISSUE_API_KEY"; resource: "api-key:new"; payload: ApiKeyIssueRequest; reason: string }
+  | { kind: "REVOKE_API_KEY"; resource: string; payload: string; reason: string }
+  | { kind: "PROMOTE_POLICY"; resource: string; payload: PolicyPromotionRequest; reason: string }
+  | { kind: `TASK_${TaskCommand["command_type"]}`; resource: string; payload: TaskCommand; reason: string };

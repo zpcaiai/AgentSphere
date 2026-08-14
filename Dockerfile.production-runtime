@@ -2,7 +2,8 @@ ARG RUST_BUILDER_IMAGE
 ARG RUNTIME_BASE_IMAGE
 FROM ${RUST_BUILDER_IMAGE} AS build
 WORKDIR /src
-COPY . .
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
 RUN cargo build --locked --release -p agent-trust-production-runtime
 
 FROM ${RUNTIME_BASE_IMAGE}

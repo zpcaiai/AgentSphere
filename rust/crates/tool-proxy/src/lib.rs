@@ -398,7 +398,8 @@ impl<T: VaultLeaseTransport> TargetSecretProvider for VaultTargetSecretProvider<
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AuthorizedToolRequest {
     pub authorization: ExecutionAuthorization,
     pub tool: ResolvedToolSnapshot,

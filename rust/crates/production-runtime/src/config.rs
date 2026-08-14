@@ -53,9 +53,32 @@ impl TlsClientConfig {
 
 #[cfg(unix)]
 fn validate_private_file(path: &Path) -> Result<(), ConfigurationError> {
-    use std::os::unix::fs::PermissionsExt;
-    let metadata = fs::metadata(path).map_err(|_| ConfigurationError::SecretFileInvalid)?;
-    if !metadata.is_file() || metadata.permissions().mode() & 0o077 != 0 {
+    validate_private_file_for_identity(
+        path,
+        nix::unistd::geteuid().as_raw(),
+        nix::unistd::getegid().as_raw(),
+    )
+}
+
+#[cfg(unix)]
+fn validate_private_file_for_identity(
+    path: &Path,
+    effective_uid: u32,
+    effective_gid: u32,
+) -> Result<(), ConfigurationError> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let metadata = fs::symlink_metadata(path).map_err(|_| ConfigurationError::SecretFileInvalid)?;
+    let mode = metadata.permissions().mode() & 0o7777;
+    let owner_can_read = metadata.uid() == effective_uid && mode & 0o400 != 0;
+    let group_readable = mode & 0o040 != 0;
+    let group_can_read = metadata.gid() == effective_gid && group_readable;
+    if !metadata.file_type().is_file()
+        || metadata.file_type().is_symlink()
+        || (!owner_can_read && !group_can_read)
+        || (group_readable && metadata.gid() != effective_gid)
+        || mode & !0o440 != 0
+    {
         return Err(ConfigurationError::SecretFileInvalid);
     }
     Ok(())
@@ -295,4 +318,89 @@ pub fn validate_relative_path(path: &str) -> Result<(), ConfigurationError> {
         return Err(ConfigurationError::Invalid);
     }
     Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod unix_secret_file_tests {
+    use super::{ConfigurationError, validate_private_file_for_identity};
+    use std::fs;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
+
+    fn test_directory() -> std::io::Result<PathBuf> {
+        let directory = std::env::temp_dir().join(format!(
+            "agenttrust-private-file-{}-{}",
+            std::process::id(),
+            NEXT_PATH.fetch_add(1, Ordering::Relaxed),
+        ));
+        fs::create_dir(&directory)?;
+        Ok(directory)
+    }
+
+    #[test]
+    fn accepts_csi_group_read_only_for_effective_group() -> std::io::Result<()> {
+        let directory = test_directory()?;
+        let secret = directory.join("secret");
+        fs::write(&secret, b"secret")?;
+        fs::set_permissions(&secret, fs::Permissions::from_mode(0o440))?;
+        let metadata = fs::symlink_metadata(&secret)?;
+
+        assert!(
+            validate_private_file_for_identity(
+                &secret,
+                metadata.uid().wrapping_add(1),
+                metadata.gid(),
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            validate_private_file_for_identity(
+                &secret,
+                metadata.uid().wrapping_add(1),
+                metadata.gid().wrapping_add(1),
+            ),
+            Err(ConfigurationError::SecretFileInvalid),
+        ));
+        assert!(matches!(
+            validate_private_file_for_identity(
+                &secret,
+                metadata.uid(),
+                metadata.gid().wrapping_add(1),
+            ),
+            Err(ConfigurationError::SecretFileInvalid),
+        ));
+
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_group_write_world_access_and_symbolic_links() -> std::io::Result<()> {
+        let directory = test_directory()?;
+        let secret = directory.join("secret");
+        let link = directory.join("secret-link");
+        fs::write(&secret, b"secret")?;
+        let metadata = fs::symlink_metadata(&secret)?;
+
+        for mode in [0o460, 0o441, 0o600, 0o500, 0o1440] {
+            fs::set_permissions(&secret, fs::Permissions::from_mode(mode))?;
+            assert!(matches!(
+                validate_private_file_for_identity(&secret, metadata.uid(), metadata.gid()),
+                Err(ConfigurationError::SecretFileInvalid),
+            ));
+        }
+
+        fs::set_permissions(&secret, fs::Permissions::from_mode(0o400))?;
+        symlink(&secret, &link)?;
+        assert!(matches!(
+            validate_private_file_for_identity(&link, metadata.uid(), metadata.gid()),
+            Err(ConfigurationError::SecretFileInvalid),
+        ));
+
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
 }

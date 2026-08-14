@@ -116,7 +116,7 @@ async fn postgres_registry_and_ledger_are_durable_and_concurrency_safe() {
     assert_eq!(loaded, manifest);
 
     let ledger = Arc::new(PostgresExecutionLedger::new(pool.clone()));
-    let ledger_intent = intent(tenant, format!("pg:{}", Uuid::new_v4()));
+    let ledger_intent = intent(tenant.clone(), format!("pg:{}", Uuid::new_v4()));
     let mut tasks = JoinSet::new();
     for _ in 0..20 {
         let ledger = ledger.clone();
@@ -155,7 +155,10 @@ async fn postgres_registry_and_ledger_are_durable_and_concurrency_safe() {
         .await
         .unwrap_or_else(|_| panic!("postgres success"));
     assert_eq!(
-        ledger.get(&execution_id).await.map(|record| record.status),
+        ledger
+            .get(&tenant, &execution_id)
+            .await
+            .map(|record| record.status),
         Ok(ExecutionStatus::Succeeded)
     );
     let outbox_count: i64 =
