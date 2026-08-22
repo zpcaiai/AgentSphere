@@ -1,1 +1,20 @@
-{"schema_version":"agenttrust.pack-marketplace-config.v1","profile":"production","fail_closed":true,"unknown_publisher":"DENY","production_activation_requires_certificate":true,"permission_expansion_requires_review":true,"retain_previous_versions":2,"maximum_results":100,"revoke_propagation_required":true}
+{
+  "schema_version": "agenttrust.pack-marketplace-config.v1",
+  "profile": "production",
+  "fail_closed": true,
+  "unknown_publisher": "DENY",
+  "publisher_key_algorithm": "Ed25519",
+  "release_gate_certificate_required": true,
+  "production_activation_requires_certificate": true,
+  "activation_grants_production_authorization": false,
+  "permission_expansion_requires_review": true,
+  "compatibility_requires_tenant_catalog": true,
+  "entitlement_requires_tenant_catalog": true,
+  "region_requires_tenant_catalog": true,
+  "retain_previous_versions": 2,
+  "maximum_results": 200,
+  "revoke_propagation_required": true,
+  "data_port": 8090,
+  "management_port": 9101,
+  "readiness_schema": "agenttrust.pack-marketplace-readiness.v1"
+}

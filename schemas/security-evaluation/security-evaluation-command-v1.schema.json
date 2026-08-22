@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/security-evaluation/security-evaluation-command-v1.schema.json",
+  "title": "Security evaluation authority command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "command_id", "task_id", "resource_id", "operation", "expected_resource_version", "requested_at", "payload"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.security-eval-command.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "resource_id": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"},
+    "operation": {
+      "enum": [
+        "REGISTER_DATASET", "QUARANTINE_DATASET", "REGISTER_SCENARIO", "CREATE_CAMPAIGN",
+        "ATTACH_SCENARIO", "APPROVE_CAMPAIGN", "START_CAMPAIGN", "RECORD_RESULT",
+        "OPEN_FINDING", "LINK_REMEDIATION", "RECORD_RETEST", "COMPLETE_CAMPAIGN",
+        "PUBLISH_BASELINE", "ABORT_CAMPAIGN", "TRIP_KILL_SWITCH"
+      ]
+    },
+    "expected_resource_version": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "payload": {"type": "object", "minProperties": 1, "maxProperties": 32}
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-governance/inspection.schema.json",
+  "title": "Ephemeral data-governance inspection contracts",
+  "oneOf": [
+    {"$ref": "#/$defs/policyEvaluation"},
+    {"$ref": "#/$defs/dlpInspection"},
+    {"$ref": "#/$defs/promptSanitization"},
+    {"$ref": "#/$defs/artifactAuthorization"}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "contentEncoding": {"enum": ["IDENTITY", "BASE64", "GZIP", "ZIP"]},
+    "content": {
+      "type": "string",
+      "contentEncoding": "base64",
+      "minLength": 4,
+      "maxLength": 11184820,
+      "description": "Ephemeral transport framing. Raw content is never stored or logged."
+    },
+    "label": {"$ref": "./data-label.schema.json"},
+    "policyRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "tenant_id", "classification", "source_jurisdiction",
+        "destination_jurisdiction", "destination_kind", "deployment_profile",
+        "contains_secret", "cross_domain_approval_id"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.contracts.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"},
+        "classification": {"$ref": "#/$defs/classification"},
+        "source_jurisdiction": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "destination_jurisdiction": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "destination_kind": {"type": "string", "pattern": "^[^\\s]{1,2048}$"},
+        "deployment_profile": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$"},
+        "contains_secret": {"type": "boolean"},
+        "cross_domain_approval_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]}
+      }
+    },
+    "policyEvaluation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "evaluation_id", "label", "request", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.data-policy-evaluation.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "evaluation_id": {"$ref": "#/$defs/uuid"},
+        "label": {"$ref": "#/$defs/label"}, "request": {"$ref": "#/$defs/policyRequest"},
+        "requested_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "dlpInspection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "scan_id", "media_type", "content_encoding", "content_base64", "classification", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.data-dlp-inspection.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "scan_id": {"$ref": "#/$defs/uuid"},
+        "media_type": {"enum": ["text/plain", "application/json", "application/octet-stream", "application/pdf", "text/csv"]},
+        "content_encoding": {"$ref": "#/$defs/contentEncoding"}, "content_base64": {"$ref": "#/$defs/content"},
+        "classification": {"$ref": "#/$defs/classification"}, "requested_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "promptSanitization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "transform_id", "dlp_scan_id", "media_type", "content_encoding", "content_base64", "label", "private_processing", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.prompt-sanitization.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "transform_id": {"$ref": "#/$defs/uuid"}, "dlp_scan_id": {"$ref": "#/$defs/uuid"},
+        "media_type": {"enum": ["text/plain", "application/json", "application/octet-stream", "application/pdf", "text/csv"]},
+        "content_encoding": {"$ref": "#/$defs/contentEncoding"}, "content_base64": {"$ref": "#/$defs/content"},
+        "label": {"$ref": "#/$defs/label"}, "private_processing": {"type": "boolean"},
+        "requested_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "artifactAuthorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "authorization_id", "object_ref", "object_digest", "destination_digest", "media_type", "content_encoding", "content_base64", "label", "label_digest", "policy_request", "decision_id", "dlp_scan_id", "dlp_receipt_digest", "transform_id", "transform_receipt_digest", "cross_domain_grant_id", "redirect_target_digests", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.artifact-authorization.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "authorization_id": {"$ref": "#/$defs/uuid"},
+        "object_ref": {"type": "string", "pattern": "^(artifact|object)://", "maxLength": 2048},
+        "object_digest": {"$ref": "#/$defs/digest"}, "destination_digest": {"$ref": "#/$defs/digest"},
+        "media_type": {"enum": ["text/plain", "application/json", "application/octet-stream", "application/pdf", "text/csv"]},
+        "content_encoding": {"$ref": "#/$defs/contentEncoding"}, "content_base64": {"$ref": "#/$defs/content"},
+        "label": {"$ref": "#/$defs/label"}, "label_digest": {"$ref": "#/$defs/digest"},
+        "policy_request": {"$ref": "#/$defs/policyRequest"}, "decision_id": {"$ref": "#/$defs/uuid"},
+        "dlp_scan_id": {"$ref": "#/$defs/uuid"}, "dlp_receipt_digest": {"$ref": "#/$defs/digest"},
+        "transform_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+        "transform_receipt_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "cross_domain_grant_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
+        "redirect_target_digests": {"type": "array", "maxItems": 0, "items": {"$ref": "#/$defs/digest"}},
+        "requested_at": {"type": "string", "format": "date-time"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"transform_id": {"type": "null"}}, "required": ["transform_id"]},
+          "then": {"properties": {"transform_receipt_digest": {"type": "null"}}},
+          "else": {"properties": {"transform_receipt_digest": {"$ref": "#/$defs/digest"}}}
+        }
+      ]
+    }
+  }
+}

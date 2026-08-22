@@ -1,23 +1,22 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import type { ApiKeyIssueResponse, GovernedWriteCommand, QuotaUsage } from "../enterprise-api-types";
+import type { EnterpriseActionReceipt, GovernedWriteCommand } from "../enterprise-api-types";
 
 const props = withDefaults(defineProps<{
   tenantId: string;
   projectId: string | null;
   busy?: boolean;
-  issuedApiKey?: ApiKeyIssueResponse | null;
-  quotaUsage?: QuotaUsage | null;
+  actionReceipt?: EnterpriseActionReceipt | null;
   locale?: "zh-CN" | "en-US";
-}>(), { busy: false, issuedApiKey: null, quotaUsage: null, locale: "zh-CN" });
+}>(), { busy: false, actionReceipt: null, locale: "zh-CN" });
 
 const emit = defineEmits<{
   submit: [GovernedWriteCommand];
-  clearApiKey: [];
+  clearReceipt: [];
 }>();
 
 type Operation = "CREATE_TENANT" | "CREATE_ORGANIZATION" | "CREATE_PROJECT" | "CREATE_INTEGRATION"
-  | "CONSUME_QUOTA" | "RECORD_COST" | "ISSUE_API_KEY" | "REVOKE_API_KEY" | "PROMOTE_POLICY";
+  | "CONSUME_QUOTA" | "RECORD_COST" | "ISSUE_API_KEY" | "REVOKE_API_KEY";
 
 const operation = ref<Operation>("CREATE_ORGANIZATION");
 const reason = ref("");
@@ -28,26 +27,25 @@ const tenant = reactive({ display_name: "", owner_subject: "", data_region: "CN"
 const organization = reactive({ organization_id: "", display_name: "", sponsor_subject: "" });
 const project = reactive({ project_id: props.projectId ?? "", organization_id: "", owner_subject: "", environments: "production" });
 const integration = reactive({ integration_id: "", kind: "WEBHOOK" as "IAM" | "NOTIFICATION" | "TICKETING" | "SIEM" | "WEBHOOK",
-  endpoint: "https://", secret_ref: "secret://", configuration_digest: "", active: false });
+  endpoint: "https://", secret_ref: "credential://", configuration_digest: "", active: false });
 const quota = reactive({ quota_key: "active_tasks", window_started_at: toLocalDateTime(new Date()), amount: 1, limit: 100 });
 const cost = reactive({ usage_id: "", project_id: props.projectId ?? "", meter: "model_tokens", quantity: 1,
   unit_cost_micros: 0, source_digest: "", recorded_at: toLocalDateTime(new Date()) });
 const apiKey = reactive({ project_id: props.projectId ?? "", scopes: "tasks:read", expires_at: toLocalDateTime(new Date(Date.now() + 86_400_000)) });
 const revoke = reactive({ api_key_id: "" });
-const policy = reactive({ bundle_id: "", bundle_version: "", impact_report_digest: "", environment: "CANARY" as "CANARY" | "PRODUCTION" });
 
 const labels = computed(() => props.locale === "en-US" ? {
   title: "Governed administration", operation: "Operation", reason: "Business reason",
   submit: "Submit governed intent", authority: "The browser sends an intent only. PEP, separation of duties, ledger and evidence remain authoritative.",
   tenant: "Create tenant", org: "Create organization", project: "Create project", integration: "Create integration",
-  quota: "Consume quota", cost: "Record cost", issue: "Issue API key", revoke: "Revoke API key", policy: "Promote policy",
-  oneTime: "One-time API key secret", clear: "Clear secret", quotaResult: "Authoritative quota result",
+  quota: "Consume quota", cost: "Record cost", issue: "Issue API key", revoke: "Revoke API key",
+  accepted: "Durable action accepted", clear: "Dismiss", pending: "Execution and final evidence are pending",
 } : {
   title: "受控企业管理", operation: "操作", reason: "业务理由", submit: "提交受控意图",
   authority: "浏览器只提交意图；PEP、职责分离、Ledger 与 Evidence 保持权威。",
   tenant: "创建租户", org: "创建组织", project: "创建项目", integration: "创建集成",
-  quota: "消耗配额", cost: "记录成本", issue: "签发 API Key", revoke: "吊销 API Key", policy: "晋级 Policy",
-  oneTime: "仅显示一次的 API Key Secret", clear: "清除 Secret", quotaResult: "权威配额结果",
+  quota: "消耗配额", cost: "记录成本", issue: "签发 API Key", revoke: "吊销 API Key",
+  accepted: "操作已持久接受", clear: "关闭", pending: "执行与最终 Evidence 仍待完成",
 });
 
 const options = computed(() => [
@@ -55,7 +53,6 @@ const options = computed(() => [
   ["CREATE_PROJECT", labels.value.project], ["CREATE_INTEGRATION", labels.value.integration],
   ["CONSUME_QUOTA", labels.value.quota], ["RECORD_COST", labels.value.cost],
   ["ISSUE_API_KEY", labels.value.issue], ["REVOKE_API_KEY", labels.value.revoke],
-  ["PROMOTE_POLICY", labels.value.policy],
 ] as Array<[Operation, string]>);
 
 function submit(): void {
@@ -122,13 +119,6 @@ function submit(): void {
     case "REVOKE_API_KEY":
       command = { kind: operation.value, resource: `api-key:${revoke.api_key_id}`, payload: revoke.api_key_id, ...common };
       break;
-    case "PROMOTE_POLICY":
-      command = { kind: operation.value, resource: `policy:${policy.bundle_id}`, payload: {
-        schema_version: "agenttrust.policy-promotion-request.v1",
-        bundle_version: policy.bundle_version.trim(), impact_report_digest: policy.impact_report_digest,
-        environment: policy.environment,
-      }, ...common };
-      break;
   }
   emit("submit", command);
 }
@@ -183,7 +173,7 @@ function toLocalDateTime(value: Date): string {
         <label>Integration UUID <input v-model="integration.integration_id" required type="text" pattern="[0-9a-fA-F-]{36}"></label>
         <label>Kind <select v-model="integration.kind"><option v-for="kind in ['IAM','NOTIFICATION','TICKETING','SIEM','WEBHOOK']" :key="kind">{{ kind }}</option></select></label>
         <label>HTTPS endpoint <input v-model="integration.endpoint" required type="url" pattern="https://.*" maxlength="2000" autocomplete="off"></label>
-        <label>Secret reference <input v-model="integration.secret_ref" required pattern="[a-z][a-z0-9+.-]*://.+" maxlength="1000" autocomplete="off"></label>
+        <label>Secret reference <input v-model="integration.secret_ref" required pattern="(credential://[A-Za-z0-9._:/-]{1,900}|vault-kv://[A-Za-z0-9._/-]{1,900}#v[1-9][0-9]*)" maxlength="1000" autocomplete="off"></label>
         <label>Configuration digest <input v-model="integration.configuration_digest" required pattern="[a-f0-9]{64}" maxlength="64" autocomplete="off"></label>
         <label class="checkbox"><input v-model="integration.active" type="checkbox"> Active after authority approval</label>
       </fieldset>
@@ -219,29 +209,18 @@ function toLocalDateTime(value: Date): string {
         <label>API Key UUID <input v-model="revoke.api_key_id" required pattern="[0-9a-fA-F-]{36}"></label>
       </fieldset>
 
-      <fieldset v-else>
-        <legend>{{ labels.policy }}</legend>
-        <label>Bundle ID <input v-model="policy.bundle_id" required maxlength="200"></label>
-        <label>Bundle version <input v-model="policy.bundle_version" required maxlength="200"></label>
-        <label>Impact report digest <input v-model="policy.impact_report_digest" required pattern="[a-f0-9]{64}" maxlength="64"></label>
-        <label>Environment <select v-model="policy.environment"><option>CANARY</option><option>PRODUCTION</option></select></label>
-      </fieldset>
-
       <label for="admin-reason">{{ labels.reason }}</label>
       <textarea id="admin-reason" v-model="reason" required maxlength="2000" autocomplete="off" />
       <button type="submit" :disabled="busy || !reason.trim()">{{ labels.submit }}</button>
     </form>
     <p class="authority-note">{{ labels.authority }}</p>
 
-    <aside v-if="issuedApiKey" class="one-time-secret" aria-live="assertive">
-      <h3>{{ labels.oneTime }}</h3>
-      <code>{{ issuedApiKey.one_time_secret }}</code>
-      <p>ID: {{ issuedApiKey.api_key_id }} · {{ issuedApiKey.expires_at }}</p>
-      <button type="button" @click="emit('clearApiKey')">{{ labels.clear }}</button>
-    </aside>
-    <aside v-if="quotaUsage" aria-live="polite">
-      <h3>{{ labels.quotaResult }}</h3>
-      <p>{{ quotaUsage.quota_key }}: {{ quotaUsage.used }} / {{ quotaUsage.limit }}</p>
+    <aside v-if="actionReceipt" class="action-receipt" aria-live="polite">
+      <h3>{{ labels.accepted }}</h3>
+      <p>{{ labels.pending }}</p>
+      <p>Task: <code>{{ actionReceipt.task_id }}</code></p>
+      <p>Evidence: <code>{{ actionReceipt.evidence_ref }}</code></p>
+      <button type="button" @click="emit('clearReceipt')">{{ labels.clear }}</button>
     </aside>
   </section>
 </template>

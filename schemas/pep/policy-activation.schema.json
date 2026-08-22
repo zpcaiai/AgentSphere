@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/policy-activation.schema.json",
+  "title": "Tenant and environment bound policy activation",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/pdpAcknowledgement"},
+    {"$ref": "#/$defs/pepAcknowledgement"}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "environment": {"enum": ["DEV", "STAGING", "CANARY", "PRODUCTION"]},
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "activation_id", "idempotency_key", "tenant_id", "policy_id", "environment", "sequence", "previous_bundle_digest", "bundle", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.policy-activation-request.v1"},
+        "activation_id": {"type": "string", "format": "uuid"},
+        "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "policy_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "environment": {"$ref": "#/$defs/environment"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "previous_bundle_digest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "bundle": {"$ref": "../policy-admin/policy-bundle.schema.json"},
+        "requested_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "pdpAcknowledgement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "activation_id", "idempotency_key", "tenant_id", "policy_id", "environment", "sequence", "bundle_digest", "active", "snapshot_digest", "activated_at", "issuer", "key_id", "key_usage", "signature"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.pdp-policy-activation-ack.v1"},
+        "activation_id": {"type": "string", "format": "uuid"},
+        "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "policy_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "environment": {"$ref": "#/$defs/environment"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "bundle_digest": {"$ref": "#/$defs/digest"},
+        "active": {"const": true},
+        "snapshot_digest": {"$ref": "#/$defs/digest"},
+        "activated_at": {"type": "string", "format": "date-time"},
+        "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "key_usage": {"const": "PDP_POLICY_ACTIVATION_ACK"},
+        "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+      }
+    },
+    "pepAcknowledgement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "activation_id", "idempotency_key", "tenant_id", "policy_id", "environment", "sequence", "bundle_digest", "active", "pdp_ack_digest", "evidence_ref", "evidence_digest", "acknowledged_at", "issuer", "key_id", "key_usage", "signature"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.pep-policy-activation-ack.v1"},
+        "activation_id": {"type": "string", "format": "uuid"},
+        "idempotency_key": {"type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "policy_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "environment": {"$ref": "#/$defs/environment"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "bundle_digest": {"$ref": "#/$defs/digest"},
+        "active": {"const": true},
+        "pdp_ack_digest": {"$ref": "#/$defs/digest"},
+        "evidence_ref": {"type": "string", "pattern": "^urn:agenttrust:pep-policy-activation:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:sha256:[0-9a-f]{64}$", "maxLength": 256},
+        "evidence_digest": {"$ref": "#/$defs/digest"},
+        "acknowledged_at": {"type": "string", "format": "date-time"},
+        "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "key_usage": {"const": "PEP_POLICY_ACTIVATION_ACK"},
+        "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+      }
+    }
+  }
+}

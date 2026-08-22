@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-governance/token-bindings.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.data-token-bindings.v1"},
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):[^\\s]{1,508}$"},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "pattern": "^[^\\s]{1,256}$"},
+          "scope": {
+            "enum": [
+              "data:mutate", "data:execute", "data:evaluate", "data:scan",
+              "data:sanitize", "data:artifact-authorize", "data:read"
+            ]
+          },
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

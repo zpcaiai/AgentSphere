@@ -143,6 +143,7 @@ impl PayloadTypeRegistry {
         registry.register("coding.command.v1", "1");
         registry.register("industrial.read.v1", "1");
         registry.register("industrial.setpoint.v1", "1");
+        registry.register("enterprise.control.mutation.v1", "1");
         registry
     }
     pub fn register(&mut self, type_id: impl Into<String>, version: impl Into<String>) {
@@ -242,6 +243,31 @@ impl ActionValidator for CoreActionValidator {
                 "RESOURCE_VERSION_REQUIRED",
             ));
         }
+        if action
+            .current_state_version
+            .as_deref()
+            .is_some_and(|version| version.len() > 128 || version.chars().any(char::is_control))
+        {
+            findings.push(finding(
+                "$.current_state_version",
+                "RESOURCE_VERSION_INVALID",
+            ));
+        }
+        if action.extensions.len() > 32 {
+            findings.push(finding("$.extensions", "TOO_MANY_EXTENSIONS"));
+        }
+        if is_write
+            && !action
+                .extensions
+                .get("x-plan-hash")
+                .and_then(Value::as_str)
+                .is_some_and(is_lower_hex_digest)
+        {
+            findings.push(finding(
+                "$.extensions.x-plan-hash",
+                "EXECUTION_PLAN_HASH_REQUIRED",
+            ));
+        }
         for (index, credential) in action.credential_refs.iter().enumerate() {
             if !action
                 .resource
@@ -263,6 +289,13 @@ fn finding(path: &str, reason: &str) -> ValidationFinding {
         field_path: path.into(),
         reason_code: reason.into(),
     }
+}
+
+fn is_lower_hex_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub fn parse_draft(bytes: &[u8], limits: &ParseLimits) -> Result<ActionDraft, ActionIrError> {
@@ -635,6 +668,9 @@ pub struct PolicyInput {
     pub resource: ResourceSelector,
     pub environment: ExecutionEnvironment,
     pub current_state_version: Option<String>,
+    /// Immutable plan admitted at ingress. Side effects must always carry a lowercase
+    /// SHA-256 value in Canonical Action `extensions.x-plan-hash`.
+    pub execution_plan_hash: Option<String>,
     pub data_classification: agent_trust_contracts::DataClassification,
     pub trajectory_risk: TrajectoryRiskSnapshot,
     pub registry_snapshot_hash: String,
@@ -661,6 +697,11 @@ pub fn to_policy_input(
         resource: action.resource.clone(),
         environment: action.environment.clone(),
         current_state_version: action.current_state_version.clone(),
+        execution_plan_hash: action
+            .extensions
+            .get("x-plan-hash")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
         data_classification: action.data.classification,
         trajectory_risk: trajectory.clone(),
         registry_snapshot_hash: registry.snapshot_hash.clone(),
@@ -1063,5 +1104,26 @@ mod tests {
             verify_envelope(&envelope, &keys, Utc::now()),
             Err(ActionIrError::HashMismatch)
         ));
+    }
+
+    #[test]
+    fn side_effect_requires_plan_hash_and_resource_version() {
+        let mut write = draft();
+        write.intent.operation = "write".into();
+        assert!(matches!(
+            normalize(write.clone(), &NormalizationContext::default()),
+            Err(ActionIrError::SemanticInvalid { reason_code, .. })
+                if reason_code == "RESOURCE_VERSION_REQUIRED"
+        ));
+        write.current_state_version = Some("revision-1".into());
+        assert!(matches!(
+            normalize(write.clone(), &NormalizationContext::default()),
+            Err(ActionIrError::SemanticInvalid { reason_code, .. })
+                if reason_code == "EXECUTION_PLAN_HASH_REQUIRED"
+        ));
+        write
+            .extensions
+            .insert("x-plan-hash".into(), Value::String("b".repeat(64)));
+        assert!(normalize(write, &NormalizationContext::default()).is_ok());
     }
 }

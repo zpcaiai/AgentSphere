@@ -1,0 +1,327 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Security Evaluation Authority API
+  version: 1.0.0
+  description: >-
+    Tenant-isolated control-plane authority for signed attack datasets, deterministic campaigns,
+    regression reports, findings and remediations. Reports are engine evaluation attestations and
+    are never production certification.
+servers:
+  - url: https://security-evaluation.internal:8096
+security:
+  - mutualTls: []
+    bearerAuth: []
+paths:
+  /ready:
+    get:
+      operationId: securityEvaluationReadiness
+      security:
+        - mutualTls: []
+      responses:
+        '200':
+          description: Dependencies and signer are ready.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/security-evaluations/actions:
+    post:
+      operationId: submitSecurityEvaluationAction
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '../security-evaluation/security-evaluation-command-v1.schema.json'
+      responses:
+        '202':
+          description: Canonical Action accepted by the orchestrator; execution remains pending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionReceipt'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/security-evaluations/executions:
+    post:
+      operationId: executeSecurityEvaluationAction
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ActionHash'
+        - $ref: '#/components/parameters/LedgerExecutionId'
+        - $ref: '#/components/parameters/LedgerEntryId'
+        - $ref: '#/components/parameters/LedgerEntryDigest'
+        - $ref: '#/components/parameters/FenceDigest'
+        - $ref: '#/components/parameters/ResourceVersion'
+        - $ref: '#/components/parameters/TraceId'
+        - $ref: '#/components/parameters/PolicyDecisionId'
+        - $ref: '#/components/parameters/PolicyDecisionDigest'
+        - $ref: '#/components/parameters/AuthorizationEvidenceRef'
+        - $ref: '#/components/parameters/AuthorizationEvidenceDigest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecutorRequest'
+      responses:
+        '200':
+          description: Idempotent authority mutation and Evidence outbox commit succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MutationResult'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/authoritative/security-evaluations/campaigns:
+    get:
+      operationId: listAuthoritativeSecurityEvaluationCampaigns
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - name: after_campaign_id
+          in: query
+          schema: {type: string, format: uuid}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      responses:
+        '200':
+          description: Tenant-bound authoritative campaign page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignPage'
+        '401': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/authoritative/security-evaluations/campaigns/{campaign_id}:
+    get:
+      operationId: getAuthoritativeSecurityEvaluationCampaign
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - name: campaign_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Tenant-bound campaign, counts and optional signed engine report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '401': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    mutualTls:
+      type: mutualTLS
+      description: TLS 1.3 client certificate with one exact DNS/URI SAN.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque route-bound token
+  parameters:
+    TenantHeader:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:/-]+$'}
+    ActionHash:
+      name: X-AgentTrust-Action-Hash
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    LedgerExecutionId:
+      name: X-AgentTrust-Ledger-Execution-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    LedgerEntryId:
+      name: X-AgentTrust-Ledger-Entry-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    LedgerEntryDigest:
+      name: X-AgentTrust-Ledger-Entry-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    FenceDigest:
+      name: X-AgentTrust-Fence-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    ResourceVersion:
+      name: X-AgentTrust-Resource-Version
+      in: header
+      required: true
+      schema: {type: integer, minimum: 0, maximum: 9223372036854775807}
+    TraceId:
+      name: X-AgentTrust-Trace-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 256}
+    PolicyDecisionId:
+      name: X-AgentTrust-Policy-Decision-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 256}
+    PolicyDecisionDigest:
+      name: X-AgentTrust-Policy-Decision-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    AuthorizationEvidenceRef:
+      name: X-AgentTrust-Authorization-Evidence-Ref
+      in: header
+      required: true
+      schema: {type: string, minLength: 12, maxLength: 2048}
+    AuthorizationEvidenceDigest:
+      name: X-AgentTrust-Authorization-Evidence-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+  schemas:
+    Digest:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready, database_ready, orchestrator_ready, isolated_runner_ready, evidence_authority_ready, dataset_keyring_ready, report_signer_ready, production_certification]
+      properties:
+        schema_version: {const: agenttrust.security-eval-readiness.v1}
+        ready: {const: true}
+        database_ready: {const: true}
+        orchestrator_ready: {const: true}
+        isolated_runner_ready: {const: true}
+        evidence_authority_ready: {const: true}
+        dataset_keyring_ready: {const: true}
+        report_signer_ready: {const: true}
+        production_certification: {const: false}
+    ActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: {const: agenttrust.security-eval-action-receipt.v1}
+        action_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        accepted: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/Digest'}
+        ledger_evidence_ref: {type: string, minLength: 12, maxLength: 2048}
+        ledger_evidence_digest: {$ref: '#/components/schemas/Digest'}
+    ExecutorRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command, actor_subject, actor_kind, approval_ids]
+      properties:
+        schema_version: {const: agenttrust.security-eval-executor-request.v1}
+        command: {$ref: '../security-evaluation/security-evaluation-command-v1.schema.json'}
+        actor_subject: {type: string, minLength: 1, maxLength: 256}
+        actor_kind: {enum: [SERVICE, HUMAN]}
+        approval_ids:
+          type: array
+          uniqueItems: true
+          maxItems: 64
+          items: {type: string, minLength: 1, maxLength: 256}
+    MutationResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command_id, operation, resource_id, resource_version, state, result_digest, evidence_outbox_ref, runner_receipt, signed_report]
+      properties:
+        schema_version: {const: agenttrust.security-eval-mutation-result.v1}
+        command_id: {type: string, format: uuid}
+        operation: {type: string}
+        resource_id: {type: string, minLength: 1, maxLength: 512}
+        resource_version: {type: integer, minimum: 1}
+        state: {const: SUCCEEDED}
+        result_digest: {$ref: '#/components/schemas/Digest'}
+        evidence_outbox_ref: {type: string, minLength: 12, maxLength: 2048}
+        runner_receipt:
+          oneOf:
+            - {$ref: '../security-evaluation/isolated-runner-receipt-v1.schema.json'}
+            - {type: 'null'}
+        signed_report:
+          oneOf:
+            - {$ref: '../security-evaluation/security-evaluation-report-v1.schema.json'}
+            - {type: 'null'}
+    Campaign:
+      type: object
+      additionalProperties: false
+      required: [campaign_id, campaign_key, safe_name, release_digest, environment_profile, environment_attestation_digest, configuration_digest, policy_digest, pack_digest, model_digest, prompt_digest, status, high_risk_regression, release_blocked, cleanup_complete, evidence_complete, resource_version, scenario_count, result_count, open_finding_count, report, created_at, updated_at]
+      properties:
+        campaign_id: {type: string, format: uuid}
+        campaign_key: {type: string}
+        safe_name: {type: string}
+        release_digest: {$ref: '#/components/schemas/Digest'}
+        environment_profile: {type: string, pattern: '^isolated-'}
+        environment_attestation_digest: {$ref: '#/components/schemas/Digest'}
+        configuration_digest: {$ref: '#/components/schemas/Digest'}
+        policy_digest: {$ref: '#/components/schemas/Digest'}
+        pack_digest: {$ref: '#/components/schemas/Digest'}
+        model_digest: {$ref: '#/components/schemas/Digest'}
+        prompt_digest: {$ref: '#/components/schemas/Digest'}
+        status: {enum: [DRAFT, APPROVED, RUNNING, ABORTING, COMPLETED, FAILED, CLEANUP_FAILED, KILLED]}
+        high_risk_regression: {type: boolean}
+        release_blocked: {type: boolean}
+        cleanup_complete: {type: boolean}
+        evidence_complete: {type: boolean}
+        resource_version: {type: integer, minimum: 1}
+        scenario_count: {type: integer, minimum: 0}
+        result_count: {type: integer, minimum: 0}
+        open_finding_count: {type: integer, minimum: 0}
+        report:
+          oneOf:
+            - {$ref: '../security-evaluation/security-evaluation-report-v1.schema.json'}
+            - {type: 'null'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    CampaignPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, authoritative, items, next_after_campaign_id, data_digest]
+      properties:
+        schema_version: {const: agenttrust.authoritative-security-eval-campaign-page.v1}
+        tenant_id: {type: string, format: uuid}
+        authoritative: {const: true}
+        items:
+          type: array
+          maxItems: 200
+          items: {$ref: '#/components/schemas/Campaign'}
+        next_after_campaign_id:
+          oneOf:
+            - {type: string, format: uuid}
+            - {type: 'null'}
+        data_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error, trace_id, safe_summary]
+      properties:
+        schema_version: {const: agenttrust.security-eval-authority-error.v1}
+        error: {type: string, pattern: '^SECURITY_EVAL_[A-Z0-9_]+$'}
+        trace_id: {type: string, format: uuid}
+        safe_summary: {type: string, maxLength: 256}
+  responses:
+    Error:
+      description: Stable fail-closed error without secret, sensitive input, or stack disclosure.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}

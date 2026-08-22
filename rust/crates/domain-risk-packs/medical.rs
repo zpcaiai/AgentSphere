@@ -2,6 +2,7 @@ use crate::{DOMAIN_PACKS_SCHEMA_VERSION, tool, unsigned_pack_manifest};
 use agent_trust_contracts::{DataClassification, EffectClass, EvaluationStatus, TenantId};
 use agent_trust_pack_supply_chain::DomainPackManifest;
 use chrono::{DateTime, Utc};
+#[cfg(test)]
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -176,12 +177,18 @@ pub struct HumanReview {
     pub reviewed_at: DateTime<Utc>,
 }
 
+pub trait HumanReviewService: Send + Sync {
+    fn approved(&self, tenant: &TenantId, output_hash: &str) -> bool;
+}
+
+#[cfg(test)]
 #[derive(Default)]
-pub struct HumanReviewService {
+pub struct InMemoryHumanReviewService {
     reviews: RwLock<BTreeMap<(TenantId, String), HumanReview>>,
 }
 
-impl HumanReviewService {
+#[cfg(test)]
+impl InMemoryHumanReviewService {
     pub fn record(&self, review: HumanReview) -> Result<(), MedicalError> {
         if review.schema_version != DOMAIN_PACKS_SCHEMA_VERSION
             || review.review_id.is_empty()
@@ -208,11 +215,18 @@ impl HumanReviewService {
         Ok(())
     }
 
-    pub fn approved(&self, tenant: &TenantId, output_hash: &str) -> bool {
+    fn lookup_approved(&self, tenant: &TenantId, output_hash: &str) -> bool {
         self.reviews
             .read()
             .get(&(tenant.clone(), output_hash.into()))
             .is_some_and(|review| matches!(review.decision.as_str(), "APPROVE" | "MODIFY"))
+    }
+}
+
+#[cfg(test)]
+impl HumanReviewService for InMemoryHumanReviewService {
+    fn approved(&self, tenant: &TenantId, output_hash: &str) -> bool {
+        self.lookup_approved(tenant, output_hash)
     }
 }
 
@@ -242,7 +256,7 @@ pub struct MedicalEvaluator;
 impl MedicalEvaluator {
     pub fn evaluate(
         input: &MedicalEvaluationInput,
-        reviews: &HumanReviewService,
+        reviews: &dyn HumanReviewService,
         now: DateTime<Utc>,
     ) -> MedicalEvaluation {
         let evidence_complete = !input.evidence.is_empty()
@@ -428,7 +442,7 @@ mod tests {
             model_digest: "m".repeat(64),
         };
         assert_eq!(
-            MedicalEvaluator::evaluate(&input, &HumanReviewService::default(), Utc::now()).status,
+            MedicalEvaluator::evaluate(&input, &InMemoryHumanReviewService::default(), Utc::now()).status,
             EvaluationStatus::NeedsHuman
         );
     }

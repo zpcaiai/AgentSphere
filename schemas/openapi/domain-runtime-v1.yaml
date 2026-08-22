@@ -1,0 +1,138 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Domain Pack Runtime Authority
+  version: 1.0.0
+servers:
+  - url: https://domain-runtime.internal:8094
+security:
+  - mutualTLS: []
+    bearerAuth: []
+paths:
+  /ready:
+    get:
+      operationId: domainRuntimeReady
+      security:
+        - mutualTLS: []
+      responses:
+        "200":
+          description: Database, typed executor and Evidence bridge are ready
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [schema_version, ready, database_ready, executor_ready, evidence_ready]
+                properties:
+                  schema_version: {const: agenttrust.domain-runtime-readiness.v1}
+                  ready: {const: true}
+                  database_ready: {const: true}
+                  executor_ready: {const: true}
+                  evidence_ready: {const: true}
+  /v1/domain-runtime/executions:
+    post:
+      operationId: executeDomainCommand
+      parameters:
+        - {$ref: "#/components/parameters/Tenant"}
+        - {$ref: "#/components/parameters/Idempotency"}
+        - {$ref: "#/components/parameters/ExecutionId"}
+        - {$ref: "#/components/parameters/ActionId"}
+        - {$ref: "#/components/parameters/AuthorizationId"}
+        - {$ref: "#/components/parameters/AuthorizationDigest"}
+        - {$ref: "#/components/parameters/PolicyDecisionId"}
+        - {$ref: "#/components/parameters/PolicyDecisionDigest"}
+        - {$ref: "#/components/parameters/AuthorizationEvidenceRef"}
+        - {$ref: "#/components/parameters/AuthorizationEvidenceDigest"}
+        - {$ref: "#/components/parameters/LedgerExecutionId"}
+        - {$ref: "#/components/parameters/LedgerEntryId"}
+        - {$ref: "#/components/parameters/LedgerEntryDigest"}
+        - {$ref: "#/components/parameters/FenceDigest"}
+        - {$ref: "#/components/parameters/ResourceVersion"}
+        - {$ref: "#/components/parameters/TraceId"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: ../domain-packs/domain-execution.schema.json}
+      responses:
+        "200":
+          description: Durable process result; evaluator conclusion remains a separate field
+          content:
+            application/json:
+              schema: {$ref: ../domain-packs/domain-runtime-result.schema.json}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /v1/authoritative/domain-runtime/executions:
+    get:
+      operationId: listAuthoritativeDomainExecutionState
+      parameters:
+        - {$ref: "#/components/parameters/Tenant"}
+        - {name: tenant_id, in: query, required: true, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+        - {name: cursor, in: query, required: false, schema: {type: string, minLength: 1, maxLength: 512}}
+      responses:
+        "200":
+          description: Tenant-isolated state page; data_digest is the JCS SHA-256 of the final response after removing only data_digest
+          content:
+            application/json:
+              schema: {$ref: ../domain-packs/authoritative-domain-state.schema.json}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /v1/domain-runtime/recoveries/{tenant_id}:
+    post:
+      operationId: markExpiredDomainRuntimeExecutionsUnknown
+      description: Marks expired leases UNKNOWN and never replays a tool or physical effect.
+      parameters:
+        - {name: tenant_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {$ref: "#/components/parameters/Tenant"}
+      responses:
+        "200":
+          description: Recovery count
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [schema_version, marked_unknown]
+                properties:
+                  schema_version: {const: agenttrust.domain-runtime-recovery.v1}
+                  marked_unknown: {type: integer, minimum: 0, maximum: 100}
+        "401": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    mutualTLS: {type: mutualTLS}
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    Tenant: {name: X-AgentTrust-Tenant-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    Idempotency: {name: Idempotency-Key, in: header, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._:/-]{15,255}$"}}
+    ExecutionId: {name: X-AgentTrust-Execution-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    ActionId: {name: X-AgentTrust-Action-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    AuthorizationId: {name: X-AgentTrust-Authorization-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    AuthorizationDigest: {name: X-AgentTrust-Authorization-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
+    PolicyDecisionId: {name: X-AgentTrust-Policy-Decision-Id, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+    PolicyDecisionDigest: {name: X-AgentTrust-Policy-Decision-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
+    AuthorizationEvidenceRef: {name: X-AgentTrust-Authorization-Evidence-Ref, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 1024}}
+    AuthorizationEvidenceDigest: {name: X-AgentTrust-Authorization-Evidence-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
+    LedgerExecutionId: {name: X-AgentTrust-Ledger-Execution-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    LedgerEntryId: {name: X-AgentTrust-Ledger-Entry-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    LedgerEntryDigest: {name: X-AgentTrust-Ledger-Entry-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
+    FenceDigest: {name: X-AgentTrust-Fence-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
+    ResourceVersion: {name: X-AgentTrust-Resource-Version, in: header, required: true, schema: {type: integer, minimum: 1}}
+    TraceId: {name: X-AgentTrust-Trace-Id, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+  schemas:
+    Digest: {type: string, pattern: "^[a-f0-9]{64}$"}
+  responses:
+    Error:
+      description: Stable fail-closed Domain Runtime error
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [schema_version, error]
+            properties:
+              schema_version: {const: agenttrust.domain-runtime-error.v1}
+              error: {type: string, pattern: "^DOMAIN_RUNTIME_[A-Z0-9_]+$"}

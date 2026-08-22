@@ -1,0 +1,285 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Policy Administration Authority
+  version: 1.0.0
+  description: >-
+    Production Policy lifecycle authority. Human commands are request-bound and converted to
+    Canonical Action IR before the durable orchestrator performs PEP, ledger and evidence gates.
+    Only the runtime executor scope can persist lifecycle state. Simulation is side-effect-free;
+    signed bundle bytes are immutable and promotion references bundle digests. PROMOTE and
+    ROLLBACK return success only after the PEP has verified the bundle signature and persisted an
+    exact signed authoritative-PDP activation acknowledgement for the tenant and environment.
+servers:
+  - url: https://policy-admin.agenttrust.svc:8090
+security:
+  - policyMtls: []
+    routeBearer: []
+paths:
+  /ready:
+    get:
+      operationId: policyAdminDataReady
+      security: [{policyMtls: []}]
+      responses:
+        '200':
+          description: Database, Ed25519 signing authority, and PEP activation authority are ready
+          content:
+            application/json:
+              schema: {$ref: '../policy-admin/policy-readiness.schema.json'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/policies/actions:
+    post:
+      operationId: submitPolicyLifecycleAction
+      x-required-scope: policy:mutate
+      description: >-
+        Validates an Ed25519 human assertion bound to this exact body, tenant, SAN, service
+        subject, route scope and idempotency key, then durably submits Canonical Action IR.
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/HumanAssertion'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../policy-admin/policy-command.schema.json'}
+      responses:
+        '202':
+          description: Durable workflow admission; lifecycle mutation completion is still pending
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActionReceipt'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/policies/executions:
+    post:
+      operationId: executeAuthorizedPolicyMutation
+      x-required-scope: policy:execute
+      description: >-
+        Runtime-only fenced executor. Action hash, ledger execution, resource version, fence and
+        trace headers must match the accepted ingress and the current tenant resource version.
+        Promotion network uncertainty remains UNKNOWN and is retried with the same activation key;
+        it never produces an ACTIVE mutation result.
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: X-AgentTrust-Action-Hash, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+        - {name: X-AgentTrust-Ledger-Execution-Id, in: header, required: true, schema: {type: string, format: uuid}}
+        - {name: X-AgentTrust-Fence-Digest, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+        - {name: X-AgentTrust-Resource-Version, in: header, required: true, schema: {type: integer, minimum: 0}}
+        - {name: X-AgentTrust-Trace-Id, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExecutorRequest'}
+      responses:
+        '200':
+          description: Idempotent authoritative mutation result and evidence reference
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MutationResult'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/authoritative/policies:
+    get:
+      operationId: listAuthoritativePolicies
+      x-required-scope: policy:query
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {name: after_policy_id, in: query, schema: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,256}$'}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        '200':
+          description: Keyset-paginated, tenant-scoped authoritative lifecycle summary
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthoritativePolicyPage'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/authoritative/policies/{policy_id}/sources:
+    get:
+      operationId: listAuthoritativePolicySources
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+  /v1/authoritative/policies/{policy_id}/analyses:
+    get:
+      operationId: listAuthoritativePolicyAnalyses
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+  /v1/authoritative/policies/{policy_id}/reviews:
+    get:
+      operationId: listAuthoritativePolicyReviews
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+  /v1/authoritative/policies/{policy_id}/simulations:
+    get:
+      operationId: listAuthoritativePolicySimulationsAndShadowEvaluations
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+  /v1/authoritative/policies/{policy_id}/impact-reports:
+    get:
+      operationId: listAuthoritativePolicyImpactReports
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+  /v1/authoritative/policies/{policy_id}/promotions:
+    get:
+      operationId: listAuthoritativePolicyPromotionsAndRollbacks
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+  /v1/authoritative/policies/{policy_id}/exceptions:
+    get:
+      operationId: listAuthoritativePolicyExceptions
+      x-required-scope: policy:query
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
+      responses: {$ref: '#/components/x-artifact-responses'}
+components:
+  x-artifact-responses:
+    '200':
+      description: Bounded tenant-scoped authoritative lifecycle artifacts
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/AuthoritativePolicyArtifactPage'}
+    '400': {$ref: '#/components/responses/Error'}
+    '401': {$ref: '#/components/responses/Error'}
+    '503': {$ref: '#/components/responses/Error'}
+  securitySchemes:
+    policyMtls:
+      type: mutualTLS
+      description: Exactly one allowed DNS or URI SAN; CommonName is ignored
+    routeBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Distinct credential per SAN, tenant and route scope
+  parameters:
+    Tenant:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9._:/-]{16,128}$'}
+    HumanAssertion:
+      name: X-AgentTrust-Human-Assertion
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{1,87384}$'}
+    PolicyId:
+      name: policy_id
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,256}$'}
+    ArtifactLimit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+  responses:
+    Error:
+      description: Stable fail-closed error without secrets, policy source, or cross-tenant facts
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [schema_version, error]
+            properties:
+              schema_version: {const: agenttrust.policy-authority-error.v1}
+              error:
+                enum:
+                  - POLICY_REQUEST_INVALID
+                  - POLICY_PRINCIPAL_DENIED
+                  - POLICY_IDEMPOTENCY_CONFLICT
+                  - POLICY_STATE_CONFLICT
+                  - POLICY_REVIEW_SEPARATION_REQUIRED
+                  - POLICY_VALIDATION_BLOCKED
+                  - POLICY_NOT_FOUND
+                  - POLICY_OUTCOME_UNKNOWN
+                  - POLICY_DEPENDENCY_UNAVAILABLE
+                  - POLICY_CONFIGURATION_INVALID
+  schemas:
+    Digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    ActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: {const: agenttrust.policy-action-receipt.v1}
+        action_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        accepted: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/Digest'}
+        ledger_evidence_ref: {type: string, minLength: 1, maxLength: 2048}
+        ledger_evidence_digest: {$ref: '#/components/schemas/Digest'}
+    ExecutorRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command, principal_subject, principal_assertion_digest, approval_ids]
+      properties:
+        schema_version: {const: agenttrust.policy-executor-request.v1}
+        command: {$ref: '../policy-admin/policy-command.schema.json'}
+        principal_subject: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+        principal_assertion_digest: {$ref: '#/components/schemas/Digest'}
+        approval_ids: {type: array, maxItems: 1024, uniqueItems: true, items: {type: string, maxLength: 256}}
+    MutationResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command_id, policy_id, operation, resource_version, state, artifact_digest, evidence_ref]
+      properties:
+        schema_version: {const: agenttrust.policy-mutation-result.v1}
+        command_id: {type: string, format: uuid}
+        policy_id: {type: string, maxLength: 256}
+        operation: {enum: [CREATE_DRAFT, VALIDATE, SIMULATE, SHADOW_EVALUATE, IMPACT_ANALYZE, APPROVE, SIGN, PROMOTE, ROLLBACK, DEPRECATE, CREATE_EXCEPTION, REVOKE_EXCEPTION]}
+        resource_version: {type: integer, minimum: 1}
+        state: {type: string, maxLength: 64}
+        artifact_digest: {$ref: '#/components/schemas/Digest'}
+        evidence_ref: {type: string, pattern: '^urn:agenttrust:policy-evidence:'}
+    AuthoritativePolicyPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, items, next_after_policy_id]
+      properties:
+        schema_version: {const: agenttrust.authoritative-policy-page.v1}
+        tenant_id: {type: string, format: uuid}
+        items:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            additionalProperties: false
+            required: [policy_id, revision, lifecycle_state, source_digest, author_subject, active_bundle_digest, active_environment, resource_version, updated_at]
+            properties:
+              policy_id: {type: string, maxLength: 256}
+              revision: {type: integer, minimum: 1}
+              lifecycle_state: {enum: [DRAFT, VALIDATED, REVIEW, SIGNED, DEPRECATED]}
+              source_digest: {$ref: '#/components/schemas/Digest'}
+              author_subject: {type: string, maxLength: 256}
+              active_bundle_digest: {oneOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]}
+              active_environment: {oneOf: [{enum: [DEV, STAGING, CANARY, PRODUCTION]}, {type: 'null'}]}
+              resource_version: {type: integer, minimum: 1}
+              updated_at: {type: string, format: date-time}
+        next_after_policy_id: {oneOf: [{type: string, maxLength: 256}, {type: 'null'}]}
+    AuthoritativePolicyArtifactPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, policy_id, artifact_type, items]
+      properties:
+        schema_version: {const: agenttrust.authoritative-policy-artifact-page.v1}
+        tenant_id: {type: string, format: uuid}
+        policy_id: {type: string, maxLength: 256}
+        artifact_type: {enum: [SOURCES, ANALYSES, REVIEWS, SIMULATIONS, IMPACT_REPORTS, PROMOTIONS, EXCEPTIONS]}
+        items: {type: array, maxItems: 100, items: {type: object}}

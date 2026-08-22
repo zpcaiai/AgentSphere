@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/industrial-operation.schema.json",
+  "title": "Industrial observation, simulation, or safe-stop command",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "asset_id", "stage", "endpoint_manifest_digest", "observed_resource_version", "state_digest", "outcome_digest", "maximum_age_ms", "scenario_digest", "safe_stop_profile_digest", "reason_code"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-risk-packs.v1"}, "asset_id": {"type": "string", "format": "uuid"},
+    "stage": {"enum": ["SIMULATOR", "DIGITAL_TWIN", "READ_ONLY", "SHADOW", "LIMITED_WRITE"]},
+    "endpoint_manifest_digest": {"$ref": "#/$defs/digest"}, "observed_resource_version": {"type": "integer", "minimum": 0},
+    "state_digest": {"$ref": "#/$defs/digest"}, "outcome_digest": {"$ref": "#/$defs/digest"},
+    "maximum_age_ms": {"type": "integer", "minimum": 1, "maximum": 300000},
+    "scenario_digest": {"$ref": "#/$defs/nullableDigest"}, "safe_stop_profile_digest": {"$ref": "#/$defs/nullableDigest"},
+    "reason_code": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}}
+}

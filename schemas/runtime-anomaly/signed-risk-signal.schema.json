@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/signed-risk-signal.schema.json",
+  "title": "Signed Runtime Anomaly Signal Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_id", "key_id", "signal", "semantic_score", "signature"],
+  "properties": {
+    "schema_version": { "const": "agenttrust.signed-risk-signal.v1" },
+    "source_id": { "$ref": "#/$defs/identifier" },
+    "key_id": { "$ref": "#/$defs/identifier" },
+    "signal": { "$ref": "risk-signal.schema.json" },
+    "semantic_score": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version", "model_id", "model_version", "score_millionths",
+            "confidence_millionths", "goal_drift", "reason_codes"
+          ],
+          "properties": {
+            "schema_version": { "const": "agenttrust.runtime-anomaly.v1" },
+            "model_id": { "$ref": "#/$defs/identifier" },
+            "model_version": { "$ref": "#/$defs/identifier" },
+            "score_millionths": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+            "confidence_millionths": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+            "goal_drift": { "type": "boolean" },
+            "reason_codes": {
+              "type": "array", "maxItems": 64, "uniqueItems": true,
+              "items": { "$ref": "#/$defs/identifier" }
+            }
+          }
+        }
+      ]
+    },
+    "signature": {
+      "type": "string", "minLength": 80, "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Ed25519 signature over the JCS envelope with the signature member omitted."
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    }
+  }
+}

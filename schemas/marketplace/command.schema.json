@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/marketplace/command.schema.json",
+  "title": "Governed Pack Marketplace command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "command_id", "resource_id", "expected_resource_version", "command", "requested_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.marketplace-command.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "resource_id": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,256}$"},
+    "expected_resource_version": {"type": "integer", "minimum": 0},
+    "command": {"oneOf": [
+      {"$ref": "#/$defs/onboardPublisher"},
+      {"$ref": "#/$defs/verifyPublisherKey"},
+      {"$ref": "#/$defs/setPublisherTrust"},
+      {"$ref": "#/$defs/configureTenantCatalog"},
+      {"$ref": "#/$defs/submitRelease"},
+      {"$ref": "#/$defs/reviewRelease"},
+      {"$ref": "#/$defs/requestInstallation"},
+      {"$ref": "#/$defs/approveInstallation"},
+      {"$ref": "#/$defs/install"},
+      {"$ref": "#/$defs/activate"},
+      {"$ref": "#/$defs/planUpgrade"},
+      {"$ref": "#/$defs/recordCanary"},
+      {"$ref": "#/$defs/upgrade"},
+      {"$ref": "#/$defs/rollback"},
+      {"$ref": "#/$defs/deactivate"},
+      {"$ref": "#/$defs/revokeRelease"}
+    ]},
+    "requested_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,256}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "semver": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "stringSet": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+    "onboardPublisher": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "publisher_id", "publisher_subject", "identity_digest", "responsibility_contact", "home_region"],
+      "properties": {
+        "kind": {"const": "ONBOARD_PUBLISHER"},
+        "publisher_id": {"$ref": "#/$defs/identifier"},
+        "publisher_subject": {"$ref": "#/$defs/identifier"},
+        "identity_digest": {"$ref": "#/$defs/digest"},
+        "responsibility_contact": {"type": "string", "format": "email", "maxLength": 320},
+        "home_region": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "verifyPublisherKey": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "publisher_id", "key_id", "algorithm", "public_key", "key_fingerprint", "not_before", "expires_at", "review_digest"],
+      "properties": {
+        "kind": {"const": "VERIFY_PUBLISHER_KEY"},
+        "publisher_id": {"$ref": "#/$defs/identifier"},
+        "key_id": {"$ref": "#/$defs/identifier"},
+        "algorithm": {"const": "Ed25519"},
+        "public_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"},
+        "key_fingerprint": {"$ref": "#/$defs/digest"},
+        "not_before": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "review_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "setPublisherTrust": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "publisher_id", "trust", "reason_digest"],
+      "properties": {
+        "kind": {"const": "SET_PUBLISHER_TRUST"},
+        "publisher_id": {"$ref": "#/$defs/identifier"},
+        "trust": {"enum": ["SUSPENDED", "REVOKED"]},
+        "reason_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "configureTenantCatalog": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "control_plane_version", "region", "entitlements", "allowed_compatibility", "minimum_publisher_trust", "maximum_risk"],
+      "properties": {
+        "kind": {"const": "CONFIGURE_TENANT_CATALOG"},
+        "control_plane_version": {"$ref": "#/$defs/semver"},
+        "region": {"$ref": "#/$defs/identifier"},
+        "entitlements": {"$ref": "#/$defs/stringSet"},
+        "allowed_compatibility": {"$ref": "#/$defs/stringSet"},
+        "minimum_publisher_trust": {"const": "VERIFIED"},
+        "maximum_risk": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}
+      }
+    },
+    "releaseCertificate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "certificate_id", "release_digest", "gate_id", "gate_version", "definition_digest", "evidence_digests", "valid_from", "valid_until", "engine_certificate_only", "production_closure", "key_id", "signature"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.incident-release.v1"},
+        "certificate_id": {"type": "string", "format": "uuid"},
+        "release_digest": {"$ref": "#/$defs/digest"},
+        "gate_id": {"$ref": "#/$defs/identifier"},
+        "gate_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "definition_digest": {"$ref": "#/$defs/digest"},
+        "evidence_digests": {"type": "object", "minProperties": 1, "maxProperties": 256, "additionalProperties": {"$ref": "#/$defs/digest"}},
+        "valid_from": {"type": "string", "format": "date-time"},
+        "valid_until": {"type": "string", "format": "date-time"},
+        "engine_certificate_only": {"const": true},
+        "production_closure": {"const": false},
+        "key_id": {"$ref": "#/$defs/identifier"},
+        "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+      }
+    },
+    "submitRelease": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "release_id", "manifest", "release_certificate", "visibility", "entitlement", "allowed_regions", "risk_rating", "minimum_publisher_trust", "minimum_control_plane_version"],
+      "properties": {
+        "kind": {"const": "SUBMIT_RELEASE"},
+        "release_id": {"$ref": "#/$defs/uuid"},
+        "manifest": {"$ref": "./domain-pack-manifest.schema.json"},
+        "release_certificate": {"$ref": "#/$defs/releaseCertificate"},
+        "visibility": {"enum": ["PRIVATE", "TENANT"]},
+        "entitlement": {"$ref": "#/$defs/identifier"},
+        "allowed_regions": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "risk_rating": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+        "minimum_publisher_trust": {"const": "VERIFIED"},
+        "minimum_control_plane_version": {"$ref": "#/$defs/semver"}
+      }
+    },
+    "reviewRelease": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "release_id", "decision", "review_digest"],
+      "properties": {
+        "kind": {"const": "REVIEW_RELEASE"},
+        "release_id": {"$ref": "#/$defs/uuid"},
+        "decision": {"enum": ["APPROVE", "REJECT"]},
+        "review_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "requestInstallation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "installation_id", "release_id", "environment", "request_reason_digest"],
+      "properties": {
+        "kind": {"const": "REQUEST_INSTALLATION"},
+        "installation_id": {"$ref": "#/$defs/uuid"},
+        "release_id": {"$ref": "#/$defs/uuid"},
+        "environment": {"enum": ["development", "staging", "canary", "production"]},
+        "request_reason_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "approveInstallation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "installation_id", "decision", "approval_digest"],
+      "properties": {
+        "kind": {"const": "APPROVE_INSTALLATION"},
+        "installation_id": {"$ref": "#/$defs/uuid"},
+        "decision": {"enum": ["APPROVE", "REJECT"]},
+        "approval_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "install": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "installation_id", "artifact_receipt_digest"],
+      "properties": {
+        "kind": {"const": "INSTALL"},
+        "installation_id": {"$ref": "#/$defs/uuid"},
+        "artifact_receipt_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "activate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "installation_id", "production_certificate_digest"],
+      "properties": {
+        "kind": {"const": "ACTIVATE"},
+        "installation_id": {"$ref": "#/$defs/uuid"},
+        "production_certificate_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+      }
+    },
+    "planUpgrade": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "plan_id", "current_installation_id", "target_installation_id", "migration_digest", "rollback_digest", "canary_percent"],
+      "properties": {
+        "kind": {"const": "PLAN_UPGRADE"},
+        "plan_id": {"$ref": "#/$defs/uuid"},
+        "current_installation_id": {"$ref": "#/$defs/uuid"},
+        "target_installation_id": {"$ref": "#/$defs/uuid"},
+        "migration_digest": {"$ref": "#/$defs/digest"},
+        "rollback_digest": {"$ref": "#/$defs/digest"},
+        "canary_percent": {"type": "integer", "minimum": 1, "maximum": 50}
+      }
+    },
+    "recordCanary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "plan_id", "passed", "observed_samples", "evidence_ref", "evidence_digest"],
+      "properties": {
+        "kind": {"const": "RECORD_CANARY"},
+        "plan_id": {"$ref": "#/$defs/uuid"},
+        "passed": {"type": "boolean"},
+        "observed_samples": {"type": "integer", "minimum": 1, "maximum": 10000000},
+        "evidence_ref": {"type": "string", "pattern": "^urn:agenttrust:", "maxLength": 2048},
+        "evidence_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "upgrade": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "plan_id", "production_certificate_digest"],
+      "properties": {
+        "kind": {"const": "UPGRADE"},
+        "plan_id": {"$ref": "#/$defs/uuid"},
+        "production_certificate_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+      }
+    },
+    "rollback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "installation_id", "reason_digest"],
+      "properties": {"kind": {"const": "ROLLBACK"}, "installation_id": {"$ref": "#/$defs/uuid"}, "reason_digest": {"$ref": "#/$defs/digest"}}
+    },
+    "deactivate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "installation_id", "reason_digest"],
+      "properties": {"kind": {"const": "DEACTIVATE"}, "installation_id": {"$ref": "#/$defs/uuid"}, "reason_digest": {"$ref": "#/$defs/digest"}}
+    },
+    "revokeRelease": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "release_id", "reason_code", "reason_digest", "running_task_response"],
+      "properties": {
+        "kind": {"const": "REVOKE_RELEASE"},
+        "release_id": {"$ref": "#/$defs/uuid"},
+        "reason_code": {"$ref": "#/$defs/identifier"},
+        "reason_digest": {"$ref": "#/$defs/digest"},
+        "running_task_response": {"enum": ["PAUSE", "KILL", "ALLOW_TO_FINISH"]}
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/context/context-execution-request.schema.json",
+  "title": "Context Governance Executor Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command", "actor_subject", "actor_kind", "approval_ids"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.context-execution-request.v1"},
+    "command": {"$ref": "context-command.schema.json"},
+    "actor_subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "actor_kind": {"const": "WORKLOAD"},
+    "approval_ids": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/@-]+$"}
+    }
+  }
+}

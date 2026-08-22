@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -13,16 +14,16 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "agenttrust.control")
 public record ControlProperties(
     @NotEmpty List<String> consoleOrigins,
-    Path serviceTokenFile,
-    @NotBlank String apiKeyPepper,
     URI iamIssuer,
     @NotBlank String iamAudience,
     URI iamAuthorizationEndpoint,
     URI iamTokenEndpoint,
     URI iamUserInfoEndpoint,
     URI pepEndpoint,
+    @NotBlank String pepReadinessSchema,
     URI jwksEndpoint,
     Map<String, URI> authorityEndpoints,
+    Map<String, String> authorityReadinessSchemas,
     int maximumPageSize,
     int authorityTimeoutMillis,
     int maximumAuthorityResponseBytes,
@@ -37,9 +38,21 @@ public record ControlProperties(
     @NotBlank String expectedDatabaseRole,
     boolean databaseTlsRequired
 ) {
+    /**
+     * Complete production authority inventory. Readiness must never silently omit a dashboard
+     * section (or the enterprise mutation ingress) because an endpoint was absent from a partial
+     * map override.
+     */
+    static final Set<String> REQUIRED_AUTHORITY_ENDPOINTS = Set.of(
+        "enterprise", "agents", "tasks", "approvals", "evidence", "incidents", "policies",
+        "tools", "credentials", "packs", "trace", "compliance", "audit", "models", "data",
+        "context", "anomalies", "security_evaluations", "supply_chain", "domain_packs", "sre",
+        "deployments");
+
     public ControlProperties {
         consoleOrigins = List.copyOf(consoleOrigins);
         authorityEndpoints = Map.copyOf(authorityEndpoints);
+        authorityReadinessSchemas = Map.copyOf(authorityReadinessSchemas);
         if (!secureIdentityUri(iamIssuer)
             || !secureIdentityUri(iamAuthorizationEndpoint)
             || !secureIdentityUri(iamTokenEndpoint)
@@ -47,7 +60,7 @@ public record ControlProperties(
             || !iamAudience.matches("[A-Za-z0-9][A-Za-z0-9:._/-]{0,199}")) {
             throw new IllegalArgumentException("CONTROL_IAM_CONFIGURATION_INVALID");
         }
-        if (!secureServiceUri(pepEndpoint)) {
+        if (!secureServiceUri(pepEndpoint) || !readinessSchema(pepReadinessSchema)) {
             throw new IllegalArgumentException("CONTROL_PEP_ENDPOINT_MUST_USE_HTTPS");
         }
         if (!secureJwksUri(jwksEndpoint)) {
@@ -64,16 +77,16 @@ public record ControlProperties(
         })) {
             throw new IllegalArgumentException("CONTROL_CONSOLE_ORIGIN_INVALID");
         }
-        if (serviceTokenFile == null || !serviceTokenFile.isAbsolute()) {
-            throw new IllegalArgumentException("CONTROL_SERVICE_TOKEN_FILE_INVALID");
-        }
-        if (apiKeyPepper.length() < 32) {
-            throw new IllegalArgumentException("CONTROL_API_KEY_PEPPER_TOO_SHORT");
-        }
-        if (authorityEndpoints.isEmpty() || authorityEndpoints.keySet().stream()
-            .anyMatch(name -> !name.matches("[a-z][a-z0-9-]{0,63}"))
+        if (!authorityEndpoints.keySet().equals(REQUIRED_AUTHORITY_ENDPOINTS)
+            || authorityEndpoints.keySet().stream()
+            .anyMatch(name -> !name.matches("[a-z][a-z0-9_-]{0,63}"))
             || authorityEndpoints.values().stream().anyMatch(uri -> !secureServiceUri(uri))) {
-            throw new IllegalArgumentException("CONTROL_AUTHORITY_ENDPOINT_MUST_USE_HTTPS");
+            throw new IllegalArgumentException("CONTROL_AUTHORITY_ENDPOINT_INVENTORY_INVALID");
+        }
+        if (!authorityReadinessSchemas.keySet().equals(authorityEndpoints.keySet())
+            || authorityReadinessSchemas.values().stream()
+                .anyMatch(schema -> !readinessSchema(schema))) {
+            throw new IllegalArgumentException("CONTROL_AUTHORITY_READINESS_SCHEMA_INVALID");
         }
         if (maximumPageSize < 1 || maximumPageSize > 100
             || authorityTimeoutMillis < 100 || authorityTimeoutMillis > 30_000
@@ -105,6 +118,10 @@ public record ControlProperties(
             && uri.getHost() != null && !uri.getHost().isBlank() && uri.getUserInfo() == null
             && uri.getQuery() == null && uri.getFragment() == null
             && (uri.getPath() == null || uri.getPath().isEmpty() || "/".equals(uri.getPath()));
+    }
+
+    private static boolean readinessSchema(String value) {
+        return value != null && value.matches("agenttrust\\.[a-z0-9.-]{1,120}\\.v[1-9][0-9]*");
     }
 
     private static boolean secureJwksUri(URI uri) {

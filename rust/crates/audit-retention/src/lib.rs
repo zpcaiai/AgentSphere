@@ -1,6 +1,8 @@
 //! Tenant-isolated audit retention, control catalog, legal hold, and offline export.
 
 pub mod postgres;
+pub mod production;
+pub mod server;
 
 use agent_trust_contracts::{DataClassification, SchemaVersion, TaskId, TenantId};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -831,6 +833,16 @@ pub enum AuditError {
     ControlInvalid,
     #[error("AUDIT_GRAPH_INVALID")]
     GraphInvalid,
+    #[error("AUDIT_AUTHENTICATION_REQUIRED")]
+    AuthenticationRequired,
+    #[error("AUDIT_SCOPE_FORBIDDEN")]
+    ScopeForbidden,
+    #[error("AUDIT_REQUEST_INVALID")]
+    RequestInvalid,
+    #[error("AUDIT_DEPENDENCY_UNAVAILABLE")]
+    DependencyUnavailable,
+    #[error("AUDIT_DELETION_FAILED")]
+    DeletionFailed,
 }
 
 #[cfg(test)]

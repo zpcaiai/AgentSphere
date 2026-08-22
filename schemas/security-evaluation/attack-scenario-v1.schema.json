@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/security-evaluation/attack-scenario-v1.schema.json",
+  "title": "AgentTrust immutable attack scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "target", "preconditions", "steps", "expected_controls", "success_criteria", "failure_criteria", "cleanup"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.attack-scenario.v1"},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["production", "environment", "threat_surface"],
+      "properties": {
+        "production": {"const": false},
+        "environment": {"enum": ["EPHEMERAL_SANDBOX", "ISOLATED_TENANT", "DIGITAL_TWIN"]},
+        "threat_surface": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"}
+      }
+    },
+    "preconditions": {"$ref": "#/$defs/nonEmptyStrings"},
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sequence", "action", "input_digest", "expected_control_ids", "expected_outcome", "production_side_effect"],
+        "properties": {
+          "sequence": {"type": "integer", "minimum": 1, "maximum": 10000},
+          "action": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"},
+          "input_digest": {"$ref": "#/$defs/digest"},
+          "expected_control_ids": {"$ref": "#/$defs/nonEmptyStrings"},
+          "expected_outcome": {"enum": ["PREVENTED", "DETECTED", "CONTAINED", "RECOVERED", "CONTROL_FAILED"]},
+          "production_side_effect": {"const": false}
+        }
+      }
+    },
+    "expected_controls": {"$ref": "#/$defs/nonEmptyStrings"},
+    "success_criteria": {"$ref": "#/$defs/nonEmptyStrings"},
+    "failure_criteria": {"$ref": "#/$defs/nonEmptyStrings"},
+    "cleanup": {"$ref": "#/$defs/nonEmptyStrings"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nonEmptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    }
+  }
+}

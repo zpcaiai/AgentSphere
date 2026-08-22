@@ -1,7 +1,10 @@
 //! Deterministic runtime anomaly detection and continuous authorization.
 
 use agent_trust_contracts::{AgentInstanceId, RiskLevel, TaskId, TenantId};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use base64::{
+    Engine as _,
+    engine::general_purpose::{STANDARD, URL_SAFE, URL_SAFE_NO_PAD},
+};
 use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use parking_lot::{Mutex, RwLock};
@@ -14,6 +17,10 @@ use uuid::Uuid;
 
 pub const ANOMALY_SCHEMA_VERSION: &str = "agenttrust.runtime-anomaly.v1";
 
+pub mod authority;
+pub mod production;
+pub mod server;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SignalKind {
@@ -23,6 +30,7 @@ pub enum SignalKind {
     File,
     Credential,
     PolicyDeny,
+    Approval,
     Process,
     Telemetry,
     AuditControl,
@@ -158,6 +166,15 @@ impl TrajectoryMonitor {
             return Err(AnomalyError::SignalClockInvalid);
         }
         if window.signals.len() >= self.maximum_signals_per_task
+            && window
+                .signals
+                .front()
+                .is_some_and(|oldest| signal.occurred_at <= oldest.occurred_at)
+        {
+            window.event_ids.remove(&signal.event_id);
+            return Err(AnomalyError::SignalClockInvalid);
+        }
+        if window.signals.len() >= self.maximum_signals_per_task
             && let Some(removed) = window.signals.pop_front()
         {
             window.event_ids.remove(&removed.event_id);
@@ -235,7 +252,7 @@ impl RuleDetector {
     pub fn evaluate(&self, state: &TrajectoryState, signals: &[RiskSignal]) -> Vec<RiskFinding> {
         let mut findings = Vec::new();
         for signal in signals {
-            let normalized = format!("{} {}", signal.action, signal.resource).to_ascii_lowercase();
+            let normalized = normalized_signal_text(signal);
             let rule = if signal.kind == SignalKind::Network
                 && (normalized.contains("169.254.169.254")
                     || normalized.contains("metadata.google.internal"))
@@ -277,6 +294,26 @@ impl RuleDetector {
                     RiskLevel::High,
                     "unregistered executor",
                 ))
+            } else if signal.kind == SignalKind::Process
+                && ["setns", "ptrace", "docker.sock", "host namespace", "mount host", "sandbox escape"]
+                    .iter()
+                    .any(|marker| normalized.contains(marker))
+            {
+                Some((
+                    "RUNTIME_SANDBOX_EVASION",
+                    RiskLevel::Critical,
+                    "sandbox or namespace evasion",
+                ))
+            } else if signal.kind == SignalKind::Approval
+                && ["bypass", "forge", "self approve", "disable"]
+                    .iter()
+                    .any(|marker| normalized.contains(marker))
+            {
+                Some((
+                    "RUNTIME_APPROVAL_BYPASS",
+                    RiskLevel::Critical,
+                    "approval control bypass",
+                ))
             } else if signal.kind == SignalKind::Resource
                 && !state
                     .allowed_resource_prefixes
@@ -309,7 +346,7 @@ impl RuleDetector {
                         version: &self.rule_version,
                         severity,
                         deterministic: true,
-                        confidence: signal.confidence_millionths,
+                        confidence: 1_000_000,
                         event_ids: [signal.event_id.clone()].into_iter().collect(),
                         reason,
                     },
@@ -367,7 +404,117 @@ impl RuleDetector {
                 },
             ));
         }
+        let policy_denies = signals
+            .iter()
+            .filter(|signal| signal.kind == SignalKind::PolicyDeny)
+            .collect::<Vec<_>>();
+        if policy_denies.len() >= self.repeated_side_effect_limit {
+            findings.push(finding(
+                state,
+                FindingInput {
+                    rule_id: "RUNTIME_REPEATED_POLICY_DENY",
+                    version: &self.rule_version,
+                    severity: RiskLevel::High,
+                    deterministic: true,
+                    confidence: 950_000,
+                    event_ids: policy_denies
+                        .iter()
+                        .map(|signal| signal.event_id.clone())
+                        .collect(),
+                    reason: "repeated denied behavior",
+                },
+            ));
+        }
         findings
+    }
+}
+
+fn normalized_signal_text(signal: &RiskSignal) -> String {
+    let mut values = vec![signal.action.clone(), signal.resource.clone()];
+    collect_safe_strings(&signal.value, 0, &mut values);
+    let mut expanded = Vec::new();
+    for value in values.into_iter().take(64) {
+        let mut current = value;
+        for _ in 0..=3 {
+            if current.len() > 8_192 {
+                break;
+            }
+            expanded.push(current.to_ascii_lowercase());
+            let percent = percent_decode_ascii(&current);
+            if percent != current {
+                current = percent;
+                continue;
+            }
+            let next = [
+                STANDARD.decode(current.as_bytes()),
+                URL_SAFE.decode(current.as_bytes()),
+                URL_SAFE_NO_PAD.decode(current.as_bytes()),
+            ]
+            .into_iter()
+            .find_map(Result::ok)
+            .and_then(|bytes| {
+                (bytes.len() <= 8_192)
+                    .then(|| String::from_utf8(bytes).ok())
+                    .flatten()
+            });
+            let Some(next) = next else {
+                break;
+            };
+            if next == current || !next.bytes().all(|byte| byte.is_ascii_graphic() || byte == b' ') {
+                break;
+            }
+            current = next;
+        }
+    }
+    expanded.join(" ")
+}
+
+fn collect_safe_strings(value: &Value, depth: usize, output: &mut Vec<String>) {
+    if depth > 8 || output.len() >= 64 {
+        return;
+    }
+    match value {
+        Value::String(value) if value.len() <= 8_192 => output.push(value.clone()),
+        Value::Array(values) => {
+            for value in values.iter().take(64) {
+                collect_safe_strings(value, depth + 1, output);
+            }
+        }
+        Value::Object(values) => {
+            for (key, value) in values.iter().take(64) {
+                output.push(key.clone());
+                collect_safe_strings(value, depth + 1, output);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn percent_decode_ascii(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut output = Vec::with_capacity(bytes.len());
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let (Some(high), Some(low)) = (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2]))
+        {
+            output.push(high.saturating_mul(16).saturating_add(low));
+            index += 3;
+        } else {
+            output.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(output).unwrap_or_else(|_| value.into())
+}
+
+fn hex_nibble(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -442,6 +589,7 @@ pub enum AuthorizationAdjustment {
     ReduceScope,
     Pause,
     RevokeLease,
+    RevokeCredential,
     Kill,
 }
 
@@ -517,7 +665,10 @@ impl ContinuousAuthorizationController {
             .filter(|finding| finding.deterministic && finding.severity == RiskLevel::Critical)
             .map(|finding| finding.rule_id.clone())
             .collect::<BTreeSet<_>>();
-        let adjustment = if !critical_rules.is_empty() {
+        let credential_movement = critical_rules.contains("RUNTIME_CREDENTIAL_MOVEMENT");
+        let adjustment = if credential_movement {
+            AuthorizationAdjustment::RevokeCredential
+        } else if !critical_rules.is_empty() {
             AuthorizationAdjustment::Kill
         } else if aggregate.severity == RiskLevel::Critical {
             AuthorizationAdjustment::Pause
@@ -551,7 +702,9 @@ impl ContinuousAuthorizationController {
             adjustment,
             new_revocation_epoch: if matches!(
                 adjustment,
-                AuthorizationAdjustment::RevokeLease | AuthorizationAdjustment::Kill
+                AuthorizationAdjustment::RevokeLease
+                    | AuthorizationAdjustment::RevokeCredential
+                    | AuthorizationAdjustment::Kill
             ) {
                 current_epoch.saturating_add(1)
             } else {
@@ -559,10 +712,16 @@ impl ContinuousAuthorizationController {
             },
             reason_codes,
             evidence_digest,
-            recovery_conditions: if adjustment == AuthorizationAdjustment::Pause {
-                BTreeSet::from(["HUMAN_REVIEW".into(), "NEW_AUTHORIZATION_LEASE".into()])
-            } else {
-                BTreeSet::new()
+            recovery_conditions: match adjustment {
+                AuthorizationAdjustment::Pause | AuthorizationAdjustment::RevokeLease => {
+                    BTreeSet::from(["HUMAN_REVIEW".into(), "NEW_AUTHORIZATION_LEASE".into()])
+                }
+                AuthorizationAdjustment::RevokeCredential => BTreeSet::from([
+                    "HUMAN_REVIEW".into(),
+                    "CREDENTIAL_ROTATED".into(),
+                    "NEW_AUTHORIZATION_LEASE".into(),
+                ]),
+                _ => BTreeSet::new(),
             },
             issued_at: now,
             expires_at: now + Duration::minutes(5),
@@ -966,5 +1125,114 @@ mod tests {
         assert_eq!(command.adjustment, AuthorizationAdjustment::Kill);
         assert_eq!(command.new_revocation_epoch, 8);
         assert!(command.verify(&key.verifying_key(), Utc::now()).is_ok());
+    }
+
+    #[test]
+    fn credential_movement_revokes_credential_and_pauses_instead_of_model_driven_kill() {
+        let (monitor, tenant, task, agent) = monitor();
+        monitor
+            .consume(
+                signal(
+                    &tenant,
+                    &task,
+                    &agent,
+                    SignalSpec {
+                        id: "e1",
+                        kind: SignalKind::Credential,
+                        action: "COPY",
+                        resource: "network://outside.example",
+                        value: Value::Null,
+                    },
+                ),
+                Utc::now(),
+            )
+            .unwrap_or_else(|error| panic!("consume: {error}"));
+        let detector = RuleDetector::new("rules:v1".into(), 3, 3)
+            .unwrap_or_else(|error| panic!("detector: {error}"));
+        let aggregate = RiskAggregator::update(
+            &monitor
+                .state(&tenant, &task)
+                .unwrap_or_else(|error| panic!("state: {error}")),
+            detector.evaluate(
+                &monitor
+                    .state(&tenant, &task)
+                    .unwrap_or_else(|error| panic!("state: {error}")),
+                &monitor
+                    .signals(&tenant, &task)
+                    .unwrap_or_else(|error| panic!("signals: {error}")),
+            ),
+            None,
+            false,
+        );
+        let controller = ContinuousAuthorizationController::new(
+            "response-controller".into(),
+            "response-key".into(),
+            SigningKey::from_bytes(&[33_u8; 32]),
+        )
+        .unwrap_or_else(|error| panic!("controller: {error}"));
+        let response = controller
+            .adjust(&aggregate, 4)
+            .unwrap_or_else(|error| panic!("adjust: {error}"));
+        assert_eq!(response.adjustment, AuthorizationAdjustment::RevokeCredential);
+        assert_eq!(response.new_revocation_epoch, 5);
+        assert!(response.recovery_conditions.contains("CREDENTIAL_ROTATED"));
+    }
+
+    #[test]
+    fn encoded_sandbox_evasion_is_detected_but_allowed_repo_scan_is_not_killed() {
+        let (monitor, tenant, task, agent) = monitor();
+        let encoded = STANDARD.encode("setns host namespace");
+        monitor
+            .consume(
+                signal(
+                    &tenant,
+                    &task,
+                    &agent,
+                    SignalSpec {
+                        id: "e1",
+                        kind: SignalKind::Process,
+                        action: "EXEC",
+                        resource: "process://registered",
+                        value: Value::String(encoded),
+                    },
+                ),
+                Utc::now(),
+            )
+            .unwrap_or_else(|error| panic!("consume: {error}"));
+        for index in 0..20 {
+            let event_id = format!("repo-{index}");
+            let resource = format!("repo://allowed/path/{index}");
+            monitor
+                .consume(
+                    signal(
+                        &tenant,
+                        &task,
+                        &agent,
+                        SignalSpec {
+                            id: &event_id,
+                            kind: SignalKind::Resource,
+                            action: "READ",
+                            resource: &resource,
+                            value: Value::Null,
+                        },
+                    ),
+                    Utc::now(),
+                )
+                .unwrap_or_else(|error| panic!("consume: {error}"));
+        }
+        let detector = RuleDetector::new("rules:v1".into(), 3, 3)
+            .unwrap_or_else(|error| panic!("detector: {error}"));
+        let findings = detector.evaluate(
+            &monitor
+                .state(&tenant, &task)
+                .unwrap_or_else(|error| panic!("state: {error}")),
+            &monitor
+                .signals(&tenant, &task)
+                .unwrap_or_else(|error| panic!("signals: {error}")),
+        );
+        assert!(findings.iter().any(|finding| finding.rule_id == "RUNTIME_SANDBOX_EVASION"));
+        assert!(!findings
+            .iter()
+            .any(|finding| finding.rule_id == "RUNTIME_SCOPE_EXPANSION"));
     }
 }

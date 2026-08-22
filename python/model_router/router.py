@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import islice
 from typing import Iterable
 
 
@@ -26,18 +27,24 @@ class ModelRouter:
     """Ranks only candidates already allowed by the authoritative DataPolicyPort."""
 
     def rank(self, candidates: Iterable[Candidate]) -> list[RouteDecision]:
+        try:
+            bounded = tuple(islice(iter(candidates), 1_001))
+        except Exception:
+            # Iterators can be supplied by adapters. Do not leak their error text through
+            # this public decision boundary.
+            raise ValueError("MODEL_ROUTE_CANDIDATE_SET_INVALID") from None
+        if not bounded or len(bounded) > 1_000:
+            raise ValueError("MODEL_ROUTE_CANDIDATE_SET_INVALID")
         decisions: list[RouteDecision] = []
-        for candidate in candidates:
+        seen: set[str] = set()
+        for candidate in bounded:
+            if not _valid_candidate(candidate):
+                raise ValueError("MODEL_ROUTE_CANDIDATE_INVALID")
+            if candidate.provider_key in seen:
+                raise ValueError("MODEL_ROUTE_CANDIDATE_DUPLICATE")
+            seen.add(candidate.provider_key)
             if not candidate.policy_allowed:
                 continue
-            if (
-                not candidate.provider_key
-                or not 0 <= candidate.evaluation_millionths <= 1_000_000
-                or candidate.latency_ms < 0
-                or candidate.cost_microunits < 0
-                or not 0 <= candidate.load_millionths <= 1_000_000
-            ):
-                raise ValueError("MODEL_ROUTE_CANDIDATE_INVALID")
             score = max(
                 0,
                 candidate.evaluation_millionths
@@ -58,4 +65,34 @@ class ModelRouter:
                     ),
                 )
             )
+        if not decisions:
+            raise ValueError("MODEL_ROUTE_NO_ALLOWED_CANDIDATE")
         return sorted(decisions, key=lambda item: (-item.score_millionths, item.provider_key))
+
+
+def _valid_candidate(candidate: object) -> bool:
+    if not isinstance(candidate, Candidate):
+        return False
+    if (
+        type(candidate.policy_allowed) is not bool
+        or not _provider_key(candidate.provider_key)
+        or not _bounded_integer(candidate.evaluation_millionths, 1_000_000)
+        or not _bounded_integer(candidate.latency_ms, 300_000)
+        or not _bounded_integer(candidate.cost_microunits, 9_223_372_036_854_775_807)
+        or not _bounded_integer(candidate.load_millionths, 1_000_000)
+    ):
+        return False
+    return True
+
+
+def _provider_key(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 768
+        and value.isascii()
+        and all(character.isprintable() and not character.isspace() for character in value)
+    )
+
+
+def _bounded_integer(value: object, maximum: int) -> bool:
+    return type(value) is int and 0 <= value <= maximum

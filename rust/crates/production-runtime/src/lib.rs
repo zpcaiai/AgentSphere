@@ -29,7 +29,7 @@ use http::SecureHttpTransport;
 use ops::{
     FilesystemEvidenceSource, HttpAuthoritativeService, HttpBackupPort, HttpContainmentPort,
     HttpEnterpriseIntegration, HttpLifecyclePropagationPort, HttpNotificationAdapter,
-    HttpPolicyDistributionPort, HttpRecertificationPort, HttpRuntimeControlPort,
+    HttpRecertificationPort, HttpRuntimeControlPort,
 };
 use protocols::{A2aPeerClient, HttpMcpTransport};
 use sha2::{Digest, Sha256};
@@ -44,7 +44,6 @@ pub struct ProductionAdapterSet {
     pub secret_broker: SecretBrokerCredentialLifecycle,
     pub industrial: HttpIndustrialAdapter,
     pub backup: HttpBackupPort,
-    pub policy_distribution: HttpPolicyDistributionPort,
     pub containment: HttpContainmentPort,
     pub recertification: HttpRecertificationPort,
     pub enterprise_integration: HttpEnterpriseIntegration,
@@ -139,7 +138,6 @@ impl ProductionAdapterSet {
             secret_broker: SecretBrokerCredentialLifecycle::new(endpoint("secret_broker")?),
             industrial: HttpIndustrialAdapter::new(endpoint("industrial")?),
             backup: HttpBackupPort::new(endpoint("backup")?),
-            policy_distribution: HttpPolicyDistributionPort::new(endpoint("policy_distribution")?),
             containment: HttpContainmentPort::new(endpoint("containment")?),
             recertification: HttpRecertificationPort::new(endpoint("recertification")?),
             enterprise_integration: HttpEnterpriseIntegration::new(endpoint(
@@ -372,7 +370,8 @@ mod production_action_tests {
             requested_at: now,
             extensions: BTreeMap::new(),
         };
-        let payload = serde_json::to_vec_pretty(&action).expect("serialize action");
+        let payload = serde_json::to_vec_pretty(&action)
+            .unwrap_or_else(|error| panic!("serialize action: {error}"));
         InboundEnvelope {
             request_id: "request-1".into(),
             trace_context: TraceContext {
@@ -405,14 +404,15 @@ mod production_action_tests {
     fn production_ingress_normalizes_and_hashes_exact_canonical_action() {
         let original = envelope();
         let original_hash = original.payload_hash.clone();
-        let normalized = canonicalize_production_action(original).expect("canonical action");
+        let normalized = canonicalize_production_action(original)
+            .unwrap_or_else(|error| panic!("canonical action: {error}"));
         assert_ne!(normalized.payload_hash, original_hash);
         assert_eq!(
             normalized.payload_hash,
             format!("{:x}", Sha256::digest(&normalized.payload))
         );
-        let value: serde_json::Value =
-            serde_json::from_slice(&normalized.payload).expect("canonical JSON");
+        let value: serde_json::Value = serde_json::from_slice(&normalized.payload)
+            .unwrap_or_else(|error| panic!("canonical JSON: {error}"));
         assert_eq!(value["intent"]["operation"], "read");
         assert_eq!(value["intent"]["justification_code"], "USER_REQUEST");
     }
@@ -426,10 +426,11 @@ mod production_action_tests {
             Err(GatewayError::Forbidden)
         ));
         let mut simulation = envelope();
-        let mut value: serde_json::Value =
-            serde_json::from_slice(&simulation.payload).expect("action JSON");
+        let mut value: serde_json::Value = serde_json::from_slice(&simulation.payload)
+            .unwrap_or_else(|error| panic!("action JSON: {error}"));
         value["environment"]["simulation"] = Value::Bool(true);
-        simulation.payload = serde_json::to_vec(&value).expect("action JSON");
+        simulation.payload =
+            serde_json::to_vec(&value).unwrap_or_else(|error| panic!("action JSON: {error}"));
         assert!(matches!(
             canonicalize_production_action(simulation),
             Err(GatewayError::Forbidden)

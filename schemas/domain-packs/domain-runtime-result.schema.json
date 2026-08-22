@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/domain-runtime-result.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "execution_id", "state", "domain", "resource_key", "resource_version", "effect_receipt_digest", "evaluator_result_digest", "evaluator_conclusion", "evidence_ref", "evidence_digest", "stable_error"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-runtime-result.v1"}, "execution_id": {"type": "string", "format": "uuid"},
+    "state": {"enum": ["PREPARED", "EXECUTING", "VERIFYING", "SUCCEEDED", "FAILED", "NEEDS_HUMAN", "MANUAL_RECOVERY", "UNKNOWN"]},
+    "domain": {"enum": ["CODING", "INDUSTRIAL", "ENERGY", "MEDICAL", "SENSITIVE"]}, "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "resource_version": {"type": "integer", "minimum": 1}, "effect_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "evaluator_result_digest": {"$ref": "#/$defs/nullableDigest"}, "evaluator_conclusion": {"type": ["string", "null"], "enum": ["PASS", "FAIL", "NEEDS_HUMAN", "MANUAL_RECOVERY", null]},
+    "evidence_ref": {"type": ["string", "null"], "maxLength": 1024}, "evidence_digest": {"$ref": "#/$defs/nullableDigest"}, "stable_error": {"type": ["string", "null"], "maxLength": 128}
+  }, "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}}
+}

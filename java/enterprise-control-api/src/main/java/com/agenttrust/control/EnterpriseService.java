@@ -2,20 +2,21 @@ package com.agenttrust.control;
 
 import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.ApiKeyIssueRequest;
-import com.agenttrust.control.AdminModels.ApiKeyIssueResponse;
 import com.agenttrust.control.AdminModels.CostUsageRequest;
+import com.agenttrust.control.AdminModels.EnterpriseActionReceipt;
 import com.agenttrust.control.AdminModels.IntegrationRequest;
 import com.agenttrust.control.AdminModels.OrganizationRequest;
 import com.agenttrust.control.AdminModels.PrincipalContext;
 import com.agenttrust.control.AdminModels.ProjectRequest;
 import com.agenttrust.control.AdminModels.QuotaConsumeRequest;
-import com.agenttrust.control.AdminModels.QuotaUsageResponse;
 import com.agenttrust.control.AdminModels.TenantRequest;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import org.springframework.stereotype.Service;
@@ -26,87 +27,53 @@ public final class EnterpriseService {
     private final EnterpriseRepository repository;
     private final PepAuthorizationClient pep;
     private final TransactionTemplate transactions;
-    private final ApiKeyManager apiKeys;
+    private final EnterpriseMutationGateway enterpriseMutations;
     private final CanonicalDigest canonicalDigest;
 
     public EnterpriseService(EnterpriseRepository repository, PepAuthorizationClient pep,
-                             TransactionTemplate transactions, ApiKeyManager apiKeys,
+                             TransactionTemplate transactions,
+                             EnterpriseMutationGateway enterpriseMutations,
                              CanonicalDigest canonicalDigest) {
         this.repository = repository;
         this.pep = pep;
         this.transactions = transactions;
-        this.apiKeys = apiKeys;
+        this.enterpriseMutations = enterpriseMutations;
         this.canonicalDigest = canonicalDigest;
     }
 
-    public void createTenant(PrincipalContext principal, TenantRequest request,
-                             AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt createTenant(PrincipalContext principal, TenantRequest request,
+                                                AdminIntent intent, String reason, String key) {
         requireReason(reason);
         requireOperation(intent, "CREATE_TENANT", "tenant:" + principal.tenantId());
         requireContext(principal, intent, Set.of("tenant-admin"), true);
         requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 201)) {
-                return;
-            }
-            if (repository.createTenant(principal.tenantId(), request) != 1) {
-                throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 201);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public void createOrganization(PrincipalContext principal, OrganizationRequest request,
-                                   AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt createOrganization(PrincipalContext principal,
+                                                       OrganizationRequest request,
+                                                       AdminIntent intent, String reason,
+                                                       String key) {
         requireReason(reason);
         requireOperation(intent, "CREATE_ORGANIZATION", "organization:" + request.organizationId());
         requireContext(principal, intent, Set.of("tenant-admin"), true);
         requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 201)) {
-                return;
-            }
-            if (repository.createOrganization(principal.tenantId(), request) != 1) {
-                throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 201);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public void createProject(PrincipalContext principal, ProjectRequest request,
-                              AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt createProject(PrincipalContext principal, ProjectRequest request,
+                                                 AdminIntent intent, String reason, String key) {
         requireReason(reason);
         requireOperation(intent, "CREATE_PROJECT", "project:" + request.projectId());
         requireContext(principal, intent, Set.of("project-admin"), true);
         requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 201)) {
-                return;
-            }
-            if (repository.createProject(principal.tenantId(), request) != 1) {
-                throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 201);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public void createIntegration(PrincipalContext principal, IntegrationRequest request,
-                                  AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt createIntegration(PrincipalContext principal,
+                                                      IntegrationRequest request,
+                                                      AdminIntent intent, String reason,
+                                                      String key) {
         requireReason(reason);
         requireOperation(intent, "CREATE_INTEGRATION", "integration:" + request.integrationId());
         requireContext(principal, intent, Set.of("integration-admin"), true);
@@ -116,57 +83,21 @@ public final class EnterpriseService {
             throw new ControlDeniedException("CONTROL_INTEGRATION_INVALID");
         }
         requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 201)) {
-                return;
-            }
-            if (repository.createIntegration(principal.tenantId(), request) != 1) {
-                throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 201);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public QuotaUsageResponse consumeQuota(PrincipalContext principal, QuotaConsumeRequest request,
-                                           AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt consumeQuota(PrincipalContext principal,
+                                                QuotaConsumeRequest request,
+                                                AdminIntent intent, String reason, String key) {
         requireReason(reason);
         requireOperation(intent, "CONSUME_QUOTA", "quota:" + request.quotaKey());
         requireContext(principal, intent, Set.of("quota-operator"), true);
         requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        QuotaUsageResponse response = transactions.execute(status -> {
-            repository.enterTenant(principal.tenantId());
-            var reservation = repository.reserveIdempotency(principal.tenantId(), key, requestDigest);
-            if (reservation.replay()) {
-                if (reservation.responseStatus() != 200 || reservation.responsePayload() == null
-                    || !reservation.responsePayload().path("used").canConvertToLong()) {
-                    throw new ConflictException("CONTROL_IDEMPOTENCY_RESPONSE_INVALID");
-                }
-                return new QuotaUsageResponse("agenttrust.quota-usage.v1", principal.tenantId(),
-                    request.quotaKey(), request.windowStartedAt(),
-                    reservation.responsePayload().path("used").longValue(), request.limit());
-            }
-            long current = repository.consumeQuota(principal.tenantId(), request);
-            writeAudit(intent, decision, reason);
-            var result = new QuotaUsageResponse("agenttrust.quota-usage.v1", principal.tenantId(),
-                request.quotaKey(), request.windowStartedAt(), current, request.limit());
-            repository.completeIdempotency(principal.tenantId(), key, 200, result);
-            return result;
-        });
-        if (response == null) {
-            throw new ConflictException("CONTROL_TRANSACTION_FAILED");
-        }
-        return response;
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public void recordCost(PrincipalContext principal, CostUsageRequest request,
-                           AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt recordCost(PrincipalContext principal, CostUsageRequest request,
+                                              AdminIntent intent, String reason, String key) {
         requireReason(reason);
         requireOperation(intent, "RECORD_COST", "cost:" + request.usageId());
         requireContext(principal, intent, Set.of("billing-operator"), true);
@@ -174,92 +105,53 @@ public final class EnterpriseService {
             throw new ControlDeniedException("CONTROL_COST_DENIED");
         }
         requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 202)) {
-                return;
-            }
-            if (repository.recordCost(principal.tenantId(), request) != 1) {
-                throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 202);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public ApiKeyIssueResponse issueApiKey(PrincipalContext principal, ApiKeyIssueRequest request,
-                                           AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt issueApiKey(PrincipalContext principal,
+                                               ApiKeyIssueRequest request,
+                                               AdminIntent intent, String reason, String key) {
         requireReason(reason);
         requireOperation(intent, "ISSUE_API_KEY", "api-key:new");
         requireContext(principal, intent, Set.of("credential-admin"), true);
         if (request.projectId() != null && !principal.projectIds().contains(request.projectId())) {
             throw new ControlDeniedException("CONTROL_API_KEY_DENIED");
         }
-        requireActionDigest(intent, reason, request);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, request);
-        ApiKeyIssueResponse response = transactions.execute(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (repository.reserveIdempotency(principal.tenantId(), key, requestDigest).replay()) {
-                throw new ConflictException("CONTROL_API_KEY_SECRET_ALREADY_ISSUED");
-            }
-            var issued = apiKeys.issue(request);
-            if (repository.createApiKey(principal.tenantId(), issued.response().apiKeyId(), request,
-                issued.keyHash(), principal.subject(), issued.response().createdAt()) != 1) {
-                throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
-            }
-            writeAudit(intent, decision, reason);
-            repository.completeIdempotency(principal.tenantId(), key, 201,
-                Map.of("api_key_id", issued.response().apiKeyId().toString(),
-                    "secret_recoverable", false));
-            return issued.response();
-        });
-        if (response == null) {
-            throw new ConflictException("CONTROL_TRANSACTION_FAILED");
+        Instant now = Instant.now();
+        if (!request.expiresAt().isAfter(now)
+            || request.expiresAt().isAfter(now.plus(365, ChronoUnit.DAYS))) {
+            throw new ControlDeniedException("CONTROL_API_KEY_EXPIRY_INVALID");
         }
-        return response;
+        requireActionDigest(intent, reason, request);
+        return submitEnterpriseMutation(principal, intent, reason, key, request);
     }
 
-    public void revokeApiKey(PrincipalContext principal, UUID apiKeyId, AdminIntent intent,
-                             String reason, String key) {
+    public EnterpriseActionReceipt revokeApiKey(PrincipalContext principal, UUID apiKeyId,
+                                                AdminIntent intent, String reason, String key) {
         requireReason(reason);
         requireOperation(intent, "REVOKE_API_KEY", "api-key:" + apiKeyId);
         requireContext(principal, intent, Set.of("credential-admin"), true);
         requireActionDigest(intent, reason, apiKeyId);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, apiKeyId);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 204)) {
-                return;
-            }
-            if (repository.revokeApiKey(principal.tenantId(), apiKeyId, reason) != 1) {
-                throw new ControlDeniedException("CONTROL_API_KEY_DENIED");
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 204);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key,
+            Map.of("api_key_id", apiKeyId.toString()));
     }
 
-    public void submitIntent(PrincipalContext principal, AdminIntent intent, String reason, String key) {
+    public EnterpriseActionReceipt submitIntent(PrincipalContext principal, AdminIntent intent,
+                                                String reason, String key) {
         requireReason(reason);
         requireContext(principal, intent, Set.of("control-operator"), true);
         requireActionDigest(intent, reason, null);
-        var decision = pep.authorize(principal, intent, key);
-        String requestDigest = requestDigest(intent, reason, null);
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(principal.tenantId());
-            if (isExactVoidReplay(repository.reserveIdempotency(
-                principal.tenantId(), key, requestDigest), 202)) {
-                return;
-            }
-            writeAudit(intent, decision, reason);
-            completeVoid(principal, key, 202);
-        });
+        return submitEnterpriseMutation(principal, intent, reason, key, Map.of());
+    }
+
+    private EnterpriseActionReceipt submitEnterpriseMutation(
+        PrincipalContext principal, AdminIntent intent, String reason, String key,
+        Object mutation
+    ) {
+        if (enterpriseMutations == null) {
+            throw new ControlUnavailableException("CONTROL_ENTERPRISE_AUTHORITY_UNAVAILABLE");
+        }
+        return enterpriseMutations.submit(principal, intent, reason, key, mutation);
     }
 
     public RemoteAuthorization authorizeRemoteAction(PrincipalContext principal, AdminIntent intent,
@@ -270,16 +162,11 @@ public final class EnterpriseService {
         requireOperation(intent, operation, resource);
         requireContext(principal, intent, requiredRoles, true);
         requireActionDigest(intent, reason, payload);
-        var decision = pep.authorize(principal, intent, key);
         String digest = requestDigest(intent, reason, payload);
         var reservation = transactions.execute(status -> {
             repository.enterTenant(principal.tenantId());
-            var value = repository.reserveRemoteAction(principal.tenantId(), key, digest,
+            return repository.reserveRemoteAction(principal.tenantId(), key, digest,
                 intent, payload);
-            if (value.created()) {
-                writeAudit(intent, decision, reason);
-            }
-            return value;
         });
         if (reservation == null) {
             throw new ConflictException("CONTROL_TRANSACTION_FAILED");
@@ -353,6 +240,19 @@ public final class EnterpriseService {
         });
     }
 
+    /**
+     * The Approval authority currently returns a case snapshot, not an immutable Evidence receipt.
+     * Keep the remote outcome retryable and do not substitute the earlier PEP decision evidence.
+     */
+    public void markApprovalEvidencePending(ApprovalAuthorization authorization) {
+        transactions.executeWithoutResult(status -> {
+            repository.enterTenant(authorization.tenantId());
+            repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
+                authorization.attempt(), "UNKNOWN", null,
+                "CONTROL_APPROVAL_EVIDENCE_PENDING");
+        });
+    }
+
     public void markApprovalFailed(ApprovalAuthorization authorization, String reasonCode) {
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(authorization.tenantId());
@@ -386,32 +286,6 @@ public final class EnterpriseService {
         }
     }
 
-    private void completeVoid(PrincipalContext principal, String key, int status) {
-        repository.completeIdempotency(principal.tenantId(), key, status,
-            Map.of("completed", true));
-    }
-
-    static boolean isExactVoidReplay(EnterpriseRepository.IdempotencyReservation reservation,
-                                     int expectedStatus) {
-        if (!reservation.replay()) {
-            return false;
-        }
-        var payload = reservation.responsePayload();
-        if (reservation.responseStatus() != expectedStatus || payload == null || !payload.isObject()
-            || payload.size() != 1 || !payload.path("completed").isBoolean()
-            || !payload.path("completed").booleanValue()) {
-            throw new ConflictException("CONTROL_IDEMPOTENCY_RESPONSE_INVALID");
-        }
-        return true;
-    }
-
-    private void writeAudit(AdminIntent intent, AdminModels.AuthorizationDecision decision,
-                            String reason) {
-        if (repository.writeAudit(intent, decision.policyDigest(), decision.evidenceRef(), reason) != 1) {
-            throw new ConflictException("CONTROL_AUDIT_CONFLICT");
-        }
-    }
-
     static void requireOperation(AdminIntent intent, String operation, String resource) {
         if (!operation.equals(intent.operation()) || !resource.equals(intent.resource())) {
             throw new ControlDeniedException("CONTROL_ACTION_BINDING_INVALID");
@@ -420,15 +294,20 @@ public final class EnterpriseService {
 
     static void requireContext(PrincipalContext principal, AdminIntent intent,
                                Set<String> roles, boolean separation) {
+        Instant now = Instant.now();
         if (!"agenttrust.enterprise-control.v1".equals(intent.schemaVersion())
             || intent.actionId() == null || intent.requestedAt() == null
+            || intent.actionId().getMostSignificantBits() == 0L
+                && intent.actionId().getLeastSignificantBits() == 0L
+            || intent.requestedAt().isAfter(now.plus(5, ChronoUnit.MINUTES))
+            || intent.requestedAt().isBefore(now.minus(24, ChronoUnit.HOURS))
             || intent.actionDigest() == null || !intent.actionDigest().matches("[a-f0-9]{64}")
             || !principal.tenantId().equals(intent.tenantId())
             || !principal.subject().equals(intent.requestedBy())
             || !principal.roles().containsAll(roles)
             || intent.projectId() != null && !principal.projectIds().contains(intent.projectId())
             || !principal.approvalIds().containsAll(intent.approvalIds())
-            || separation && intent.approvalIds().isEmpty()) {
+            || separation && (!principal.strongAuth() || intent.approvalIds().isEmpty())) {
             throw new ControlDeniedException("CONTROL_ADMIN_DENIED");
         }
     }

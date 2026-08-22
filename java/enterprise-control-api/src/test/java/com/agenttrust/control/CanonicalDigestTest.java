@@ -1,11 +1,13 @@
 package com.agenttrust.control;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -22,6 +24,15 @@ class CanonicalDigestTest {
         second.put("roles", Set.of("auditor", "project-admin"));
         second.put("operation", "CREATE_PROJECT");
         assertEquals(digest.digest(first), digest.digest(second));
+    }
+
+    @Test
+    void arrayOrderRemainsPartOfTheBoundRequestDigest() {
+        var digest = new CanonicalDigest(new ObjectMapper());
+
+        assertNotEquals(
+            digest.digest(Map.of("steps", List.of("authorize", "execute"))),
+            digest.digest(Map.of("steps", List.of("execute", "authorize"))));
     }
 
     @Test

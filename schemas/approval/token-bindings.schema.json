@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval-token-bindings.schema.json",
+  "title": "Enterprise approval mTLS and token bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {
+      "const": "agenttrust.approval-token-bindings.v1"
+    },
+    "bindings": {
+      "type": "array",
+      "description": "Each (client_identity, tenant_id, token_sha256) tuple is unique. A raw token digest is bound to exactly one scope and subject for that mTLS identity and tenant; rotation uses a new digest.",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9_.:/@-]+$"
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "client_identity",
+        "tenant_id",
+        "subject",
+        "scope",
+        "token_sha256"
+      ],
+      "properties": {
+        "client_identity": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 512,
+          "pattern": "^(DNS|URI):.+$"
+        },
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "subject": {
+          "description": "Opaque-token service or BFF subject only; human identity and attributes are accepted exclusively through SignedApprovalPrincipalAssertion.",
+          "$ref": "#/$defs/identifier"
+        },
+        "scope": {
+          "enum": [
+            "approvals:read",
+            "approvals:request",
+            "approvals:decide",
+            "approvals:issue",
+            "approvals:revoke",
+            "approvals:consume",
+            "approvals:verify"
+          ]
+        },
+        "token_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

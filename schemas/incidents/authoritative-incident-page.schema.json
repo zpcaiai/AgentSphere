@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/incidents/authoritative-incident-page.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "items", "next_after_incident_id"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.authoritative-incident-page.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/incident"}},
+    "next_after_incident_id": {"type": ["string", "null"], "format": "uuid"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "timeline": {"type": "object", "additionalProperties": false, "required": ["event_id", "sequence", "event_type", "from_status", "to_status", "actor_subject", "reason_code", "payload_digest", "action_hash", "ledger_execution_id", "fence_digest", "policy_decision_digest", "authorization_evidence_ref", "authorization_evidence_digest", "occurred_at"], "properties": {"event_id": {"type": "string", "format": "uuid"}, "sequence": {"type": "integer", "minimum": 1}, "event_type": {"type": "string"}, "from_status": {"type": ["string", "null"]}, "to_status": {"type": ["string", "null"]}, "actor_subject": {"type": "string"}, "reason_code": {"type": "string"}, "payload_digest": {"$ref": "#/$defs/digest"}, "action_hash": {"$ref": "#/$defs/digest"}, "ledger_execution_id": {"type": "string", "format": "uuid"}, "fence_digest": {"$ref": "#/$defs/digest"}, "policy_decision_digest": {"$ref": "#/$defs/digest"}, "authorization_evidence_ref": {"type": "string"}, "authorization_evidence_digest": {"$ref": "#/$defs/digest"}, "occurred_at": {"type": "string", "format": "date-time"}}},
+    "incident": {"type": "object", "additionalProperties": false, "required": ["incident_id", "correlation_key", "severity", "status", "task_id", "owner", "safe_summary", "scope", "evidence_refs", "legal_hold_id", "resource_version", "created_at", "updated_at", "timeline"], "properties": {"incident_id": {"type": "string", "format": "uuid"}, "correlation_key": {"type": "string"}, "severity": {"enum": ["P0", "P1", "P2", "P3"]}, "status": {"enum": ["DETECTED", "TRIAGED", "CONTAINED", "INVESTIGATING", "REMEDIATING", "RECERTIFYING", "CLOSED"]}, "task_id": {"type": "string", "format": "uuid"}, "owner": {"type": "string"}, "safe_summary": {"type": "string", "maxLength": 512}, "scope": {"type": "array"}, "evidence_refs": {"type": "array"}, "legal_hold_id": {"type": "string"}, "resource_version": {"type": "integer", "minimum": 1}, "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}, "timeline": {"type": "array", "items": {"$ref": "#/$defs/timeline"}}}}
+  }
+}

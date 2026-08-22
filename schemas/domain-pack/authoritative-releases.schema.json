@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-pack/authoritative-releases.schema.json",
+  "title": "Authoritative tenant Pack release page",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "authoritative", "data_digest", "items", "next_cursor"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.supply-chain-authoritative-releases.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"}, "authoritative": {"const": true},
+    "data_digest": {"$ref": "#/$defs/digest", "description": "JCS SHA-256 of this response object after removing only data_digest"},
+    "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/release"}},
+    "next_cursor": {"type": ["string", "null"], "minLength": 1, "maxLength": 2048, "pattern": "^[A-Za-z0-9_-]+$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["operation", "evidence_ref", "evidence_digest", "result_digest"],
+      "properties": {
+        "operation": {"enum": ["PUBLISH", "VALIDATE", "APPROVE", "ACTIVATE", "ROLLBACK", "REVOKE", "QUARANTINE", "RECOVER"]},
+        "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "evidence_digest": {"$ref": "#/$defs/digest"}, "result_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "release": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pack_id", "version", "lifecycle_state", "resource_version", "manifest_digest", "permission_digest", "dependency_lock_digest", "artifact_digest", "immutable_reference", "sbom_digest", "provenance_digest", "signature_digest", "license_report_digest", "vulnerability_report_digest", "maximum_vulnerability", "artifact_status", "receipt_refs"],
+      "properties": {
+        "pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "lifecycle_state": {"enum": ["PUBLISHED", "VALIDATED", "APPROVED", "ACTIVE", "QUARANTINED", "REVOKED", "ROLLED_BACK"]},
+        "resource_version": {"type": "integer", "minimum": 1}, "manifest_digest": {"$ref": "#/$defs/digest"},
+        "permission_digest": {"$ref": "#/$defs/digest"}, "dependency_lock_digest": {"$ref": "#/$defs/digest"},
+        "artifact_digest": {"$ref": "#/$defs/digest"}, "immutable_reference": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "sbom_digest": {"$ref": "#/$defs/digest"}, "provenance_digest": {"$ref": "#/$defs/digest"},
+        "signature_digest": {"$ref": "#/$defs/digest"}, "license_report_digest": {"$ref": "#/$defs/digest"},
+        "vulnerability_report_digest": {"$ref": "#/$defs/digest"}, "maximum_vulnerability": {"enum": ["NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+        "artifact_status": {"enum": ["VERIFIED", "QUARANTINED", "REVOKED"]},
+        "receipt_refs": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/receipt"}}
+      }
+    }
+  }
+}

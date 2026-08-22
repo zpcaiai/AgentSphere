@@ -13,10 +13,6 @@ use agent_trust_incident_release_gate::{
 use agent_trust_platform_sre::{
     BackupPort, BackupRequest, DatabaseBackupArtifact, ObjectBackupArtifact, SreError,
 };
-use agent_trust_policy_administration::{
-    DistributionAcknowledgement, PolicyAdminError, PolicyBundle, PolicyDistributionPort,
-    PromotionEnvironment,
-};
 use agent_trust_policy_pep::{PolicyError, RuntimeControlPort};
 use agent_trust_production_closure::{
     BatchEvidenceStatus, ClosureError, ClosureScope, EvidenceSourcePort, GateEvidence,
@@ -76,34 +72,6 @@ impl BackupPort for HttpBackupPort {
         } else {
             Ok(response.evidence_ref)
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct HttpPolicyDistributionPort {
-    transport: SecureHttpTransport,
-}
-impl HttpPolicyDistributionPort {
-    pub fn new(transport: SecureHttpTransport) -> Self {
-        Self { transport }
-    }
-}
-impl PolicyDistributionPort for HttpPolicyDistributionPort {
-    fn publish(
-        &self,
-        bundle: &PolicyBundle,
-        environment: PromotionEnvironment,
-        key: &str,
-    ) -> Result<DistributionAcknowledgement, PolicyAdminError> {
-        self.transport
-            .post_json_blocking(
-                "/v1/policy/bundles",
-                &json!({
-                    "bundle": bundle, "environment": environment
-                }),
-                Some(key),
-            )
-            .map_err(|_| PolicyAdminError::PublicationFailed)
     }
 }
 

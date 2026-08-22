@@ -13,6 +13,13 @@ export const SERVICE_SECTIONS = [
   "EVIDENCE",
   "COMPLIANCE",
   "AUDIT",
+  "MODELS",
+  "DATA",
+  "CONTEXT",
+  "ANOMALIES",
+  "SECURITY_EVALUATIONS",
+  "SUPPLY_CHAIN",
+  "DOMAIN_PACKS",
   "SRE",
   "DEPLOYMENTS",
 ] as const;
@@ -33,10 +40,10 @@ export interface AuthoritySection<T> {
 export interface EnterpriseDashboard {
   schema_version: "agenttrust.enterprise-dashboard.v1";
   tenant_id: string;
-  sections: Partial<Record<ServiceSection, AuthoritySection<unknown>>>;
+  sections: Record<ServiceSection, AuthoritySection<unknown>>;
   complete: boolean;
   unavailable_sections: ServiceSection[];
-  generated_at?: string;
+  generated_at: string;
 }
 
 export interface TaskAuthorityStatus {
@@ -77,33 +84,53 @@ export interface SafeAuthorityRow {
 
 const DIGEST = /^[a-f0-9]{64}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T/;
-const REDACTED_FIELD = /(secret|password|token|credential|private|prompt|payload|content|authorization|cookie|key_material)/i;
+const SENSITIVE_FIELD_SEGMENTS = new Set(["api_key", "authorization", "content", "cookie",
+  "credential", "key_material", "password", "payload", "private", "private_key", "prompt",
+  "raw", "secret", "token"]);
+const SAFE_METADATA_SUFFIXES = ["_count", "_digest", "_id", "_length", "_profile", "_ref",
+  "_size_bytes", "_status", "_type", "_version"];
 const MAX_AUTHORITY_ROWS = 1_000;
 const MAX_COLUMNS = 24;
 const MAX_SAFE_TEXT = 500;
 
 export function validateDashboard(value: EnterpriseDashboard): EnterpriseDashboard {
-  if (!value || !isUuid(value.tenant_id) || value.schema_version !== "agenttrust.enterprise-dashboard.v1") {
+  if (!value || !isUuid(value.tenant_id) || value.schema_version !== "agenttrust.enterprise-dashboard.v1"
+    || !ISO_DATE.test(value.generated_at) || !isRecord(value.sections)
+    || typeof value.complete !== "boolean"
+    || Object.keys(value).sort().join(",") !==
+      "complete,generated_at,schema_version,sections,tenant_id,unavailable_sections") {
     throw new Error("ENTERPRISE_DASHBOARD_INVALID");
   }
-  if (!Array.isArray(value.unavailable_sections) || value.unavailable_sections.length > SERVICE_SECTIONS.length) {
+  if (!Array.isArray(value.unavailable_sections)
+    || value.unavailable_sections.length > SERVICE_SECTIONS.length
+    || value.unavailable_sections.some((name) => !isServiceSection(name))) {
     throw new Error("ENTERPRISE_DASHBOARD_INVALID");
   }
   const unavailable = new Set(value.unavailable_sections);
+  const sectionNames = Object.keys(value.sections).sort();
+  const expectedNames = [...SERVICE_SECTIONS].sort();
+  if (unavailable.size !== value.unavailable_sections.length
+    || sectionNames.length !== expectedNames.length
+    || sectionNames.some((name, index) => name !== expectedNames[index])) {
+    throw new Error("ENTERPRISE_DASHBOARD_INVALID");
+  }
   for (const [name, section] of Object.entries(value.sections)) {
     if (!isServiceSection(name) || !section || section.schema_version !== "agenttrust.authority-view.v1"
       || section.section !== name || section.authoritative !== true || !DIGEST.test(section.data_digest)
       || !ISO_DATE.test(section.fetched_at)) {
       throw new Error("ENTERPRISE_AUTHORITY_SECTION_INVALID");
     }
-    if (!section.available && (
-      !unavailable.has(section.section)
-      || section.data !== null
+    if (section.available === unavailable.has(section.section)) {
+      throw new Error("ENTERPRISE_PARTIAL_FAILURE_HIDDEN");
+    }
+    if (!section.available && (section.data !== null
+      || section.data_digest !== "0".repeat(64)
       || section.safe_error_code !== "AUTHORITATIVE_SOURCE_UNAVAILABLE"
     )) {
       throw new Error("ENTERPRISE_PARTIAL_FAILURE_HIDDEN");
     }
-    if (section.available && section.data === null) {
+    if (section.available && (section.data === null || section.data_digest === "0".repeat(64)
+      || section.safe_error_code !== undefined)) {
       throw new Error("ENTERPRISE_AUTHORITY_SECTION_INVALID");
     }
   }
@@ -169,7 +196,7 @@ function toSafeRow(value: unknown, index: number): SafeAuthorityRow {
 }
 
 function safeScalar(key: string, value: unknown): SafeScalar {
-  if (REDACTED_FIELD.test(key)) return "[REDACTED]";
+  if (isSensitiveField(key)) return "[REDACTED]";
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number") return Number.isSafeInteger(value) ? value : "[INVALID_NUMBER]";
   if (typeof value === "string") return value.length <= MAX_SAFE_TEXT ? value : `${value.slice(0, MAX_SAFE_TEXT)}…`;
@@ -177,6 +204,14 @@ function safeScalar(key: string, value: unknown): SafeScalar {
     return value.map((item) => item.slice(0, 100)).join(", ");
   }
   return "[STRUCTURED_DATA_REDACTED]";
+}
+
+function isSensitiveField(key: string): boolean {
+  const normalized = key.toLocaleLowerCase();
+  if (SAFE_METADATA_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) return false;
+  return [...SENSITIVE_FIELD_SEGMENTS].some((segment) => normalized === segment
+    || normalized.startsWith(`${segment}_`) || normalized.endsWith(`_${segment}`)
+    || normalized.includes(`_${segment}_`));
 }
 
 function parseTask(value: unknown): TaskAuthorityStatus {
@@ -268,7 +303,7 @@ export async function buildAdminIntent(input: {
   };
 }
 
-async function sha256Canonical(value: unknown): Promise<string> {
+export async function sha256Canonical(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(canonicalize(value)));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -300,11 +335,7 @@ function canonicalize(value: unknown): unknown {
     return value;
   }
   if (Array.isArray(value)) {
-    return value.map(canonicalize).sort((left, right) => {
-      const leftJson = JSON.stringify(left);
-      const rightJson = JSON.stringify(right);
-      return leftJson < rightJson ? -1 : leftJson > rightJson ? 1 : 0;
-    });
+    return value.map(canonicalize);
   }
   if (isRecord(value)) {
     const result: Record<string, unknown> = {};

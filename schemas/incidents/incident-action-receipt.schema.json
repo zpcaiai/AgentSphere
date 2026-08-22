@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/incidents/incident-action-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "action_id", "task_id", "accepted", "execution_pending", "ingress_digest", "ledger_evidence_ref", "ledger_evidence_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.incident-action-receipt.v1"},
+    "action_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "accepted": {"const": true},
+    "execution_pending": {"const": true},
+    "ingress_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "ledger_evidence_ref": {"type": "string", "minLength": 12, "maxLength": 2048},
+    "ledger_evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

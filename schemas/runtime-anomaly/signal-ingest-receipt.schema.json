@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/signal-ingest-receipt.schema.json",
+  "title": "Runtime Anomaly Signal Ingest Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "task_id", "payload_digest", "duplicate", "finding_ids",
+    "aggregate_id", "response_action_id", "local_authorization_status", "revocation_epoch",
+    "evidence_outbox_ref"
+  ],
+  "properties": {
+    "schema_version": { "const": "agenttrust.risk-signal-receipt.v1" },
+    "event_id": { "type": "string", "format": "uuid" },
+    "task_id": { "type": "string", "format": "uuid" },
+    "payload_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "duplicate": { "type": "boolean" },
+    "finding_ids": { "type": "array", "maxItems": 4096, "items": { "type": "string", "format": "uuid" } },
+    "aggregate_id": { "oneOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+    "response_action_id": { "oneOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+    "local_authorization_status": { "enum": ["ACTIVE", "APPROVAL_REQUIRED", "PAUSED", "KILLED", "COMPLETED"] },
+    "revocation_epoch": { "type": "integer", "minimum": 0 },
+    "evidence_outbox_ref": { "type": "string", "pattern": "^outbox://runtime-anomaly/[0-9a-f-]{36}$" }
+  }
+}

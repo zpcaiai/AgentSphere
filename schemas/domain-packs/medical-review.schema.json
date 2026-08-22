@@ -1,11 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/domain-packs/medical-review.schema.json",
   "title": "Medical Human Review", "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "tenant_id", "review_id", "patient_ref_hash", "care_relationship_digest", "recommendation_digest", "risk_level", "decision"],
+  "required": ["schema_version", "tenant_id", "review_id", "patient_ref_hash", "care_relationship_digest", "recommendation_digest", "clinical_evidence_digest", "model_manifest_digest", "risk_level", "reviewer_subject", "reviewer_role", "reviewer_qualification_digest", "principal_assertion_digest", "decision", "evidence_ref", "evidence_digest"],
   "properties": {
-    "schema_version": {"const": "agenttrust.medical-pack.v1"}, "tenant_id": {"type": "string", "minLength": 1},
-    "review_id": {"type": "string", "minLength": 1}, "patient_ref_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "schema_version": {"const": "agenttrust.domain-risk-packs.v1"}, "tenant_id": {"type": "string", "format": "uuid"},
+    "review_id": {"type": "string", "format": "uuid"}, "patient_ref_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "care_relationship_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "recommendation_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "risk_level": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}, "decision": {"enum": ["PENDING", "APPROVED", "REJECTED", "ESCALATED"]}
+    "clinical_evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "model_manifest_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "risk_level": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}, "reviewer_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+    "reviewer_role": {"enum": ["CLINICIAN", "PHYSICIAN", "PHARMACIST", "LICENSED_REVIEWER"]}, "reviewer_qualification_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "principal_assertion_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "decision": {"enum": ["APPROVED", "REJECTED", "ESCALATED"]},
+    "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024}, "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
   }
 }

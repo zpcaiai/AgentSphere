@@ -1,0 +1,458 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Context Governance Authority
+  version: 1.0.0
+  description: >-
+    Tenant-scoped Memory, Prompt, and Knowledge provenance authority. Mutations are admitted as
+    Canonical Action IR and execute only with PEP, ledger, fence, resource-version, and Evidence
+    bindings. Retrieval authorization is committed before a vector similarity request is issued.
+servers:
+  - url: https://context-governance.internal:8095
+security:
+  - mutualTls: []
+    bearerAuth: []
+paths:
+  /ready:
+    get:
+      operationId: getContextGovernanceReadiness
+      security:
+        - mutualTls: []
+      responses:
+        "200":
+          description: All production dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: ../context/context-readiness.schema.json
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/context/actions:
+    post:
+      operationId: submitContextGovernanceAction
+      description: Normalize a governed context mutation to Canonical Action IR and submit it to the durable orchestrator.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../context/context-command.schema.json
+      responses:
+        "202":
+          description: Canonical action was durably accepted; execution remains pending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/context/executions:
+    post:
+      operationId: executeAuthorizedContextMutation
+      description: Typed Tool Proxy target. Every authorization and ledger binding header is mandatory and exact.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/ActionHash"
+        - $ref: "#/components/parameters/LedgerExecutionId"
+        - $ref: "#/components/parameters/LedgerEntryId"
+        - $ref: "#/components/parameters/LedgerEntryDigest"
+        - $ref: "#/components/parameters/FenceDigest"
+        - $ref: "#/components/parameters/ResourceVersion"
+        - $ref: "#/components/parameters/TraceId"
+        - $ref: "#/components/parameters/PolicyDecisionId"
+        - $ref: "#/components/parameters/PolicyDecisionDigest"
+        - $ref: "#/components/parameters/AuthorizationEvidenceRef"
+        - $ref: "#/components/parameters/AuthorizationEvidenceDigest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../context/context-execution-request.schema.json
+      responses:
+        "200":
+          description: Mutation, resource fence advance, Evidence outbox commit, and Evidence delivery completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/context/retrievals:
+    post:
+      operationId: retrieveAuthorizedContext
+      description: >-
+        Persist the tenant/resource authorization decision, then issue similarity search with an
+        explicit allowed_resources list. An empty allowlist returns zero results without calling
+        the vector adapter.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/TraceId"
+        - $ref: "#/components/parameters/PolicyDecisionId"
+        - $ref: "#/components/parameters/PolicyDecisionDigest"
+        - $ref: "#/components/parameters/AuthorizationEvidenceRef"
+        - $ref: "#/components/parameters/AuthorizationEvidenceDigest"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../context/context-retrieval.schema.json
+      responses:
+        "200":
+          description: Authorized bounded retrieval result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RetrievalResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+  /v1/authoritative/context/resources:
+    get:
+      operationId: listAuthoritativeContextResources
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 1024
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: Tenant-scoped authoritative resource fence page without context content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthoritativePage"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+components:
+  securitySchemes:
+    mutualTls:
+      type: mutualTLS
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TenantId:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 128
+        pattern: "^[A-Za-z0-9_.:/-]+$"
+    ActionHash:
+      name: X-AgentTrust-Action-Hash
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Digest"
+    LedgerExecutionId:
+      name: X-AgentTrust-Ledger-Execution-Id
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    LedgerEntryId:
+      name: X-AgentTrust-Ledger-Entry-Id
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    LedgerEntryDigest:
+      name: X-AgentTrust-Ledger-Entry-Digest
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Digest"
+    FenceDigest:
+      name: X-AgentTrust-Fence-Digest
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Digest"
+    ResourceVersion:
+      name: X-AgentTrust-Resource-Version
+      in: header
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+    TraceId:
+      name: X-AgentTrust-Trace-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[A-Za-z0-9_.:/-]+$"
+    PolicyDecisionId:
+      name: X-AgentTrust-Policy-Decision-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z0-9_.:/-]+$"
+    PolicyDecisionDigest:
+      name: X-AgentTrust-Policy-Decision-Digest
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Digest"
+    AuthorizationEvidenceRef:
+      name: X-AgentTrust-Authorization-Evidence-Ref
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 12
+        maxLength: 2048
+        pattern: "^(evidence://|urn:agenttrust:evidence:)[^\\s?#]+$"
+    AuthorizationEvidenceDigest:
+      name: X-AgentTrust-Authorization-Evidence-Digest
+      in: header
+      required: true
+      schema:
+        $ref: "#/components/schemas/Digest"
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Digest:
+      type: string
+      pattern: "^[a-f0-9]{64}$"
+    ActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version:
+          const: agenttrust.context-action-receipt.v1
+        action_id:
+          $ref: "#/components/schemas/Uuid"
+        task_id:
+          $ref: "#/components/schemas/Uuid"
+        accepted:
+          const: true
+        execution_pending:
+          const: true
+        ingress_digest:
+          $ref: "#/components/schemas/Digest"
+        ledger_evidence_ref:
+          type: string
+        ledger_evidence_digest:
+          $ref: "#/components/schemas/Digest"
+    AdapterReceipt:
+      type: object
+      additionalProperties: false
+      required: [adapter, operation, resource, idempotency_key, request_digest, receipt_digest, reference]
+      properties:
+        adapter:
+          type: string
+        operation:
+          type: string
+        resource:
+          type: string
+          minLength: 3
+          maxLength: 1024
+          pattern: '^(?!.*[?#])[!-~]+:[!-~]+$'
+        idempotency_key:
+          type: string
+        request_digest:
+          $ref: "#/components/schemas/Digest"
+        receipt_digest:
+          $ref: "#/components/schemas/Digest"
+        reference:
+          type: string
+    MutationResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command_id, resource, operation, resource_version, state, result_digest, evidence_outbox_ref, quarantine, legal_hold_blocked, safe_receipts]
+      properties:
+        schema_version:
+          const: agenttrust.context-mutation-result.v1
+        command_id:
+          $ref: "#/components/schemas/Uuid"
+        resource:
+          type: string
+        operation:
+          type: string
+        resource_version:
+          type: integer
+          minimum: 1
+        state:
+          const: SUCCEEDED
+        result_digest:
+          $ref: "#/components/schemas/Digest"
+        evidence_outbox_ref:
+          type: string
+          pattern: "^context-outbox://"
+        quarantine:
+          type: boolean
+        legal_hold_blocked:
+          type: boolean
+        safe_receipts:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/AdapterReceipt"
+    VectorHit:
+      type: object
+      additionalProperties: false
+      required: [resource, score_millionths, content_digest, provenance_digest, object_ref]
+      properties:
+        resource:
+          type: string
+        score_millionths:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+        content_digest:
+          $ref: "#/components/schemas/Digest"
+        provenance_digest:
+          $ref: "#/components/schemas/Digest"
+        object_ref:
+          type: string
+    RetrievalResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, retrieval_id, authorization_decision_id, authorized_candidate_count, hits, retrieval_digest]
+      properties:
+        schema_version:
+          const: agenttrust.context-retrieval-result.v1
+        retrieval_id:
+          $ref: "#/components/schemas/Uuid"
+        authorization_decision_id:
+          $ref: "#/components/schemas/Uuid"
+        authorized_candidate_count:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        hits:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/VectorHit"
+        retrieval_digest:
+          $ref: "#/components/schemas/Digest"
+    AuthoritativeResource:
+      type: object
+      additionalProperties: false
+      required: [resource, resource_version, action_hash, ledger_execution_id, fence_digest, updated_at]
+      properties:
+        resource:
+          type: string
+        resource_version:
+          type: integer
+          minimum: 1
+        action_hash:
+          $ref: "#/components/schemas/Digest"
+        ledger_execution_id:
+          $ref: "#/components/schemas/Uuid"
+        fence_digest:
+          $ref: "#/components/schemas/Digest"
+        updated_at:
+          type: string
+          format: date-time
+    AuthoritativePage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, authoritative, items, next_after, data_digest]
+      properties:
+        schema_version:
+          const: agenttrust.authoritative-context-page.v1
+        tenant_id:
+          $ref: "#/components/schemas/Uuid"
+        authoritative:
+          const: true
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/AuthoritativeResource"
+        next_after:
+          oneOf:
+            - type: string
+              minLength: 3
+              maxLength: 1024
+              pattern: '^(?!.*[?#])[!-~]+:[!-~]+$'
+            - type: "null"
+        data_digest:
+          $ref: "#/components/schemas/Digest"
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version:
+          const: agenttrust.context-authority-error.v1
+        error:
+          type: string
+  responses:
+    BadRequest:
+      description: Strict request validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: mTLS SAN, tenant, scope, token, subject, or authorization binding was denied.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: Idempotency, resource fence, supply-chain, legal-hold, or lifecycle conflict.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: A required production dependency or authoritative outcome is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

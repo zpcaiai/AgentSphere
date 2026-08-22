@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/action-payloads/enterprise-control-mutation.schema.json",
+  "title": "Canonical enterprise control mutation payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "action_id", "operation", "resource", "admin_action_digest",
+    "reason_digest", "requester_subject", "approval_ids", "mutation"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.enterprise-executor-request.v1"},
+    "action_id": {"type": "string", "format": "uuid"},
+    "operation": {
+      "enum": [
+        "CREATE_TENANT", "CREATE_ORGANIZATION", "CREATE_PROJECT", "CREATE_INTEGRATION",
+        "CONSUME_QUOTA", "RECORD_COST", "ISSUE_API_KEY", "REVOKE_API_KEY",
+        "SUBMIT_ADMIN_ACTION"
+      ]
+    },
+    "resource": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "admin_action_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "reason_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "requester_subject": {"type": "string", "minLength": 1, "maxLength": 256},
+    "approval_ids": {
+      "type": "array", "maxItems": 1024, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    },
+    "mutation": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "not": {"enum": ["api_key", "password", "token", "secret", "private_key"]}
+      }
+    }
+  }
+}

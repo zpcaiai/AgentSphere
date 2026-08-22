@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1.7
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/workspace/target,sharing=locked \
+    cargo build --locked --release --package agent-trust-context-governance \
+      --bin agenttrust-context-governance-service && \
+    install -D -m 0555 /workspace/target/release/agenttrust-context-governance-service \
+      /out/agenttrust-context-governance-service
+
+FROM ${RUNTIME_BASE_IMAGE}
+COPY --from=build /out/agenttrust-context-governance-service /usr/local/bin/agenttrust-context-governance-service
+USER 65532:65532
+EXPOSE 8095 9105
+ENTRYPOINT ["/usr/local/bin/agenttrust-context-governance-service"]

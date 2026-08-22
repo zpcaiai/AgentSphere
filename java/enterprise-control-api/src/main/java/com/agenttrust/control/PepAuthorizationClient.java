@@ -1,12 +1,13 @@
 package com.agenttrust.control;
 
-import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.AuthorizationDecision;
 import com.agenttrust.control.AdminModels.PrincipalContext;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -14,61 +15,58 @@ import org.springframework.web.client.RestClient;
 @Component
 public final class PepAuthorizationClient {
     private final RestClient client;
-    private final ServiceTokenProvider serviceToken;
+    private final PepScopeTokenProvider pepTokens;
+    private final HumanPrincipalAssertionSigner humanAssertions;
     private final ObjectMapper mapper;
 
     public PepAuthorizationClient(ControlProperties properties, SecureRestClientFactory clients,
-                                  ServiceTokenProvider serviceToken, ObjectMapper mapper) {
-        this.serviceToken = serviceToken;
+                                  PepScopeTokenProvider pepTokens,
+                                  HumanPrincipalAssertionSigner humanAssertions,
+                                  ObjectMapper mapper) {
+        this.pepTokens = pepTokens;
+        this.humanAssertions = humanAssertions;
         this.mapper = mapper;
         this.client = clients.client(properties.pepEndpoint());
     }
 
-    public AuthorizationDecision authorize(PrincipalContext principal, AdminIntent intent, String idempotencyKey) {
-        try {
-            var decision = boundedDecision(client.post()
-                .uri("/v1/authorize/admin")
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer " + serviceToken.token())
-                .header("Idempotency-Key", idempotencyKey)
-                .body(Map.of("schema_version", "agenttrust.admin-authorization.v1",
-                    "principal", principal, "action", intent)));
-            if (decision == null || !decision.allowed()) {
-                throw new ControlDeniedException("CONTROL_ADMIN_DENIED");
-            }
-            return decision;
-        } catch (ControlDeniedException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw new ControlUnavailableException("CONTROL_PEP_UNAVAILABLE", error);
-        }
-    }
-
     public AuthorizationDecision authorizeApproval(PrincipalContext principal, ApprovalIntent intent,
                                                     String idempotencyKey) {
-        return decision("/v1/authorize/approval", principal, intent, idempotencyKey);
+        return decision("/v1/authorize/approval", PepScopeTokenProvider.Scope.APPROVAL,
+            principal, intent, idempotencyKey);
     }
 
     public AuthorizationDecision authorizeQuery(PrincipalContext principal, String operation,
                                                  String resource) {
-        return decision("/v1/authorize/query", principal,
+        String idempotencyKey = "query-" + UUID.randomUUID();
+        return decision("/v1/authorize/query", PepScopeTokenProvider.Scope.QUERY, principal,
             Map.of("schema_version", "agenttrust.query-authorization.v1",
-                "operation", operation, "resource", resource), null);
+                "operation", operation, "resource", resource), idempotencyKey);
     }
 
-    private AuthorizationDecision decision(String path, PrincipalContext principal, Object action,
+    private AuthorizationDecision decision(String path, PepScopeTokenProvider.Scope scope,
+                                           PrincipalContext principal, Object action,
                                            String idempotencyKey) {
         try {
-            var request = client.post().uri(path).contentType(MediaType.APPLICATION_JSON)
-                .header("Authorization", "Bearer " + serviceToken.token());
-            if (idempotencyKey != null) {
-                request = request.header("Idempotency-Key", idempotencyKey);
+            if (idempotencyKey == null
+                || !idempotencyKey.matches("[A-Za-z0-9._:-]{1,128}")) {
+                throw new ControlDeniedException("CONTROL_IDEMPOTENCY_KEY_INVALID");
             }
-            var decision = boundedDecision(request.body(Map.of("schema_version",
-                "agenttrust.authorization-request.v1", "principal", principal,
-                "action", action)));
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("schema_version", "agenttrust.authorization-request.v1");
+            body.put("principal", principal);
+            body.put("action", action);
+            var assertion = humanAssertions.sign(principal, "POST", path, scope.value(),
+                idempotencyKey, body, scope == PepScopeTokenProvider.Scope.APPROVAL);
+            var decision = boundedDecision(client.post().uri(path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + pepTokens.token(scope))
+                .header("X-AgentTrust-Tenant-Id", principal.tenantId().toString())
+                .header("Idempotency-Key", idempotencyKey)
+                .header("X-AgentTrust-Human-Assertion", assertion.headerValue())
+                .body(body));
             if (decision == null || !decision.allowed()) {
-                throw new ControlDeniedException("CONTROL_ADMIN_DENIED");
+                throw new ControlDeniedException("CONTROL_PEP_DENIED");
             }
             return decision;
         } catch (ControlDeniedException error) {
@@ -82,7 +80,7 @@ public final class PepAuthorizationClient {
         return request.exchange((ignored, response) -> {
             int status = response.getStatusCode().value();
             if (status == 401 || status == 403 || status == 400 || status == 422) {
-                throw new ControlDeniedException("CONTROL_ADMIN_DENIED");
+                throw new ControlDeniedException("CONTROL_PEP_DENIED");
             }
             if (status < 200 || status >= 300) {
                 throw new ControlUnavailableException("CONTROL_PEP_UNAVAILABLE");

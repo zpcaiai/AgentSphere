@@ -46,7 +46,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedTenantRequest'}
       responses:
-        '201': {description: Tenant created after PEP authorization and audit persistence}
+        '202':
+          description: Canonical action durably accepted; execution and task completion are pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Tenant, role, CSRF, action binding, or separation-of-duties denial}
   /tenants/{tenantId}/organizations:
     post:
@@ -64,7 +66,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedOrganizationRequest'}
       responses:
-        '201': {description: Organization created and audited}
+        '202':
+          description: Canonical action durably accepted; execution and task completion are pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization denied}
   /tenants/{tenantId}/projects:
     post:
@@ -82,7 +86,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedProjectRequest'}
       responses:
-        '201': {description: Project and bounded environment set created and audited}
+        '202':
+          description: Canonical action durably accepted; execution and task completion are pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization denied}
   /tenants/{tenantId}/integrations:
     post:
@@ -100,7 +106,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedIntegrationRequest'}
       responses:
-        '201': {description: HTTPS integration configuration created and audited}
+        '202':
+          description: Canonical action durably accepted; execution and task completion are pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization or endpoint validation denied}
   /tenants/{tenantId}/quota/consume:
     post:
@@ -118,9 +126,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedQuotaRequest'}
       responses:
-        '200':
-          description: Atomic quota consumption result
-          content: {application/json: {schema: {$ref: '#/components/schemas/QuotaUsage'}}}
+        '202':
+          description: Canonical quota action accepted; usage is not returned before execution
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization denied or quota exceeded}
   /tenants/{tenantId}/costs:
     post:
@@ -138,7 +146,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedCostRequest'}
       responses:
-        '202': {description: Cost usage recorded and audited}
+        '202':
+          description: Canonical cost action durably accepted; execution is pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization or project scope denied}
   /tenants/{tenantId}/api-keys:
     post:
@@ -156,9 +166,12 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedApiKeyIssueRequest'}
       responses:
-        '201':
-          description: One-time API key secret; response is non-cacheable
-          content: {application/json: {schema: {$ref: '#/components/schemas/ApiKeyIssueResponse'}}}
+        '202':
+          description: >-
+            Canonical credential action accepted. No raw secret is returned; the executor writes it
+            once to the governed credential authority and exposes only a protected reference in
+            downstream task evidence.
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization denied}
   /tenants/{tenantId}/api-keys/{apiKeyId}/revoke:
     post:
@@ -177,7 +190,9 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedAdminIntent'}
       responses:
-        '204': {description: API key revoked and audited}
+        '202':
+          description: Canonical revocation action durably accepted; execution is pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Authorization denied}
   /tenants/{tenantId}/tasks/{taskId}/commands:
     post:
@@ -212,51 +227,180 @@ paths:
         - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
-        - {name: cursor, in: query, schema: {type: string}}
+        - {name: cursor, in: query, schema: {type: string, pattern: '^[A-Za-z0-9_-]{1,5462}$'}}
         - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
       responses:
         '200':
           description: Tenant-scoped authoritative inventory page
-          content: {application/json: {schema: {$ref: '#/components/schemas/AuthorityPayload'}}}
-  /tenants/{tenantId}/policies/{bundleId}/simulate:
-    post:
-      operationId: simulatePolicyBundle
+          content: {application/json: {schema: {$ref: '#/components/schemas/AgentInventoryPage'}}}
+  /tenants/{tenantId}/policies:
+    get:
+      operationId: listPolicies
       security:
         - enterpriseJwt: []
         - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
-        - {name: bundleId, in: path, required: true, schema: {type: string}}
-        - $ref: '#/components/parameters/CsrfToken'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/PolicySimulationRequest'}
+        - {name: after_policy_id, in: query, schema: {$ref: '#/components/schemas/PolicyId'}}
+        - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
       responses:
         '200':
-          description: Side-effect-free impact report
-          content: {application/json: {schema: {$ref: '#/components/schemas/AuthorityPayload'}}}
-  /tenants/{tenantId}/policies/{bundleId}/promotions:
+          description: Keyset-paginated tenant Policy lifecycle authority
+          content: {application/json: {schema: {$ref: '#/components/schemas/PolicyPage'}}}
+  /tenants/{tenantId}/policies/{policyId}/sources:
+    get:
+      operationId: listPolicySources
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/{policyId}/analyses:
+    get:
+      operationId: listPolicyAnalyses
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/{policyId}/reviews:
+    get:
+      operationId: listPolicyReviews
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/{policyId}/simulations:
+    get:
+      operationId: listPolicySimulations
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/{policyId}/impact-reports:
+    get:
+      operationId: listPolicyImpactReports
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/{policyId}/promotions:
+    get:
+      operationId: listPolicyPromotions
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/{policyId}/exceptions:
+    get:
+      operationId: listPolicyExceptions
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
+      responses: {$ref: '#/components/x-policy-artifact-responses'}
+  /tenants/{tenantId}/policies/actions:
     post:
-      operationId: promotePolicyBundle
+      operationId: submitPolicyAction
+      description: >-
+        Forwards an exact strong-auth human assertion to the policy:mutate Canonical Action
+        ingress. HTTP 202 proves durable workflow admission only; lifecycle execution is pending.
       security:
         - enterpriseJwt: []
         - oidcSession: []
       parameters:
         - $ref: '#/components/parameters/TenantId'
-        - {name: bundleId, in: path, required: true, schema: {type: string}}
         - $ref: '#/components/parameters/IdempotencyKey'
         - $ref: '#/components/parameters/CsrfToken'
       requestBody:
         required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/GovernedPolicyPromotion'}
+        content: {application/json: {schema: {$ref: '#/components/schemas/PolicyCommand'}}}
       responses:
-        '202': {description: Governed promotion dispatched to the authoritative policy service}
-        '403': {description: Authorization or separation-of-duties denial}
-        '503': {description: Outcome remains UNKNOWN and safe to retry with the same key}
+        '202':
+          description: Canonical Policy workflow durably accepted; execution remains pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/PolicyActionReceipt'}}}
+        '403': {description: Tenant, role, strong-auth, request binding, or SoD denial}
+        '409': {description: Idempotency or resource-version conflict}
+        '503': {description: Admission outcome is not verifiable; retry only the exact same request and key}
+  /tenants/{tenantId}/incidents:
+    get:
+      operationId: listIncidents
+      description: Tenant-isolated authoritative incident lifecycle and ordered evidence timeline.
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: after_incident_id, in: query, schema: {type: string, format: uuid}}
+        - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Keyset-paginated authoritative incidents
+          content: {application/json: {schema: {$ref: '#/components/schemas/IncidentPage'}}}
+        '503': {description: Incident authority or PEP unavailable; no cached success is returned}
+  /tenants/{tenantId}/incidents/{incidentId}:
+    get:
+      operationId: getIncident
+      description: One tenant-bound incident and its complete ordered evidence timeline.
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: incidentId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Authoritative incident detail
+          content: {application/json: {schema: {$ref: '#/components/schemas/Incident'}}}
+        '403': {description: Tenant or query authorization denied without cross-tenant disclosure}
+        '503': {description: Incident authority or PEP unavailable}
+  /tenants/{tenantId}/incidents/actions:
+    post:
+      operationId: submitIncidentAction
+      description: >-
+        Forwards a strong-auth human action to the incident:mutate Canonical Action ingress.
+        HTTP 202 proves durable admission only; containment, replay, remediation, release-gate,
+        canary, rollback and close execution remain pending.
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/IncidentCommand'}}}
+      responses:
+        '202':
+          description: Canonical incident/release workflow admitted; execution remains pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/IncidentActionReceipt'}}}
+        '403': {description: Tenant, strong-auth, role, approval, replay boundary or binding denied}
+        '409': {description: Idempotency, resource-version, state, approval or evidence conflict}
+        '503': {description: Admission outcome is not verifiable; retry the exact request and key}
+  /tenants/{tenantId}/packs:
+    get:
+      operationId: listPacks
+      description: >-
+        Tenant catalog and installation lifecycle from the Pack Marketplace authority. Installation
+        does not imply activation, and ACTIVE does not imply per-task production authorization.
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - {name: query, in: query, schema: {type: string, maxLength: 128}}
+        - {name: after_pack_id, in: query, schema: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}}
+        - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Digest-bound authoritative Pack catalog and tenant activation state
+          content: {application/json: {schema: {$ref: '#/components/schemas/PackPage'}}}
+        '503': {description: Pack authority or PEP unavailable; no cached success is returned}
+  /tenants/{tenantId}/packs/actions:
+    post:
+      operationId: submitPackAction
+      description: >-
+        Forwards one of 16 strict lifecycle commands to the packs:mutate Canonical Action ingress.
+        HTTP 202 is admission evidence only and never claims publication, installation, activation,
+        upgrade, rollback, deactivation or revocation completion.
+      security: [{enterpriseJwt: []}, {oidcSession: []}]
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/MarketplaceCommand'}}}
+      responses:
+        '202':
+          description: Canonical Pack workflow admitted; execution and lifecycle state remain pending
+          content: {application/json: {schema: {$ref: '#/components/schemas/MarketplaceActionReceipt'}}}
+        '403': {description: Tenant, strong-auth, role, publisher, approval or binding denied}
+        '409': {description: Idempotency, resource-version, state, trust or compatibility conflict}
+        '503': {description: Admission outcome is not verifiable; retry the exact request and key}
   /tenants/{tenantId}/approvals/{caseId}/intents:
     post:
       operationId: submitApprovalIntent
@@ -274,9 +418,16 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/ApprovalIntentEnvelope'}
       responses:
-        '202': {description: Intent accepted only after a verified backend approval event}
+        '202':
+          description: >-
+            Intent accepted only after an independently verified immutable Evidence authority
+            receipt. A mutable ApprovalCase decision response alone never produces this status.
         '403': {description: Approver authorization, binding, or SoD denial}
-        '503': {description: Approval outcome remains UNKNOWN}
+        '503':
+          description: >-
+            Approval outcome remains UNKNOWN and the same Idempotency-Key is safe to retry. This
+            includes CONTROL_APPROVAL_EVIDENCE_PENDING after the remote authority accepted the
+            decision but did not return an immutable evidence receipt.
   /tenants/{tenantId}/tasks/{taskId}/agui/events:
     get:
       operationId: resumeTaskEvents
@@ -341,9 +492,15 @@ paths:
           application/json:
             schema: {$ref: '#/components/schemas/GovernedAdminIntent'}
       responses:
-        '202': {description: Intent accepted; this is not authorization}
+        '202':
+          description: Canonical action durably accepted; this is not execution success or completion
+          content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: Tenant, RBAC/ABAC, CSRF, or separation-of-duties denial}
 components:
+  x-policy-artifact-responses:
+    '200':
+      description: Bounded tenant and Policy-bound authoritative lifecycle artifacts
+      content: {application/json: {schema: {$ref: '#/components/schemas/PolicyArtifactPage'}}}
   securitySchemes:
     workloadIdentity:
       type: mutualTLS
@@ -358,13 +515,16 @@ components:
   parameters:
     TenantId: {name: tenantId, in: path, required: true, schema: {type: string, minLength: 1}}
     TaskId: {name: taskId, in: path, required: true, schema: {type: string, format: uuid}}
-    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
+    PolicyId: {name: policyId, in: path, required: true, schema: {$ref: '#/components/schemas/PolicyId'}}
+    PolicyArtifactLimit: {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, pattern: '^[A-Za-z0-9._:-]{16,128}$'}}
     CsrfToken: {name: X-XSRF-TOKEN, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 4096}}
   schemas:
     ConsoleSession:
       type: object
       additionalProperties: false
       required: [schema_version, tenant_id, subject, roles, project_ids, approval_ids,
+        owned_resources, strong_auth, authentication_time, authentication_context,
         csrf_header_name, csrf_token]
       properties:
         schema_version: {const: agenttrust.enterprise-session.v1}
@@ -373,6 +533,20 @@ components:
         roles: {type: array, maxItems: 64, items: {type: string, maxLength: 100}}
         project_ids: {type: array, maxItems: 1000, items: {type: string, maxLength: 200}}
         approval_ids: {type: array, maxItems: 16, items: {type: string, maxLength: 200}}
+        owned_resources:
+          type: array
+          maxItems: 1024
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 2048}
+        strong_auth:
+          type: boolean
+          description: >-
+            True only when the verified IdP ACR is allowlisted and auth_time is within the
+            configured maximum age. Roles and browser state never imply this value.
+        authentication_time:
+          oneOf: [{type: string, format: date-time}, {type: 'null'}]
+        authentication_context:
+          oneOf: [{type: string, minLength: 1, maxLength: 256}, {type: 'null'}]
         csrf_header_name: {const: X-XSRF-TOKEN}
         csrf_token: {type: string, minLength: 1, maxLength: 4096}
     TaskCommand:
@@ -393,32 +567,851 @@ components:
         command: {$ref: '#/components/schemas/TaskCommand'}
         intent: {$ref: '#/components/schemas/AdminAction'}
         reason: {type: string, minLength: 1, maxLength: 2000}
-    PolicySimulationRequest:
+    PolicyId: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,256}$'}
+    PolicyDigest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    PolicyEnvironment: {enum: [DEV, STAGING, CANARY, PRODUCTION]}
+    PolicyRisk: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}
+    PolicyRule:
       type: object
       additionalProperties: false
-      required: [schema_version, candidate_digest, corpus_digest, maximum_cases]
+      required: [rule_id, subject_pattern, tool_pattern, resource_pattern, decision, maximum_risk, reason_code]
       properties:
-        schema_version: {const: agenttrust.policy-simulation-request.v1}
-        candidate_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
-        corpus_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
-        maximum_cases: {type: integer, minimum: 1, maximum: 10000}
-    PolicyPromotionRequest:
+        rule_id: {type: string, minLength: 1, maxLength: 256}
+        subject_pattern: {type: string, minLength: 1, maxLength: 1024}
+        tool_pattern: {type: string, minLength: 1, maxLength: 1024}
+        resource_pattern: {type: string, minLength: 1, maxLength: 2048}
+        decision: {enum: [ALLOW, DENY, KILL, PAUSE, REQUIRE_APPROVAL]}
+        maximum_risk: {$ref: '#/components/schemas/PolicyRisk'}
+        reason_code: {type: string, pattern: '^[A-Z][A-Z0-9_]{2,127}$'}
+    PolicySource:
       type: object
       additionalProperties: false
-      required: [schema_version, bundle_version, impact_report_digest, environment]
+      required: [schema_version, source_id, tenant_id, version, rules, default_decision, author, source_digest, created_at]
       properties:
-        schema_version: {const: agenttrust.policy-promotion-request.v1}
-        bundle_version: {type: string, minLength: 1, maxLength: 200}
-        impact_report_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
-        environment: {enum: [CANARY, PRODUCTION]}
-    GovernedPolicyPromotion:
+        schema_version: {const: agenttrust.policy-admin.v1}
+        source_id: {$ref: '#/components/schemas/PolicyId'}
+        tenant_id: {type: string, format: uuid}
+        version: {type: string, minLength: 1, maxLength: 128}
+        rules: {type: array, minItems: 1, maxItems: 10000, items: {$ref: '#/components/schemas/PolicyRule'}}
+        default_decision: {enum: [DENY, KILL, PAUSE, REQUIRE_APPROVAL]}
+        author: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+        source_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        created_at: {type: string, format: date-time}
+    PolicyAction:
       type: object
       additionalProperties: false
-      required: [promotion, intent, reason]
+      required: [action_id, tenant_id, agent_id, subject, tool, resource, risk]
       properties:
-        promotion: {$ref: '#/components/schemas/PolicyPromotionRequest'}
-        intent: {$ref: '#/components/schemas/AdminAction'}
-        reason: {type: string, minLength: 1, maxLength: 2000}
+        action_id: {type: string, minLength: 1, maxLength: 256}
+        tenant_id: {type: string, format: uuid}
+        agent_id: {type: string, minLength: 1, maxLength: 256}
+        subject: {type: string, minLength: 1, maxLength: 1024}
+        tool: {type: string, minLength: 1, maxLength: 1024}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        risk: {$ref: '#/components/schemas/PolicyRisk'}
+    PolicyEmptyPayload: {type: object, additionalProperties: false, maxProperties: 0}
+    PolicyDraftPayload:
+      type: object
+      additionalProperties: false
+      required: [source]
+      properties: {source: {$ref: '#/components/schemas/PolicySource'}}
+    PolicySimulationPayload:
+      type: object
+      additionalProperties: false
+      required: [baseline_bundle_digest, actions]
+      properties:
+        baseline_bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        actions: {type: array, minItems: 1, maxItems: 10000, items: {$ref: '#/components/schemas/PolicyAction'}}
+    PolicyImpactPayload:
+      type: object
+      additionalProperties: false
+      required: [simulation_id]
+      properties: {simulation_id: {type: string, format: uuid}}
+    PolicyApprovalPayload:
+      type: object
+      additionalProperties: false
+      required: [decision, review_digest]
+      properties:
+        decision: {const: APPROVE}
+        review_digest: {$ref: '#/components/schemas/PolicyDigest'}
+    PolicyPromotionPayload:
+      type: object
+      additionalProperties: false
+      required: [bundle_digest, impact_report_digest, environment]
+      properties:
+        bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        impact_report_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        environment: {$ref: '#/components/schemas/PolicyEnvironment'}
+    PolicyRollbackPayload:
+      type: object
+      additionalProperties: false
+      required: [target_bundle_digest, reason_digest, environment]
+      properties:
+        target_bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        reason_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        environment: {$ref: '#/components/schemas/PolicyEnvironment'}
+    PolicyDeprecatePayload:
+      type: object
+      additionalProperties: false
+      required: [bundle_digest, reason_digest]
+      properties:
+        bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        reason_digest: {$ref: '#/components/schemas/PolicyDigest'}
+    PolicyCreateExceptionPayload:
+      type: object
+      additionalProperties: false
+      required: [exception_id, owner_subject, scope, reason_digest, compensating_controls, approval_ids, expires_at]
+      properties:
+        exception_id: {type: string, format: uuid}
+        owner_subject: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+        scope: {type: array, minItems: 1, maxItems: 128, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 2048}}
+        reason_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        compensating_controls: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}
+        approval_ids: {type: array, minItems: 2, maxItems: 64, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}
+        expires_at: {type: string, format: date-time}
+    PolicyRevokeExceptionPayload:
+      type: object
+      additionalProperties: false
+      required: [exception_id, reason_digest]
+      properties:
+        exception_id: {type: string, format: uuid}
+        reason_digest: {$ref: '#/components/schemas/PolicyDigest'}
+    PolicyCommand:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, command_id, policy_id, operation, expected_resource_version, payload, requested_at]
+      properties:
+        schema_version: {const: agenttrust.policy-command.v1}
+        tenant_id: {type: string, format: uuid}
+        command_id: {type: string, format: uuid}
+        policy_id: {$ref: '#/components/schemas/PolicyId'}
+        operation: {enum: [CREATE_DRAFT, VALIDATE, SIMULATE, SHADOW_EVALUATE, IMPACT_ANALYZE, APPROVE, SIGN, PROMOTE, ROLLBACK, DEPRECATE, CREATE_EXCEPTION, REVOKE_EXCEPTION]}
+        expected_resource_version: {type: integer, minimum: 0}
+        payload:
+          oneOf:
+            - {$ref: '#/components/schemas/PolicyEmptyPayload'}
+            - {$ref: '#/components/schemas/PolicyDraftPayload'}
+            - {$ref: '#/components/schemas/PolicySimulationPayload'}
+            - {$ref: '#/components/schemas/PolicyImpactPayload'}
+            - {$ref: '#/components/schemas/PolicyApprovalPayload'}
+            - {$ref: '#/components/schemas/PolicyPromotionPayload'}
+            - {$ref: '#/components/schemas/PolicyRollbackPayload'}
+            - {$ref: '#/components/schemas/PolicyDeprecatePayload'}
+            - {$ref: '#/components/schemas/PolicyCreateExceptionPayload'}
+            - {$ref: '#/components/schemas/PolicyRevokeExceptionPayload'}
+        requested_at: {type: string, format: date-time}
+    PolicyActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: {const: agenttrust.policy-action-receipt.v1}
+        action_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        accepted: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        ledger_evidence_ref: {type: string, minLength: 1, maxLength: 2048}
+        ledger_evidence_digest: {$ref: '#/components/schemas/PolicyDigest'}
+    PolicySummary:
+      type: object
+      additionalProperties: false
+      required: [policy_id, revision, lifecycle_state, source_digest, author_subject, active_bundle_digest, active_environment, resource_version, updated_at]
+      properties:
+        policy_id: {$ref: '#/components/schemas/PolicyId'}
+        revision: {type: integer, minimum: 1}
+        lifecycle_state: {enum: [DRAFT, VALIDATED, REVIEW, SIGNED, DEPRECATED]}
+        source_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        author_subject: {type: string, minLength: 1, maxLength: 256}
+        active_bundle_digest: {type: [string, 'null'], pattern: '^[a-f0-9]{64}$'}
+        active_environment: {type: [string, 'null'], enum: [DEV, STAGING, CANARY, PRODUCTION, null]}
+        resource_version: {type: integer, minimum: 1}
+        updated_at: {type: string, format: date-time}
+    PolicyPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, items, next_after_policy_id]
+      properties:
+        schema_version: {const: agenttrust.authoritative-policy-page.v1}
+        tenant_id: {type: string, format: uuid}
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/PolicySummary'}}
+        next_after_policy_id: {type: [string, 'null'], pattern: '^[A-Za-z0-9._:/-]{1,256}$'}
+    PolicyStaticFinding:
+      type: object
+      additionalProperties: false
+      required: [code, rule_ids, blocking]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 128}
+        rule_ids: {type: array, maxItems: 10000, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}
+        blocking: {type: boolean}
+    PolicyStaticAnalysis:
+      type: object
+      additionalProperties: false
+      required: [schema_version, policy_id, revision, source_digest, valid, findings, analyzed_at]
+      properties:
+        schema_version: {const: agenttrust.policy-static-analysis.v1}
+        policy_id: {$ref: '#/components/schemas/PolicyId'}
+        revision: {type: integer, minimum: 1}
+        source_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        valid: {type: boolean}
+        findings: {type: array, maxItems: 20000, items: {$ref: '#/components/schemas/PolicyStaticFinding'}}
+        analyzed_at: {type: string, format: date-time}
+    PolicyReview:
+      type: object
+      additionalProperties: false
+      required: [review_id, revision, reviewer_subject, decision, review_digest, reviewed_at]
+      properties:
+        review_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        reviewer_subject: {type: string, minLength: 1, maxLength: 256}
+        decision: {enum: [APPROVE, REJECT]}
+        review_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        reviewed_at: {type: string, format: date-time}
+    PolicyDecisionDifference:
+      type: object
+      additionalProperties: false
+      required: [action_id, agent_id, tool, resource, risk, old_decision, new_decision]
+      properties:
+        action_id: {type: string, minLength: 1, maxLength: 256}
+        agent_id: {type: string, minLength: 1, maxLength: 256}
+        tool: {type: string, minLength: 1, maxLength: 1024}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        risk: {$ref: '#/components/schemas/PolicyRisk'}
+        old_decision: {enum: [ALLOW, DENY, KILL, PAUSE, REQUIRE_APPROVAL]}
+        new_decision: {enum: [ALLOW, DENY, KILL, PAUSE, REQUIRE_APPROVAL]}
+    PolicySimulationImpact:
+      type: object
+      additionalProperties: false
+      required: [schema_version, old_bundle_digest, new_bundle_digest, evaluated_actions, differences, side_effect_count, generated_at]
+      properties:
+        schema_version: {const: agenttrust.policy-admin.v1}
+        old_bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        new_bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        evaluated_actions: {type: integer, minimum: 1, maximum: 10000}
+        differences: {type: array, maxItems: 10000, items: {$ref: '#/components/schemas/PolicyDecisionDifference'}}
+        side_effect_count: {const: 0}
+        generated_at: {type: string, format: date-time}
+    PolicySimulationRun:
+      type: object
+      additionalProperties: false
+      required: [simulation_id, revision, run_kind, baseline_bundle_digest, candidate_source_digest, corpus_digest, evaluated_actions, difference_count, side_effect_count, impact_report_digest, impact_report, run_by, created_at]
+      properties:
+        simulation_id: {type: string, format: uuid}
+        revision: {type: integer, minimum: 1}
+        run_kind: {enum: [SIMULATION, SHADOW]}
+        baseline_bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        candidate_source_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        corpus_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        evaluated_actions: {type: integer, minimum: 1, maximum: 10000}
+        difference_count: {type: integer, minimum: 0, maximum: 10000}
+        side_effect_count: {const: 0}
+        impact_report_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        impact_report: {$ref: '#/components/schemas/PolicySimulationImpact'}
+        run_by: {type: string, minLength: 1, maxLength: 256}
+        created_at: {type: string, format: date-time}
+    PolicyImpactReport:
+      type: object
+      additionalProperties: false
+      required: [schema_version, impact_report_id, tenant_id, policy_id, revision, simulation_id, simulation_digest, evaluated_actions, difference_count, affected_agents, affected_tools, affected_resources, maximum_risk, generated_at, impact_report_digest]
+      properties:
+        schema_version: {const: agenttrust.policy-impact-report.v1}
+        impact_report_id: {type: string, format: uuid}
+        tenant_id: {type: string, format: uuid}
+        policy_id: {$ref: '#/components/schemas/PolicyId'}
+        revision: {type: integer, minimum: 1}
+        simulation_id: {type: string, format: uuid}
+        simulation_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        evaluated_actions: {type: integer, minimum: 1, maximum: 10000}
+        difference_count: {type: integer, minimum: 0, maximum: 10000}
+        affected_agents: {type: array, maxItems: 10000, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}
+        affected_tools: {type: array, maxItems: 10000, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 1024}}
+        affected_resources: {type: array, maxItems: 10000, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 2048}}
+        maximum_risk: {$ref: '#/components/schemas/PolicyRisk'}
+        generated_at: {type: string, format: date-time}
+        impact_report_digest: {$ref: '#/components/schemas/PolicyDigest'}
+    PolicyPromotion:
+      type: object
+      additionalProperties: false
+      required: [environment, sequence, bundle_digest, previous_bundle_digest, rollback_of, promoted_by, state, promotion_digest, promoted_at, completed_at]
+      properties:
+        environment: {$ref: '#/components/schemas/PolicyEnvironment'}
+        sequence: {type: integer, minimum: 1}
+        bundle_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        previous_bundle_digest: {type: [string, 'null'], pattern: '^[a-f0-9]{64}$'}
+        rollback_of: {type: [integer, 'null'], minimum: 1}
+        promoted_by: {type: string, minLength: 1, maxLength: 256}
+        state: {enum: [ACTIVE, SUPERSEDED, ROLLED_BACK]}
+        promotion_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        promoted_at: {type: string, format: date-time}
+        completed_at: {type: [string, 'null'], format: date-time}
+    PolicyException:
+      type: object
+      additionalProperties: false
+      required: [exception_id, policy_id, scope_digest, owner_subject, approval_ids, reason_digest, compensating_controls, issued_by, expires_at, revoked_at, expired_at, state, created_at]
+      properties:
+        exception_id: {type: string, format: uuid}
+        policy_id: {$ref: '#/components/schemas/PolicyId'}
+        scope_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        owner_subject: {type: string, minLength: 1, maxLength: 256}
+        approval_ids: {type: array, minItems: 2, maxItems: 64, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}
+        reason_digest: {$ref: '#/components/schemas/PolicyDigest'}
+        compensating_controls: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}
+        issued_by: {type: string, minLength: 1, maxLength: 256}
+        expires_at: {type: string, format: date-time}
+        revoked_at: {type: [string, 'null'], format: date-time}
+        expired_at: {type: [string, 'null'], format: date-time}
+        state: {enum: [ACTIVE, REVOKED, EXPIRED]}
+        created_at: {type: string, format: date-time}
+    PolicyArtifact:
+      oneOf:
+        - {$ref: '#/components/schemas/PolicySource'}
+        - {$ref: '#/components/schemas/PolicyStaticAnalysis'}
+        - {$ref: '#/components/schemas/PolicyReview'}
+        - {$ref: '#/components/schemas/PolicySimulationRun'}
+        - {$ref: '#/components/schemas/PolicyImpactReport'}
+        - {$ref: '#/components/schemas/PolicyPromotion'}
+        - {$ref: '#/components/schemas/PolicyException'}
+    PolicyArtifactPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, policy_id, artifact_type, items]
+      properties:
+        schema_version: {const: agenttrust.authoritative-policy-artifact-page.v1}
+        tenant_id: {type: string, format: uuid}
+        policy_id: {$ref: '#/components/schemas/PolicyId'}
+        artifact_type: {enum: [SOURCES, ANALYSES, REVIEWS, SIMULATIONS, IMPACT_REPORTS, PROMOTIONS, EXCEPTIONS]}
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/PolicyArtifact'}}
+    IncidentDigest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    IncidentBreakGlass:
+      type: object
+      additionalProperties: false
+      required: [break_glass_id, expires_at, review_due_at, compensating_controls, reason_digest]
+      properties:
+        break_glass_id: {type: string, format: uuid}
+        expires_at: {type: string, format: date-time}
+        review_due_at: {type: string, format: date-time}
+        compensating_controls: {type: array, minItems: 1, maxItems: 32, uniqueItems: true, items: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}}
+        reason_digest: {$ref: '#/components/schemas/IncidentDigest'}
+    IncidentContainTargets:
+      type: object
+      additionalProperties: false
+      required: [kill_task, revoke_credentials, isolate_integrations, freeze_artifacts]
+      properties:
+        kill_task: {const: true}
+        revoke_credentials: {const: true}
+        isolate_integrations: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 1024}}
+        freeze_artifacts: {const: true}
+    IncidentRootCauseFinding:
+      type: object
+      additionalProperties: false
+      required: [finding_id, category, trigger, system_defect, detection_gap, recovery_gap, evidence_refs]
+      properties:
+        finding_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        category: {enum: [TRIGGER, SYSTEM_DEFECT, DETECTION_GAP, RECOVERY_PROBLEM]}
+        trigger: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,512}$'}
+        system_defect: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,512}$'}
+        detection_gap: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,512}$'}
+        recovery_gap: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,512}$'}
+        evidence_refs: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, maxLength: 2048}}
+    IncidentRootCauseRemediation:
+      type: object
+      additionalProperties: false
+      required: [remediation_id, finding_id, policy_ref, test_ref, owner, due_at]
+      properties:
+        remediation_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        finding_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        policy_ref: {type: string, minLength: 1, maxLength: 1024}
+        test_ref: {type: string, minLength: 1, maxLength: 1024}
+        owner: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+        due_at: {type: string, format: date-time}
+    IncidentReleaseGateDefinition:
+      type: object
+      additionalProperties: false
+      required: [gate_id, version, definition_digest, required_controls, maximum_evidence_age_seconds]
+      properties:
+        gate_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        version: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,64}$'}
+        definition_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        required_controls: {type: array, minItems: 10, maxItems: 128, uniqueItems: true, items: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}}
+        maximum_evidence_age_seconds: {type: integer, minimum: 60, maximum: 2592000}
+    IncidentReleaseGateEvidence:
+      type: object
+      additionalProperties: false
+      required: [control_id, evidence_ref, evidence_digest, release_digest, passed, collected_at]
+      properties:
+        control_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        evidence_ref: {type: string, minLength: 1, maxLength: 2048}
+        evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        passed: {const: true}
+        collected_at: {type: string, format: date-time}
+    IncidentTimelineEntry:
+      type: object
+      additionalProperties: false
+      required: [event_id, sequence, event_type, from_status, to_status, actor_subject, reason_code,
+        payload_digest, action_hash, ledger_execution_id, fence_digest, policy_decision_digest,
+        authorization_evidence_ref, authorization_evidence_digest, occurred_at]
+      properties:
+        event_id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 1}
+        event_type: {enum: [DETECT, TRIAGE, CONTAIN, INVESTIGATE, PRESERVE_EVIDENCE, PLAN_REPLAY, COMPLETE_REPLAY, PUBLISH_ROOT_CAUSE, BEGIN_REMEDIATION, TRIGGER_RECERTIFICATION, EVALUATE_RELEASE, START_CANARY, RECORD_CANARY, ROLLBACK_RELEASE, CLOSE]}
+        from_status: {type: [string, 'null']}
+        to_status: {type: [string, 'null']}
+        actor_subject: {type: string, minLength: 1, maxLength: 256}
+        reason_code: {type: string, minLength: 1, maxLength: 256}
+        payload_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        action_hash: {$ref: '#/components/schemas/IncidentDigest'}
+        ledger_execution_id: {type: string, format: uuid}
+        fence_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        policy_decision_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        authorization_evidence_ref: {type: string, minLength: 1, maxLength: 2048}
+        authorization_evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        occurred_at: {type: string, format: date-time}
+    Incident:
+      type: object
+      additionalProperties: false
+      required: [incident_id, correlation_key, severity, status, task_id, owner, safe_summary,
+        scope, evidence_refs, legal_hold_id, resource_version, created_at, updated_at, timeline]
+      properties:
+        incident_id: {type: string, format: uuid}
+        correlation_key: {type: string, minLength: 1, maxLength: 256}
+        severity: {enum: [P0, P1, P2, P3]}
+        status: {enum: [DETECTED, TRIAGED, CONTAINED, INVESTIGATING, REMEDIATING, RECERTIFYING, CLOSED]}
+        task_id: {type: string, format: uuid}
+        owner: {type: string, minLength: 1, maxLength: 256}
+        safe_summary: {type: string, minLength: 1, maxLength: 512}
+        scope: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, maxLength: 1024}}
+        evidence_refs: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, maxLength: 2048}}
+        legal_hold_id: {type: string, minLength: 1, maxLength: 256}
+        resource_version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        timeline: {type: array, maxItems: 100000, items: {$ref: '#/components/schemas/IncidentTimelineEntry'}}
+    IncidentPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, items, next_after_incident_id]
+      properties:
+        schema_version: {const: agenttrust.authoritative-incident-page.v1}
+        tenant_id: {type: string, format: uuid}
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/Incident'}}
+        next_after_incident_id: {type: [string, 'null'], format: uuid}
+    IncidentCommand:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, command_id, resource_id, task_id, operation,
+        expected_resource_version, requested_at, payload]
+      properties:
+        schema_version: {const: agenttrust.incident-command.v1}
+        tenant_id: {type: string, format: uuid}
+        command_id: {type: string, format: uuid}
+        resource_id: {type: string, pattern: '^(incident:[0-9a-f-]{36}|release:[A-Za-z0-9][A-Za-z0-9._:/-]*)$', maxLength: 1024}
+        task_id: {type: string, format: uuid}
+        operation: {enum: [TRIAGE, CONTAIN, INVESTIGATE, PRESERVE_EVIDENCE, PLAN_REPLAY, COMPLETE_REPLAY, PUBLISH_ROOT_CAUSE, BEGIN_REMEDIATION, TRIGGER_RECERTIFICATION, EVALUATE_RELEASE, START_CANARY, RECORD_CANARY, ROLLBACK_RELEASE, CLOSE]}
+        expected_resource_version: {type: integer, minimum: 0}
+        requested_at: {type: string, format: date-time}
+        payload: {$ref: '#/components/schemas/IncidentCommandPayload'}
+    IncidentCommandPayload:
+      oneOf:
+        - {$ref: '#/components/schemas/IncidentReasonPayload'}
+        - {$ref: '#/components/schemas/IncidentTriagePayload'}
+        - {$ref: '#/components/schemas/IncidentContainPayload'}
+        - {$ref: '#/components/schemas/IncidentPreservePayload'}
+        - {$ref: '#/components/schemas/IncidentReplayPlanPayload'}
+        - {$ref: '#/components/schemas/IncidentReplayResultPayload'}
+        - {$ref: '#/components/schemas/IncidentRootCausePayload'}
+        - {$ref: '#/components/schemas/IncidentRecertificationPayload'}
+        - {$ref: '#/components/schemas/IncidentReleaseGatePayload'}
+        - {$ref: '#/components/schemas/IncidentStartCanaryPayload'}
+        - {$ref: '#/components/schemas/IncidentRecordCanaryPayload'}
+        - {$ref: '#/components/schemas/IncidentRollbackPayload'}
+        - {$ref: '#/components/schemas/IncidentClosePayload'}
+    IncidentReasonPayload:
+      type: object
+      additionalProperties: false
+      required: [reason_code]
+      properties: {reason_code: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}}
+    IncidentTriagePayload:
+      type: object
+      additionalProperties: false
+      required: [owner, severity, reason_code]
+      properties:
+        owner: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+        severity: {enum: [P0, P1, P2, P3]}
+        reason_code: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+    IncidentContainPayload:
+      type: object
+      additionalProperties: false
+      required: [reason_code, targets, break_glass]
+      properties:
+        reason_code: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        targets: {$ref: '#/components/schemas/IncidentContainTargets'}
+        break_glass:
+          oneOf:
+            - {$ref: '#/components/schemas/IncidentBreakGlass'}
+            - {type: 'null'}
+    IncidentPreservePayload:
+      type: object
+      additionalProperties: false
+      required: [chain_head_digest, snapshot_digest, process_digest, network_digest, configuration_digest, version_digest, legal_hold_id]
+      properties:
+        chain_head_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        snapshot_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        process_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        network_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        configuration_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        version_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        legal_hold_id: {type: string, maxLength: 256}
+    IncidentReplayPlanPayload:
+      type: object
+      additionalProperties: false
+      required: [replay_id, mode, input_digest, source_snapshot_digest, expected_result_digest,
+        resource_refs, credential_profile, fresh_lease_id, fresh_lease_digest, authorization_lease_expires_at]
+      properties:
+        replay_id: {type: string, format: uuid}
+        mode: {enum: [LOGICAL, SANDBOX, LIVE]}
+        input_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        source_snapshot_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        expected_result_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        resource_refs: {type: array, maxItems: 256, uniqueItems: true, items: {type: string, maxLength: 1024}}
+        credential_profile: {type: [string, 'null'], maxLength: 128}
+        fresh_lease_id: {type: [string, 'null'], format: uuid}
+        fresh_lease_digest: {type: [string, 'null'], pattern: '^[a-f0-9]{64}$'}
+        authorization_lease_expires_at: {type: [string, 'null'], format: date-time}
+    IncidentReplayResultPayload:
+      type: object
+      additionalProperties: false
+      required: [replay_id, mode, plan_digest]
+      properties:
+        replay_id: {type: string, format: uuid}
+        mode: {enum: [LOGICAL, SANDBOX, LIVE]}
+        plan_digest: {$ref: '#/components/schemas/IncidentDigest'}
+    IncidentRootCausePayload:
+      type: object
+      additionalProperties: false
+      required: [report_id, report_digest, findings, remediations]
+      properties:
+        report_id: {type: string, format: uuid}
+        report_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        findings: {type: array, minItems: 1, maxItems: 256, items: {$ref: '#/components/schemas/IncidentRootCauseFinding'}}
+        remediations: {type: array, minItems: 1, maxItems: 512, items: {$ref: '#/components/schemas/IncidentRootCauseRemediation'}}
+    IncidentRecertificationPayload:
+      type: object
+      additionalProperties: false
+      required: [root_cause_digest, release_digest, campaigns]
+      properties:
+        root_cause_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        campaigns: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, maxLength: 128}}
+    IncidentReleaseGatePayload:
+      type: object
+      additionalProperties: false
+      required: [release_digest, definition, evidence, rollback_artifact_digest, canary_plan_digest, valid_until]
+      properties:
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        definition: {$ref: '#/components/schemas/IncidentReleaseGateDefinition'}
+        evidence: {type: array, minItems: 10, maxItems: 128, items: {$ref: '#/components/schemas/IncidentReleaseGateEvidence'}}
+        rollback_artifact_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        canary_plan_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        valid_until: {type: string, format: date-time}
+    IncidentStartCanaryPayload:
+      type: object
+      additionalProperties: false
+      required: [certificate_id, release_digest, canary_plan_digest, percentage]
+      properties:
+        certificate_id: {type: string, format: uuid}
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        canary_plan_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        percentage: {type: integer, minimum: 1, maximum: 10}
+    IncidentRecordCanaryPayload:
+      type: object
+      additionalProperties: false
+      required: [certificate_id, release_digest, metrics_digest, passed, rollback_required]
+      properties:
+        certificate_id: {type: string, format: uuid}
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        metrics_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        passed: {type: boolean}
+        rollback_required: {type: boolean}
+    IncidentRollbackPayload:
+      type: object
+      additionalProperties: false
+      required: [release_digest, target_release_digest, reason_digest]
+      properties:
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        target_release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        reason_digest: {$ref: '#/components/schemas/IncidentDigest'}
+    IncidentClosePayload:
+      type: object
+      additionalProperties: false
+      required: [root_cause_digest, recertification_evidence_ref, recertification_evidence_digest]
+      properties:
+        root_cause_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        recertification_evidence_ref: {type: string, maxLength: 2048}
+        recertification_evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}
+    IncidentActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: {const: agenttrust.incident-action-receipt.v1}
+        action_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        accepted: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        ledger_evidence_ref: {type: string, maxLength: 2048}
+        ledger_evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}
+    MarketplaceIdentifier: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+    MarketplaceSemver: {type: string, pattern: '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'}
+    PackStringSet:
+      type: array
+      maxItems: 256
+      uniqueItems: true
+      items: {type: string, minLength: 1, maxLength: 2048}
+    PackPermissions:
+      type: object
+      additionalProperties: false
+      required: [tools, network_destinations, data_classes, secret_scopes, executors, approval_scopes]
+      properties:
+        tools: {$ref: '#/components/schemas/PackStringSet'}
+        network_destinations: {$ref: '#/components/schemas/PackStringSet'}
+        data_classes: {$ref: '#/components/schemas/PackStringSet'}
+        secret_scopes: {$ref: '#/components/schemas/PackStringSet'}
+        executors: {$ref: '#/components/schemas/PackStringSet'}
+        approval_scopes: {$ref: '#/components/schemas/PackStringSet'}
+    PackToolDeclaration:
+      type: object
+      additionalProperties: false
+      required: [tool_id, effect_class, approval_required, compensation_ref, irreversible_reason, executor_template]
+      properties:
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        effect_class: {enum: [PURE, IDEMPOTENT, COMPENSATABLE, IRREVERSIBLE]}
+        approval_required: {type: boolean}
+        compensation_ref: {type: [string, 'null'], maxLength: 2048}
+        irreversible_reason: {type: [string, 'null'], maxLength: 2048}
+        executor_template: {type: string, minLength: 1, maxLength: 2048, not: {pattern: '(/bin/sh|bash -c)'}}
+    PackPublisherSignature:
+      type: object
+      additionalProperties: false
+      required: [key_id, publisher_identity, subject_digest, signature, signed_at]
+      properties:
+        key_id: {type: string, minLength: 1, maxLength: 128}
+        publisher_identity: {type: string, minLength: 1, maxLength: 128}
+        subject_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        signature: {type: string, pattern: '^[A-Za-z0-9_-]{86}$'}
+        signed_at: {type: string, format: date-time}
+    DomainPackManifest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, pack_id, version, digest, publisher_identity, description,
+        permissions, tools, policy_bundle_ref, evaluator_ref, compensation_refs,
+        threat_scenario_refs, artifact_refs, compatibility, signature]
+      properties:
+        schema_version: {const: agenttrust.domain-pack.v1}
+        pack_id: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,128}$'}
+        version: {$ref: '#/components/schemas/MarketplaceSemver'}
+        digest: {$ref: '#/components/schemas/IncidentDigest'}
+        publisher_identity: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        description: {type: string, minLength: 1, maxLength: 4096}
+        permissions: {$ref: '#/components/schemas/PackPermissions'}
+        tools: {type: array, minItems: 1, maxItems: 256, items: {$ref: '#/components/schemas/PackToolDeclaration'}}
+        policy_bundle_ref: {type: string, minLength: 1, maxLength: 2048}
+        evaluator_ref: {type: string, minLength: 1, maxLength: 2048}
+        compensation_refs: {$ref: '#/components/schemas/PackStringSet'}
+        threat_scenario_refs: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 2048}}
+        artifact_refs: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, pattern: '^(?!.*:latest$).{1,1980}sha256:[a-f0-9]{64}$'}}
+        compatibility: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 2048}}
+        signature: {$ref: '#/components/schemas/PackPublisherSignature'}
+    PackReleaseCertificate:
+      type: object
+      additionalProperties: false
+      required: [schema_version, certificate_id, release_digest, gate_id, gate_version,
+        definition_digest, evidence_digests, valid_from, valid_until, engine_certificate_only,
+        production_closure, key_id, signature]
+      properties:
+        schema_version: {const: agenttrust.incident-release.v1}
+        certificate_id: {type: string, format: uuid}
+        release_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        gate_id: {$ref: '#/components/schemas/MarketplaceIdentifier'}
+        gate_version: {type: string, minLength: 1, maxLength: 128}
+        definition_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        evidence_digests: {type: object, minProperties: 1, maxProperties: 256, additionalProperties: {$ref: '#/components/schemas/IncidentDigest'}}
+        valid_from: {type: string, format: date-time}
+        valid_until: {type: string, format: date-time}
+        engine_certificate_only: {const: true}
+        production_closure: {const: false}
+        key_id: {$ref: '#/components/schemas/MarketplaceIdentifier'}
+        signature: {type: string, pattern: '^[A-Za-z0-9_-]{86}$'}
+    PackRelease:
+      type: object
+      additionalProperties: false
+      required: [release_id, pack_id, version, pack_digest, publisher_id, visibility, entitlement,
+        allowed_regions, risk_rating, compatibility, certificate_digest, review_status, updated_at]
+      properties:
+        release_id: {type: string, format: uuid}
+        pack_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        version: {$ref: '#/components/schemas/MarketplaceSemver'}
+        pack_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        publisher_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        visibility: {enum: [PRIVATE, TENANT]}
+        entitlement: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        allowed_regions: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}}
+        risk_rating: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}
+        compatibility: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, maxLength: 2048}}
+        certificate_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        review_status: {enum: [SUBMITTED, PUBLISHED, REJECTED, REVOKED]}
+        updated_at: {type: string, format: date-time}
+    PackInstallation:
+      type: object
+      additionalProperties: false
+      required: [installation_id, release_id, pack_id, version, environment, state,
+        permission_expansion, previous_installation_id, updated_at]
+      properties:
+        installation_id: {type: string, format: uuid}
+        release_id: {type: string, format: uuid}
+        pack_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}
+        version: {$ref: '#/components/schemas/MarketplaceSemver'}
+        environment: {enum: [development, staging, canary, production]}
+        state: {enum: [PENDING_APPROVAL, APPROVED, REJECTED, INSTALLED, ACTIVE, INACTIVE, ROLLED_BACK, REVOKED]}
+        permission_expansion: {type: boolean}
+        previous_installation_id: {type: [string, 'null'], format: uuid}
+        updated_at: {type: string, format: date-time}
+    PackPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authoritative, tenant_id, releases, installations, next_after_pack_id, data_digest]
+      properties:
+        schema_version: {const: agenttrust.authoritative-pack-page.v1}
+        authoritative: {const: true}
+        tenant_id: {type: string, format: uuid}
+        releases: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/PackRelease'}}
+        installations: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/PackInstallation'}}
+        next_after_pack_id: {type: [string, 'null'], maxLength: 128}
+        data_digest: {$ref: '#/components/schemas/IncidentDigest'}
+    MarketplaceCommand:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, command_id, resource_id, expected_resource_version, command, requested_at]
+      properties:
+        schema_version: {const: agenttrust.marketplace-command.v1}
+        tenant_id: {type: string, format: uuid}
+        command_id: {type: string, format: uuid}
+        resource_id: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,256}$'}
+        expected_resource_version: {type: integer, minimum: 0}
+        command: {$ref: '#/components/schemas/MarketplaceTypedCommand'}
+        requested_at: {type: string, format: date-time}
+    MarketplaceTypedCommand:
+      oneOf:
+        - {$ref: '#/components/schemas/PackOnboardPublisher'}
+        - {$ref: '#/components/schemas/PackVerifyPublisherKey'}
+        - {$ref: '#/components/schemas/PackSetPublisherTrust'}
+        - {$ref: '#/components/schemas/PackConfigureCatalog'}
+        - {$ref: '#/components/schemas/PackSubmitRelease'}
+        - {$ref: '#/components/schemas/PackReviewRelease'}
+        - {$ref: '#/components/schemas/PackRequestInstallation'}
+        - {$ref: '#/components/schemas/PackApproveInstallation'}
+        - {$ref: '#/components/schemas/PackInstall'}
+        - {$ref: '#/components/schemas/PackActivate'}
+        - {$ref: '#/components/schemas/PackPlanUpgrade'}
+        - {$ref: '#/components/schemas/PackRecordCanary'}
+        - {$ref: '#/components/schemas/PackUpgrade'}
+        - {$ref: '#/components/schemas/PackRollback'}
+        - {$ref: '#/components/schemas/PackDeactivate'}
+        - {$ref: '#/components/schemas/PackRevokeRelease'}
+    PackOnboardPublisher:
+      type: object
+      additionalProperties: false
+      required: [kind, publisher_id, publisher_subject, identity_digest, responsibility_contact, home_region]
+      properties: {kind: {const: ONBOARD_PUBLISHER}, publisher_id: {$ref: '#/components/schemas/MarketplaceIdentifier'}, publisher_subject: {$ref: '#/components/schemas/MarketplaceIdentifier'}, identity_digest: {$ref: '#/components/schemas/IncidentDigest'}, responsibility_contact: {type: string, format: email, maxLength: 320}, home_region: {$ref: '#/components/schemas/MarketplaceIdentifier'}}
+    PackVerifyPublisherKey:
+      type: object
+      additionalProperties: false
+      required: [kind, publisher_id, key_id, algorithm, public_key, key_fingerprint, not_before, expires_at, review_digest]
+      properties: {kind: {const: VERIFY_PUBLISHER_KEY}, publisher_id: {$ref: '#/components/schemas/MarketplaceIdentifier'}, key_id: {$ref: '#/components/schemas/MarketplaceIdentifier'}, algorithm: {const: Ed25519}, public_key: {type: string, pattern: '^[A-Za-z0-9_-]{43}$'}, key_fingerprint: {$ref: '#/components/schemas/IncidentDigest'}, not_before: {type: string, format: date-time}, expires_at: {type: string, format: date-time}, review_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackSetPublisherTrust:
+      type: object
+      additionalProperties: false
+      required: [kind, publisher_id, trust, reason_digest]
+      properties: {kind: {const: SET_PUBLISHER_TRUST}, publisher_id: {$ref: '#/components/schemas/MarketplaceIdentifier'}, trust: {enum: [SUSPENDED, REVOKED]}, reason_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackConfigureCatalog:
+      type: object
+      additionalProperties: false
+      required: [kind, control_plane_version, region, entitlements, allowed_compatibility, minimum_publisher_trust, maximum_risk]
+      properties: {kind: {const: CONFIGURE_TENANT_CATALOG}, control_plane_version: {$ref: '#/components/schemas/MarketplaceSemver'}, region: {$ref: '#/components/schemas/MarketplaceIdentifier'}, entitlements: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}, allowed_compatibility: {type: array, minItems: 1, maxItems: 256, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 256}}, minimum_publisher_trust: {const: VERIFIED}, maximum_risk: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}}
+    PackSubmitRelease:
+      type: object
+      additionalProperties: false
+      required: [kind, release_id, manifest, release_certificate, visibility, entitlement, allowed_regions, risk_rating, minimum_publisher_trust, minimum_control_plane_version]
+      properties: {kind: {const: SUBMIT_RELEASE}, release_id: {type: string, format: uuid}, manifest: {$ref: '#/components/schemas/DomainPackManifest'}, release_certificate: {$ref: '#/components/schemas/PackReleaseCertificate'}, visibility: {enum: [PRIVATE, TENANT]}, entitlement: {$ref: '#/components/schemas/MarketplaceIdentifier'}, allowed_regions: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {$ref: '#/components/schemas/MarketplaceIdentifier'}}, risk_rating: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}, minimum_publisher_trust: {const: VERIFIED}, minimum_control_plane_version: {$ref: '#/components/schemas/MarketplaceSemver'}}
+    PackReviewRelease:
+      type: object
+      additionalProperties: false
+      required: [kind, release_id, decision, review_digest]
+      properties: {kind: {const: REVIEW_RELEASE}, release_id: {type: string, format: uuid}, decision: {enum: [APPROVE, REJECT]}, review_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackRequestInstallation:
+      type: object
+      additionalProperties: false
+      required: [kind, installation_id, release_id, environment, request_reason_digest]
+      properties: {kind: {const: REQUEST_INSTALLATION}, installation_id: {type: string, format: uuid}, release_id: {type: string, format: uuid}, environment: {enum: [development, staging, canary, production]}, request_reason_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackApproveInstallation:
+      type: object
+      additionalProperties: false
+      required: [kind, installation_id, decision, approval_digest]
+      properties: {kind: {const: APPROVE_INSTALLATION}, installation_id: {type: string, format: uuid}, decision: {enum: [APPROVE, REJECT]}, approval_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackInstall:
+      type: object
+      additionalProperties: false
+      required: [kind, installation_id, artifact_receipt_digest]
+      properties: {kind: {const: INSTALL}, installation_id: {type: string, format: uuid}, artifact_receipt_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackActivate:
+      type: object
+      additionalProperties: false
+      required: [kind, installation_id, production_certificate_digest]
+      properties: {kind: {const: ACTIVATE}, installation_id: {type: string, format: uuid}, production_certificate_digest: {type: [string, 'null'], pattern: '^[a-f0-9]{64}$'}}
+    PackPlanUpgrade:
+      type: object
+      additionalProperties: false
+      required: [kind, plan_id, current_installation_id, target_installation_id, migration_digest, rollback_digest, canary_percent]
+      properties: {kind: {const: PLAN_UPGRADE}, plan_id: {type: string, format: uuid}, current_installation_id: {type: string, format: uuid}, target_installation_id: {type: string, format: uuid}, migration_digest: {$ref: '#/components/schemas/IncidentDigest'}, rollback_digest: {$ref: '#/components/schemas/IncidentDigest'}, canary_percent: {type: integer, minimum: 1, maximum: 50}}
+    PackRecordCanary:
+      type: object
+      additionalProperties: false
+      required: [kind, plan_id, passed, observed_samples, evidence_ref, evidence_digest]
+      properties: {kind: {const: RECORD_CANARY}, plan_id: {type: string, format: uuid}, passed: {type: boolean}, observed_samples: {type: integer, minimum: 1, maximum: 10000000}, evidence_ref: {type: string, pattern: '^urn:agenttrust:'}, evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackUpgrade:
+      type: object
+      additionalProperties: false
+      required: [kind, plan_id, production_certificate_digest]
+      properties: {kind: {const: UPGRADE}, plan_id: {type: string, format: uuid}, production_certificate_digest: {type: [string, 'null'], pattern: '^[a-f0-9]{64}$'}}
+    PackRollback:
+      type: object
+      additionalProperties: false
+      required: [kind, installation_id, reason_digest]
+      properties: {kind: {const: ROLLBACK}, installation_id: {type: string, format: uuid}, reason_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackDeactivate:
+      type: object
+      additionalProperties: false
+      required: [kind, installation_id, reason_digest]
+      properties: {kind: {const: DEACTIVATE}, installation_id: {type: string, format: uuid}, reason_digest: {$ref: '#/components/schemas/IncidentDigest'}}
+    PackRevokeRelease:
+      type: object
+      additionalProperties: false
+      required: [kind, release_id, reason_code, reason_digest, running_task_response]
+      properties: {kind: {const: REVOKE_RELEASE}, release_id: {type: string, format: uuid}, reason_code: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,128}$'}, reason_digest: {$ref: '#/components/schemas/IncidentDigest'}, running_task_response: {enum: [PAUSE, KILL, ALLOW_TO_FINISH]}}
+    MarketplaceActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: {const: agenttrust.marketplace-action-receipt.v1}
+        action_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        accepted: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        ledger_evidence_ref: {type: string, pattern: '^urn:agenttrust:', maxLength: 2048}
+        ledger_evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}
     ApprovalIntent:
       type: object
       additionalProperties: false
@@ -441,16 +1434,59 @@ components:
       minProperties: 1
       maxProperties: 256
       additionalProperties: true
+    AgentInventoryItem:
+      type: object
+      additionalProperties: false
+      required: [schema_version, agent_id, display_name, owner_subject, sponsor_subject, ownership_status, environment, lifecycle, agent_type, bom_digest, endpoint_count, identity_count, tool_count, pack_count, open_findings, highest_risk, last_activity_at, registered_at, updated_at]
+      properties:
+        schema_version: {const: agenttrust.agent-inventory-item.v1}
+        agent_id: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$'}
+        display_name: {type: string, minLength: 1, maxLength: 256}
+        owner_subject: {type: string, minLength: 1, maxLength: 512}
+        sponsor_subject: {type: string, minLength: 1, maxLength: 512}
+        ownership_status: {enum: [PENDING, CONFIRMED]}
+        environment: {enum: [DEVELOPMENT, STAGING, PRODUCTION]}
+        lifecycle: {enum: [DRAFT, ACTIVE, SUSPENDED, RETIRED, REVOKED]}
+        agent_type: {type: string, minLength: 1, maxLength: 128}
+        bom_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        endpoint_count: {type: integer, minimum: 1, maximum: 100}
+        identity_count: {type: integer, minimum: 1, maximum: 1000}
+        tool_count: {type: integer, minimum: 0, maximum: 1000}
+        pack_count: {type: integer, minimum: 0, maximum: 1000}
+        open_findings: {type: integer, minimum: 0}
+        highest_risk: {type: [string, 'null'], enum: [LOW, MEDIUM, HIGH, CRITICAL, null]}
+        last_activity_at: {type: string, format: date-time}
+        registered_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    AgentInventoryPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authoritative, tenant_id, resource, items, next_cursor, data_digest]
+      properties:
+        schema_version: {const: agenttrust.authoritative-agent-page.v1}
+        authoritative: {const: true}
+        tenant_id: {type: string, format: uuid}
+        resource: {const: summary}
+        items: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/AgentInventoryItem'}}
+        next_cursor: {type: [string, 'null'], pattern: '^[A-Za-z0-9_-]{1,5462}$'}
+        data_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
     AuthoritySection:
       type: object
       additionalProperties: false
       required: [schema_version, section, authoritative, available, data, data_digest, fetched_at]
       properties:
         schema_version: {const: agenttrust.authority-view.v1}
-        section: {type: string}
+        section:
+          enum: [TASKS, INCIDENTS, AGENTS, TOOLS, CREDENTIALS, APPROVALS, POLICIES, PACKS,
+            TRACE, EVIDENCE, COMPLIANCE, AUDIT, MODELS, DATA, CONTEXT, ANOMALIES,
+            SECURITY_EVALUATIONS, SUPPLY_CHAIN, DOMAIN_PACKS, SRE, DEPLOYMENTS]
         authoritative: {const: true}
         available: {type: boolean}
-        data: {type: [object, array, 'null']}
+        data:
+          oneOf:
+            - {$ref: '#/components/schemas/AuthorityPayload'}
+            - {type: array, maxItems: 1000, items: {}}
+            - {type: 'null'}
         data_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
         safe_error_code: {enum: [AUTHORITATIVE_SOURCE_UNAVAILABLE]}
         fetched_at: {type: string, format: date-time}
@@ -461,9 +1497,42 @@ components:
       properties:
         schema_version: {const: agenttrust.enterprise-dashboard.v1}
         tenant_id: {type: string, format: uuid}
-        sections: {type: object, additionalProperties: {$ref: '#/components/schemas/AuthoritySection'}}
+        sections:
+          type: object
+          additionalProperties: false
+          required: [TASKS, INCIDENTS, AGENTS, TOOLS, CREDENTIALS, APPROVALS, POLICIES, PACKS,
+            TRACE, EVIDENCE, COMPLIANCE, AUDIT, MODELS, DATA, CONTEXT, ANOMALIES,
+            SECURITY_EVALUATIONS, SUPPLY_CHAIN, DOMAIN_PACKS, SRE, DEPLOYMENTS]
+          properties:
+            TASKS: {$ref: '#/components/schemas/AuthoritySection'}
+            INCIDENTS: {$ref: '#/components/schemas/AuthoritySection'}
+            AGENTS: {$ref: '#/components/schemas/AuthoritySection'}
+            TOOLS: {$ref: '#/components/schemas/AuthoritySection'}
+            CREDENTIALS: {$ref: '#/components/schemas/AuthoritySection'}
+            APPROVALS: {$ref: '#/components/schemas/AuthoritySection'}
+            POLICIES: {$ref: '#/components/schemas/AuthoritySection'}
+            PACKS: {$ref: '#/components/schemas/AuthoritySection'}
+            TRACE: {$ref: '#/components/schemas/AuthoritySection'}
+            EVIDENCE: {$ref: '#/components/schemas/AuthoritySection'}
+            COMPLIANCE: {$ref: '#/components/schemas/AuthoritySection'}
+            AUDIT: {$ref: '#/components/schemas/AuthoritySection'}
+            MODELS: {$ref: '#/components/schemas/AuthoritySection'}
+            DATA: {$ref: '#/components/schemas/AuthoritySection'}
+            CONTEXT: {$ref: '#/components/schemas/AuthoritySection'}
+            ANOMALIES: {$ref: '#/components/schemas/AuthoritySection'}
+            SECURITY_EVALUATIONS: {$ref: '#/components/schemas/AuthoritySection'}
+            SUPPLY_CHAIN: {$ref: '#/components/schemas/AuthoritySection'}
+            DOMAIN_PACKS: {$ref: '#/components/schemas/AuthoritySection'}
+            SRE: {$ref: '#/components/schemas/AuthoritySection'}
+            DEPLOYMENTS: {$ref: '#/components/schemas/AuthoritySection'}
         complete: {type: boolean}
-        unavailable_sections: {type: array, uniqueItems: true, items: {type: string}}
+        unavailable_sections:
+          type: array
+          uniqueItems: true
+          items:
+            enum: [TASKS, INCIDENTS, AGENTS, TOOLS, CREDENTIALS, APPROVALS, POLICIES, PACKS,
+              TRACE, EVIDENCE, COMPLIANCE, AUDIT, MODELS, DATA, CONTEXT, ANOMALIES,
+              SECURITY_EVALUATIONS, SUPPLY_CHAIN, DOMAIN_PACKS, SRE, DEPLOYMENTS]
         generated_at: {type: string, format: date-time}
     AguiEvent:
       type: object
@@ -576,7 +1645,11 @@ components:
         integration_id: {type: string, format: uuid}
         kind: {enum: [IAM, NOTIFICATION, TICKETING, SIEM, WEBHOOK]}
         endpoint: {type: string, format: uri, pattern: '^https://'}
-        secret_ref: {type: string, minLength: 1, maxLength: 1000}
+        secret_ref:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          pattern: '^(credential://[A-Za-z0-9._:/-]{1,900}|vault-kv://[A-Za-z0-9._/-]{1,900}#v[1-9][0-9]*)$'
         configuration_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
         active: {type: boolean}
     QuotaConsumeRequest:
@@ -619,17 +1692,21 @@ components:
         project_id: {type: [string, 'null']}
         scopes: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, pattern: '^[a-z][a-z0-9:_-]{0,99}$'}}
         expires_at: {type: string, format: date-time}
-    ApiKeyIssueResponse:
+    EnterpriseActionReceipt:
       type: object
       additionalProperties: false
-      required: [schema_version, api_key_id, one_time_secret, created_at, expires_at, scopes]
+      description: Durable workflow admission only; final success requires authoritative task evidence.
+      required: [schema_version, action_id, task_id, accepted, start_requested, execution_pending, ingress_digest, evidence_ref, evidence_digest]
       properties:
-        schema_version: {const: agenttrust.api-key.v1}
-        api_key_id: {type: string, format: uuid}
-        one_time_secret: {type: string, pattern: '^atk_[A-Za-z0-9_-]{43}$'}
-        created_at: {type: string, format: date-time}
-        expires_at: {type: string, format: date-time}
-        scopes: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string}}
+        schema_version: {const: agenttrust.enterprise-action-receipt.v1}
+        action_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        accepted: {const: true}
+        start_requested: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+        evidence_ref: {type: string, pattern: '^orchestrator-event://[0-9a-f-]{36}/[0-9a-f-]{36}/[1-9][0-9]*$'}
+        evidence_digest: {type: string, pattern: '^[a-f0-9]{64}$'}
     GovernedTenantRequest:
       type: object
       additionalProperties: false

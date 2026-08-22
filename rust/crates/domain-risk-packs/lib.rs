@@ -2,8 +2,11 @@
 
 pub mod coding;
 pub mod energy;
+pub mod authority;
 pub mod industrial;
 pub mod medical;
+pub mod production;
+pub mod server;
 pub mod sensitive;
 
 use agent_trust_contracts::EffectClass;
@@ -12,6 +15,7 @@ use agent_trust_pack_supply_chain::{
     SignatureEnvelope,
 };
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 pub const DOMAIN_PACKS_SCHEMA_VERSION: &str = "agenttrust.domain-risk-packs.v1";
@@ -48,12 +52,15 @@ pub fn unsigned_pack_manifest(
                 .collect(),
         },
         tools,
-        policy_bundle_ref: format!("policy:{pack_id}:v1"),
-        evaluator_ref: format!("evaluator:{pack_id}:v1"),
+        policy_bundle_ref: immutable_ref("policy", pack_id, "v1"),
+        evaluator_ref: immutable_ref("evaluator", pack_id, "v1"),
         compensation_refs,
         threat_scenario_refs: threat_scenarios,
-        artifact_refs: BTreeSet::from([format!("artifact:{pack_id}:v1")]),
-        compatibility: BTreeSet::from(["agenttrust.contracts.v1".into()]),
+        artifact_refs: BTreeSet::from([immutable_ref("artifact", pack_id, "v1")]),
+        compatibility: BTreeSet::from([
+            "agenttrust.contracts.v1".into(),
+            "agenttrust.domain-execution.v1".into(),
+        ]),
         signature: SignatureEnvelope {
             key_id: String::new(),
             publisher_identity: String::new(),
@@ -62,6 +69,15 @@ pub fn unsigned_pack_manifest(
             signed_at: Utc::now(),
         },
     }
+}
+
+fn immutable_ref(kind: &str, pack_id: &str, component: &str) -> String {
+    let digest = Sha256::digest(format!("agenttrust:{kind}:{pack_id}:{component}").as_bytes());
+    let encoded = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("{kind}:sha256:{encoded}")
 }
 
 pub fn tool(

@@ -7,6 +7,8 @@ import type { AgUiEventEnvelope, ApprovalIntent } from "../../shared/agui-client
 import AgentInventory from "./components/AgentInventory.vue";
 import AdminWorkbench from "./components/AdminWorkbench.vue";
 import AuthorityModule from "./components/AuthorityModule.vue";
+import IncidentConsole from "./components/IncidentConsole.vue";
+import PackMarketplace from "./components/PackMarketplace.vue";
 import PolicyStudio from "./components/PolicyStudio.vue";
 import TaskRuntimePanel from "./components/TaskRuntimePanel.vue";
 import {
@@ -18,12 +20,21 @@ import {
 } from "./control-state";
 import type {
   AgentInventoryItem,
-  ApiKeyIssueResponse,
   AuthorityPage,
+  EnterpriseActionReceipt,
   GovernedWriteCommand,
-  PolicySimulationRequest,
-  PolicySimulationResult,
-  QuotaUsage,
+  Incident,
+  IncidentActionReceipt,
+  IncidentCommand,
+  IncidentPage,
+  MarketplaceActionReceipt,
+  MarketplaceCommand,
+  PackPage,
+  PolicyActionReceipt,
+  PolicyArtifactPage,
+  PolicyArtifactType,
+  PolicyCommand,
+  PolicyPage,
 } from "./enterprise-api-types";
 
 const props = withDefaults(defineProps<{
@@ -31,18 +42,30 @@ const props = withDefaults(defineProps<{
   tasks: TaskAuthorityStatus[];
   events?: AgUiEventEnvelope[];
   agentPage?: AuthorityPage<AgentInventoryItem> | null;
-  policySimulation?: PolicySimulationResult | null;
-  issuedApiKey?: ApiKeyIssueResponse | null;
-  quotaUsage?: QuotaUsage | null;
+  policyPage?: PolicyPage | null;
+  policyArtifactPage?: PolicyArtifactPage | null;
+  policyReceipt?: PolicyActionReceipt | null;
+  incidentPage?: IncidentPage | null;
+  incidentDetail?: Incident | null;
+  incidentReceipt?: IncidentActionReceipt | null;
+  packPage?: PackPage | null;
+  packReceipt?: MarketplaceActionReceipt | null;
+  actionReceipt?: EnterpriseActionReceipt | null;
+  tenantId: string;
+  requestedBy: string;
+  approvalIds: string[];
   projectId: string | null;
+  approvalStrongAuth?: boolean;
   busy?: boolean;
   operationMessage?: string;
   streamError?: string;
   moduleError?: string;
   locale?: "zh-CN" | "en-US";
 }>(), {
-  events: () => [], agentPage: null, policySimulation: null, issuedApiKey: null, quotaUsage: null,
-  busy: false, operationMessage: "", streamError: "", moduleError: "", locale: "zh-CN",
+  events: () => [], agentPage: null, policyPage: null, policyArtifactPage: null,
+  policyReceipt: null, incidentPage: null, incidentDetail: null, incidentReceipt: null,
+  packPage: null, packReceipt: null, actionReceipt: null,
+  busy: false, approvalStrongAuth: false, operationMessage: "", streamError: "", moduleError: "", locale: "zh-CN",
 });
 
 const emit = defineEmits<{
@@ -51,8 +74,15 @@ const emit = defineEmits<{
   approvalIntent: [ApprovalIntent];
   resumeTask: [string];
   loadAgents: [string | null];
-  simulatePolicy: [string, PolicySimulationRequest];
-  clearApiKey: [];
+  loadPolicies: [string | null];
+  loadPolicyArtifacts: [string, PolicyArtifactType];
+  submitPolicy: [PolicyCommand];
+  loadIncidents: [string | null];
+  loadIncidentDetail: [string];
+  submitIncident: [IncidentCommand];
+  loadPacks: [string, string | null];
+  submitPack: [MarketplaceCommand];
+  clearReceipt: [];
   signOut: [];
   setLocale: ["zh-CN" | "en-US"];
 }>();
@@ -67,7 +97,7 @@ const sectionForRoute = computed<ServiceSection | null>(() => {
 const approvals = computed(() => {
   const section = safeDashboard.value.sections.APPROVALS;
   if (!section?.available || section.data === null) return { items: [], error: "" };
-  try { return { items: parseApprovalCases(section.data), error: "" }; }
+  try { return { items: parseApprovalCases(section.data, safeDashboard.value.tenant_id), error: "" }; }
   catch { return { items: [], error: "APPROVAL_AUTHORITY_PAYLOAD_INVALID" }; }
 });
 
@@ -75,7 +105,10 @@ const nav = [
   ["overview", "OVERVIEW"], ["tasks", "TASKS"], ["agents", "AGENTS"], ["approvals", "APPROVALS"],
   ["policies", "POLICIES"], ["tools", "TOOLS"], ["credentials", "CREDENTIALS"], ["packs", "PACKS"],
   ["trace", "TRACE"], ["evidence", "EVIDENCE"], ["incidents", "INCIDENTS"], ["compliance", "COMPLIANCE"],
-  ["audit", "AUDIT"], ["sre", "SRE"], ["deployments", "DEPLOYMENTS"], ["admin", "ADMIN"],
+  ["audit", "AUDIT"], ["models", "MODELS"], ["data", "DATA"], ["context", "CONTEXT"],
+  ["anomalies", "ANOMALIES"], ["security_evaluations", "SECURITY_EVALUATIONS"],
+  ["supply_chain", "SUPPLY_CHAIN"], ["domain_packs", "DOMAIN_PACKS"],
+  ["sre", "SRE"], ["deployments", "DEPLOYMENTS"], ["admin", "ADMIN"],
 ] as const;
 </script>
 
@@ -134,18 +167,39 @@ const nav = [
       <p v-if="approvals.error" role="alert">{{ approvals.error }}</p>
       <p v-else-if="approvals.items.length === 0" role="status">{{ locale === 'en-US' ? 'No authoritative approval cases.' : '暂无权威审批事项。' }}</p>
       <ApprovalConsole v-for="item in approvals.items" :key="item.case_id" :approval-case="item" :busy="busy"
+        :strong-auth="approvalStrongAuth"
         :locale="locale" @intent="emit('approvalIntent', $event)" />
     </section>
 
     <template v-else-if="moduleSlug === 'policies'">
-      <PolicyStudio :result="policySimulation" :busy="busy" :error="moduleError" :locale="locale"
-        @simulate="(bundleId, request) => emit('simulatePolicy', bundleId, request)" />
+      <PolicyStudio :tenant-id="tenantId" :requested-by="requestedBy" :approval-ids="approvalIds"
+        :page="policyPage" :artifact-page="policyArtifactPage" :receipt="policyReceipt"
+        :busy="busy" :error="moduleError" :locale="locale"
+        @load="emit('loadPolicies', $event)"
+        @load-artifacts="(policyId, artifactType) => emit('loadPolicyArtifacts', policyId, artifactType)"
+        @submit="emit('submitPolicy', $event)" />
       <AuthorityModule section-name="POLICIES" :section="safeDashboard.sections.POLICIES" :locale="locale" />
     </template>
 
+    <template v-else-if="moduleSlug === 'incidents'">
+      <IncidentConsole :tenant-id="tenantId" :requested-by="requestedBy" :approval-ids="approvalIds"
+        :page="incidentPage" :detail="incidentDetail" :receipt="incidentReceipt"
+        :busy="busy" :error="moduleError" :locale="locale" @load="emit('loadIncidents', $event)"
+        @load-detail="emit('loadIncidentDetail', $event)" @submit="emit('submitIncident', $event)" />
+      <AuthorityModule section-name="INCIDENTS" :section="safeDashboard.sections.INCIDENTS" :locale="locale" />
+    </template>
+
+    <template v-else-if="moduleSlug === 'packs'">
+      <PackMarketplace :tenant-id="tenantId" :page="packPage" :receipt="packReceipt"
+        :busy="busy" :error="moduleError" :locale="locale"
+        @load="(search, after) => emit('loadPacks', search, after)"
+        @submit="emit('submitPack', $event)" />
+      <AuthorityModule section-name="PACKS" :section="safeDashboard.sections.PACKS" :locale="locale" />
+    </template>
+
     <AdminWorkbench v-else-if="moduleSlug === 'admin'" :tenant-id="safeDashboard.tenant_id" :project-id="projectId"
-      :busy="busy" :issued-api-key="issuedApiKey" :quota-usage="quotaUsage" :locale="locale"
-      @submit="emit('governedWrite', $event)" @clear-api-key="emit('clearApiKey')" />
+      :busy="busy" :action-receipt="actionReceipt" :locale="locale"
+      @submit="emit('governedWrite', $event)" @clear-receipt="emit('clearReceipt')" />
 
     <AuthorityModule v-else-if="sectionForRoute" :section-name="sectionForRoute"
       :section="safeDashboard.sections[sectionForRoute]" :locale="locale" />

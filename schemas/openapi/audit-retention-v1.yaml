@@ -1,0 +1,214 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Audit Retention Authority API
+  version: 1.0.0
+  description: >-
+    TLS 1.3 data-plane API. Every operation requires an allowlisted certificate with exactly one
+    DNS or URI SAN, an exact tenant header, and a physically distinct bearer token whose SHA-256
+    digest is bound to the client identity, tenant, subject and route scope. Management /ready is
+    plaintext on a separate listener and must be network-policy restricted. Human dashboard
+    queries additionally require the common short-lived, request-bound Ed25519 principal
+    assertion and an `audit:authoritative-query` service token; that token cannot call the raw
+    machine query route.
+servers:
+  - url: https://agenttrust-audit-retention
+paths:
+  /v1/authoritative/audit:
+    post:
+      operationId: queryAuthoritativeAuditPage
+      description: >-
+        Returns a tenant/classification-bounded dashboard page. The service token authenticates
+        the BFF workload subject; the independently signed human assertion supplies the actor,
+        roles, authentication strength and exact request binding. The query, assertion digest,
+        signed receipt and outbox evidence are committed atomically. `audit-reader`,
+        `compliance-auditor`, or `security-auditor` grants at most INTERNAL; higher classification
+        ceilings require the explicit audit classification reader role.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+        - {$ref: '#/components/parameters/HumanAssertion'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../audit-retention/api.schema.json#/$defs/authoritativeQueryRequest'}
+      responses:
+        '200':
+          description: Exact replay or newly committed authoritative page and signed query receipt.
+          content:
+            application/json:
+              schema: {$ref: '../audit-retention/api.schema.json#/$defs/authoritativeAuditPage'}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/records:
+    post:
+      operationId: appendAuditRecords
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {$ref: '#/components/requestBodies/Append'}
+      responses:
+        '200': {description: Exact replay or newly persisted signed records and receipt, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/appendResponse'}}}}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/query:
+    post:
+      operationId: queryAuditRecords
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/queryRequest'}}}}
+      responses:
+        '200': {description: Tenant and classification bounded authoritative query with signed audit receipt, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/queryResponse'}}}}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/retention-policies:
+    post:
+      operationId: registerRetentionPolicy
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/retentionPolicyRequest'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/MutationReceipt'}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/legal-holds:
+    post:
+      operationId: placeLegalHold
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/legalHoldPlaceRequest'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/MutationReceipt'}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/legal-holds/release:
+    post:
+      operationId: releaseLegalHold
+      description: The authenticated releasing subject must differ from the original placing subject.
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/legalHoldReleaseRequest'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/MutationReceipt'}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/exports:
+    post:
+      operationId: exportImmutableAuditPackage
+      description: >-
+        Exports the complete tenant chain only when every record is within the caller classification
+        ceiling, signs the package, and writes it through the object-lock gateway. Transformed export
+        is rejected until a separately verifiable transformation proof contract is available.
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/exportRequest'}}}}
+      responses:
+        '200': {description: Signed offline-verifiable package, WORM receipt and signed mutation receipt, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/exportResponse'}}}}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/deletions:
+    post:
+      operationId: deleteExpiredObjectsWithProof
+      description: >-
+        Audit chain rows are never deleted. Only expired external object versions unprotected by an
+        active Legal Hold or another retained record are sent to the deletion gateway; exact provider
+        deletion receipts and a signed authority receipt are persisted immutably.
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/deletionRequest'}}}}
+      responses:
+        '200': {description: Immutable deletion proof or a proof that all candidate objects remained protected, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/deletionResponse'}}}}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/controls:
+    post:
+      operationId: registerControlDefinition
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/controlRequest'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/MutationReceipt'}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/evidence-nodes:
+    post:
+      operationId: addEvidenceGraphNode
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/nodeRequest'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/MutationReceipt'}
+        default: {$ref: '#/components/responses/Failure'}
+  /v1/audit/evidence-edges:
+    post:
+      operationId: addEvidenceGraphEdge
+      security: [{mtls: [], bearer: []}]
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/edgeRequest'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/MutationReceipt'}
+        default: {$ref: '#/components/responses/Failure'}
+  /ready:
+    get:
+      operationId: auditRetentionReadiness
+      responses:
+        '200': {$ref: '#/components/responses/Readiness'}
+        '503': {$ref: '#/components/responses/Readiness'}
+components:
+  securitySchemes:
+    mtls: {type: mutualTLS}
+    bearer: {type: http, scheme: bearer}
+  parameters:
+    Tenant:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    Idempotency:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,128}$'}
+    HumanAssertion:
+      name: X-AgentTrust-Human-Assertion
+      in: header
+      required: true
+      description: >-
+        Unpadded base64url JSON conforming to
+        schemas/identity/signed-human-principal-assertion.schema.json, signed for scope
+        audit:query and this exact POST body/path/idempotency key.
+      schema: {type: string, pattern: '^[A-Za-z0-9_-]{1,87384}$'}
+  requestBodies:
+    Append:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: '../audit-retention/api.schema.json#/$defs/appendRequest'}
+  responses:
+    MutationReceipt:
+      description: Exact replay or newly signed immutable mutation receipt.
+      content:
+        application/json:
+          schema: {$ref: '../audit-retention/api.schema.json#/$defs/mutationReceipt'}
+    Failure:
+      description: Fail-closed error without secret or cross-tenant existence disclosure.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Readiness:
+      description: >-
+        PostgreSQL, WORM object-lock gateway, deletion gateway, and reloadable human-principal
+        verification keyring readiness.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Readiness'}
+  schemas:
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready, database_ready, worm_ready, deletion_gateway_ready, human_principal_keys_ready]
+      properties:
+        schema_version: {const: agenttrust.audit-retention-readiness.v1}
+        ready: {type: boolean}
+        database_ready: {type: boolean}
+        worm_ready: {type: boolean}
+        deletion_gateway_ready: {type: boolean}
+        human_principal_keys_ready: {type: boolean}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: {const: agenttrust.audit-error.v1}
+        error: {type: string, pattern: '^[A-Z0-9_]+$'}

@@ -1,0 +1,207 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Agent Registry and Posture Authority
+  version: 1.0.0
+  description: >-
+    Tenant-scoped production authority. Discovery responses are immutable untrusted facts and
+    cannot register, activate, authenticate or authorize an Agent. Every mutation requires an
+    exact route token, mTLS single-SAN identity, canonical tenant, durable idempotency key and a
+    governed context binding Canonical Action IR, PEP decision, execution, ledger and evidence.
+    Missing or malformed governance bindings fail closed before any authoritative write.
+servers:
+  - url: https://agent-registry.agenttrust.svc:8089
+security:
+  - agentRegistryMtls: []
+    routeBearer: []
+x-write-responses: &writeResponses
+  '200':
+    description: Durable idempotent mutation receipt; task/process completion is not implied
+    content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/mutation_receipt'}}}
+  '400': {$ref: '#/components/responses/Error'}
+  '403': {$ref: '#/components/responses/Error'}
+  '409': {$ref: '#/components/responses/Error'}
+  '429': {$ref: '#/components/responses/Error'}
+  '503': {$ref: '#/components/responses/Error'}
+paths:
+  /ready:
+    get:
+      operationId: agentRegistryDataReady
+      security:
+        - agentRegistryMtls: []
+      responses:
+        '200': {$ref: '#/components/responses/Ready'}
+        '503': {$ref: '#/components/responses/NotReady'}
+  /v1/authoritative/agents:
+    get:
+      operationId: listAuthoritativeAgents
+      x-required-scope: agents:read
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/LegacyTenant'
+        - {name: resource, in: query, schema: {type: string, pattern: '^[a-z][a-z0-9_-]{0,99}$', default: summary}}
+        - {name: cursor, in: query, schema: {type: string, pattern: '^[A-Za-z0-9_-]{1,5462}$'}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200':
+          description: Safe, HMAC-keyset-paginated authoritative inventory page
+          content:
+            application/json:
+              schema: {$ref: '../agent-registry/api.schema.json#/$defs/agent_page'}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/agents/registrations:
+    post:
+      operationId: registerAgent
+      x-required-scope: agents:register
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/registration_request'}}}
+      responses: *writeResponses
+  /v1/discovery/observations:
+    post:
+      operationId: ingestDiscoveryObservation
+      x-required-scope: agents:discover
+      description: Persists UNTRUSTED_OBSERVATION only; never creates or activates an Agent asset.
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/discovery_ingest'}}}
+      responses: *writeResponses
+  /v1/agents/{agent_id}/ownership/assignments:
+    post:
+      operationId: assignAgentOwnership
+      x-required-scope: agents:ownership:assign
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/AgentId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/ownership_assignment'}}}
+      responses: *writeResponses
+  /v1/agents/{agent_id}/ownership/confirmations:
+    post:
+      operationId: confirmAgentOwnership
+      x-required-scope: agents:ownership:confirm
+      description: Token-bound subject must exactly equal the confirming Owner or Sponsor.
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/AgentId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/ownership_confirmation'}}}
+      responses: *writeResponses
+  /v1/agents/{agent_id}/bom:
+    post:
+      operationId: recordAgentBom
+      x-required-scope: agents:bom
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/AgentId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/bom_update'}}}
+      responses: *writeResponses
+  /v1/relationships:
+    post:
+      operationId: addAgentRelationship
+      x-required-scope: agents:relationships:write
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/relationship_request'}}}
+      responses: *writeResponses
+  /v1/relationships/graph:
+    get:
+      operationId: queryAgentRelationshipGraph
+      x-required-scope: agents:relationships:read
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - {name: root, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 1024}}
+        - {name: maximum_depth, in: query, schema: {type: integer, minimum: 1, maximum: 5, default: 3}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200':
+          description: Bounded tenant relationship graph
+          content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/relationship_page'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/posture/evaluations:
+    post:
+      operationId: evaluateAgentPosture
+      x-required-scope: agents:posture:evaluate
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/posture_evaluation'}}}
+      responses: *writeResponses
+  /v1/posture/findings:
+    get:
+      operationId: listAgentPostureFindings
+      x-required-scope: agents:posture:read
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - {name: cursor, in: query, schema: {type: string, pattern: '^[A-Za-z0-9_-]{1,5462}$'}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+      responses:
+        '200':
+          description: HMAC-keyset-paginated open findings
+          content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/posture_page'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/agents/{agent_id}/lifecycle:
+    post:
+      operationId: transitionAgentLifecycle
+      x-required-scope: agents:lifecycle
+      description: >-
+        Suspension, retirement and revocation call identity, authorization and when required Pack
+        convergence ports before the authoritative state changes; any missing receipt fails closed.
+      parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/AgentId'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '../agent-registry/api.schema.json#/$defs/lifecycle_request'}}}
+      responses: *writeResponses
+components:
+  securitySchemes:
+    agentRegistryMtls: {type: mutualTLS}
+    routeBearer: {type: http, scheme: bearer}
+  parameters:
+    Tenant:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    LegacyTenant:
+      name: X-Tenant-Id
+      in: header
+      required: false
+      description: If present it must exactly equal X-AgentTrust-Tenant-Id.
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9._:/-]{1,128}$'}
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      schema: {$ref: '../agent-registry/api.schema.json#/$defs/agent_id'}
+  responses:
+    Ready:
+      description: Database and lifecycle convergence dependencies are ready
+    NotReady:
+      description: One or more production dependencies failed closed
+    Error:
+      description: Stable error code and non-sensitive trace identifier
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [schema_version, error, trace_id]
+            properties:
+              schema_version: {const: agenttrust.agent-registry-error.v1}
+              error: {type: string, pattern: '^AGENT_REGISTRY_[A-Z0-9_]+$'}
+              trace_id: {type: string, format: uuid}
+x-agenttrust-token-binding-schema: ../agent-registry/token-bindings.schema.json
+x-agenttrust-management-listener:
+  url: http://127.0.0.1:9099/ready
+  network-policy-required-for-unspecified-bind: true

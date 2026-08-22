@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/domain-execution.schema.json",
+  "title": "Shared production Domain Pack executor envelope",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "execution_id", "command_id", "actor_subject", "domain", "pack_manifest", "canonical_action", "binding", "operation", "resource_key", "before_digest", "target_digest", "deployment_stage", "expert_approvals", "physical_supervision", "safe_command"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-execution.v1"},
+    "execution_id": {"$ref": "#/$defs/uuid"}, "command_id": {"$ref": "#/$defs/uuid"},
+    "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+    "domain": {"$ref": "#/$defs/domain"}, "pack_manifest": {"$ref": "../marketplace/domain-pack-manifest.schema.json"},
+    "canonical_action": {"type": "object"}, "binding": {"$ref": "#/$defs/binding"},
+    "operation": {"enum": ["coding.repo_read", "coding.workspace_patch", "coding.build_run", "coding.tests_run", "coding.pull_request_create", "industrial.telemetry_read", "industrial.simulation_run", "industrial.setpoint_prepare", "industrial.setpoint_commit", "industrial.operation_stop", "energy.telemetry_read", "energy.forecast_run", "energy.optimize_plan", "energy.dispatch_prepare", "energy.dispatch_commit", "energy.fallback_activate", "medical.patient_context_read", "medical.document_search", "medical.summary_generate", "medical.coding_suggest", "medical.risk_flag", "medical.review_request", "sensitive.content_retrieve", "sensitive.reflection_generate", "sensitive.human_handoff", "sensitive.mentor_review_request", "sensitive.crisis_escalate"]}, "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "before_digest": {"$ref": "#/$defs/digest"}, "target_digest": {"$ref": "#/$defs/digest"},
+    "deployment_stage": {"oneOf": [{"$ref": "#/$defs/stage"}, {"type": "null"}]},
+    "expert_approvals": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/approval"}},
+    "physical_supervision": {"oneOf": [{"$ref": "#/$defs/supervision"}, {"type": "null"}]},
+    "safe_command": {"type": "object", "maxProperties": 256, "required": ["schema_version"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"domain": {"const": "CODING"}}}, "then": {"properties": {"resource_key": {"type": "string", "format": "uri", "pattern": "^https://"}, "safe_command": {"$ref": "coding-action.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "INDUSTRIAL"}, "operation": {"enum": ["industrial.setpoint_prepare", "industrial.setpoint_commit"]}}}, "then": {"properties": {"resource_key": {"pattern": "^industrial:.+:.+$"}, "safe_command": {"$ref": "industrial-action.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "INDUSTRIAL"}, "operation": {"enum": ["industrial.telemetry_read", "industrial.simulation_run", "industrial.operation_stop"]}}}, "then": {"properties": {"resource_key": {"pattern": "^industrial:[a-f0-9-]{36}$"}, "safe_command": {"$ref": "industrial-operation.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "ENERGY"}, "operation": {"enum": ["energy.optimize_plan", "energy.dispatch_prepare", "energy.dispatch_commit", "energy.fallback_activate"]}}}, "then": {"properties": {"resource_key": {"pattern": "^energy:[a-f0-9-]{36}$"}, "safe_command": {"$ref": "energy-candidate.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "ENERGY"}, "operation": {"enum": ["energy.telemetry_read", "energy.forecast_run"]}}}, "then": {"properties": {"resource_key": {"pattern": "^energy:[a-f0-9-]{36}$"}, "safe_command": {"$ref": "energy-observation.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "MEDICAL"}, "operation": {"const": "medical.review_request"}}}, "then": {"properties": {"resource_key": {"pattern": "^medical-patient:[a-f0-9]{64}$"}, "safe_command": {"$ref": "medical-review.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "MEDICAL"}, "operation": {"enum": ["medical.patient_context_read", "medical.document_search", "medical.summary_generate", "medical.coding_suggest", "medical.risk_flag"]}}}, "then": {"properties": {"resource_key": {"pattern": "^medical-patient:[a-f0-9]{64}$"}, "safe_command": {"$ref": "medical-assist.schema.json"}}}},
+    {"if": {"properties": {"domain": {"const": "SENSITIVE"}, "operation": {"enum": ["sensitive.human_handoff", "sensitive.crisis_escalate"]}}}, "then": {"properties": {"resource_key": {"pattern": "^sensitive-conversation:[a-f0-9]{64}$"}, "safe_command": {"$ref": "sensitive-handoff.schema.json"}}}}
+    ,{"if": {"properties": {"domain": {"const": "SENSITIVE"}, "operation": {"enum": ["sensitive.content_retrieve", "sensitive.reflection_generate", "sensitive.mentor_review_request"]}}}, "then": {"properties": {"resource_key": {"pattern": "^sensitive-conversation:[a-f0-9]{64}$"}, "safe_command": {"$ref": "sensitive-interaction.schema.json"}}}}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"}, "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "domain": {"enum": ["CODING", "INDUSTRIAL", "ENERGY", "MEDICAL", "SENSITIVE"]},
+    "stage": {"enum": ["SIMULATOR", "DIGITAL_TWIN", "READ_ONLY", "SHADOW", "LIMITED_WRITE"]},
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "authorization_id", "authorization_digest", "policy_decision_id", "policy_decision_digest", "authorization_evidence_ref", "authorization_evidence_digest", "ledger_execution_id", "ledger_event_id", "ledger_event_digest", "fence_digest", "resource_version", "idempotency_key", "trace_id"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.domain-control-binding.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "authorization_id": {"$ref": "#/$defs/uuid"},
+        "authorization_digest": {"$ref": "#/$defs/digest"}, "policy_decision_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "policy_decision_digest": {"$ref": "#/$defs/digest"}, "authorization_evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "authorization_evidence_digest": {"$ref": "#/$defs/digest"}, "ledger_execution_id": {"$ref": "#/$defs/uuid"}, "ledger_event_id": {"$ref": "#/$defs/uuid"},
+        "ledger_event_digest": {"$ref": "#/$defs/digest"}, "fence_digest": {"$ref": "#/$defs/digest"}, "resource_version": {"type": "integer", "minimum": 1},
+        "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{15,255}$"}, "trace_id": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "approval": {
+      "type": "object", "additionalProperties": false,
+      "required": ["approval_id", "approval_set_id", "domain", "operation", "resource_key", "before_digest", "target_digest", "resource_version", "reviewer_subject", "reviewer_role", "qualification_digest", "principal_assertion_digest", "evidence_ref", "evidence_digest", "approved_at", "expires_at"],
+      "properties": {
+        "approval_id": {"$ref": "#/$defs/uuid"}, "approval_set_id": {"$ref": "#/$defs/uuid"}, "domain": {"$ref": "#/$defs/domain"},
+        "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "before_digest": {"$ref": "#/$defs/digest"}, "target_digest": {"$ref": "#/$defs/digest"}, "resource_version": {"type": "integer", "minimum": 1},
+        "reviewer_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "reviewer_role": {"type": "string", "minLength": 1, "maxLength": 256},
+        "qualification_digest": {"$ref": "#/$defs/digest"}, "principal_assertion_digest": {"$ref": "#/$defs/digest"},
+        "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024}, "evidence_digest": {"$ref": "#/$defs/digest"},
+        "approved_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "supervision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["supervision_id", "approval_set_id", "domain", "stage", "resource_key", "before_digest", "target_digest", "resource_version", "supervisor_subject", "supervisor_assertion_digest", "evidence_ref", "evidence_digest", "issued_at", "expires_at", "consumed"],
+      "properties": {
+        "supervision_id": {"$ref": "#/$defs/uuid"}, "approval_set_id": {"$ref": "#/$defs/uuid"}, "domain": {"enum": ["INDUSTRIAL", "ENERGY"]},
+        "stage": {"const": "LIMITED_WRITE"}, "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "before_digest": {"$ref": "#/$defs/digest"}, "target_digest": {"$ref": "#/$defs/digest"}, "resource_version": {"type": "integer", "minimum": 1},
+        "supervisor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "supervisor_assertion_digest": {"$ref": "#/$defs/digest"},
+        "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024}, "evidence_digest": {"$ref": "#/$defs/digest"},
+        "issued_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"}, "consumed": {"const": false}
+      }
+    }
+  }
+}

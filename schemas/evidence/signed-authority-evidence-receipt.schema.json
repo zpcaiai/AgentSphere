@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/signed-authority-evidence-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "task_id", "authority_event_id",
+    "idempotency_key", "source_kind", "request_digest", "payload_digest",
+    "evidence_ref", "evidence_digest", "event", "persisted_at", "issuer",
+    "key_id", "key_usage", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-authority-evidence-receipt.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "authority_event_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "source_kind": {"enum": ["GOVERNED_ACTION", "AUTHENTICATED_EVENT"]},
+    "request_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "payload_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "evidence_ref": {
+      "type": "string",
+      "pattern": "^evidence://authority-event/",
+      "maxLength": 2048
+    },
+    "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "event": {"$ref": "../openapi/execution-v1.yaml#/components/schemas/SignedEvidenceEvent"},
+    "persisted_at": {"type": "string", "format": "date-time"},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "key_usage": {"const": "AUTHORITY_EVIDENCE_RECEIPT"},
+    "signature": {"type": "string", "minLength": 1, "maxLength": 256}
+  }
+}

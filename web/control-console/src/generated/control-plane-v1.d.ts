@@ -196,37 +196,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenantId}/policies/{bundleId}/simulate": {
+    "/tenants/{tenantId}/policies": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["listPolicies"];
         put?: never;
-        post: operations["simulatePolicyBundle"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/tenants/{tenantId}/policies/{bundleId}/promotions": {
+    "/tenants/{tenantId}/policies/{policyId}/sources": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["listPolicySources"];
         put?: never;
-        post: operations["promotePolicyBundle"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
+    };
+    "/tenants/{tenantId}/policies/{policyId}/analyses": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPolicyAnalyses"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/policies/{policyId}/reviews": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPolicyReviews"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/policies/{policyId}/simulations": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPolicySimulations"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/policies/{policyId}/impact-reports": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPolicyImpactReports"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/policies/{policyId}/promotions": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPolicyPromotions"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/policies/{policyId}/exceptions": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPolicyExceptions"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/policies/actions": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get?: never; put?: never; post: operations["submitPolicyAction"];
+        delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/incidents": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listIncidents"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/incidents/{incidentId}": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["getIncident"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/incidents/actions": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get?: never; put?: never; post: operations["submitIncidentAction"];
+        delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/packs": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get: operations["listPacks"];
+        put?: never; post?: never; delete?: never; options?: never; head?: never; patch?: never; trace?: never;
+    };
+    "/tenants/{tenantId}/packs/actions": {
+        parameters: { query?: never; header?: never; path?: never; cookie?: never; };
+        get?: never; put?: never; post: operations["submitPackAction"];
+        delete?: never; options?: never; head?: never; patch?: never; trace?: never;
     };
     "/tenants/{tenantId}/approvals/{caseId}/intents": {
         parameters: {
@@ -321,6 +381,12 @@ export interface components {
             roles: string[];
             project_ids: string[];
             approval_ids: string[];
+            owned_resources: string[];
+            /** @description True only when the verified IdP ACR is allowlisted and auth_time is within the configured maximum age. Roles and browser state never imply this value. */
+            strong_auth: boolean;
+            /** Format: date-time */
+            authentication_time: string | null;
+            authentication_context: string | null;
             /** @constant */
             csrf_header_name: "X-XSRF-TOKEN";
             csrf_token: string;
@@ -339,25 +405,331 @@ export interface components {
             intent: components["schemas"]["AdminAction"];
             reason: string;
         };
-        PolicySimulationRequest: {
-            /** @constant */
-            schema_version: "agenttrust.policy-simulation-request.v1";
-            candidate_digest: string;
-            corpus_digest: string;
-            maximum_cases: number;
+        PolicyId: string;
+        PolicyDigest: string;
+        PolicyEnvironment: "DEV" | "STAGING" | "CANARY" | "PRODUCTION";
+        PolicyRisk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+        PolicyRule: {
+            rule_id: string;
+            subject_pattern: string;
+            tool_pattern: string;
+            resource_pattern: string;
+            decision: "ALLOW" | "DENY" | "KILL" | "PAUSE" | "REQUIRE_APPROVAL";
+            maximum_risk: components["schemas"]["PolicyRisk"];
+            reason_code: string;
         };
-        PolicyPromotionRequest: {
-            /** @constant */
-            schema_version: "agenttrust.policy-promotion-request.v1";
-            bundle_version: string;
+        PolicySource: {
+            schema_version: "agenttrust.policy-admin.v1";
+            source_id: components["schemas"]["PolicyId"];
+            tenant_id: string;
+            version: string;
+            rules: components["schemas"]["PolicyRule"][];
+            default_decision: "DENY" | "KILL" | "PAUSE" | "REQUIRE_APPROVAL";
+            author: string;
+            source_digest: components["schemas"]["PolicyDigest"];
+            created_at: string;
+        };
+        PolicyAction: {
+            action_id: string;
+            tenant_id: string;
+            agent_id: string;
+            subject: string;
+            tool: string;
+            resource: string;
+            risk: components["schemas"]["PolicyRisk"];
+        };
+        PolicyEmptyPayload: Record<string, never>;
+        PolicyDraftPayload: { source: components["schemas"]["PolicySource"]; };
+        PolicySimulationPayload: {
+            baseline_bundle_digest: components["schemas"]["PolicyDigest"];
+            actions: components["schemas"]["PolicyAction"][];
+        };
+        PolicyImpactPayload: { simulation_id: string; };
+        PolicyApprovalPayload: { decision: "APPROVE"; review_digest: components["schemas"]["PolicyDigest"]; };
+        PolicyPromotionPayload: {
+            bundle_digest: components["schemas"]["PolicyDigest"];
+            impact_report_digest: components["schemas"]["PolicyDigest"];
+            environment: components["schemas"]["PolicyEnvironment"];
+        };
+        PolicyRollbackPayload: {
+            target_bundle_digest: components["schemas"]["PolicyDigest"];
+            reason_digest: components["schemas"]["PolicyDigest"];
+            environment: components["schemas"]["PolicyEnvironment"];
+        };
+        PolicyDeprecatePayload: {
+            bundle_digest: components["schemas"]["PolicyDigest"];
+            reason_digest: components["schemas"]["PolicyDigest"];
+        };
+        PolicyCreateExceptionPayload: {
+            exception_id: string;
+            owner_subject: string;
+            scope: string[];
+            reason_digest: components["schemas"]["PolicyDigest"];
+            compensating_controls: string[];
+            approval_ids: string[];
+            expires_at: string;
+        };
+        PolicyRevokeExceptionPayload: { exception_id: string; reason_digest: components["schemas"]["PolicyDigest"]; };
+        PolicyCommand: {
+            schema_version: "agenttrust.policy-command.v1";
+            tenant_id: string;
+            command_id: string;
+            policy_id: components["schemas"]["PolicyId"];
+            operation: "CREATE_DRAFT" | "VALIDATE" | "SIMULATE" | "SHADOW_EVALUATE" | "IMPACT_ANALYZE" | "APPROVE" | "SIGN" | "PROMOTE" | "ROLLBACK" | "DEPRECATE" | "CREATE_EXCEPTION" | "REVOKE_EXCEPTION";
+            expected_resource_version: number;
+            payload: components["schemas"]["PolicyEmptyPayload"] | components["schemas"]["PolicyDraftPayload"] | components["schemas"]["PolicySimulationPayload"] | components["schemas"]["PolicyImpactPayload"] | components["schemas"]["PolicyApprovalPayload"] | components["schemas"]["PolicyPromotionPayload"] | components["schemas"]["PolicyRollbackPayload"] | components["schemas"]["PolicyDeprecatePayload"] | components["schemas"]["PolicyCreateExceptionPayload"] | components["schemas"]["PolicyRevokeExceptionPayload"];
+            requested_at: string;
+        };
+        PolicyActionReceipt: {
+            schema_version: "agenttrust.policy-action-receipt.v1";
+            action_id: string;
+            task_id: string;
+            accepted: true;
+            execution_pending: true;
+            ingress_digest: components["schemas"]["PolicyDigest"];
+            ledger_evidence_ref: string;
+            ledger_evidence_digest: components["schemas"]["PolicyDigest"];
+        };
+        PolicySummary: {
+            policy_id: components["schemas"]["PolicyId"];
+            revision: number;
+            lifecycle_state: "DRAFT" | "VALIDATED" | "REVIEW" | "SIGNED" | "DEPRECATED";
+            source_digest: components["schemas"]["PolicyDigest"];
+            author_subject: string;
+            active_bundle_digest: string | null;
+            active_environment: components["schemas"]["PolicyEnvironment"] | null;
+            resource_version: number;
+            updated_at: string;
+        };
+        PolicyPage: {
+            schema_version: "agenttrust.authoritative-policy-page.v1";
+            tenant_id: string;
+            items: components["schemas"]["PolicySummary"][];
+            next_after_policy_id: string | null;
+        };
+        PolicyStaticFinding: { code: string; rule_ids: string[]; blocking: boolean; };
+        PolicyStaticAnalysis: {
+            schema_version: "agenttrust.policy-static-analysis.v1";
+            policy_id: components["schemas"]["PolicyId"];
+            revision: number;
+            source_digest: components["schemas"]["PolicyDigest"];
+            valid: boolean;
+            findings: components["schemas"]["PolicyStaticFinding"][];
+            analyzed_at: string;
+        };
+        PolicyReview: {
+            review_id: string; revision: number; reviewer_subject: string;
+            decision: "APPROVE" | "REJECT"; review_digest: string; reviewed_at: string;
+        };
+        PolicyDecisionDifference: {
+            action_id: string; agent_id: string; tool: string; resource: string;
+            risk: components["schemas"]["PolicyRisk"];
+            old_decision: "ALLOW" | "DENY" | "KILL" | "PAUSE" | "REQUIRE_APPROVAL";
+            new_decision: "ALLOW" | "DENY" | "KILL" | "PAUSE" | "REQUIRE_APPROVAL";
+        };
+        PolicySimulationImpact: {
+            schema_version: "agenttrust.policy-admin.v1"; old_bundle_digest: string;
+            new_bundle_digest: string; evaluated_actions: number;
+            differences: components["schemas"]["PolicyDecisionDifference"][];
+            side_effect_count: 0; generated_at: string;
+        };
+        PolicySimulationRun: {
+            simulation_id: string; revision: number; run_kind: "SIMULATION" | "SHADOW";
+            baseline_bundle_digest: string; candidate_source_digest: string; corpus_digest: string;
+            evaluated_actions: number; difference_count: number; side_effect_count: 0;
+            impact_report_digest: string; impact_report: components["schemas"]["PolicySimulationImpact"];
+            run_by: string; created_at: string;
+        };
+        PolicyImpactReport: {
+            schema_version: "agenttrust.policy-impact-report.v1"; impact_report_id: string;
+            tenant_id: string; policy_id: string; revision: number; simulation_id: string;
+            simulation_digest: string; evaluated_actions: number; difference_count: number;
+            affected_agents: string[]; affected_tools: string[]; affected_resources: string[];
+            maximum_risk: components["schemas"]["PolicyRisk"]; generated_at: string;
             impact_report_digest: string;
-            /** @enum {unknown} */
-            environment: "CANARY" | "PRODUCTION";
         };
-        GovernedPolicyPromotion: {
-            promotion: components["schemas"]["PolicyPromotionRequest"];
-            intent: components["schemas"]["AdminAction"];
-            reason: string;
+        PolicyPromotion: {
+            environment: components["schemas"]["PolicyEnvironment"]; sequence: number;
+            bundle_digest: string; previous_bundle_digest: string | null; rollback_of: number | null;
+            promoted_by: string; state: "ACTIVE" | "SUPERSEDED" | "ROLLED_BACK";
+            promotion_digest: string; promoted_at: string; completed_at: string | null;
+        };
+        PolicyException: {
+            exception_id: string; policy_id: string; scope_digest: string; owner_subject: string;
+            approval_ids: string[]; reason_digest: string; compensating_controls: string[];
+            issued_by: string; expires_at: string; revoked_at: string | null;
+            expired_at: string | null; state: "ACTIVE" | "REVOKED" | "EXPIRED"; created_at: string;
+        };
+        PolicyArtifact: components["schemas"]["PolicySource"] | components["schemas"]["PolicyStaticAnalysis"] | components["schemas"]["PolicyReview"] | components["schemas"]["PolicySimulationRun"] | components["schemas"]["PolicyImpactReport"] | components["schemas"]["PolicyPromotion"] | components["schemas"]["PolicyException"];
+        PolicyArtifactPage: {
+            schema_version: "agenttrust.authoritative-policy-artifact-page.v1";
+            tenant_id: string; policy_id: string;
+            artifact_type: "SOURCES" | "ANALYSES" | "REVIEWS" | "SIMULATIONS" | "IMPACT_REPORTS" | "PROMOTIONS" | "EXCEPTIONS";
+            items: components["schemas"]["PolicyArtifact"][];
+        };
+        IncidentDigest: string;
+        IncidentBreakGlass: {
+            break_glass_id: string; expires_at: string; review_due_at: string;
+            compensating_controls: string[]; reason_digest: string;
+        };
+        IncidentContainTargets: {
+            kill_task: true; revoke_credentials: true; isolate_integrations: string[];
+            freeze_artifacts: true;
+        };
+        IncidentRootCauseFinding: {
+            finding_id: string; category: "TRIGGER" | "SYSTEM_DEFECT" | "DETECTION_GAP" | "RECOVERY_PROBLEM";
+            trigger: string; system_defect: string; detection_gap: string; recovery_gap: string;
+            evidence_refs: string[];
+        };
+        IncidentRootCauseRemediation: {
+            remediation_id: string; finding_id: string; policy_ref: string; test_ref: string;
+            owner: string; due_at: string;
+        };
+        IncidentReleaseGateDefinition: {
+            gate_id: string; version: string; definition_digest: string;
+            required_controls: string[]; maximum_evidence_age_seconds: number;
+        };
+        IncidentReleaseGateEvidence: {
+            control_id: string; evidence_ref: string; evidence_digest: string; release_digest: string;
+            passed: true; collected_at: string;
+        };
+        IncidentTimelineEntry: {
+            event_id: string; sequence: number;
+            event_type: "DETECT" | "TRIAGE" | "CONTAIN" | "INVESTIGATE" | "PRESERVE_EVIDENCE" | "PLAN_REPLAY" | "COMPLETE_REPLAY" | "PUBLISH_ROOT_CAUSE" | "BEGIN_REMEDIATION" | "TRIGGER_RECERTIFICATION" | "EVALUATE_RELEASE" | "START_CANARY" | "RECORD_CANARY" | "ROLLBACK_RELEASE" | "CLOSE";
+            from_status: string | null; to_status: string | null; actor_subject: string;
+            reason_code: string; payload_digest: string; action_hash: string;
+            ledger_execution_id: string; fence_digest: string; policy_decision_digest: string;
+            authorization_evidence_ref: string; authorization_evidence_digest: string;
+            occurred_at: string;
+        };
+        Incident: {
+            incident_id: string; correlation_key: string; severity: "P0" | "P1" | "P2" | "P3";
+            status: "DETECTED" | "TRIAGED" | "CONTAINED" | "INVESTIGATING" | "REMEDIATING" | "RECERTIFYING" | "CLOSED";
+            task_id: string; owner: string; safe_summary: string; scope: string[];
+            evidence_refs: string[]; legal_hold_id: string; resource_version: number;
+            created_at: string; updated_at: string;
+            timeline: components["schemas"]["IncidentTimelineEntry"][];
+        };
+        IncidentPage: {
+            schema_version: "agenttrust.authoritative-incident-page.v1";
+            tenant_id: string; items: components["schemas"]["Incident"][];
+            next_after_incident_id: string | null;
+        };
+        IncidentReasonPayload: { reason_code: string };
+        IncidentTriagePayload: { owner: string; severity: "P0" | "P1" | "P2" | "P3"; reason_code: string };
+        IncidentContainPayload: {
+            reason_code: string;
+            targets: components["schemas"]["IncidentContainTargets"];
+            break_glass: components["schemas"]["IncidentBreakGlass"] | null;
+        };
+        IncidentPreservePayload: {
+            chain_head_digest: string; snapshot_digest: string; process_digest: string;
+            network_digest: string; configuration_digest: string; version_digest: string;
+            legal_hold_id: string;
+        };
+        IncidentReplayPlanPayload: {
+            replay_id: string; mode: "LOGICAL" | "SANDBOX" | "LIVE"; input_digest: string;
+            source_snapshot_digest: string; expected_result_digest: string; resource_refs: string[];
+            credential_profile: string | null; fresh_lease_id: string | null;
+            fresh_lease_digest: string | null; authorization_lease_expires_at: string | null;
+        };
+        IncidentReplayResultPayload: { replay_id: string; mode: "LOGICAL" | "SANDBOX" | "LIVE"; plan_digest: string };
+        IncidentRootCausePayload: { report_id: string; report_digest: string; findings: components["schemas"]["IncidentRootCauseFinding"][]; remediations: components["schemas"]["IncidentRootCauseRemediation"][] };
+        IncidentRecertificationPayload: { root_cause_digest: string; release_digest: string; campaigns: string[] };
+        IncidentReleaseGatePayload: { release_digest: string; definition: components["schemas"]["IncidentReleaseGateDefinition"]; evidence: components["schemas"]["IncidentReleaseGateEvidence"][]; rollback_artifact_digest: string; canary_plan_digest: string; valid_until: string };
+        IncidentStartCanaryPayload: { certificate_id: string; release_digest: string; canary_plan_digest: string; percentage: number };
+        IncidentRecordCanaryPayload: { certificate_id: string; release_digest: string; metrics_digest: string; passed: boolean; rollback_required: boolean };
+        IncidentRollbackPayload: { release_digest: string; target_release_digest: string; reason_digest: string };
+        IncidentClosePayload: { root_cause_digest: string; recertification_evidence_ref: string; recertification_evidence_digest: string };
+        IncidentCommandPayload: components["schemas"]["IncidentReasonPayload"] | components["schemas"]["IncidentTriagePayload"] | components["schemas"]["IncidentContainPayload"] | components["schemas"]["IncidentPreservePayload"] | components["schemas"]["IncidentReplayPlanPayload"] | components["schemas"]["IncidentReplayResultPayload"] | components["schemas"]["IncidentRootCausePayload"] | components["schemas"]["IncidentRecertificationPayload"] | components["schemas"]["IncidentReleaseGatePayload"] | components["schemas"]["IncidentStartCanaryPayload"] | components["schemas"]["IncidentRecordCanaryPayload"] | components["schemas"]["IncidentRollbackPayload"] | components["schemas"]["IncidentClosePayload"];
+        IncidentCommand: {
+            schema_version: "agenttrust.incident-command.v1"; tenant_id: string;
+            command_id: string; resource_id: string; task_id: string;
+            operation: "TRIAGE" | "CONTAIN" | "INVESTIGATE" | "PRESERVE_EVIDENCE" | "PLAN_REPLAY" | "COMPLETE_REPLAY" | "PUBLISH_ROOT_CAUSE" | "BEGIN_REMEDIATION" | "TRIGGER_RECERTIFICATION" | "EVALUATE_RELEASE" | "START_CANARY" | "RECORD_CANARY" | "ROLLBACK_RELEASE" | "CLOSE";
+            expected_resource_version: number; requested_at: string;
+            payload: components["schemas"]["IncidentCommandPayload"];
+        };
+        IncidentActionReceipt: {
+            schema_version: "agenttrust.incident-action-receipt.v1"; action_id: string;
+            task_id: string; accepted: true; execution_pending: true; ingress_digest: string;
+            ledger_evidence_ref: string; ledger_evidence_digest: string;
+        };
+        MarketplaceIdentifier: string;
+        MarketplaceSemver: string;
+        PackStringSet: string[];
+        PackPermissions: {
+            tools: string[]; network_destinations: string[]; data_classes: string[];
+            secret_scopes: string[]; executors: string[]; approval_scopes: string[];
+        };
+        PackToolDeclaration: {
+            tool_id: string; effect_class: "PURE" | "IDEMPOTENT" | "COMPENSATABLE" | "IRREVERSIBLE";
+            approval_required: boolean; compensation_ref: string | null;
+            irreversible_reason: string | null; executor_template: string;
+        };
+        PackPublisherSignature: {
+            key_id: string; publisher_identity: string; subject_digest: string;
+            signature: string; signed_at: string;
+        };
+        DomainPackManifest: {
+            schema_version: "agenttrust.domain-pack.v1"; pack_id: string; version: string;
+            digest: string; publisher_identity: string; description: string;
+            permissions: components["schemas"]["PackPermissions"];
+            tools: components["schemas"]["PackToolDeclaration"][];
+            policy_bundle_ref: string; evaluator_ref: string; compensation_refs: string[];
+            threat_scenario_refs: string[]; artifact_refs: string[]; compatibility: string[];
+            signature: components["schemas"]["PackPublisherSignature"];
+        };
+        PackReleaseCertificate: {
+            schema_version: "agenttrust.incident-release.v1"; certificate_id: string;
+            release_digest: string; gate_id: string; gate_version: string; definition_digest: string;
+            evidence_digests: { [key: string]: string }; valid_from: string; valid_until: string;
+            engine_certificate_only: true; production_closure: false; key_id: string; signature: string;
+        };
+        PackRelease: {
+            release_id: string; pack_id: string; version: string; pack_digest: string;
+            publisher_id: string; visibility: "PRIVATE" | "TENANT"; entitlement: string;
+            allowed_regions: string[]; risk_rating: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+            compatibility: string[]; certificate_digest: string;
+            review_status: "SUBMITTED" | "PUBLISHED" | "REJECTED" | "REVOKED"; updated_at: string;
+        };
+        PackInstallation: {
+            installation_id: string; release_id: string; pack_id: string; version: string;
+            environment: "development" | "staging" | "canary" | "production";
+            state: "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "INSTALLED" | "ACTIVE" | "INACTIVE" | "ROLLED_BACK" | "REVOKED";
+            permission_expansion: boolean; previous_installation_id: string | null; updated_at: string;
+        };
+        PackPage: {
+            schema_version: "agenttrust.authoritative-pack-page.v1"; authoritative: true;
+            tenant_id: string; releases: components["schemas"]["PackRelease"][];
+            installations: components["schemas"]["PackInstallation"][];
+            next_after_pack_id: string | null; data_digest: string;
+        };
+        PackOnboardPublisher: { kind: "ONBOARD_PUBLISHER"; publisher_id: string; publisher_subject: string; identity_digest: string; responsibility_contact: string; home_region: string };
+        PackVerifyPublisherKey: { kind: "VERIFY_PUBLISHER_KEY"; publisher_id: string; key_id: string; algorithm: "Ed25519"; public_key: string; key_fingerprint: string; not_before: string; expires_at: string; review_digest: string };
+        PackSetPublisherTrust: { kind: "SET_PUBLISHER_TRUST"; publisher_id: string; trust: "SUSPENDED" | "REVOKED"; reason_digest: string };
+        PackConfigureCatalog: { kind: "CONFIGURE_TENANT_CATALOG"; control_plane_version: string; region: string; entitlements: string[]; allowed_compatibility: string[]; minimum_publisher_trust: "VERIFIED"; maximum_risk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" };
+        PackSubmitRelease: { kind: "SUBMIT_RELEASE"; release_id: string; manifest: components["schemas"]["DomainPackManifest"]; release_certificate: components["schemas"]["PackReleaseCertificate"]; visibility: "PRIVATE" | "TENANT"; entitlement: string; allowed_regions: string[]; risk_rating: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL"; minimum_publisher_trust: "VERIFIED"; minimum_control_plane_version: string };
+        PackReviewRelease: { kind: "REVIEW_RELEASE"; release_id: string; decision: "APPROVE" | "REJECT"; review_digest: string };
+        PackRequestInstallation: { kind: "REQUEST_INSTALLATION"; installation_id: string; release_id: string; environment: "development" | "staging" | "canary" | "production"; request_reason_digest: string };
+        PackApproveInstallation: { kind: "APPROVE_INSTALLATION"; installation_id: string; decision: "APPROVE" | "REJECT"; approval_digest: string };
+        PackInstall: { kind: "INSTALL"; installation_id: string; artifact_receipt_digest: string };
+        PackActivate: { kind: "ACTIVATE"; installation_id: string; production_certificate_digest: string | null };
+        PackPlanUpgrade: { kind: "PLAN_UPGRADE"; plan_id: string; current_installation_id: string; target_installation_id: string; migration_digest: string; rollback_digest: string; canary_percent: number };
+        PackRecordCanary: { kind: "RECORD_CANARY"; plan_id: string; passed: boolean; observed_samples: number; evidence_ref: string; evidence_digest: string };
+        PackUpgrade: { kind: "UPGRADE"; plan_id: string; production_certificate_digest: string | null };
+        PackRollback: { kind: "ROLLBACK"; installation_id: string; reason_digest: string };
+        PackDeactivate: { kind: "DEACTIVATE"; installation_id: string; reason_digest: string };
+        PackRevokeRelease: { kind: "REVOKE_RELEASE"; release_id: string; reason_code: string; reason_digest: string; running_task_response: "PAUSE" | "KILL" | "ALLOW_TO_FINISH" };
+        MarketplaceTypedCommand: components["schemas"]["PackOnboardPublisher"] | components["schemas"]["PackVerifyPublisherKey"] | components["schemas"]["PackSetPublisherTrust"] | components["schemas"]["PackConfigureCatalog"] | components["schemas"]["PackSubmitRelease"] | components["schemas"]["PackReviewRelease"] | components["schemas"]["PackRequestInstallation"] | components["schemas"]["PackApproveInstallation"] | components["schemas"]["PackInstall"] | components["schemas"]["PackActivate"] | components["schemas"]["PackPlanUpgrade"] | components["schemas"]["PackRecordCanary"] | components["schemas"]["PackUpgrade"] | components["schemas"]["PackRollback"] | components["schemas"]["PackDeactivate"] | components["schemas"]["PackRevokeRelease"];
+        MarketplaceCommand: {
+            schema_version: "agenttrust.marketplace-command.v1"; tenant_id: string;
+            command_id: string; resource_id: string; expected_resource_version: number;
+            command: components["schemas"]["MarketplaceTypedCommand"]; requested_at: string;
+        };
+        MarketplaceActionReceipt: {
+            schema_version: "agenttrust.marketplace-action-receipt.v1"; action_id: string;
+            task_id: string; accepted: true; execution_pending: true; ingress_digest: string;
+            ledger_evidence_ref: string; ledger_evidence_digest: string;
         };
         ApprovalIntent: {
             /** @constant */
@@ -376,14 +748,57 @@ export interface components {
         AuthorityPayload: {
             [key: string]: unknown;
         };
+        AgentInventoryItem: {
+            /** @constant */
+            schema_version: "agenttrust.agent-inventory-item.v1";
+            agent_id: string;
+            display_name: string;
+            owner_subject: string;
+            sponsor_subject: string;
+            /** @enum {unknown} */
+            ownership_status: "PENDING" | "CONFIRMED";
+            /** @enum {unknown} */
+            environment: "DEVELOPMENT" | "STAGING" | "PRODUCTION";
+            /** @enum {unknown} */
+            lifecycle: "DRAFT" | "ACTIVE" | "SUSPENDED" | "RETIRED" | "REVOKED";
+            agent_type: string;
+            bom_digest: string;
+            endpoint_count: number;
+            identity_count: number;
+            tool_count: number;
+            pack_count: number;
+            open_findings: number;
+            /** @enum {unknown} */
+            highest_risk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+            /** Format: date-time */
+            last_activity_at: string;
+            /** Format: date-time */
+            registered_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AgentInventoryPage: {
+            /** @constant */
+            schema_version: "agenttrust.authoritative-agent-page.v1";
+            /** @constant */
+            authoritative: true;
+            /** Format: uuid */
+            tenant_id: string;
+            /** @constant */
+            resource: "summary";
+            items: components["schemas"]["AgentInventoryItem"][];
+            next_cursor: string | null;
+            data_digest: string;
+        };
         AuthoritySection: {
             /** @constant */
             schema_version: "agenttrust.authority-view.v1";
-            section: string;
+            /** @enum {unknown} */
+            section: "TASKS" | "INCIDENTS" | "AGENTS" | "TOOLS" | "CREDENTIALS" | "APPROVALS" | "POLICIES" | "PACKS" | "TRACE" | "EVIDENCE" | "COMPLIANCE" | "AUDIT" | "MODELS" | "DATA" | "CONTEXT" | "ANOMALIES" | "SECURITY_EVALUATIONS" | "SUPPLY_CHAIN" | "DOMAIN_PACKS" | "SRE" | "DEPLOYMENTS";
             /** @constant */
             authoritative: true;
             available: boolean;
-            data: Record<string, never> | unknown[] | null;
+            data: components["schemas"]["AuthorityPayload"] | unknown[] | null;
             data_digest: string;
             /** @enum {unknown} */
             safe_error_code?: "AUTHORITATIVE_SOURCE_UNAVAILABLE";
@@ -396,10 +811,30 @@ export interface components {
             /** Format: uuid */
             tenant_id: string;
             sections: {
-                [key: string]: components["schemas"]["AuthoritySection"];
+                TASKS: components["schemas"]["AuthoritySection"];
+                INCIDENTS: components["schemas"]["AuthoritySection"];
+                AGENTS: components["schemas"]["AuthoritySection"];
+                TOOLS: components["schemas"]["AuthoritySection"];
+                CREDENTIALS: components["schemas"]["AuthoritySection"];
+                APPROVALS: components["schemas"]["AuthoritySection"];
+                POLICIES: components["schemas"]["AuthoritySection"];
+                PACKS: components["schemas"]["AuthoritySection"];
+                TRACE: components["schemas"]["AuthoritySection"];
+                EVIDENCE: components["schemas"]["AuthoritySection"];
+                COMPLIANCE: components["schemas"]["AuthoritySection"];
+                AUDIT: components["schemas"]["AuthoritySection"];
+                MODELS: components["schemas"]["AuthoritySection"];
+                DATA: components["schemas"]["AuthoritySection"];
+                CONTEXT: components["schemas"]["AuthoritySection"];
+                ANOMALIES: components["schemas"]["AuthoritySection"];
+                SECURITY_EVALUATIONS: components["schemas"]["AuthoritySection"];
+                SUPPLY_CHAIN: components["schemas"]["AuthoritySection"];
+                DOMAIN_PACKS: components["schemas"]["AuthoritySection"];
+                SRE: components["schemas"]["AuthoritySection"];
+                DEPLOYMENTS: components["schemas"]["AuthoritySection"];
             };
             complete: boolean;
-            unavailable_sections: string[];
+            unavailable_sections: ("TASKS" | "INCIDENTS" | "AGENTS" | "TOOLS" | "CREDENTIALS" | "APPROVALS" | "POLICIES" | "PACKS" | "TRACE" | "EVIDENCE" | "COMPLIANCE" | "AUDIT" | "MODELS" | "DATA" | "CONTEXT" | "ANOMALIES" | "SECURITY_EVALUATIONS" | "SUPPLY_CHAIN" | "DOMAIN_PACKS" | "SRE" | "DEPLOYMENTS")[];
             /** Format: date-time */
             generated_at: string;
         };
@@ -533,17 +968,22 @@ export interface components {
             /** Format: date-time */
             expires_at: string;
         };
-        ApiKeyIssueResponse: {
+        EnterpriseActionReceipt: {
             /** @constant */
-            schema_version: "agenttrust.api-key.v1";
+            schema_version: "agenttrust.enterprise-action-receipt.v1";
             /** Format: uuid */
-            api_key_id: string;
-            one_time_secret: string;
-            /** Format: date-time */
-            created_at: string;
-            /** Format: date-time */
-            expires_at: string;
-            scopes: string[];
+            action_id: string;
+            /** Format: uuid */
+            task_id: string;
+            /** @constant */
+            accepted: true;
+            /** @constant */
+            start_requested: true;
+            /** @constant */
+            execution_pending: true;
+            ingress_digest: string;
+            evidence_ref: string;
+            evidence_digest: string;
         };
         GovernedTenantRequest: {
             tenant: components["schemas"]["TenantRequest"];
@@ -585,6 +1025,8 @@ export interface components {
     parameters: {
         TenantId: string;
         TaskId: string;
+        PolicyId: components["schemas"]["PolicyId"];
+        PolicyArtifactLimit: number;
         IdempotencyKey: string;
         CsrfToken: string;
     };
@@ -593,6 +1035,24 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
+export interface PolicyArtifactReadOperation {
+    parameters: {
+        query: { limit: number; };
+        header?: never;
+        path: {
+            tenantId: components["parameters"]["TenantId"];
+            policyId: components["parameters"]["PolicyId"];
+        };
+        cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+        200: {
+            headers: { [name: string]: unknown; };
+            content: { "application/json": components["schemas"]["PolicyArtifactPage"]; };
+        };
+    };
+}
 export interface operations {
     getConsoleSession: {
         parameters: {
@@ -653,12 +1113,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Tenant created after PEP authorization and audit persistence */
-            201: {
+            /** @description Canonical action durably accepted; execution and task completion are pending */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Tenant */
             403: {
@@ -687,12 +1147,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Organization created and audited */
-            201: {
+            /** @description Canonical action durably accepted; execution and task completion are pending */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Authorization denied */
             403: {
@@ -721,12 +1181,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Project and bounded environment set created and audited */
-            201: {
+            /** @description Canonical action durably accepted; execution and task completion are pending */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Authorization denied */
             403: {
@@ -755,12 +1215,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description HTTPS integration configuration created and audited */
-            201: {
+            /** @description Canonical action durably accepted; execution and task completion are pending */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Authorization or endpoint validation denied */
             403: {
@@ -789,13 +1249,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Atomic quota consumption result */
-            200: {
+            /** @description Canonical quota action accepted; usage is not returned before execution */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["QuotaUsage"];
+                    "application/json": components["schemas"]["EnterpriseActionReceipt"];
                 };
             };
             /** @description Authorization denied or quota exceeded */
@@ -825,12 +1285,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Cost usage recorded and audited */
+            /** @description Canonical cost action durably accepted; execution is pending */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Authorization or project scope denied */
             403: {
@@ -859,13 +1319,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description One-time API key secret; response is non-cacheable */
-            201: {
+            /** @description Canonical credential action accepted; raw secret is never returned */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiKeyIssueResponse"];
+                    "application/json": components["schemas"]["EnterpriseActionReceipt"];
                 };
             };
             /** @description Authorization denied */
@@ -896,12 +1356,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description API key revoked and audited */
-            204: {
+            /** @description Canonical revocation action durably accepted; execution is pending */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Authorization denied */
             403: {
@@ -981,41 +1441,36 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuthorityPayload"];
+                    "application/json": components["schemas"]["AgentInventoryPage"];
                 };
             };
         };
     };
-    simulatePolicyBundle: {
+    listPolicies: {
         parameters: {
-            query?: never;
-            header: {
-                "X-XSRF-TOKEN": components["parameters"]["CsrfToken"];
-            };
+            query: { after_policy_id?: components["schemas"]["PolicyId"]; limit: number; };
+            header?: never;
             path: {
                 tenantId: components["parameters"]["TenantId"];
-                bundleId: string;
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["PolicySimulationRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Side-effect-free impact report */
             200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthorityPayload"];
-                };
+                headers: { [name: string]: unknown; };
+                content: { "application/json": components["schemas"]["PolicyPage"]; };
             };
         };
     };
-    promotePolicyBundle: {
+    listPolicySources: PolicyArtifactReadOperation;
+    listPolicyAnalyses: PolicyArtifactReadOperation;
+    listPolicyReviews: PolicyArtifactReadOperation;
+    listPolicySimulations: PolicyArtifactReadOperation;
+    listPolicyImpactReports: PolicyArtifactReadOperation;
+    listPolicyPromotions: PolicyArtifactReadOperation;
+    listPolicyExceptions: PolicyArtifactReadOperation;
+    submitPolicyAction: {
         parameters: {
             query?: never;
             header: {
@@ -1024,37 +1479,83 @@ export interface operations {
             };
             path: {
                 tenantId: components["parameters"]["TenantId"];
-                bundleId: string;
             };
             cookie?: never;
         };
         requestBody: {
-            content: {
-                "application/json": components["schemas"]["GovernedPolicyPromotion"];
-            };
+            content: { "application/json": components["schemas"]["PolicyCommand"]; };
         };
         responses: {
-            /** @description Governed promotion dispatched to the authoritative policy service */
             202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
+                headers: { [name: string]: unknown; };
+                content: { "application/json": components["schemas"]["PolicyActionReceipt"]; };
             };
-            /** @description Authorization or separation-of-duties denial */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Outcome remains UNKNOWN and safe to retry with the same key */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+            403: { headers: { [name: string]: unknown; }; content?: never; };
+            409: { headers: { [name: string]: unknown; }; content?: never; };
+            503: { headers: { [name: string]: unknown; }; content?: never; };
+        };
+    };
+    listIncidents: {
+        parameters: {
+            query: { after_incident_id?: string; limit: number };
+            header?: never; path: { tenantId: components["parameters"]["TenantId"] }; cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: { headers: { [name: string]: unknown }; content: { "application/json": components["schemas"]["IncidentPage"] } };
+            503: { headers: { [name: string]: unknown }; content?: never };
+        };
+    };
+    getIncident: {
+        parameters: {
+            query?: never; header?: never;
+            path: { tenantId: components["parameters"]["TenantId"]; incidentId: string };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: { headers: { [name: string]: unknown }; content: { "application/json": components["schemas"]["Incident"] } };
+            403: { headers: { [name: string]: unknown }; content?: never };
+            503: { headers: { [name: string]: unknown }; content?: never };
+        };
+    };
+    submitIncidentAction: {
+        parameters: {
+            query?: never;
+            header: { "Idempotency-Key": components["parameters"]["IdempotencyKey"]; "X-XSRF-TOKEN": components["parameters"]["CsrfToken"] };
+            path: { tenantId: components["parameters"]["TenantId"] }; cookie?: never;
+        };
+        requestBody: { content: { "application/json": components["schemas"]["IncidentCommand"] } };
+        responses: {
+            202: { headers: { [name: string]: unknown }; content: { "application/json": components["schemas"]["IncidentActionReceipt"] } };
+            403: { headers: { [name: string]: unknown }; content?: never };
+            409: { headers: { [name: string]: unknown }; content?: never };
+            503: { headers: { [name: string]: unknown }; content?: never };
+        };
+    };
+    listPacks: {
+        parameters: {
+            query: { query?: string; after_pack_id?: string; limit: number };
+            header?: never; path: { tenantId: components["parameters"]["TenantId"] }; cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: { headers: { [name: string]: unknown }; content: { "application/json": components["schemas"]["PackPage"] } };
+            503: { headers: { [name: string]: unknown }; content?: never };
+        };
+    };
+    submitPackAction: {
+        parameters: {
+            query?: never;
+            header: { "Idempotency-Key": components["parameters"]["IdempotencyKey"]; "X-XSRF-TOKEN": components["parameters"]["CsrfToken"] };
+            path: { tenantId: components["parameters"]["TenantId"] }; cookie?: never;
+        };
+        requestBody: { content: { "application/json": components["schemas"]["MarketplaceCommand"] } };
+        responses: {
+            202: { headers: { [name: string]: unknown }; content: { "application/json": components["schemas"]["MarketplaceActionReceipt"] } };
+            403: { headers: { [name: string]: unknown }; content?: never };
+            409: { headers: { [name: string]: unknown }; content?: never };
+            503: { headers: { [name: string]: unknown }; content?: never };
         };
     };
     submitApprovalIntent: {
@@ -1076,7 +1577,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Intent accepted only after a verified backend approval event */
+            /** @description Intent accepted only after an independently verified immutable Evidence authority receipt. A mutable ApprovalCase decision response alone never produces this status. */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -1090,7 +1591,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Approval outcome remains UNKNOWN */
+            /** @description Approval outcome remains UNKNOWN and the same Idempotency-Key is safe to retry. This includes CONTROL_APPROVAL_EVIDENCE_PENDING after the remote authority accepted the decision but did not return an immutable evidence receipt. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1198,12 +1699,12 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Intent accepted; this is not authorization */
+            /** @description Canonical action durably accepted; execution and final evidence remain pending */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: { "application/json": components["schemas"]["EnterpriseActionReceipt"] };
             };
             /** @description Tenant */
             403: {

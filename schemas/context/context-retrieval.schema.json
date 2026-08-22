@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/context/context-retrieval.schema.json",
+  "title": "Authorized Context Retrieval Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "retrieval_id", "subject", "query", "maximum_classification", "jurisdiction", "maximum_results", "requested_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.context-retrieval-request.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "retrieval_id": {"type": "string", "format": "uuid"},
+    "subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "query": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "maximum_classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "jurisdiction": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "maximum_results": {"type": "integer", "minimum": 1, "maximum": 100},
+    "requested_at": {"type": "string", "format": "date-time"}
+  }
+}

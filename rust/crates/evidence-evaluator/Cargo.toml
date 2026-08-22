@@ -7,18 +7,32 @@ rust-version.workspace = true
 
 [dependencies]
 agent-trust-contracts = { path = "../contracts" }
+agent-trust-tool-proxy = { path = "../tool-proxy" }
 agent-trust-transaction-ledger = { path = "../transaction-ledger" }
 async-trait.workspace = true
+axum.workspace = true
+axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
 base64.workspace = true
 chrono.workspace = true
 ed25519-dalek.workspace = true
+http.workspace = true
+hex.workspace = true
+nix = { workspace = true, features = ["user"] }
 parking_lot.workspace = true
+reqwest.workspace = true
+ring.workspace = true
+rustls = { version = "0.23.32", default-features = false, features = ["ring", "std"] }
+rustls-pemfile = "2.2.0"
 serde.workspace = true
 serde_json.workspace = true
 serde_jcs.workspace = true
 sha2.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+url.workspace = true
 uuid.workspace = true
 
 [lints]

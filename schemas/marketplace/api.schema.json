@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/marketplace/api.schema.json",
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "actionReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "action_id", "task_id", "accepted", "execution_pending", "ingress_digest", "ledger_evidence_ref", "ledger_evidence_digest"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.marketplace-action-receipt.v1"},
+        "action_id": {"type": "string", "format": "uuid"},
+        "task_id": {"type": "string", "format": "uuid"},
+        "accepted": {"const": true},
+        "execution_pending": {"const": true},
+        "ingress_digest": {"$ref": "#/$defs/digest"},
+        "ledger_evidence_ref": {"type": "string", "pattern": "^urn:agenttrust:", "maxLength": 2048},
+        "ledger_evidence_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "mutationResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "command_id", "resource_id", "operation", "resource_version", "state", "artifact_digest", "evidence_ref"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.marketplace-mutation-result.v1"},
+        "command_id": {"type": "string", "format": "uuid"},
+        "resource_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "operation": {"type": "string", "pattern": "^[A-Z_]{3,64}$"},
+        "resource_version": {"type": "integer", "minimum": 1},
+        "state": {"type": "string", "minLength": 1, "maxLength": 64},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "evidence_ref": {"type": "string", "pattern": "^urn:agenttrust:marketplace-evidence:", "maxLength": 2048}
+      }
+    },
+    "authoritativePage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "authoritative", "tenant_id", "releases", "installations", "next_after_pack_id", "data_digest"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authoritative-pack-page.v1"},
+        "authoritative": {"const": true},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "releases": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/releaseItem"}},
+        "installations": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/installationItem"}},
+        "next_after_pack_id": {"type": ["string", "null"], "maxLength": 128},
+        "data_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "releaseItem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["release_id", "pack_id", "version", "pack_digest", "publisher_id", "visibility", "entitlement", "allowed_regions", "risk_rating", "compatibility", "certificate_digest", "review_status", "updated_at"],
+      "properties": {
+        "release_id": {"type": "string", "format": "uuid"}, "pack_id": {"type": "string"}, "version": {"type": "string"},
+        "pack_digest": {"$ref": "#/$defs/digest"}, "publisher_id": {"type": "string"}, "visibility": {"enum": ["PRIVATE", "TENANT"]},
+        "entitlement": {"type": "string"}, "allowed_regions": {"type": "array", "items": {"type": "string"}},
+        "risk_rating": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}, "compatibility": {"type": "array", "items": {"type": "string"}},
+        "certificate_digest": {"$ref": "#/$defs/digest"}, "review_status": {"enum": ["SUBMITTED", "PUBLISHED", "REJECTED", "REVOKED"]},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "installationItem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["installation_id", "release_id", "pack_id", "version", "environment", "state", "permission_expansion", "previous_installation_id", "updated_at"],
+      "properties": {
+        "installation_id": {"type": "string", "format": "uuid"}, "release_id": {"type": "string", "format": "uuid"},
+        "pack_id": {"type": "string"}, "version": {"type": "string"}, "environment": {"enum": ["development", "staging", "canary", "production"]},
+        "state": {"enum": ["PENDING_APPROVAL", "APPROVED", "REJECTED", "INSTALLED", "ACTIVE", "INACTIVE", "ROLLED_BACK", "REVOKED"]},
+        "permission_expansion": {"type": "boolean"}, "previous_installation_id": {"type": ["string", "null"], "format": "uuid"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

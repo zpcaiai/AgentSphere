@@ -1,5 +1,8 @@
 //! Incident containment, safe replay, and release gate engine.
 
+pub mod authority;
+pub mod server;
+
 use agent_trust_contracts::{AuthorizationLease, RiskLevel, TaskId, TenantId};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};

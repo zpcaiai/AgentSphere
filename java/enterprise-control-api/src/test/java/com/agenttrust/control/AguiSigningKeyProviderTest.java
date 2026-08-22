@@ -11,6 +11,7 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.util.Base64;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,15 +27,15 @@ class AguiSigningKeyProviderTest {
             + "\n-----END PRIVATE KEY-----\n";
         Path privateKey = secret("agui.pem", pem.getBytes(StandardCharsets.US_ASCII));
         Path hmacKey = secret("resume.key", "0123456789abcdef0123456789abcdef".getBytes(StandardCharsets.US_ASCII));
-        Path token = secret("service.token", "0123456789abcdef".getBytes(StandardCharsets.US_ASCII));
-        var properties = new ControlProperties(List.of("https://console.example.invalid"), token,
-            "p".repeat(32), URI.create("https://idp.example.invalid/tenant"),
+        var properties = new ControlProperties(List.of("https://console.example.invalid"),
+            URI.create("https://idp.example.invalid/tenant"),
             "agenttrust-control", URI.create("https://idp.example.invalid/oauth2/authorize"),
             URI.create("https://idp.example.invalid/oauth2/token"),
             URI.create("https://idp.example.invalid/oauth2/userinfo"),
             URI.create("https://pep.example.invalid"),
+            "agenttrust.pep-readiness.v1",
             URI.create("https://idp.example.invalid/.well-known/jwks.json"),
-            Map.of("tasks", URI.create("https://tasks.example.invalid")), 100, 3_000,
+            authorityEndpoints(), authorityReadinessSchemas(), 100, 3_000,
             1_048_576, privateKey, hmacKey, 300, Path.of("/tmp/client.p12"),
             Path.of("/tmp/client.pass"), Path.of("/tmp/trust.p12"),
             Path.of("/tmp/trust.pass"), true, "agenttrust_enterprise_app", true);
@@ -45,6 +46,24 @@ class AguiSigningKeyProviderTest {
         verifier.initVerify(pair.getPublic());
         verifier.update(event);
         assertTrue(verifier.verify(signed));
+    }
+
+    private static Map<String, URI> authorityEndpoints() {
+        Map<String, URI> values = new LinkedHashMap<>();
+        for (String authority : ControlProperties.REQUIRED_AUTHORITY_ENDPOINTS) {
+            values.put(authority, URI.create("https://" + authority.replace('_', '-')
+                + ".example.invalid"));
+        }
+        return Map.copyOf(values);
+    }
+
+    private static Map<String, String> authorityReadinessSchemas() {
+        Map<String, String> values = new LinkedHashMap<>();
+        for (String authority : ControlProperties.REQUIRED_AUTHORITY_ENDPOINTS) {
+            values.put(authority, "agenttrust." + authority.replace('_', '-')
+                + "-readiness.v1");
+        }
+        return Map.copyOf(values);
     }
 
     private Path secret(String name, byte[] value) throws Exception {

@@ -1,5 +1,6 @@
 package com.agenttrust.control;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +28,8 @@ public final class SessionController {
         var principal = principals.resolve(authentication, null);
         var view = new SessionView("agenttrust.enterprise-session.v1", principal.tenantId(),
             principal.subject(), principal.roles(), principal.projectIds(), principal.approvalIds(),
+            principal.ownedResources(), principal.strongAuth(), principal.authenticationTime(),
+            principal.authenticationContext(),
             csrfToken.getHeaderName(), csrfToken.getToken());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(view);
     }
@@ -45,5 +48,7 @@ public final class SessionController {
 
     public record SessionView(String schemaVersion, UUID tenantId, String subject,
                               Set<String> roles, Set<String> projectIds, Set<String> approvalIds,
+                              Set<String> ownedResources, boolean strongAuth,
+                              Instant authenticationTime, String authenticationContext,
                               String csrfHeaderName, String csrfToken) {}
 }

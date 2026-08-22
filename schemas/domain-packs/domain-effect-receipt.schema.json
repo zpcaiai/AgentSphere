@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/domain-effect-receipt.schema.json",
+  "title": "Typed Domain Runtime effect receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "execution_id", "tool_id", "operation", "resource_key", "resource_version", "before_digest", "target_digest", "executor_identity", "status", "executor_receipt_ref", "executor_receipt_digest", "external_receipt_ref", "external_receipt_digest", "compensation_ref", "started_at", "completed_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-effect-receipt.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "execution_id": {"type": "string", "format": "uuid"},
+    "tool_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 128},
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "resource_version": {"type": "integer", "minimum": 1},
+    "before_digest": {"$ref": "#/$defs/digest"},
+    "target_digest": {"$ref": "#/$defs/digest"},
+    "executor_identity": {"type": "string", "minLength": 1, "maxLength": 512},
+    "status": {"enum": ["OBSERVED", "APPLIED", "COMPENSATED"]},
+    "executor_receipt_ref": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "executor_receipt_digest": {"$ref": "#/$defs/digest"},
+    "external_receipt_ref": {"type": ["string", "null"], "minLength": 1, "maxLength": 2048},
+    "external_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "compensation_ref": {"type": ["string", "null"], "maxLength": 1024},
+    "started_at": {"type": "string", "format": "date-time"},
+    "completed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+  }
+}

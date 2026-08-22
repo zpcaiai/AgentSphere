@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/agent-registry/api.schema.json",
+  "title": "Agent Registry production API contracts",
+  "$defs": {
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "agent_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "governance_context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "action_hash", "policy_decision_id", "policy_decision_digest", "execution_id", "ledger_entry_id", "ledger_entry_digest", "authorization_evidence_ref"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.governed-authority-context.v1"},
+        "action_hash": {"$ref": "#/$defs/digest"},
+        "policy_decision_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"},
+        "policy_decision_digest": {"$ref": "#/$defs/digest"},
+        "execution_id": {"type": "string", "format": "uuid"},
+        "ledger_entry_id": {"type": "string", "format": "uuid"},
+        "ledger_entry_digest": {"$ref": "#/$defs/digest"},
+        "authorization_evidence_ref": {"type": "string", "pattern": "^evidence://[^\\s?#]{1,2037}$"}
+      }
+    },
+    "string_set": {"type": "array", "uniqueItems": true, "maxItems": 2000, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "registration_request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "agent_id", "display_name", "owner_subject", "sponsor_subject", "ownership_review_due_at", "environment", "agent_type", "endpoints", "identity_refs", "tool_refs", "pack_refs", "requested_permissions", "approved_permissions", "bom", "last_activity_at", "provenance_ref", "provenance_digest", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.agent-registration-request.v1"},
+        "tenant_id": {"$ref": "#/$defs/tenant_id"}, "agent_id": {"$ref": "#/$defs/agent_id"},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "owner_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "sponsor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "ownership_review_due_at": {"type": "string", "format": "date-time"},
+        "environment": {"enum": ["DEVELOPMENT", "STAGING", "PRODUCTION"]},
+        "agent_type": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "endpoints": {"type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": true, "items": {"type": "string", "format": "uri", "maxLength": 2048}},
+        "identity_refs": {"allOf": [{"$ref": "#/$defs/string_set"}, {"minItems": 1, "maxItems": 1000}]},
+        "tool_refs": {"allOf": [{"$ref": "#/$defs/string_set"}, {"maxItems": 1000}]},
+        "pack_refs": {"allOf": [{"$ref": "#/$defs/string_set"}, {"maxItems": 1000}]},
+        "requested_permissions": {"$ref": "#/$defs/string_set"}, "approved_permissions": {"$ref": "#/$defs/string_set"},
+        "bom": {"$ref": "agent-bom.schema.json"}, "last_activity_at": {"type": "string", "format": "date-time"},
+        "provenance_ref": {"type": "string", "minLength": 1, "maxLength": 2048}, "provenance_digest": {"$ref": "#/$defs/digest"},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "ownership_assignment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "agent_id", "owner_subject", "sponsor_subject", "review_due_at", "directory_evidence_digest", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.ownership-assignment.v1"}, "tenant_id": {"$ref": "#/$defs/tenant_id"}, "agent_id": {"$ref": "#/$defs/agent_id"},
+        "owner_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "sponsor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "review_due_at": {"type": "string", "format": "date-time"}, "directory_evidence_digest": {"$ref": "#/$defs/digest"},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "ownership_confirmation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "agent_id", "ownership_version", "role", "subject", "confirmation_digest", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.ownership-confirmation.v1"}, "tenant_id": {"$ref": "#/$defs/tenant_id"}, "agent_id": {"$ref": "#/$defs/agent_id"},
+        "ownership_version": {"type": "integer", "minimum": 1}, "role": {"enum": ["OWNER", "SPONSOR"]},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 512}, "confirmation_digest": {"$ref": "#/$defs/digest"},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "discovery_ingest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "observation_id", "source", "collector_id", "endpoint", "claimed_agent_id", "protocol", "observed_component_digests", "observed_at", "payload_digest", "provenance_ref", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.discovery-ingest.v1"}, "tenant_id": {"$ref": "#/$defs/tenant_id"}, "observation_id": {"type": "string", "format": "uuid"},
+        "source": {"enum": ["PROTOCOL_DISCOVERY", "NETWORK_OBSERVATION", "LOG_OBSERVATION", "IMPORT"]},
+        "collector_id": {"type": "string", "minLength": 1, "maxLength": 256}, "endpoint": {"type": "string", "format": "uri", "maxLength": 2048},
+        "claimed_agent_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/agent_id"}]}, "protocol": {"type": "string", "minLength": 1, "maxLength": 64},
+        "observed_component_digests": {"type": "object", "maxProperties": 10000, "additionalProperties": {"$ref": "#/$defs/digest"}},
+        "observed_at": {"type": "string", "format": "date-time"}, "payload_digest": {"$ref": "#/$defs/digest"}, "provenance_ref": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "bom_update": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "agent_id", "bom", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.agent-bom-update-request.v1"},
+        "tenant_id": {"$ref": "#/$defs/tenant_id"}, "agent_id": {"$ref": "#/$defs/agent_id"},
+        "bom": {"$ref": "agent-bom.schema.json"}, "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "relationship_request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "edge_id", "from", "to", "kind", "evidence_digest", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.relationship-edge-request.v1"}, "tenant_id": {"$ref": "#/$defs/tenant_id"}, "edge_id": {"type": "string", "format": "uuid"},
+        "from": {"type": "string", "minLength": 1, "maxLength": 1024}, "to": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "kind": {"enum": ["USES_TOOL", "USES_PACK", "OWNS", "SPONSORED_BY", "OBSERVED_AT", "DELEGATES_TO"]}, "evidence_digest": {"$ref": "#/$defs/digest"},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "posture_evaluation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "inactivity_days", "revoked_activity_grace_seconds", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.posture-evaluation-request.v1"}, "tenant_id": {"$ref": "#/$defs/tenant_id"},
+        "inactivity_days": {"type": "integer", "minimum": 1, "maximum": 365}, "revoked_activity_grace_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "lifecycle_request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "agent_id", "target", "reason_code", "governance"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.agent-lifecycle-request.v1"}, "tenant_id": {"$ref": "#/$defs/tenant_id"}, "agent_id": {"$ref": "#/$defs/agent_id"},
+        "target": {"enum": ["DRAFT", "ACTIVE", "SUSPENDED", "RETIRED", "REVOKED"]}, "reason_code": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+        "governance": {"$ref": "#/$defs/governance_context"}
+      }
+    },
+    "mutation_receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "operation", "resource_id", "changed", "state", "external_evidence_refs", "event_ref", "event_digest", "governance_digest", "result"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.agent-registry-mutation-receipt.v1"}, "operation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "resource_id": {"type": "string", "minLength": 1, "maxLength": 512}, "changed": {"type": "boolean"}, "state": {"type": "string", "minLength": 1, "maxLength": 128},
+        "external_evidence_refs": {"type": "array", "uniqueItems": true, "maxItems": 3, "items": {"type": "string", "pattern": "^evidence://[^\\s?#]{1,2037}$"}},
+        "event_ref": {"type": "string", "pattern": "^agent-registry-event://[0-9a-f-]{36}/[0-9a-f-]{36}$"}, "event_digest": {"$ref": "#/$defs/digest"},
+        "governance_digest": {"$ref": "#/$defs/digest"}, "result": {"type": "object"}
+      }
+    },
+    "agent_inventory_item": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "agent_id", "display_name", "owner_subject", "sponsor_subject", "ownership_status", "environment", "lifecycle", "agent_type", "bom_digest", "endpoint_count", "identity_count", "tool_count", "pack_count", "open_findings", "highest_risk", "last_activity_at", "registered_at", "updated_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.agent-inventory-item.v1"}, "agent_id": {"$ref": "#/$defs/agent_id"}, "display_name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "owner_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "sponsor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "ownership_status": {"enum": ["PENDING", "CONFIRMED"]},
+        "environment": {"enum": ["DEVELOPMENT", "STAGING", "PRODUCTION"]}, "lifecycle": {"enum": ["DRAFT", "ACTIVE", "SUSPENDED", "RETIRED", "REVOKED"]}, "agent_type": {"type": "string", "minLength": 1, "maxLength": 128},
+        "bom_digest": {"$ref": "#/$defs/digest"}, "endpoint_count": {"type": "integer", "minimum": 1, "maximum": 100}, "identity_count": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "tool_count": {"type": "integer", "minimum": 0, "maximum": 1000}, "pack_count": {"type": "integer", "minimum": 0, "maximum": 1000}, "open_findings": {"type": "integer", "minimum": 0},
+        "highest_risk": {"oneOf": [{"type": "null"}, {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}]}, "last_activity_at": {"type": "string", "format": "date-time"},
+        "registered_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "agent_page": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "authoritative", "tenant_id", "resource", "items", "next_cursor", "data_digest"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authoritative-agent-page.v1"}, "authoritative": {"const": true}, "tenant_id": {"$ref": "#/$defs/tenant_id"},
+        "resource": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,99}$"}, "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/agent_inventory_item"}},
+        "next_cursor": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,5462}$"}]}, "data_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "posture_finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "finding_id", "agent_id", "observation_id", "kind", "severity", "reason_code", "evidence_digest", "detected_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.posture-finding-view.v1"}, "finding_id": {"type": "string", "format": "uuid"},
+        "agent_id": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/agent_id"}]}, "observation_id": {"oneOf": [{"type": "null"}, {"type": "string", "format": "uuid"}]},
+        "kind": {"enum": ["SHADOW", "ORPHAN", "DORMANT", "OVERPRIVILEGED", "DRIFTED", "REVOKED_BUT_ACTIVE"]}, "severity": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+        "reason_code": {"type": "string", "minLength": 1, "maxLength": 128}, "evidence_digest": {"$ref": "#/$defs/digest"}, "detected_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "posture_page": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "authoritative", "tenant_id", "items", "next_cursor", "data_digest"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authoritative-posture-page.v1"}, "authoritative": {"const": true}, "tenant_id": {"$ref": "#/$defs/tenant_id"},
+        "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/posture_finding"}}, "next_cursor": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,5462}$"}]}, "data_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "relationship_edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "edge_id", "from", "to", "kind", "evidence_digest", "created_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.relationship-edge-view.v1"}, "edge_id": {"type": "string", "format": "uuid"},
+        "from": {"type": "string", "minLength": 1, "maxLength": 1024}, "to": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "kind": {"enum": ["USES_TOOL", "USES_PACK", "OWNS", "SPONSORED_BY", "OBSERVED_AT", "DELEGATES_TO"]}, "evidence_digest": {"$ref": "#/$defs/digest"}, "created_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "relationship_page": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "authoritative", "tenant_id", "root", "maximum_depth", "items", "data_digest"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authoritative-relationship-page.v1"}, "authoritative": {"const": true}, "tenant_id": {"$ref": "#/$defs/tenant_id"},
+        "root": {"type": "string", "minLength": 1, "maxLength": 1024}, "maximum_depth": {"type": "integer", "minimum": 1, "maximum": 5},
+        "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/relationship_edge"}}, "data_digest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

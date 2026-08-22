@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/domain-evaluator-result.schema.json",
+  "title": "Typed Domain Runtime evaluator result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "domain", "operation", "resource_key", "before_digest", "target_digest", "checks", "reason_codes", "conclusion", "evaluated_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-evaluator-result.v1"},
+    "domain": {"enum": ["CODING", "INDUSTRIAL", "ENERGY", "MEDICAL", "SENSITIVE"]},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 128},
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "before_digest": {"$ref": "#/$defs/digest"},
+    "target_digest": {"$ref": "#/$defs/digest"},
+    "checks": {
+      "type": "object",
+      "minProperties": 5,
+      "maxProperties": 5,
+      "propertyNames": {"enum": ["build_test_gate", "command_template", "dependency_lock", "path_scope", "secret_scan", "alarm_clear", "interlock_healthy", "quality_good", "rate_limit", "state_fresh", "fallback_ready", "forecast_valid", "hard_constraints", "not_ood", "telemetry_fresh", "clinical_evidence", "minimum_necessary", "patient_match", "privacy_boundary", "professional_review", "citation_integrity", "consent", "escalation", "manipulation_absent", "relationship_boundary"]},
+      "additionalProperties": {"type": "boolean"}
+    },
+    "reason_codes": {"type": "array", "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+    "conclusion": {"enum": ["PASS", "FAIL", "NEEDS_HUMAN", "MANUAL_RECOVERY"]},
+    "evaluated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

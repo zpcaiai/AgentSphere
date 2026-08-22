@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/platform-sre/sre-engine-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "report_id", "tenant_id", "command_id", "operation", "resource", "resource_version", "result_digest", "external_evidence_status", "evidence_refs", "evidence_digests", "engine_report_only", "production_certification", "issued_at", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.sre-engine-report.v1"},
+    "report_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "operation": {"type": "string"},
+    "resource": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "resource_version": {"type": "integer", "minimum": 1},
+    "result_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "external_evidence_status": {"enum": ["NOT_RUN", "OBSERVED", "VERIFIED"]},
+    "evidence_refs": {"type": "array", "minItems": 1, "maxItems": 129, "uniqueItems": true, "items": {"type": "string", "pattern": "^(evidence://|urn:agenttrust:evidence:)"}},
+    "evidence_digests": {"type": "array", "minItems": 1, "maxItems": 129, "uniqueItems": true, "items": {"type": "string", "pattern": "^[0-9a-f]{64}$"}},
+    "engine_report_only": {"const": true},
+    "production_certification": {"const": false},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "signature": {"type": "string", "minLength": 64, "maxLength": 1024}
+  }
+}

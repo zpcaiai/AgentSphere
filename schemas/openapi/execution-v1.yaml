@@ -11,9 +11,16 @@ x-agenttrust-outbound-contracts:
   pepPreApproval:
     method: POST
     path: /v1/authorize/pre-approval
-    requestSchema: agenttrust.pre-execution-request.v1
+    requestSchema: agenttrust.pre-approval-request.v1
     responseSchema: agenttrust.pre-approval-outcome.v1
     description: Determines authoritative dynamic approval requirements before grant consumption.
+  pepExecutionAuthorization:
+    method: POST
+    path: /v1/authorize/execution
+    requestSchema: agenttrust.final-authorization-request.v1
+    responseSchema: agenttrust.pre-execution-authorization.v1
+    fenceHeader: X-AgentTrust-Fence-Digest
+    description: Re-evaluates the signed facts only after a durable ledger reservation exists.
   approvalGrantConsumption:
     method: POST
     path: /v1/approvals/grants/consume
@@ -21,6 +28,20 @@ x-agenttrust-outbound-contracts:
     responseSchema: agenttrust.approval-grant-receipt.v1
     idempotencyKey: action_hash
     description: Atomically consumes a signed, action/plan/parameter/policy-bound single-use grant.
+  toolExecution:
+    method: POST
+    path: /v1/tools/execute
+    requestSchema: agenttrust.authorized-tool-request.v1
+    responseSchema: agenttrust.proxy.v1
+    fenceHeader: X-AgentTrust-Fence-Digest
+    description: Executes only an exact registry, credential, authorization, fence, and argument binding.
+  executionEvidence:
+    method: POST
+    path: /v1/evidence/executions
+    requestSchema: agenttrust.execution-evidence-request.v1
+    responseSchema: agenttrust.execution-evidence-receipt.v1
+    fenceHeader: X-AgentTrust-Fence-Digest
+    description: Persists and signs the exact execution, authorization, request, result, and chain binding.
 paths:
   /v1/executions/execute:
     post:
@@ -141,6 +162,481 @@ components:
           maxItems: 1024
           items: {type: string, minLength: 1, maxLength: 2048}
         action_materialization: {$ref: '#/components/schemas/ActionMaterializationRef'}
+    CanonicalAction:
+      $ref: ../json/action.schema.json
+    ToolRef:
+      type: object
+      additionalProperties: false
+      required: [tool_id, tool_version]
+      properties:
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        tool_version: {type: string, minLength: 1, maxLength: 256}
+    ResolvedToolSnapshot:
+      $ref: ./registry-v1.yaml#/components/schemas/ResolvedToolSnapshot
+    PolicyInput:
+      type: object
+      additionalProperties: false
+      required: [subject, intent, tool, arguments, resource, environment, current_state_version, execution_plan_hash, data_classification, trajectory_risk, registry_snapshot_hash, runtime]
+      properties:
+        subject: {type: object}
+        intent: {type: object}
+        tool: {type: object}
+        arguments: {type: object}
+        resource: {type: object}
+        environment: {type: object}
+        current_state_version: {type: [string, 'null'], minLength: 1, maxLength: 256}
+        execution_plan_hash:
+          anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]
+        data_classification: {enum: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED, REGULATED]}
+        trajectory_risk: {type: object}
+        registry_snapshot_hash: {$ref: '#/components/schemas/Digest'}
+        runtime: {type: object}
+    PolicyDecision:
+      type: object
+      additionalProperties: false
+      required: [schema_version, decision_id, decision, reason_codes, policy_version, policy_bundle_hash, input_hash, evaluated_at, expires_at, obligations, risk_summary]
+      properties:
+        schema_version: {const: agenttrust.policy.v1}
+        decision_id: {type: string, minLength: 1, maxLength: 256}
+        decision: {enum: [ALLOW, DENY, REQUIRE_APPROVAL, PAUSE, KILL]}
+        reason_codes: {type: array, maxItems: 128, items: {type: string, maxLength: 256}}
+        policy_version: {type: string, minLength: 1, maxLength: 256}
+        policy_bundle_hash: {$ref: '#/components/schemas/Digest'}
+        input_hash: {$ref: '#/components/schemas/Digest'}
+        evaluated_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        obligations: {type: array, maxItems: 128, items: {type: object}}
+        risk_summary: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}
+    AuthoritativeFactRef:
+      type: object
+      additionalProperties: false
+      required: [kind, status, uri, digest, version, observed_at, valid_until]
+      properties:
+        kind: {enum: [IDENTITY, RESOURCE_STATE, BUDGET, TRAJECTORY_RISK, REGISTRY, ENVIRONMENT]}
+        status: {enum: [VERIFIED, UNKNOWN, STALE, ERROR]}
+        uri: {type: string, minLength: 1, maxLength: 2048}
+        digest: {$ref: '#/components/schemas/Digest'}
+        version: {type: string, minLength: 1, maxLength: 256}
+        observed_at: {type: string, format: date-time}
+        valid_until: {type: string, format: date-time}
+    AuthoritativeFactSnapshot:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, action_hash, identity_subject, identity_uses_dev_verifier, identity_revocation_epoch, resource_state_version, resource_state_fresh, budget_remaining_microunits, trajectory_risk_version, accumulated_resources, anomaly_score_millionths, fact_refs, captured_at, expires_at, snapshot_digest]
+      properties:
+        schema_version: {const: agenttrust.authoritative-fact-snapshot.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        identity_subject: {type: [string, 'null'], minLength: 1, maxLength: 512}
+        identity_uses_dev_verifier: {type: [boolean, 'null']}
+        identity_revocation_epoch: {type: [integer, 'null'], minimum: 0}
+        resource_state_version: {type: [string, 'null'], minLength: 1, maxLength: 256}
+        resource_state_fresh: {type: [boolean, 'null']}
+        budget_remaining_microunits: {type: [integer, 'null'], minimum: 0}
+        trajectory_risk_version: {type: [string, 'null'], minLength: 1, maxLength: 256}
+        accumulated_resources: {type: [array, 'null'], maxItems: 4096, items: {type: string, maxLength: 2048}}
+        anomaly_score_millionths: {type: [integer, 'null'], minimum: 0, maximum: 1000000}
+        fact_refs: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {$ref: '#/components/schemas/AuthoritativeFactRef'}}
+        captured_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        snapshot_digest: {$ref: '#/components/schemas/Digest'}
+    SignedPreApprovalOutcome:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, step_id, action_hash, tool_id, tool_version, tool_snapshot_hash, stage, idempotency_key, request_digest, fact_snapshot, fact_snapshot_digest, execution_plan_digest, approval_required, decision, issued_at, expires_at, issuer, key_id, key_usage, signature]
+      properties:
+        schema_version: {const: agenttrust.pre-approval-outcome.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        tool_version: {type: string, minLength: 1, maxLength: 256}
+        tool_snapshot_hash: {$ref: '#/components/schemas/Digest'}
+        stage: {const: PRE_APPROVAL}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        request_digest: {$ref: '#/components/schemas/Digest'}
+        fact_snapshot: {$ref: '#/components/schemas/AuthoritativeFactSnapshot'}
+        fact_snapshot_digest: {$ref: '#/components/schemas/Digest'}
+        execution_plan_digest: {anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]}
+        approval_required: {type: boolean}
+        decision: {$ref: '#/components/schemas/PolicyDecision'}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_usage: {const: PEP_PRE_APPROVAL}
+        signature: {type: string, minLength: 1, maxLength: 256}
+    PreApprovalRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action, action_hash, tool, idempotency_key, requested_at]
+      properties:
+        schema_version: {const: agenttrust.pre-approval-request.v1}
+        action: {$ref: '#/components/schemas/CanonicalAction'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        tool: {$ref: '#/components/schemas/ResolvedToolSnapshot'}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        requested_at: {type: string, format: date-time}
+    PreApprovalEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, signed_outcome, compensation_plan]
+      properties:
+        schema_version: {const: agenttrust.pre-approval-envelope.v1}
+        signed_outcome: {$ref: '#/components/schemas/SignedPreApprovalOutcome'}
+        compensation_plan: {type: [object, 'null']}
+    MinimalApprovalGrant:
+      type: object
+      additionalProperties: false
+      required: [schema_version, approval_id, task_id, step_id, action_hash, resource_version, policy_version, approver_subject, approver_roles, expires_at, single_use]
+      properties:
+        schema_version: {type: string, minLength: 1}
+        approval_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        resource_version: {type: string, minLength: 1, maxLength: 256}
+        policy_version: {type: string, minLength: 1, maxLength: 256}
+        approver_subject: {type: string, minLength: 1, maxLength: 512}
+        approver_roles: {type: array, minItems: 1, maxItems: 64, items: {type: string, maxLength: 256}}
+        expires_at: {type: string, format: date-time}
+        single_use: {const: true}
+    ApprovalGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, step_id, action_hash, plan_hash, parameter_hash, resource, resource_version, policy_version, environment, maximum_risk]
+      properties:
+        schema_version: {const: agenttrust.approval-grant-request.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        plan_hash: {$ref: '#/components/schemas/Digest'}
+        parameter_hash: {$ref: '#/components/schemas/Digest'}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        resource_version: {type: string, minLength: 1, maxLength: 256}
+        policy_version: {type: string, minLength: 1, maxLength: 256}
+        environment: {type: string, minLength: 1, maxLength: 128}
+        maximum_risk: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}
+    EnterpriseApprovalGrant:
+      type: object
+      additionalProperties: false
+      required: [schema_version, grant_id, case_id, tenant_id, task_id, step_id, action_hash, plan_hash, parameter_hash, resource, resource_version, policy_version, environment, maximum_risk, approver_subjects, issued_at, expires_at, maximum_uses, break_glass, issuer, key_id, signature]
+      properties:
+        schema_version: {const: agenttrust.enterprise-approval.v1}
+        grant_id: {$ref: '#/components/schemas/Uuid'}
+        case_id: {$ref: '#/components/schemas/Uuid'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        plan_hash: {$ref: '#/components/schemas/Digest'}
+        parameter_hash: {$ref: '#/components/schemas/Digest'}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        resource_version: {type: string, minLength: 1, maxLength: 256}
+        policy_version: {type: string, minLength: 1, maxLength: 256}
+        environment: {type: string, minLength: 1, maxLength: 128}
+        maximum_risk: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}
+        approver_subjects: {type: array, minItems: 1, maxItems: 64, uniqueItems: true, items: {type: string, maxLength: 512}}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        maximum_uses: {const: 1}
+        break_glass: {type: boolean}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        signature: {type: string, minLength: 1, maxLength: 256}
+    ApprovalGrantReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, grant, consumed_at, remaining_uses, consumption_ref]
+      properties:
+        schema_version: {const: agenttrust.approval-grant-receipt.v1}
+        grant: {$ref: '#/components/schemas/EnterpriseApprovalGrant'}
+        consumed_at: {type: string, format: date-time}
+        remaining_uses: {const: 0}
+        consumption_ref: {type: string, minLength: 1, maxLength: 2048}
+    FinalAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, stage, action, action_hash, tool, policy_input, preapproval, approval, approval_consumption_ref, approval_receipt_digest, ledger_execution_id, ledger_event_id, ledger_event_digest, fence_digest, idempotency_key, requested_at]
+      properties:
+        schema_version: {const: agenttrust.final-authorization-request.v1}
+        stage: {const: PRE_EXECUTION}
+        action: {$ref: '#/components/schemas/CanonicalAction'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        tool: {$ref: '#/components/schemas/ResolvedToolSnapshot'}
+        policy_input: {$ref: '#/components/schemas/PolicyInput'}
+        preapproval: {$ref: '#/components/schemas/SignedPreApprovalOutcome'}
+        approval: {anyOf: [{$ref: '#/components/schemas/MinimalApprovalGrant'}, {type: 'null'}]}
+        approval_consumption_ref: {type: [string, 'null'], maxLength: 2048}
+        approval_receipt_digest: {anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]}
+        ledger_execution_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_digest: {$ref: '#/components/schemas/Digest'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        requested_at: {type: string, format: date-time}
+    ExecutionAuthorization:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authorization_id, tenant_id, task_id, step_id, agent_instance_id, action_hash, tool_id, tool_version, tool_snapshot_hash, implementation_digest, executor_profile, operation, resource, canonical_arguments_hash, target_profile, environment, idempotency_key, ledger_execution_id, ledger_event_id, ledger_event_digest, fence_digest, policy_decision_id, policy_decision_digest, policy_version, policy_bundle_hash, policy_input_hash, authorization_evidence_ref, authorization_evidence_digest, preapproval_digest, approval_ids, approval_consumption_ref, approval_receipt_digest, resource_version, sandbox_profile, network_profile, credential_profile, workload_credential_id, workload_credential_claims_digest, workload_credential_audience, workload_credential_revocation_epoch, max_execution_ms, max_result_bytes, issued_at, expires_at, single_use, issuer, key_id, key_usage, signature]
+      properties:
+        schema_version: {const: agenttrust.execution-authorization.v2}
+        authorization_id: {$ref: '#/components/schemas/Uuid'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        agent_instance_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        tool_version: {type: string, minLength: 1, maxLength: 256}
+        tool_snapshot_hash: {$ref: '#/components/schemas/Digest'}
+        implementation_digest: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        executor_profile: {type: string, minLength: 1, maxLength: 256}
+        operation: {type: string, minLength: 1, maxLength: 256}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        canonical_arguments_hash: {$ref: '#/components/schemas/Digest'}
+        target_profile: {type: string, minLength: 1, maxLength: 256}
+        environment: {type: string, minLength: 1, maxLength: 128}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        ledger_execution_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_digest: {$ref: '#/components/schemas/Digest'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        policy_decision_id: {type: string, minLength: 1, maxLength: 256}
+        policy_decision_digest: {$ref: '#/components/schemas/Digest'}
+        policy_version: {type: string, minLength: 1, maxLength: 256}
+        policy_bundle_hash: {$ref: '#/components/schemas/Digest'}
+        policy_input_hash: {$ref: '#/components/schemas/Digest'}
+        authorization_evidence_ref: {type: string, pattern: '^urn:agenttrust:pep-authorization:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:sha256:[0-9a-f]{64}$', maxLength: 256}
+        authorization_evidence_digest: {$ref: '#/components/schemas/Digest'}
+        preapproval_digest: {$ref: '#/components/schemas/Digest'}
+        approval_ids: {type: array, maxItems: 64, uniqueItems: true, items: {$ref: '#/components/schemas/Uuid'}}
+        approval_consumption_ref: {type: [string, 'null'], maxLength: 2048}
+        approval_receipt_digest: {anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]}
+        resource_version: {type: string, minLength: 1, maxLength: 256}
+        sandbox_profile: {type: string, minLength: 1, maxLength: 256}
+        network_profile: {type: string, minLength: 1, maxLength: 256}
+        credential_profile: {type: string, minLength: 1, maxLength: 256}
+        workload_credential_id: {$ref: '#/components/schemas/Uuid'}
+        workload_credential_claims_digest: {$ref: '#/components/schemas/Digest'}
+        workload_credential_audience: {const: tool-proxy}
+        workload_credential_revocation_epoch: {type: integer, minimum: 0}
+        max_execution_ms: {type: integer, minimum: 1}
+        max_result_bytes: {type: integer, minimum: 1}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        single_use: {const: true}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_usage: {const: PEP_EXECUTION_AUTHORIZATION}
+        signature: {type: string, minLength: 1, maxLength: 256}
+    WorkloadCredentialClaims:
+      type: object
+      additionalProperties: false
+      required: [schema_version, idempotency_key, credential_id, tenant_id, agent_instance_id, task_id, step_id, action_hash, policy_decision_id, tool_id, credential_profile, operation, resource, target_profile, audience, revocation_epoch, issued_at, expires_at, max_uses]
+      properties:
+        schema_version: {const: agenttrust.workload-credential-claims.v1}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        credential_id: {$ref: '#/components/schemas/Uuid'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        agent_instance_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        policy_decision_id: {type: string, minLength: 1, maxLength: 256}
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        credential_profile: {type: string, minLength: 1, maxLength: 256}
+        operation: {type: string, minLength: 1, maxLength: 256}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        target_profile: {type: string, minLength: 1, maxLength: 256}
+        audience: {const: tool-proxy}
+        revocation_epoch: {type: integer, minimum: 0}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        max_uses: {const: 1}
+    SignedWorkloadCredentialBindingReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, credential_handle_sha256, claims, claims_digest, issuer, key_id, key_usage, signature]
+      properties:
+        schema_version: {const: agenttrust.credential-binding-receipt.v1}
+        credential_handle_sha256: {$ref: '#/components/schemas/Digest'}
+        claims: {$ref: '#/components/schemas/WorkloadCredentialClaims'}
+        claims_digest: {$ref: '#/components/schemas/Digest'}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_usage: {const: WORKLOAD_CREDENTIAL_BINDING}
+        signature: {type: string, minLength: 1, maxLength: 256}
+    WorkloadCredentialIssuance:
+      type: object
+      additionalProperties: false
+      required: [workload_credential, binding_receipt]
+      properties:
+        workload_credential: {type: string, minLength: 1, maxLength: 2048, writeOnly: true}
+        binding_receipt: {$ref: '#/components/schemas/SignedWorkloadCredentialBindingReceipt'}
+    WorkloadCredentialConsumptionRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, idempotency_key, credential_handle, binding_receipt, tenant_id, agent_instance_id, task_id, step_id, action_hash, policy_decision_id, tool_id, credential_profile, operation, resource, target_profile, audience, revocation_epoch, claims_digest]
+      properties:
+        schema_version: {const: agenttrust.credential-consumption-request.v1}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        credential_handle: {type: string, minLength: 1, maxLength: 2048, writeOnly: true}
+        binding_receipt: {$ref: '#/components/schemas/SignedWorkloadCredentialBindingReceipt'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        agent_instance_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        policy_decision_id: {type: string, minLength: 1, maxLength: 256}
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        credential_profile: {type: string, minLength: 1, maxLength: 256}
+        operation: {type: string, minLength: 1, maxLength: 256}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        target_profile: {type: string, minLength: 1, maxLength: 256}
+        audience: {const: tool-proxy}
+        revocation_epoch: {type: integer, minimum: 0}
+        claims_digest: {$ref: '#/components/schemas/Digest'}
+    SignedWorkloadCredentialConsumptionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, idempotency_key, consumption_id, credential_id, tenant_id, action_hash, audience, revocation_epoch, claims_digest, scope_digest, consumed_at, remaining_uses, issuer, key_id, key_usage, signature]
+      properties:
+        schema_version: {const: agenttrust.credential-consumption-receipt.v1}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        consumption_id: {$ref: '#/components/schemas/Uuid'}
+        credential_id: {$ref: '#/components/schemas/Uuid'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        audience: {const: tool-proxy}
+        revocation_epoch: {type: integer, minimum: 0}
+        claims_digest: {$ref: '#/components/schemas/Digest'}
+        scope_digest: {$ref: '#/components/schemas/Digest'}
+        consumed_at: {type: string, format: date-time}
+        remaining_uses: {const: 0}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_usage: {const: WORKLOAD_CREDENTIAL_CONSUMPTION}
+        signature: {type: string, minLength: 1, maxLength: 256}
+    PreExecutionAuthorization:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authorization, tool, workload_credential, credential_binding_receipt, target_profile, approval]
+      properties:
+        schema_version: {const: agenttrust.pre-execution-authorization.v1}
+        authorization: {$ref: '#/components/schemas/ExecutionAuthorization'}
+        tool: {$ref: '#/components/schemas/ResolvedToolSnapshot'}
+        workload_credential: {type: string, minLength: 1, maxLength: 2048, writeOnly: true}
+        credential_binding_receipt: {$ref: '#/components/schemas/SignedWorkloadCredentialBindingReceipt'}
+        target_profile: {type: string, minLength: 1, maxLength: 256}
+        approval: {anyOf: [{$ref: '#/components/schemas/MinimalApprovalGrant'}, {type: 'null'}]}
+    AuthorizedToolRequest:
+      type: object
+      additionalProperties: false
+      required: [authorization, tool, tenant_id, ledger_execution_id, ledger_event_id, ledger_event_digest, fence_digest, idempotency_key, workload_credential, credential_binding_receipt, operation, resource, resource_version, target_profile, environment, arguments, trace_id]
+      properties:
+        authorization: {$ref: '#/components/schemas/ExecutionAuthorization'}
+        tool: {$ref: '#/components/schemas/ResolvedToolSnapshot'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_execution_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_digest: {$ref: '#/components/schemas/Digest'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        workload_credential: {type: string, minLength: 1, maxLength: 2048, writeOnly: true}
+        credential_binding_receipt: {$ref: '#/components/schemas/SignedWorkloadCredentialBindingReceipt'}
+        operation: {type: string, minLength: 1, maxLength: 256}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        resource_version: {type: string, minLength: 1, maxLength: 256}
+        target_profile: {type: string, minLength: 1, maxLength: 256}
+        environment: {type: string, minLength: 1, maxLength: 128}
+        arguments: {type: object, maxProperties: 256}
+        trace_id: {type: string, minLength: 1, maxLength: 256}
+    SanitizedToolResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, value, artifact_ref, redacted_paths, untrusted_content, result_hash, credential_consumption_receipt]
+      properties:
+        schema_version: {const: agenttrust.proxy.v1}
+        value: {}
+        artifact_ref: {type: [string, 'null'], maxLength: 2048}
+        redacted_paths: {type: array, maxItems: 4096, items: {type: string, maxLength: 2048}}
+        untrusted_content: {type: boolean}
+        result_hash: {$ref: '#/components/schemas/Digest'}
+        credential_consumption_receipt: {$ref: '#/components/schemas/SignedWorkloadCredentialConsumptionReceipt'}
+    EvidenceEventDraft:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, task_id, event_type, actor_subject, source_service, trace_id, span_id, payload_hash, safe_summary, artifact_refs, occurred_at]
+      properties:
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        event_type: {enum: [TASK_CREATED, PLAN_GENERATED, POLICY_EVALUATED, APPROVAL_DECISION, CREDENTIAL_ISSUED, TOOL_PREPARED, TOOL_EXECUTED, COMPENSATION, EVALUATION, SECURITY_ALERT, STATE_TRANSITION]}
+        actor_subject: {type: string, minLength: 1, maxLength: 512}
+        source_service: {type: string, minLength: 1, maxLength: 256}
+        trace_id: {type: string, minLength: 1, maxLength: 256}
+        span_id: {type: string, minLength: 1, maxLength: 256}
+        payload_hash: {$ref: '#/components/schemas/Digest'}
+        safe_summary: {type: string, maxLength: 2048}
+        artifact_refs: {type: array, maxItems: 1024, items: {type: string, maxLength: 2048}}
+        occurred_at: {type: string, format: date-time}
+    SignedEvidenceEvent:
+      type: object
+      additionalProperties: false
+      required: [schema_version, event_id, sequence, previous_hash, event_hash, key_id, signature, draft]
+      properties:
+        schema_version: {const: agenttrust.evidence.v1}
+        event_id: {$ref: '#/components/schemas/Uuid'}
+        sequence: {type: integer, minimum: 1}
+        previous_hash: {$ref: '#/components/schemas/Digest'}
+        event_hash: {$ref: '#/components/schemas/Digest'}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        signature: {type: string, minLength: 1, maxLength: 256}
+        draft: {$ref: '#/components/schemas/EvidenceEventDraft'}
+    ExecutionEvidenceRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, step_id, execution_id, fence_digest, action_hash, authorization_id, authorization_digest, idempotency_key, result, event]
+      properties:
+        schema_version: {const: agenttrust.execution-evidence-request.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        execution_id: {$ref: '#/components/schemas/Uuid'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        authorization_id: {$ref: '#/components/schemas/Uuid'}
+        authorization_digest: {$ref: '#/components/schemas/Digest'}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        result: {$ref: '#/components/schemas/SanitizedToolResult'}
+        event: {$ref: '#/components/schemas/EvidenceEventDraft'}
+    SignedExecutionEvidenceReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, step_id, execution_id, action_hash, authorization_id, authorization_digest, fence_digest, idempotency_key, request_digest, result_hash, chain_head, evidence_ref, event, persisted_at, issuer, key_id, key_usage, signature]
+      properties:
+        schema_version: {const: agenttrust.execution-evidence-receipt.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        execution_id: {$ref: '#/components/schemas/Uuid'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        authorization_id: {$ref: '#/components/schemas/Uuid'}
+        authorization_digest: {$ref: '#/components/schemas/Digest'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        request_digest: {$ref: '#/components/schemas/Digest'}
+        result_hash: {$ref: '#/components/schemas/Digest'}
+        chain_head: {$ref: '#/components/schemas/Digest'}
+        evidence_ref: {type: string, pattern: '^evidence://', maxLength: 2048}
+        event: {$ref: '#/components/schemas/SignedEvidenceEvent'}
+        persisted_at: {type: string, format: date-time}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_usage: {const: EVIDENCE_EXECUTION_RECEIPT}
+        signature: {type: string, minLength: 1, maxLength: 256}
     Ready:
       type: object
       additionalProperties: false

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/authority-evidence-event-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "task_id", "authority_event_id",
+    "idempotency_key", "source_kind", "control_binding", "event", "requested_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.authority-evidence-event-request.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "authority_event_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "source_kind": {"enum": ["GOVERNED_ACTION", "AUTHENTICATED_EVENT"]},
+    "control_binding": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action_hash", "ledger_execution_id", "ledger_event_id",
+            "ledger_event_digest", "fence_digest", "policy_decision_id",
+            "policy_decision_digest", "authorization_evidence_ref",
+            "authorization_evidence_digest"
+          ],
+          "properties": {
+            "action_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "ledger_execution_id": {"type": "string", "format": "uuid"},
+            "ledger_event_id": {"type": "string", "format": "uuid"},
+            "ledger_event_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "fence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "policy_decision_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "policy_decision_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+            "authorization_evidence_ref": {"type": "string", "minLength": 1, "maxLength": 2048},
+            "authorization_evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+          }
+        }
+      ]
+    },
+    "event": {
+      "allOf": [
+        {"$ref": "../openapi/execution-v1.yaml#/components/schemas/EvidenceEventDraft"},
+        {
+          "properties": {
+            "event_type": {
+              "not": {"enum": ["TASK_CREATED", "PLAN_GENERATED", "TOOL_EXECUTED"]}
+            }
+          }
+        }
+      ]
+    },
+    "requested_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"source_kind": {"const": "GOVERNED_ACTION"}}},
+      "then": {"properties": {"control_binding": {"type": "object"}}},
+      "else": {"properties": {"control_binding": {"type": "null"}}}
+    }
+  ]
+}

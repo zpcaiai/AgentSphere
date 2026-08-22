@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/token-bindings.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.evidence-token-bindings.v1"},
+    "bindings": {
+      "type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):.+$", "maxLength": 512},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "pattern": "^(DNS|URI):.+$", "maxLength": 512,
+            "description": "Must exactly equal client_identity; actor_subject remains the governed human or workload recorded by the authenticated authority."},
+          "scope": {"enum": ["evidence:append", "evidence:event", "evidence:authority-event", "evidence:read", "evidence:artifact", "evidence:package", "evidence:evaluate"]},
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

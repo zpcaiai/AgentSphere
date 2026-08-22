@@ -22,6 +22,16 @@ use uuid::Uuid;
 
 pub const IDENTITY_SCHEMA_VERSION: &str = "agenttrust.identity.v1";
 
+mod production;
+pub mod server;
+pub use production::{
+    CredentialAuthoritySigner, CredentialLifecycleReceipt, CredentialLifecycleRequest,
+    IdentityResponseProtector, PostgresCredentialAuthority,
+    SignedWorkloadCredentialConsumptionReceipt, WORKLOAD_CREDENTIAL_CONSUMPTION_KEY_USAGE,
+    WORKLOAD_CREDENTIAL_CONSUMPTION_RECEIPT_SCHEMA_VERSION,
+    WORKLOAD_CREDENTIAL_CONSUMPTION_REQUEST_SCHEMA_VERSION, WorkloadCredentialConsumptionRequest,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeProfile {
     Development,
@@ -121,9 +131,15 @@ pub struct WorkloadTokenRequest {
     pub ttl: chrono::Duration,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 pub struct CredentialHandle(pub String);
+
+impl fmt::Debug for CredentialHandle {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("CredentialHandle([REDACTED])")
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1129,6 +1145,28 @@ pub enum IdentityError {
     CertificateInvalid,
     #[error("IDENTITY_JWKS_INVALID")]
     JwksInvalid,
+    #[error("IDENTITY_STORE_FAILURE")]
+    StoreFailure,
+    #[error("IDENTITY_IDEMPOTENCY_INVALID")]
+    IdempotencyInvalid,
+    #[error("IDENTITY_IDEMPOTENCY_CONFLICT")]
+    IdempotencyConflict,
+    #[error("IDENTITY_IDEMPOTENCY_REPLAY_EXPIRED")]
+    IdempotencyReplayExpired,
+    #[error("IDENTITY_REQUEST_INVALID")]
+    RequestInvalid,
+    #[error("IDENTITY_MANAGEMENT_FORBIDDEN")]
+    ManagementForbidden,
+    #[error("IDENTITY_RESPONSE_PROTECTION_INVALID")]
+    ResponseProtectionInvalid,
+    #[error("IDENTITY_SIGNING_KEY_INVALID")]
+    SigningKeyInvalid,
+    #[error("IDENTITY_TASK_FROZEN")]
+    TaskFrozen,
+    #[error("IDENTITY_SUBJECT_REVOKED")]
+    SubjectRevoked,
+    #[error("IDENTITY_IN_MEMORY_PRODUCTION_FORBIDDEN")]
+    InMemoryProductionForbidden,
 }
 
 #[cfg(test)]
@@ -1481,5 +1519,13 @@ mod tests {
                 .map(|principal| principal.tenant_id),
             Ok(request.principal.tenant_id)
         );
+    }
+
+    #[test]
+    fn credential_handle_debug_is_redacted() {
+        let handle = CredentialHandle("credential-bearer-secret".into());
+        let rendered = format!("{handle:?}");
+        assert!(rendered.contains("[REDACTED]"));
+        assert!(!rendered.contains("credential-bearer-secret"));
     }
 }

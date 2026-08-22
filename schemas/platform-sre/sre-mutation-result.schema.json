@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/platform-sre/sre-mutation-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "resource", "operation", "resource_version", "state", "result_digest", "evidence_outbox_ref", "external_receipt", "engine_report"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.sre-mutation-result.v1"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "resource": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "operation": {"type": "string"},
+    "resource_version": {"type": "integer", "minimum": 1},
+    "state": {"type": "string", "minLength": 1, "maxLength": 128},
+    "result_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evidence_outbox_ref": {"type": "string", "pattern": "^outbox://sre-evidence/", "maxLength": 4096},
+    "external_receipt": {"oneOf": [{"$ref": "sre-external-receipt.schema.json"}, {"type": "null"}]},
+    "engine_report": {"$ref": "sre-engine-report.schema.json"}
+  }
+}

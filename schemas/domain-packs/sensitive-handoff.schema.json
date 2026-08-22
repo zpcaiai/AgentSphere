@@ -1,12 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/domain-packs/sensitive-handoff.schema.json",
   "title": "Sensitive Interaction Handoff", "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "tenant_id", "handoff_id", "conversation_hash", "region_code", "risk_level", "destination_type", "source_directory_version", "status"],
+  "required": ["schema_version", "tenant_id", "handoff_id", "conversation_hash", "region_code", "risk_level", "destination_type", "dynamic_region_directory_digest", "minimum_safe_context_digest", "ordinary_agent_paused", "status"],
   "properties": {
-    "schema_version": {"const": "agenttrust.sensitive-pack.v1"}, "tenant_id": {"type": "string", "minLength": 1},
-    "handoff_id": {"type": "string", "minLength": 1}, "conversation_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "schema_version": {"const": "agenttrust.domain-risk-packs.v1"}, "tenant_id": {"type": "string", "format": "uuid"},
+    "handoff_id": {"type": "string", "format": "uuid"}, "conversation_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "region_code": {"type": "string", "pattern": "^[A-Z]{2}(-[A-Z0-9]{1,3})?$"}, "risk_level": {"enum": ["LOW", "ELEVATED", "HIGH", "IMMINENT"]},
     "destination_type": {"enum": ["HUMAN_SUPPORT", "EMERGENCY_SERVICE", "TRUSTED_CONTACT"]},
-    "source_directory_version": {"type": "string", "minLength": 1}, "status": {"enum": ["REQUESTED", "ACCEPTED", "FAILED", "CLOSED"]}
+    "dynamic_region_directory_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "minimum_safe_context_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "ordinary_agent_paused": {"const": true}, "status": {"enum": ["REQUESTED", "ACCEPTED", "FAILED", "CLOSED", "MANUAL_RECOVERY"]}
   }
 }

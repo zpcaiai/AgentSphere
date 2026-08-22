@@ -1,0 +1,12 @@
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN cargo build --locked --release -p agent-trust-policy-administration --bin agenttrust-policy-admin-service
+
+FROM ${RUNTIME_BASE_IMAGE}
+COPY --from=build /src/target/release/agenttrust-policy-admin-service /usr/local/bin/agenttrust-policy-admin-service
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/agenttrust-policy-admin-service"]

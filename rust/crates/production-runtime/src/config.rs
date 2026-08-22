@@ -226,11 +226,10 @@ impl ProductionRuntimeConfig {
     }
 
     pub fn validate(&self) -> Result<(), ConfigurationError> {
-        const REQUIRED_ENDPOINTS: [&str; 12] = [
+        const REQUIRED_ENDPOINTS: [&str; 11] = [
             "orchestrator",
             "secret_broker",
             "backup",
-            "policy_distribution",
             "containment",
             "recertification",
             "enterprise_integration",

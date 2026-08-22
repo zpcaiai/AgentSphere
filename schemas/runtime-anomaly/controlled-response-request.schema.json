@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/controlled-response-request.schema.json",
+  "title": "Governed Runtime Response Downstream Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "action_hash", "ledger_execution_id",
+    "ledger_event_id", "ledger_event_digest", "fence_digest", "policy_decision_id",
+    "policy_decision_digest", "authorization_evidence_ref",
+    "authorization_evidence_digest", "idempotency_key", "command_digest", "command"
+  ],
+  "properties": {
+    "schema_version": { "const": "agenttrust.controlled-runtime-response.v1" },
+    "tenant_id": { "$ref": "#/$defs/uuid" },
+    "action_hash": { "$ref": "#/$defs/digest" },
+    "ledger_execution_id": { "$ref": "#/$defs/uuid" },
+    "ledger_event_id": { "$ref": "#/$defs/uuid" },
+    "ledger_event_digest": { "$ref": "#/$defs/digest" },
+    "fence_digest": { "$ref": "#/$defs/digest" },
+    "policy_decision_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "policy_decision_digest": { "$ref": "#/$defs/digest" },
+    "authorization_evidence_ref": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 1024,
+      "pattern": "^evidence://"
+    },
+    "authorization_evidence_digest": { "$ref": "#/$defs/digest" },
+    "idempotency_key": { "type": "string", "minLength": 16, "maxLength": 256 },
+    "command_digest": { "$ref": "#/$defs/digest" },
+    "command": {
+      "$ref": "https://schemas.agenttrust.dev/runtime-anomaly/response-command.schema.json"
+    }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "format": "uuid" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

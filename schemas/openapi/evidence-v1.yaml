@@ -1,0 +1,286 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Evidence Authority API
+  version: 1.0.0
+  description: >-
+    TLS 1.3 data-plane API. Every route requires an allowlisted single DNS/URI SAN, an exact
+    tenant header, and a distinct bearer credential bound to the route scope. The separate
+    plaintext management listener exposes only /ready and must be restricted by host/network policy.
+    A token binding subject equals the caller SAN; event actor_subject is a separate governed claim.
+servers:
+  - url: https://agenttrust-evidence
+paths:
+  /v1/evidence/authority-events:
+    post:
+      operationId: appendAuthorityEvidenceEvent
+      description: >-
+        Appends a state-owning authority event without fabricating an orchestrator task-state
+        version. GOVERNED_ACTION requests are checked against the final PEP authorization and
+        ledger/fence binding. AUTHENTICATED_EVENT requests require an existing task and carry no
+        action binding. The source_service and token-binding subject equal the exact caller SAN.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+        - name: X-AgentTrust-Authority-Event-Id
+          in: header
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - name: X-AgentTrust-Payload-Digest
+          in: header
+          required: true
+          schema: {$ref: '#/components/schemas/Digest'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../evidence/authority-evidence-event-request.schema.json'}
+      responses:
+        '200':
+          description: Exact replay or newly persisted signed authority receipt.
+          content:
+            application/json:
+              schema: {$ref: '../evidence/signed-authority-evidence-receipt.schema.json'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '422': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/events:
+    post:
+      operationId: appendLifecycleEvidenceEvent
+      description: >-
+        Appends a non-TOOL_EXECUTED lifecycle event after exact orchestrator task-state binding.
+        TASK_CREATED and PLAN_GENERATED payload hashes must equal the authoritative goal and plan
+        digests. The event source_service and token-binding subject must equal the exact client
+        certificate SAN identity.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../evidence/evidence-event-request.schema.json'}
+      responses:
+        '200':
+          description: Exact replay or newly persisted signed lifecycle event.
+          content:
+            application/json:
+              schema: {$ref: './execution-v1.yaml#/components/schemas/SignedEvidenceEvent'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '422': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/executions:
+    post:
+      operationId: appendExecutionEvidence
+      description: >-
+        Appends the tool result only after ledger, fence and PEP bindings. source_service and the
+        token-binding subject equal the caller SAN; actor_subject must equal the authoritative
+        orchestrator ingress owner for the task.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+        - name: X-AgentTrust-Fence-Digest
+          in: header
+          required: true
+          schema: {$ref: '#/components/schemas/Digest'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: './execution-v1.yaml#/components/schemas/ExecutionEvidenceRequest'}
+      responses:
+        '200':
+          description: Exact replay or newly persisted immutable signed receipt.
+          content:
+            application/json:
+              schema: {$ref: './execution-v1.yaml#/components/schemas/SignedExecutionEvidenceReceipt'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '422': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/artifacts:
+    post:
+      operationId: storeEvidenceArtifact
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../evidence/artifact-upload.schema.json'}
+      responses:
+        '200':
+          description: Versioned provider object-lock receipt; provider configuration remains externally attestable.
+          content:
+            application/json:
+              schema: {$ref: '../evidence/worm-object-receipt.schema.json'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/receipts/{receipt_id}:
+    get:
+      operationId: getExecutionEvidenceReceipt
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - name: receipt_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+      responses:
+        '200':
+          description: Authoritative signed execution receipt.
+          content:
+            application/json:
+              schema: {$ref: './execution-v1.yaml#/components/schemas/SignedExecutionEvidenceReceipt'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '404': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/tasks/{task_id}/events:
+    get:
+      operationId: getTaskEvidenceChain
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - name: task_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 10000, default: 1000}
+      responses:
+        '200':
+          description: Tenant-isolated ordered signed chain.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 10000
+                items: {$ref: './execution-v1.yaml#/components/schemas/SignedEvidenceEvent'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/packages:
+    post:
+      operationId: buildSignedEvidencePackage
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../evidence/evidence-package-request.schema.json'}
+      responses:
+        '200':
+          description: Exact replay or newly signed offline-verifiable package.
+          content:
+            application/json:
+              schema: {$ref: '../evidence/signed-evidence-package.schema.json'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '422': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evaluations:
+    post:
+      operationId: evaluateAuthoritativeTaskEvidence
+      description: >-
+        Uses database evidence and ledger state. Caller-provided requirements cannot assert gate truth;
+        missing evidence returns NEEDS_HUMAN and never PASS.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/Tenant'}
+        - {$ref: '#/components/parameters/Idempotency'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../evidence/evaluation-request.schema.json'}
+      responses:
+        '200':
+          description: Signed deterministic hard-gate run for independent orchestrator verification.
+          content:
+            application/json:
+              schema: {$ref: '../evidence/evaluation-run.schema.json'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '422': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /ready:
+    get:
+      operationId: evidenceReadiness
+      responses:
+        '200':
+          description: PostgreSQL authority and WORM object-lock gateway are ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+        '503':
+          description: One or more authoritative dependencies are unavailable.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+components:
+  securitySchemes:
+    mtls: {type: mutualTLS}
+    bearer: {type: http, scheme: bearer}
+  parameters:
+    Tenant:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    Idempotency:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/IdempotencyKey'}
+  responses:
+    Failure:
+      description: Fail-closed error with no resource-existence or secret disclosure.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    Uuid: {type: string, format: uuid}
+    IdempotencyKey:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:/-]+$'
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready, database_ready, worm_ready]
+      properties:
+        schema_version: {const: agenttrust.evidence-readiness.v1}
+        ready: {type: boolean}
+        database_ready: {type: boolean}
+        worm_ready: {type: boolean}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: {const: agenttrust.evidence-error.v1}
+        error: {type: string, pattern: '^[A-Z0-9_]+$'}

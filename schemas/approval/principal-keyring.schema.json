@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval-principal-keyring.schema.json",
+  "title": "Enterprise approval principal assertion verification keyring",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "audience", "keys"],
+  "properties": {
+    "schema_version": {
+      "const": "agenttrust.approval-principal-keyring.v1"
+    },
+    "audience": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "$ref": "#/$defs/key"
+      }
+    }
+  },
+  "$defs": {
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issuer",
+        "key_id",
+        "algorithm",
+        "usage",
+        "status",
+        "public_key",
+        "tenant_ids",
+        "not_before",
+        "expires_at"
+      ],
+      "properties": {
+        "issuer": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Za-z0-9_.:/@-]+$"
+        },
+        "key_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_.-]+$"
+        },
+        "algorithm": {
+          "const": "Ed25519"
+        },
+        "usage": {
+          "const": "APPROVAL_PRINCIPAL_ASSERTION"
+        },
+        "status": {
+          "const": "ACTIVE"
+        },
+        "public_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{43}$"
+        },
+        "tenant_ids": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+          }
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

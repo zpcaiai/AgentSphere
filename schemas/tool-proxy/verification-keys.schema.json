@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.example/schemas/tool-proxy/verification-keys.schema.json",
+  "title": "Tool Proxy production verification keyring",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "keys"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.tool-proxy-verification-keys.v1"},
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["issuer", "key_id", "key_usages", "public_key_base64url"],
+        "properties": {
+          "issuer": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$"},
+          "key_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$"},
+          "key_usages": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["PEP_EXECUTION_AUTHORIZATION", "WORKLOAD_CREDENTIAL_BINDING", "WORKLOAD_CREDENTIAL_CONSUMPTION", "REGISTRY_SNAPSHOT", "TOOL_PROXY_TARGET_PROFILES"]}
+          },
+          "public_key_base64url": {"type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]{43}$"}
+        }
+      }
+    }
+  }
+}

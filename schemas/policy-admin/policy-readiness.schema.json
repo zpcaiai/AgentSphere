@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/policy-admin/policy-readiness.schema.json",
+  "title": "Policy Administration Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ready", "database_ready", "signing_key_ready", "pep_activation_ready"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.policy-admin-readiness.v1"},
+    "ready": {"const": true},
+    "database_ready": {"const": true},
+    "signing_key_ready": {"const": true},
+    "pep_activation_ready": {"const": true}
+  }
+}

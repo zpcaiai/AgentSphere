@@ -1,5 +1,9 @@
 //! Tenant-scoped enterprise Control API and authoritative-service BFF.
 
+pub mod authority;
+pub mod principal;
+pub mod server;
+
 use agent_trust_contracts::{TaskId, TaskStatus, TenantId};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};

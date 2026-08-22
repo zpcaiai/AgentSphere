@@ -1,0 +1,308 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Tool Registry API
+  version: 1.0.0
+paths:
+  /ready:
+    get:
+      operationId: registryDataReadiness
+      security: [{mutualTLS: []}]
+      responses:
+        '200':
+          description: Registry database, ACTIVE snapshot and publisher chain are ready
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+        '503':
+          description: Registry dependency or signature chain is not ready
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+  '/v1/tools:draft':
+    post:
+      operationId: createToolDraft
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TenantId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ToolManifest'}
+      responses:
+        '201': {description: Draft persisted}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409': {$ref: '#/components/responses/Rejected'}
+  '/v1/tools/{id}/versions/{version}/activate':
+    post:
+      operationId: activateToolVersion
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ToolId'}
+        - {$ref: '#/components/parameters/ToolVersion'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/TenantId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '200':
+          description: Immutable ACTIVE revision and signed snapshot published
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActivationReceipt'}
+        '400': {$ref: '#/components/responses/Rejected'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  '/v1/tools/{id}/versions/{version}/validate':
+    post:
+      operationId: validateToolVersion
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ToolId'}
+        - {$ref: '#/components/parameters/ToolVersion'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/TenantId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '200':
+          description: Version validated with a durable idempotency receipt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActivationReceipt'}
+        '400': {$ref: '#/components/responses/Rejected'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  '/v1/tools/{id}/versions/{version}/sign':
+    post:
+      operationId: signToolVersion
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ToolId'}
+        - {$ref: '#/components/parameters/ToolVersion'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/TenantId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '200':
+          description: Version signed with a durable idempotency receipt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActivationReceipt'}
+        '400': {$ref: '#/components/responses/Rejected'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  '/v1/tools/{id}/versions/{version}/deprecate':
+    post:
+      operationId: deprecateToolVersion
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ToolId'}
+        - {$ref: '#/components/parameters/ToolVersion'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/TenantId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '200':
+          description: Version deprecated and signed snapshot published with a durable receipt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActivationReceipt'}
+        '400': {$ref: '#/components/responses/Rejected'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  '/v1/tools/{id}/versions/{version}/revoke':
+    post:
+      operationId: revokeToolVersion
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ToolId'}
+        - {$ref: '#/components/parameters/ToolVersion'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/TenantId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '200':
+          description: Version terminally revoked and signed snapshot published with a durable receipt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ActivationReceipt'}
+        '400': {$ref: '#/components/responses/Rejected'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  /v1/tools/{id}/versions/{version}:
+    get:
+      operationId: resolveExactActiveTool
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ToolId'}
+        - {$ref: '#/components/parameters/ToolVersion'}
+        - {$ref: '#/components/parameters/TenantId'}
+      responses:
+        '200':
+          description: Signed-snapshot-bound exact ACTIVE tool
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ResolvedToolSnapshot'}
+        '404': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  /v1/capabilities:
+    get:
+      operationId: discoverCapabilities
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TenantId'}
+      responses:
+        '200':
+          description: Discovery-only descriptors; never an authorization decision
+          content:
+            application/json:
+              schema: {type: array, items: {type: object}}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+  /v1/authoritative/tools:
+    get:
+      operationId: listAuthoritativeActiveTools
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TenantId'}
+      responses:
+        '200':
+          description: Complete bounded summary derived from the current signed ACTIVE snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthoritativeTools'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Rejected'}
+components:
+  securitySchemes:
+    mutualTLS: {type: mutualTLS}
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: opaque-service-token}
+  parameters:
+    TenantId:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    ToolId:
+      name: id
+      in: path
+      required: true
+      schema: {$ref: '../json/tool.schema.json#/$defs/tool_id'}
+    ToolVersion:
+      name: version
+      in: path
+      required: true
+      schema: {$ref: '../json/tool.schema.json#/$defs/semver'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:/-]+$'}
+  schemas:
+    ToolManifest:
+      $ref: ../json/tool.schema.json
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, expected_manifest_hash]
+      properties:
+        schema_version: {const: agenttrust.registry.v1}
+        expected_manifest_hash: {$ref: '#/components/schemas/Sha256'}
+    ActivationReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, tool_id, tool_version, operation, status, registry_revision, manifest_hash, snapshot_hash, event_ref, idempotent]
+      properties:
+        schema_version: {const: agenttrust.registry.v1}
+        tenant_id: {type: string, format: uuid}
+        tool_id: {$ref: '../json/tool.schema.json#/$defs/tool_id'}
+        tool_version: {$ref: '../json/tool.schema.json#/$defs/semver'}
+        operation: {enum: [VALIDATE, SIGN, ACTIVATE, DEPRECATE, REVOKE]}
+        status: {enum: [VALIDATED, SIGNED, ACTIVE, DEPRECATED, REVOKED]}
+        registry_revision: {type: [integer, 'null'], minimum: 1}
+        manifest_hash: {$ref: '#/components/schemas/Sha256'}
+        snapshot_hash:
+          oneOf: [{$ref: '#/components/schemas/Sha256'}, {type: 'null'}]
+        event_ref: {type: string, pattern: '^(registry-event|development-registry)://'}
+        idempotent: {type: boolean}
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready]
+      properties:
+        schema_version: {const: agenttrust.registry-readiness.v1}
+        ready: {type: boolean}
+    AuthoritativeTools:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authoritative, tenant_id, complete, registry_revision, digest, signed_at, signature, tools]
+      properties:
+        schema_version: {const: agenttrust.authoritative-tools.v1}
+        authoritative: {const: true}
+        tenant_id: {type: string, format: uuid}
+        complete: {const: true}
+        registry_revision: {type: integer, minimum: 1}
+        digest: {$ref: '#/components/schemas/Sha256'}
+        signed_at: {type: string, format: date-time}
+        signature: {$ref: '../json/tool.schema.json#/$defs/manifest_signature_value'}
+        tools:
+          type: array
+          maxItems: 1000
+          items:
+            type: object
+            additionalProperties: false
+            required: [tool_id, tool_version, effect_class, risk_level, manifest_hash, implementation_digest]
+            properties:
+              tool_id: {$ref: '../json/tool.schema.json#/$defs/tool_id'}
+              tool_version: {$ref: '../json/tool.schema.json#/$defs/semver'}
+              effect_class: {enum: [PURE, IDEMPOTENT, COMPENSATABLE, IRREVERSIBLE]}
+              risk_level: {enum: [LOW, MEDIUM, HIGH, CRITICAL]}
+              manifest_hash: {$ref: '#/components/schemas/Sha256'}
+              implementation_digest: {$ref: '../json/tool.schema.json#/$defs/sha256_digest'}
+    ResolvedToolSnapshot:
+      type: object
+      additionalProperties: true
+      description: Exact Rust ResolvedToolSnapshot contract; generated schema remains authoritative.
+    Sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, summary]
+          properties:
+            code: {type: string}
+            summary: {type: string}
+  responses:
+    Rejected:
+      description: Registry request rejected fail closed
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}

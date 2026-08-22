@@ -1,8 +1,12 @@
 //! Enterprise approval service with separation of duties and atomic grant consumption.
 
 use agent_trust_contracts::{
-    ActionHash, ApprovalId, MinimalApprovalGrant, PolicyVersion, ResourceVersion, RiskLevel,
+    ActionHash, ApprovalId, ContractError, PolicyVersion, ResourceVersion, RiskLevel,
     SchemaVersion, StepId, TaskId, TenantId,
+};
+pub use agent_trust_contracts::{
+    ApprovalConsumptionRequest, ApprovalGrantReceipt, EnterpriseApprovalGrant,
+    SignedApprovalConsumptionReceipt,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
@@ -15,6 +19,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub const APPROVAL_SCHEMA_VERSION: &str = "agenttrust.enterprise-approval.v1";
+pub const APPROVAL_CASE_CREATE_SCHEMA_VERSION: &str = "agenttrust.approval-case-create.v1";
+pub const APPROVAL_DECISION_SCHEMA_VERSION: &str = "agenttrust.approval-decision.v1";
+pub const APPROVAL_GRANT_REQUEST_SCHEMA_VERSION: &str = "agenttrust.approval-grant-request.v1";
+pub const APPROVAL_GRANT_RECEIPT_SCHEMA_VERSION: &str = "agenttrust.approval-grant-receipt.v1";
+pub const APPROVAL_CONSUMPTION_SCHEMA_VERSION: &str = "agenttrust.approval-consumption.v1";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -192,56 +201,6 @@ pub struct ApprovalCase {
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,
     pub post_review_due_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct EnterpriseApprovalGrant {
-    pub schema_version: SchemaVersion,
-    pub grant_id: ApprovalId,
-    pub case_id: String,
-    pub tenant_id: TenantId,
-    pub task_id: TaskId,
-    pub step_id: StepId,
-    pub action_hash: ActionHash,
-    pub plan_hash: String,
-    pub parameter_hash: String,
-    pub resource: String,
-    pub resource_version: ResourceVersion,
-    pub policy_version: PolicyVersion,
-    pub environment: String,
-    pub maximum_risk: RiskLevel,
-    pub approver_subjects: Vec<String>,
-    pub issued_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
-    pub maximum_uses: u32,
-    pub break_glass: bool,
-    pub issuer: String,
-    pub key_id: String,
-    pub signature: String,
-}
-
-impl EnterpriseApprovalGrant {
-    fn signing_bytes(&self) -> Result<Vec<u8>, ApprovalError> {
-        let mut copy = self.clone();
-        copy.signature.clear();
-        serde_jcs::to_vec(&copy).map_err(|_| ApprovalError::GrantInvalid)
-    }
-    pub fn to_minimal_grant(&self) -> MinimalApprovalGrant {
-        MinimalApprovalGrant {
-            schema_version: SchemaVersion("agenttrust.contracts.v1".into()),
-            approval_id: self.grant_id.clone(),
-            task_id: self.task_id.clone(),
-            step_id: self.step_id.clone(),
-            action_hash: self.action_hash.clone(),
-            resource_version: self.resource_version.clone(),
-            policy_version: self.policy_version.clone(),
-            approver_subject: self.approver_subjects.join(","),
-            approver_roles: vec!["enterprise-approved".into()],
-            expires_at: self.expires_at,
-            single_use: self.maximum_uses == 1,
-        }
-    }
 }
 
 #[derive(Default)]
@@ -749,7 +708,43 @@ pub enum ApprovalError {
     BreakGlassDenied,
     #[error("APPROVAL_NOTIFICATION_FAILED")]
     NotificationFailed,
+    #[error("APPROVAL_DATABASE_UNAVAILABLE")]
+    DatabaseUnavailable,
+    #[error("APPROVAL_IDEMPOTENCY_KEY_INVALID")]
+    IdempotencyInvalid,
+    #[error("APPROVAL_IDEMPOTENCY_CONFLICT")]
+    IdempotencyConflict,
+    #[error("APPROVAL_AUTHENTICATION_REQUIRED")]
+    AuthenticationRequired,
+    #[error("APPROVAL_SCOPE_FORBIDDEN")]
+    ScopeForbidden,
+    #[error("APPROVAL_GRANT_NOT_READY")]
+    GrantNotReady,
+    #[error("APPROVAL_CONCURRENT_MUTATION")]
+    ConcurrentMutation,
 }
+
+impl From<ContractError> for ApprovalError {
+    fn from(_: ContractError) -> Self {
+        Self::GrantInvalid
+    }
+}
+
+pub mod postgres;
+pub mod principal;
+pub mod server;
+pub use postgres::{
+    APPROVAL_CASE_VIEW_SCHEMA_VERSION, AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION,
+    ApprovalCaseCreateEnvelope, ApprovalCaseDomain, ApprovalCaseView, ApprovalCaseViewStatus,
+    ApprovalDecision, ApprovalDecisionEnvelope, ApprovalGrantIssueRequest,
+    ApprovalGrantRevocationReceipt, ApprovalGrantRevocationRequest, ApprovalPrincipal,
+    ApprovalSigner, AuthoritativeApprovalPage, PostgresApprovalStore,
+};
+pub use principal::{
+    APPROVAL_PRINCIPAL_ASSERTION_SCHEMA_VERSION, APPROVAL_PRINCIPAL_KEYRING_SCHEMA_VERSION,
+    APPROVAL_PRINCIPAL_REQUEST_BINDING_SCHEMA_VERSION, ApprovalPrincipalAssertionKeyring,
+    SignedApprovalPrincipalAssertion, approval_principal_request_digest,
+};
 
 #[cfg(test)]
 mod tests {

@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-governance/data-command.schema.json",
+  "title": "Data governance durable mutation command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "command_id", "task_id", "resource", "operation",
+    "expected_resource_version", "requested_at", "payload"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.data-governance-command.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "command_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "resource": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*//)[^\\s]+$"},
+    "operation": {
+      "enum": [
+        "REGISTER_LABEL", "RECORD_POLICY_DECISION", "RECORD_DLP_SCAN",
+        "RECORD_TRANSFORM_RECEIPT", "ISSUE_CROSS_DOMAIN_GRANT",
+        "CONSUME_CROSS_DOMAIN_GRANT", "RESOLVE_RETENTION", "PLACE_LEGAL_HOLD",
+        "RELEASE_LEGAL_HOLD", "AUTHORIZE_EXPORT", "COMPLETE_EXPORT"
+      ]
+    },
+    "expected_resource_version": {"type": "integer", "minimum": 0},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "payload": {"type": "object", "maxProperties": 20}
+  },
+  "allOf": [
+    {"if": {"properties": {"operation": {"const": "REGISTER_LABEL"}}}, "then": {"properties": {"resource": {"pattern": "^labels/[a-f0-9]{64}$"}, "payload": {"$ref": "#/$defs/registerLabel"}}}},
+    {"if": {"properties": {"operation": {"const": "RECORD_POLICY_DECISION"}}}, "then": {"properties": {"resource": {"pattern": "^policy-decisions/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/recordPolicy"}}}},
+    {"if": {"properties": {"operation": {"const": "RECORD_DLP_SCAN"}}}, "then": {"properties": {"resource": {"pattern": "^dlp-scans/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/recordDlp"}}}},
+    {"if": {"properties": {"operation": {"const": "RECORD_TRANSFORM_RECEIPT"}}}, "then": {"properties": {"resource": {"pattern": "^transforms/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/recordTransform"}}}},
+    {"if": {"properties": {"operation": {"const": "ISSUE_CROSS_DOMAIN_GRANT"}}}, "then": {"properties": {"resource": {"pattern": "^cross-domain-grants/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/issueGrant"}}}},
+    {"if": {"properties": {"operation": {"const": "CONSUME_CROSS_DOMAIN_GRANT"}}}, "then": {"properties": {"resource": {"pattern": "^cross-domain-grants/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/consumeGrant"}}}},
+    {"if": {"properties": {"operation": {"const": "RESOLVE_RETENTION"}}}, "then": {"properties": {"resource": {"pattern": "^retention/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/resolveRetention"}}}},
+    {"if": {"properties": {"operation": {"const": "PLACE_LEGAL_HOLD"}}}, "then": {"properties": {"resource": {"pattern": "^legal-holds/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/placeHold"}}}},
+    {"if": {"properties": {"operation": {"const": "RELEASE_LEGAL_HOLD"}}}, "then": {"properties": {"resource": {"pattern": "^legal-holds/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/releaseHold"}}}},
+    {"if": {"properties": {"operation": {"const": "AUTHORIZE_EXPORT"}}}, "then": {"properties": {"resource": {"pattern": "^export-intents/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/authorizeExport"}}}},
+    {"if": {"properties": {"operation": {"const": "COMPLETE_EXPORT"}}}, "then": {"properties": {"resource": {"pattern": "^export-intents/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"}, "payload": {"$ref": "#/$defs/completeExport"}}}}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "id": {"type": "string", "format": "uuid"},
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 256},
+    "evidenceRef": {"type": "string", "pattern": "^evidence://", "maxLength": 2048},
+    "adapterRef": {"type": "string", "pattern": "^(dlp|object|worm|legal-hold|evidence)://", "maxLength": 2048},
+    "objectRef": {"type": "string", "pattern": "^(artifact|object|dataset|trace|field)://", "maxLength": 2048},
+    "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "label": {"$ref": "./data-label.schema.json"},
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "allowed", "policy_version", "reason_codes", "required_transformations", "maximum_retention_seconds"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.data-governance.v1"},
+        "allowed": {"type": "boolean"},
+        "policy_version": {"$ref": "#/$defs/identifier"},
+        "reason_codes": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "required_transformations": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "maximum_retention_seconds": {"type": "integer", "minimum": 0, "maximum": 630720000}
+      }
+    },
+    "registerLabel": {
+      "type": "object", "additionalProperties": false,
+      "required": ["object_ref", "object_version", "object_digest", "label", "label_digest", "source_evidence_ref", "source_evidence_digest"],
+      "properties": {
+        "object_ref": {"$ref": "#/$defs/objectRef"}, "object_version": {"$ref": "#/$defs/identifier"},
+        "object_digest": {"$ref": "#/$defs/digest"},
+        "label": {"$ref": "#/$defs/label"}, "label_digest": {"$ref": "#/$defs/digest"},
+        "source_evidence_ref": {"$ref": "#/$defs/evidenceRef"}, "source_evidence_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "recordPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["decision_id", "request_digest", "request", "decision", "decision_digest", "shadow", "evaluated_at"],
+      "properties": {
+        "decision_id": {"$ref": "#/$defs/id"}, "request_digest": {"$ref": "#/$defs/digest"},
+        "request": {"$ref": "./inspection.schema.json#/$defs/policyRequest"},
+        "decision": {"$ref": "#/$defs/decision"}, "decision_digest": {"$ref": "#/$defs/digest"},
+        "shadow": {"type": "boolean"}, "evaluated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "recordDlp": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scan_id", "content_digest", "size_bytes", "finding_counts", "findings_digest", "engine_revision", "engine_receipt_ref", "engine_receipt_digest", "high_risk", "blocking"],
+      "properties": {
+        "scan_id": {"$ref": "#/$defs/id"}, "content_digest": {"$ref": "#/$defs/digest"},
+        "size_bytes": {"type": "integer", "minimum": 1, "maximum": 8388608},
+        "finding_counts": {"type": "object", "maxProperties": 16, "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 1000000}},
+        "findings_digest": {"$ref": "#/$defs/digest"}, "engine_revision": {"$ref": "#/$defs/identifier"},
+        "engine_receipt_ref": {"$ref": "#/$defs/adapterRef"}, "engine_receipt_digest": {"$ref": "#/$defs/digest"},
+        "high_risk": {"type": "boolean"}, "blocking": {"type": "boolean"}
+      }
+    },
+    "recordTransform": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transform_id", "input_digest", "output_digest", "transformations", "reversible", "key_reference_digest", "dlp_scan_id", "dlp_receipt_digest", "transform_receipt_digest"],
+      "properties": {
+        "transform_id": {"$ref": "#/$defs/id"}, "input_digest": {"$ref": "#/$defs/digest"}, "output_digest": {"$ref": "#/$defs/digest"},
+        "transformations": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "reversible": {"type": "boolean"}, "key_reference_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "dlp_scan_id": {"$ref": "#/$defs/id"},
+        "dlp_receipt_digest": {"$ref": "#/$defs/digest"},
+        "transform_receipt_digest": {
+          "allOf": [
+            {"$ref": "#/$defs/digest"},
+            {"description": "JCS SHA-256 of the complete recordTransform object with this field omitted."}
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"reversible": {"const": true}}, "required": ["reversible"]},
+          "then": {"properties": {"key_reference_digest": {"$ref": "#/$defs/digest"}}},
+          "else": {"properties": {"key_reference_digest": {"type": "null"}}}
+        }
+      ]
+    },
+    "issueGrant": {
+      "type": "object", "additionalProperties": false,
+      "required": ["grant_id", "source_zone", "target_zone", "source_jurisdiction", "target_jurisdiction", "object_digest", "classification", "approval_id", "approval_evidence_ref", "approval_evidence_digest", "expires_at", "single_use"],
+      "properties": {
+        "grant_id": {"$ref": "#/$defs/id"}, "source_zone": {"$ref": "#/$defs/identifier"}, "target_zone": {"$ref": "#/$defs/identifier"},
+        "source_jurisdiction": {"$ref": "#/$defs/identifier"}, "target_jurisdiction": {"$ref": "#/$defs/identifier"},
+        "object_digest": {"$ref": "#/$defs/digest"}, "classification": {"$ref": "#/$defs/classification"}, "approval_id": {"$ref": "#/$defs/id"},
+        "approval_evidence_ref": {"$ref": "#/$defs/evidenceRef"}, "approval_evidence_digest": {"$ref": "#/$defs/digest"},
+        "expires_at": {"type": "string", "format": "date-time"}, "single_use": {"const": true}
+      }
+    },
+    "consumeGrant": {
+      "type": "object", "additionalProperties": false,
+      "required": ["grant_id", "object_digest", "source_zone", "target_zone", "export_intent_id"],
+      "properties": {
+        "grant_id": {"$ref": "#/$defs/id"}, "object_digest": {"$ref": "#/$defs/digest"},
+        "source_zone": {"$ref": "#/$defs/identifier"}, "target_zone": {"$ref": "#/$defs/identifier"}, "export_intent_id": {"$ref": "#/$defs/id"}
+      }
+    },
+    "resolveRetention": {
+      "type": "object", "additionalProperties": false,
+      "required": ["retention_id", "object_ref", "retention_label", "action", "retain_until", "policy_version", "legal_hold_checked_at", "resolver_receipt_ref", "resolver_receipt_digest"],
+      "properties": {
+        "retention_id": {"$ref": "#/$defs/id"}, "object_ref": {"$ref": "#/$defs/objectRef"}, "retention_label": {"$ref": "#/$defs/identifier"},
+        "action": {"enum": ["DELETE", "ARCHIVE", "RETAIN"]}, "retain_until": {"type": "string", "format": "date-time"},
+        "policy_version": {"$ref": "#/$defs/identifier"}, "legal_hold_checked_at": {"type": "string", "format": "date-time"},
+        "resolver_receipt_ref": {"$ref": "#/$defs/adapterRef"}, "resolver_receipt_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "placeHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hold_id", "object_ref", "reason_digest", "approval_id", "approval_evidence_ref", "approval_evidence_digest", "effective_at"],
+      "properties": {
+        "hold_id": {"$ref": "#/$defs/id"}, "object_ref": {"$ref": "#/$defs/objectRef"}, "reason_digest": {"$ref": "#/$defs/digest"},
+        "approval_id": {"$ref": "#/$defs/id"}, "approval_evidence_ref": {"$ref": "#/$defs/evidenceRef"},
+        "approval_evidence_digest": {"$ref": "#/$defs/digest"}, "effective_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "releaseHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hold_id", "object_ref", "released_at", "release_approval_id", "release_evidence_ref", "release_evidence_digest"],
+      "properties": {
+        "hold_id": {"$ref": "#/$defs/id"}, "object_ref": {"$ref": "#/$defs/objectRef"}, "released_at": {"type": "string", "format": "date-time"},
+        "release_approval_id": {"$ref": "#/$defs/id"}, "release_evidence_ref": {"$ref": "#/$defs/evidenceRef"}, "release_evidence_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "authorizeExport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["export_id", "object_ref", "object_digest", "label_digest", "decision_id", "decision_digest", "policy_request_digest", "dlp_scan_id", "dlp_receipt_digest", "transform_id", "transform_receipt_digest", "grant_id", "object_authorization_ref", "object_authorization_digest", "destination_kind", "destination_digest", "expires_at", "redirects_allowed"],
+      "properties": {
+        "export_id": {"$ref": "#/$defs/id"}, "object_ref": {"$ref": "#/$defs/objectRef"}, "object_digest": {"$ref": "#/$defs/digest"},
+        "label_digest": {"$ref": "#/$defs/digest"}, "decision_id": {"$ref": "#/$defs/id"},
+        "decision_digest": {"$ref": "#/$defs/digest"}, "policy_request_digest": {"$ref": "#/$defs/digest"},
+        "dlp_scan_id": {"$ref": "#/$defs/id"},
+        "dlp_receipt_digest": {"$ref": "#/$defs/digest"},
+        "transform_id": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "transform_receipt_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "grant_id": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "object_authorization_ref": {"type": "string", "pattern": "^object://", "maxLength": 2048},
+        "object_authorization_digest": {"$ref": "#/$defs/digest"},
+        "destination_kind": {"type": "string", "pattern": "^[^\\s]{1,2048}$"},
+        "destination_digest": {"$ref": "#/$defs/digest"}, "expires_at": {"type": "string", "format": "date-time"}, "redirects_allowed": {"const": false}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"transform_id": {"type": "null"}}, "required": ["transform_id"]},
+          "then": {"properties": {"transform_receipt_digest": {"type": "null"}}},
+          "else": {"properties": {"transform_receipt_digest": {"$ref": "#/$defs/digest"}}}
+        }
+      ]
+    },
+    "completeExport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["export_id", "object_digest", "artifact_ref", "artifact_digest", "watermark_digest", "signature_digest", "worm_receipt_ref", "worm_receipt_digest", "completed_at"],
+      "properties": {
+        "export_id": {"$ref": "#/$defs/id"}, "object_digest": {"$ref": "#/$defs/digest"},
+        "artifact_ref": {"type": "string", "pattern": "^(artifact|object)://", "maxLength": 2048}, "artifact_digest": {"$ref": "#/$defs/digest"},
+        "watermark_digest": {"$ref": "#/$defs/digest"}, "signature_digest": {"$ref": "#/$defs/digest"},
+        "worm_receipt_ref": {"$ref": "#/$defs/adapterRef"}, "worm_receipt_digest": {"$ref": "#/$defs/digest"},
+        "completed_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

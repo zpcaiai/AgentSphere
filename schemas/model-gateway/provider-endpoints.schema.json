@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.invalid/model-gateway/provider-endpoints.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profiles"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.model-provider-endpoints.v1"},
+    "profiles": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["endpoint_profile", "provider_key", "protocol", "endpoint", "token_file"],
+        "properties": {
+          "endpoint_profile": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$"},
+          "provider_key": {"type": "string", "minLength": 1, "maxLength": 768},
+          "protocol": {"enum": ["OPENAI_COMPATIBLE", "LOCAL_INFERENCE"]},
+          "endpoint": {"type": "string", "format": "uri", "pattern": "^https://"},
+          "token_file": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^/"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/ed25519-public-keyring.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "keys"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.ed25519-public-keyring.v1"},
+    "keys": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1024,
+      "propertyNames": {"pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+      "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
+    }
+  }
+}

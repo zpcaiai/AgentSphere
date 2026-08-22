@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/energy-observation.schema.json",
+  "title": "Energy telemetry or forecast command",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "asset_id", "stage", "endpoint_manifest_digest", "observed_resource_version", "telemetry_digest", "output_digest", "model_manifest_digest", "forecast_valid_until"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-risk-packs.v1"}, "asset_id": {"type": "string", "format": "uuid"},
+    "stage": {"enum": ["READ_ONLY", "SHADOW"]}, "endpoint_manifest_digest": {"$ref": "#/$defs/digest"},
+    "observed_resource_version": {"type": "integer", "minimum": 0}, "telemetry_digest": {"$ref": "#/$defs/digest"},
+    "output_digest": {"$ref": "#/$defs/digest"}, "model_manifest_digest": {"$ref": "#/$defs/nullableDigest"},
+    "forecast_valid_until": {"type": ["string", "null"], "format": "date-time"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}}
+}

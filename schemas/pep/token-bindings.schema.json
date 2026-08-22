@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/token-bindings.schema.json",
+  "title": "PEP inbound SAN tenant scope token bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.pep-token-bindings.v1"},
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):.+$", "maxLength": 512},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "minLength": 1, "maxLength": 256},
+          "scope": {"enum": ["pep:preapprove", "pep:authorize", "pep:policy-activate", "pep:approval", "pep:query"]},
+          "token_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

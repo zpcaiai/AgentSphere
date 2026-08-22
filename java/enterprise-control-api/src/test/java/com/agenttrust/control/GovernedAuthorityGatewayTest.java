@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -82,6 +83,20 @@ class GovernedAuthorityGatewayTest {
         assertThrows(ControlUnavailableException.class,
             () -> GovernedAuthorityGateway.requireCompletedCommandReplay(
                 pepSubstitution, COMMAND_ID, TENANT_ID, TASK_ID));
+    }
+
+    @Test
+    void approvalDecisionUsesTheExactAuthorityPathAndStrictWireBody() {
+        UUID caseId = UUID.fromString("01900000-0000-7000-8000-000000000003");
+        var intent = new AdminModels.ApprovalIntent("agenttrust.approval-intent.v1", caseId,
+            "APPROVE", "reviewed", "a".repeat(64), "resource-v7");
+        assertEquals("/v1/approvals/cases/" + caseId,
+            GovernedAuthorityGateway.approvalCasePath(caseId));
+        assertEquals("/v1/approvals/cases/" + caseId + "/decisions",
+            GovernedAuthorityGateway.approvalDecisionPath(caseId));
+        assertEquals(Map.of("schema_version", "agenttrust.approval-decision.v1",
+            "decision", "APPROVE", "reason", "reviewed"),
+            GovernedAuthorityGateway.approvalDecisionBody(intent));
     }
 
     private static void assertInvalid(ObjectNode receipt) {

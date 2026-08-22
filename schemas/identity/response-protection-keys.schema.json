@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.example/schemas/identity/response-protection-keys.schema.json",
+  "title": "Identity idempotency response envelope keyring",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "active_key_id", "keys"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.identity-response-protection-keys.v1"},
+    "active_key_id": {"$ref": "#/$defs/keyId"},
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key_id", "key_base64url"],
+        "properties": {
+          "key_id": {"$ref": "#/$defs/keyId"},
+          "key_base64url": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "keyId": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"}
+  }
+}

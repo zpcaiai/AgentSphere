@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/context/context-readiness.schema.json",
+  "title": "Context Governance Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ready", "database_ready", "orchestrator_ready", "object_store_ready", "vector_index_ready", "cache_ready", "supply_chain_ready", "legal_hold_ready", "poisoning_detector_ready", "evidence_ready"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.context-readiness.v1"},
+    "ready": {"const": true},
+    "database_ready": {"const": true},
+    "orchestrator_ready": {"const": true},
+    "object_store_ready": {"const": true},
+    "vector_index_ready": {"const": true},
+    "cache_ready": {"const": true},
+    "supply_chain_ready": {"const": true},
+    "legal_hold_ready": {"const": true},
+    "poisoning_detector_ready": {"const": true},
+    "evidence_ready": {"const": true}
+  }
+}

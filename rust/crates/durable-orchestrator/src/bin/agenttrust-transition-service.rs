@@ -472,24 +472,23 @@ fn load_token_bindings(
             return Err(FactResolutionError::Configuration);
         }
     }
-    if allowed
-        .iter()
-        .any(|identity| {
-            !bindings
-                .iter()
-                .any(|candidate| &candidate.client_identity == identity)
-        })
-    {
+    if allowed.iter().any(|identity| {
+        !bindings
+            .iter()
+            .any(|candidate| &candidate.client_identity == identity)
+    }) {
         return Err(FactResolutionError::Configuration);
     }
     Ok(bindings)
 }
 
 fn matching_certificate_identity(certificate: &[u8], allowed: &BTreeSet<String>) -> Option<String> {
-    certificate_subject_alt_names(certificate)
-        .ok()?
-        .into_iter()
-        .find(|value| allowed.contains(value))
+    let identities = certificate_subject_alt_names(certificate).ok()?;
+    if identities.len() != 1 {
+        return None;
+    }
+    let identity = identities.into_iter().next()?;
+    allowed.contains(&identity).then_some(identity)
 }
 
 fn certificate_subject_alt_names(certificate: &[u8]) -> Result<Vec<String>, ()> {
@@ -554,7 +553,7 @@ fn certificate_subject_alt_names(certificate: &[u8]) -> Result<Vec<String>, ()> 
         let prefix = match tag {
             0x82 => "DNS:",
             0x86 => "URI:",
-            _ => continue,
+            _ => return Err(()),
         };
         let value = std::str::from_utf8(value).map_err(|_| ())?;
         if value.is_empty() || value.len() > 508 {
@@ -648,7 +647,10 @@ fn required_env(name: &str) -> Result<String, FactResolutionError> {
 
 fn required_path(name: &str) -> Result<PathBuf, FactResolutionError> {
     let path = PathBuf::from(required_env(name)?);
-    if !secure_file(&path, name.contains("PRIVATE_KEY") || name.contains("TOKEN"))? {
+    if !secure_file(
+        &path,
+        name.contains("PRIVATE_KEY") || name.contains("TOKEN"),
+    )? {
         return Err(FactResolutionError::Configuration);
     }
     Ok(path)
@@ -676,8 +678,8 @@ fn required_secret(name: &str) -> Result<String, FactResolutionError> {
 fn secure_file(path: &Path, private: bool) -> Result<bool, FactResolutionError> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| FactResolutionError::Configuration)?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| FactResolutionError::Configuration)?;
     let mode = metadata.permissions().mode() & 0o7777;
     let effective_uid = nix::unistd::geteuid().as_raw();
     let effective_gid = nix::unistd::getegid().as_raw();
@@ -688,8 +690,7 @@ fn secure_file(path: &Path, private: bool) -> Result<bool, FactResolutionError> 
             && (mode & 0o040 == 0 || metadata.gid() == effective_gid)
             && mode & !0o440 == 0
     } else {
-        mode & 0o022 == 0
-            && (owner_can_read || group_can_read || mode & 0o004 != 0)
+        mode & 0o022 == 0 && (owner_can_read || group_can_read || mode & 0o004 != 0)
     };
     Ok(metadata.file_type().is_file()
         && !metadata.file_type().is_symlink()
@@ -726,7 +727,8 @@ mod tests {
     #[test]
     fn management_listener_is_separate_and_configurable() {
         assert_eq!(
-            parse_args_from(Vec::new()).expect("default arguments"),
+            parse_args_from(Vec::new())
+                .unwrap_or_else(|error| panic!("default arguments: {error}")),
             ServerArguments {
                 listen: "127.0.0.1".into(),
                 port: 8_082,
@@ -744,7 +746,7 @@ mod tests {
             "--management-port".into(),
             "9092".into(),
         ])
-        .expect("configured arguments");
+        .unwrap_or_else(|error| panic!("configured arguments: {error}"));
         assert_eq!(parsed.port, 8_443);
         assert_eq!(parsed.management_port, 9_092);
         assert!(parse_args_from(["--management-port".into(), "8082".into()]).is_err());

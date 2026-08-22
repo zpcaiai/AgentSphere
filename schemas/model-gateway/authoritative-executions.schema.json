@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.invalid/model-gateway/authoritative-executions.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "authoritative", "items", "next_cursor", "data_digest", "generated_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.authoritative-model-executions.v1"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "authoritative": {"const": true},
+    "items": {"type": "array", "maxItems": 200, "items": {"$ref": "#/$defs/summary"}},
+    "next_cursor": {
+      "oneOf": [{"type": "null"}, {"$ref": "#/$defs/cursor"}]
+    },
+    "data_digest": {
+      "allOf": [
+        {"$ref": "#/$defs/digest"},
+        {"description": "JCS SHA-256 of this complete response after removing only data_digest; the material includes schema_version, tenant_id, authoritative, items, next_cursor, and generated_at."}
+      ]
+    },
+    "generated_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullable_digest": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_tokens", "output_tokens", "cost_microunits"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "cost_microunits": {"type": "integer", "minimum": 0}
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created_at", "request_id"],
+      "properties": {
+        "created_at": {"type": "string", "format": "date-time"},
+        "request_id": {"$ref": "#/$defs/uuid"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_id", "task_id", "action_id", "action_hash", "operation", "classification",
+        "source_jurisdiction", "deployment_profile", "state", "provider_key",
+        "provider_request_id", "usage", "output_digest", "artifact_ref", "artifact_digest",
+        "evidence_ref", "evidence_digest", "stable_error", "created_at", "updated_at", "completed_at"
+      ],
+      "properties": {
+        "request_id": {"$ref": "#/$defs/uuid"},
+        "task_id": {"$ref": "#/$defs/uuid"},
+        "action_id": {"$ref": "#/$defs/uuid"},
+        "action_hash": {"$ref": "#/$defs/digest"},
+        "operation": {"enum": ["GENERATE", "STREAM", "EMBEDDINGS"]},
+        "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+        "source_jurisdiction": {"type": "string", "minLength": 1, "maxLength": 128},
+        "deployment_profile": {"type": "string", "minLength": 1, "maxLength": 128},
+        "state": {"enum": ["PREPARED", "EXECUTING", "SUCCEEDED", "FAILED", "UNKNOWN"]},
+        "provider_key": {"type": ["string", "null"], "minLength": 1, "maxLength": 768},
+        "provider_request_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 512},
+        "usage": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/usage"}]},
+        "output_digest": {"$ref": "#/$defs/nullable_digest"},
+        "artifact_ref": {"type": ["string", "null"], "minLength": 1, "maxLength": 512},
+        "artifact_digest": {"$ref": "#/$defs/nullable_digest"},
+        "evidence_ref": {"type": ["string", "null"], "minLength": 1, "maxLength": 512},
+        "evidence_digest": {"$ref": "#/$defs/nullable_digest"},
+        "stable_error": {"type": ["string", "null"], "pattern": "^MODEL_[A-Z0-9_]+$", "maxLength": 128},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "completed_at": {"type": ["string", "null"], "format": "date-time"}
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 package com.agenttrust.control;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -10,20 +11,31 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 public final class AdminModels {
     private AdminModels() {}
 
     public record PrincipalContext(String subject, UUID tenantId, Set<String> roles,
-                                   Set<String> projectIds, Set<String> approvalIds) {
+                                   Set<String> projectIds, Set<String> approvalIds,
+                                   Set<String> ownedResources, boolean strongAuth,
+                                   Instant authenticationTime, String authenticationContext) {
         public PrincipalContext {
-            roles = Set.copyOf(roles);
-            projectIds = Set.copyOf(projectIds);
-            approvalIds = Set.copyOf(approvalIds);
+            roles = immutableSortedSet(roles);
+            projectIds = immutableSortedSet(projectIds);
+            approvalIds = immutableSortedSet(approvalIds);
+            ownedResources = immutableSortedSet(ownedResources);
+        }
+
+        /** Compatibility constructor for non-approval unit fixtures; never asserts strong auth. */
+        public PrincipalContext(String subject, UUID tenantId, Set<String> roles,
+                                Set<String> projectIds, Set<String> approvalIds) {
+            this(subject, tenantId, roles, projectIds, approvalIds, Set.of(), false, null, null);
         }
     }
 
@@ -46,14 +58,16 @@ public final class AdminModels {
                                  @NotBlank @Size(max = 300) String ownerSubject,
                                  @NotEmpty @Size(max = 20)
                                  Set<@Pattern(regexp = "^[a-z][a-z0-9-]{0,62}$") String> environments) {
-        public ProjectRequest { environments = Set.copyOf(environments); }
+        public ProjectRequest { environments = immutableSortedSet(environments); }
     }
 
     public record IntegrationRequest(@NotNull UUID integrationId,
                                      @NotBlank @Pattern(regexp = "^(IAM|NOTIFICATION|TICKETING|SIEM|WEBHOOK)$")
                                      String kind,
                                      @NotNull URI endpoint,
-                                     @NotBlank @Size(max = 1000) String secretRef,
+                                     @NotBlank @Size(max = 1000)
+                                     @Pattern(regexp = "^(credential://[A-Za-z0-9._:/-]{1,900}|vault-kv://[A-Za-z0-9._/-]{1,900}#v[1-9][0-9]*)$")
+                                     String secretRef,
                                      @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String configurationDigest,
                                      boolean active) {}
 
@@ -77,11 +91,24 @@ public final class AdminModels {
                                      @NotEmpty @Size(max = 64)
                                      Set<@Pattern(regexp = "^[a-z][a-z0-9:_-]{0,99}$") String> scopes,
                                      @NotNull Instant expiresAt) {
-        public ApiKeyIssueRequest { scopes = Set.copyOf(scopes); }
+        public ApiKeyIssueRequest { scopes = immutableSortedSet(scopes); }
     }
 
-    public record ApiKeyIssueResponse(String schemaVersion, UUID apiKeyId, String oneTimeSecret,
-                                      Instant createdAt, Instant expiresAt, Set<String> scopes) {}
+    /**
+     * Durable acceptance from the enterprise action authority.  This is deliberately not a
+     * business-operation result: {@code executionPending} remains true until the authoritative
+     * task reaches a separately observed terminal state.
+     */
+    public record EnterpriseActionReceipt(
+        @JsonProperty("schema_version") String schemaVersion,
+        @JsonProperty("action_id") UUID actionId,
+        @JsonProperty("task_id") UUID taskId,
+        boolean accepted,
+        @JsonProperty("start_requested") boolean startRequested,
+        @JsonProperty("execution_pending") boolean executionPending,
+        @JsonProperty("ingress_digest") String ingressDigest,
+        @JsonProperty("evidence_ref") String evidenceRef,
+        @JsonProperty("evidence_digest") String evidenceDigest) {}
 
     public record TaskCommand(@JsonProperty("schema_version") @NotBlank String schemaVersion,
                               @NotBlank @Size(max = 128) String commandId,
@@ -90,17 +117,33 @@ public final class AdminModels {
                               @PositiveOrZero long expectedStateVersion,
                               @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String payloadDigest) {}
 
-    public record PolicySimulationRequest(
-        @JsonProperty("schema_version") @NotBlank String schemaVersion,
-        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String candidateDigest,
-        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String corpusDigest,
-        @Positive @jakarta.validation.constraints.Max(10000) int maximumCases) {}
+    /** Exact browser-to-Policy-Authority lifecycle command. Payload shape is operation-specific. */
+    public record PolicyCommandRequest(
+        @JsonProperty("schema_version")
+        @NotBlank @Pattern(regexp = "^agenttrust\\.policy-command\\.v1$") String schemaVersion,
+        @NotNull UUID tenantId,
+        @NotNull UUID commandId,
+        @NotBlank @Pattern(regexp = "^[A-Za-z0-9._:/-]{1,256}$") String policyId,
+        @NotBlank @Pattern(regexp = "^(CREATE_DRAFT|VALIDATE|SIMULATE|SHADOW_EVALUATE|"
+            + "IMPACT_ANALYZE|APPROVE|SIGN|PROMOTE|ROLLBACK|DEPRECATE|CREATE_EXCEPTION|"
+            + "REVOKE_EXCEPTION)$") String operation,
+        @PositiveOrZero long expectedResourceVersion,
+        @NotNull JsonNode payload,
+        @NotNull Instant requestedAt) {}
 
-    public record PolicyPromotionRequest(
-        @JsonProperty("schema_version") @NotBlank String schemaVersion,
-        @NotBlank @Size(max = 200) String bundleVersion,
-        @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String impactReportDigest,
-        @NotBlank @Pattern(regexp = "^(CANARY|PRODUCTION)$") String environment) {}
+    /**
+     * Durable Policy workflow admission. This is never a lifecycle mutation success result:
+     * {@code executionPending} must remain true in the only accepted BFF response.
+     */
+    public record PolicyActionReceipt(
+        @JsonProperty("schema_version") String schemaVersion,
+        @JsonProperty("action_id") UUID actionId,
+        @JsonProperty("task_id") UUID taskId,
+        boolean accepted,
+        @JsonProperty("execution_pending") boolean executionPending,
+        @JsonProperty("ingress_digest") String ingressDigest,
+        @JsonProperty("ledger_evidence_ref") String ledgerEvidenceRef,
+        @JsonProperty("ledger_evidence_digest") String ledgerEvidenceDigest) {}
 
     public record ApprovalIntent(
         @JsonProperty("schema_version") @NotBlank String schemaVersion,
@@ -120,7 +163,9 @@ public final class AdminModels {
                               @Size(max = 16) Set<String> approvalIds,
                               @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String actionDigest,
                               @NotNull Instant requestedAt) {
-        public AdminIntent { approvalIds = approvalIds == null ? Set.of() : Set.copyOf(approvalIds); }
+        public AdminIntent {
+            approvalIds = approvalIds == null ? Set.of() : immutableSortedSet(approvalIds);
+        }
     }
 
     public record AuthorizationDecision(String decision, @JsonProperty("policy_digest") String policyDigest,
@@ -140,4 +185,8 @@ public final class AdminModels {
     public record DashboardResponse(@JsonProperty("schema_version") String schemaVersion,
                                     UUID tenantId, Map<String, AuthorityView> sections,
                                     boolean complete, Set<String> unavailableSections, Instant generatedAt) {}
+
+    private static <T extends Comparable<? super T>> Set<T> immutableSortedSet(Set<T> values) {
+        return Collections.unmodifiableSortedSet(new TreeSet<>(values));
+    }
 }

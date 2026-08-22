@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/domain-runtime-receipt.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "execution_id", "domain", "operation", "resource_key", "resource_version", "action_hash", "request_digest", "effect_receipt", "effect_receipt_digest", "evaluator_result", "evaluator_result_digest", "conclusion", "external_effect_started", "completed_at", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-runtime-receipt.v1"}, "execution_id": {"type": "string", "format": "uuid"},
+    "domain": {"enum": ["CODING", "INDUSTRIAL", "ENERGY", "MEDICAL", "SENSITIVE"]}, "operation": {"type": "string", "minLength": 1, "maxLength": 128},
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024}, "resource_version": {"type": "integer", "minimum": 1},
+    "action_hash": {"$ref": "#/$defs/digest"}, "request_digest": {"$ref": "#/$defs/digest"},
+    "effect_receipt": {"$ref": "domain-effect-receipt.schema.json"}, "effect_receipt_digest": {"$ref": "#/$defs/digest"},
+    "evaluator_result": {"$ref": "domain-evaluator-result.schema.json"},
+    "evaluator_result_digest": {"$ref": "#/$defs/digest"}, "conclusion": {"enum": ["PASS", "FAIL", "NEEDS_HUMAN", "MANUAL_RECOVERY"]},
+    "external_effect_started": {"type": "boolean"}, "completed_at": {"type": "string", "format": "date-time"},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 256}, "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  }, "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

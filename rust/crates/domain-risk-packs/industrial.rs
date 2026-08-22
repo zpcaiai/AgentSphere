@@ -12,6 +12,7 @@ use uuid::Uuid;
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum IndustrialStage {
     Simulator,
+    #[serde(rename = "DIGITAL_TWIN")]
     Twin,
     ReadOnly,
     Shadow,
@@ -94,6 +95,7 @@ impl IndustrialPolicyPack {
             || !matches!(
                 request.stage,
                 IndustrialStage::Simulator
+                    | IndustrialStage::Twin
                     | IndustrialStage::Shadow
                     | IndustrialStage::LimitedWrite
             )

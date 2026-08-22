@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.invalid/model-gateway/artifact-store-port.schema.json",
+  "title": "Locked Model Gateway Artifact/WORM port",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/result"}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "reference": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(dlp|object|worm|legal-hold|evidence)://[^\\s]+$"},
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "tenant_id", "authorization_ref", "authorization_digest",
+        "export_evidence_ref", "export_evidence_digest", "object_ref", "object_digest",
+        "media_type", "content_base64", "idempotency_key", "trace_id"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.model-artifact-write-request.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"},
+        "authorization_ref": {"type": "string", "pattern": "^object://[^\\s]+$", "maxLength": 2048},
+        "authorization_digest": {"$ref": "#/$defs/digest"},
+        "export_evidence_ref": {"type": "string", "pattern": "^evidence://", "maxLength": 2048},
+        "export_evidence_digest": {"$ref": "#/$defs/digest"},
+        "object_ref": {"type": "string", "pattern": "^artifact://sha256/[a-f0-9]{64}$"},
+        "object_digest": {"$ref": "#/$defs/digest"},
+        "media_type": {"const": "application/json"},
+        "content_base64": {"type": "string", "contentEncoding": "base64", "minLength": 4, "maxLength": 11184820},
+        "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:/-]+$"},
+        "trace_id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:/-]+$"}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "artifact_ref", "artifact_digest", "watermark_digest",
+        "signature_digest", "worm_receipt_ref", "worm_receipt_digest", "receipt_ref",
+        "receipt_digest"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.artifact-write-result.v1"},
+        "artifact_ref": {"type": "string", "pattern": "^artifact://sha256/[a-f0-9]{64}$"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "watermark_digest": {"$ref": "#/$defs/digest"},
+        "signature_digest": {"$ref": "#/$defs/digest"},
+        "worm_receipt_ref": {"type": "string", "pattern": "^worm://", "maxLength": 2048},
+        "worm_receipt_digest": {"$ref": "#/$defs/digest"},
+        "receipt_ref": {"$ref": "#/$defs/reference"},
+        "receipt_digest": {
+          "allOf": [
+            {"$ref": "#/$defs/digest"},
+            {"description": "JCS SHA-256 of this result with receipt_digest replaced by the empty string."}
+          ]
+        }
+      }
+    }
+  }
+}

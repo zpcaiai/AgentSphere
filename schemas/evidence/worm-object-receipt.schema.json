@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/worm-object-receipt.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "artifact_ref", "sha256", "object_ref", "version_id", "retention_until", "stored_at", "receipt_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.worm-object-receipt.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "artifact_ref": {"type": "string", "pattern": "^artifact:sha256:[a-f0-9]{64}$"},
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "object_ref": {"type": "string", "pattern": "^object-lock://", "maxLength": 2048},
+    "version_id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "retention_until": {"type": "string", "format": "date-time"},
+    "stored_at": {"type": "string", "format": "date-time"},
+    "receipt_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

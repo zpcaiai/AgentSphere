@@ -1,5 +1,9 @@
 //! Versioned, deterministic security campaign and regression metrics.
 
+pub mod authority;
+pub mod production_harness;
+pub mod server;
+
 use agent_trust_contracts::{RiskLevel, TenantId};
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -495,7 +499,10 @@ pub enum EvalLabError {
 }
 
 fn is_sha256(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[cfg(test)]

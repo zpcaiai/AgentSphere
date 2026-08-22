@@ -1,5 +1,9 @@
 //! Tenant-first Memory, Prompt, and Knowledge provenance governance.
 
+pub mod adapters;
+pub mod authority;
+pub mod server;
+
 use agent_trust_contracts::{DataClassification, TenantId};
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -395,6 +399,11 @@ impl Default for PoisoningDetector {
                 r"(?i)you are now (the )?system",
                 r"(?i)disable (audit|policy|safety)",
                 r"(?i)persist (this|these) instruction",
+                r"(?i)(system|developer) (prompt|instruction)",
+                r"(?i)(exfiltrate|send|upload).*(secret|credential|token)",
+                r"(?i)(remember|store).*(ignore|override|disable)",
+                r"(?i)(aWdub3Jl|cmV2ZWFs|69676e6f7265)",
+                r"(?i)(data:text/html|<script|javascript:)",
             ]
             .iter()
             .filter_map(|pattern| Regex::new(pattern).ok())
@@ -427,6 +436,23 @@ impl PoisoningDetector {
             findings.push(PoisoningFinding {
                 code: "CONTEXT_DIRECTIONAL_ENCODING".into(),
                 content_hash: digest,
+                blocking: true,
+            });
+        }
+        let lines = content
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        let maximum_repetition = lines
+            .iter()
+            .map(|candidate| lines.iter().filter(|line| *line == candidate).count())
+            .max()
+            .unwrap_or(0);
+        if maximum_repetition >= 4 {
+            findings.push(PoisoningFinding {
+                code: "CONTEXT_ABNORMAL_REPETITION".into(),
+                content_hash: hex(Sha256::digest(content.as_bytes())),
                 blocking: true,
             });
         }
@@ -737,5 +763,31 @@ mod tests {
         .unwrap_or_else(|error| panic!("assemble: {error}"));
         assert!(assembled.items.is_empty());
         assert_eq!(assembled.omitted_items, 1);
+    }
+
+    #[test]
+    fn poisoning_corpus_blocks_direct_indirect_encoded_and_repetition_attacks() {
+        #[derive(Deserialize)]
+        struct Corpus {
+            cases: Vec<CorpusCase>,
+        }
+        #[derive(Deserialize)]
+        struct CorpusCase {
+            content: String,
+            blocking: bool,
+        }
+        let corpus: Corpus = serde_json::from_str(include_str!(
+            "../../../../tests/context-security/poisoning-corpus.json"
+        ))
+        .unwrap_or_else(|error| panic!("corpus: {error}"));
+        let detector = PoisoningDetector::default();
+        for case in corpus.cases {
+            assert_eq!(
+                detector.scan(&case.content).iter().any(|finding| finding.blocking),
+                case.blocking,
+                "content digest {}",
+                hex(Sha256::digest(case.content.as_bytes()))
+            );
+        }
     }
 }

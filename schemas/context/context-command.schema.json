@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/context/context-command.schema.json",
+  "title": "Context Governance Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "command_id",
+    "task_id",
+    "resource",
+    "operation",
+    "expected_resource_version",
+    "requested_at",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.context-command.v1"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "command_id": {"$ref": "#/$defs/uuid"},
+    "task_id": {"$ref": "#/$defs/uuid"},
+    "resource": {"type": "string", "minLength": 3, "maxLength": 1024, "pattern": "^(?!.*[?#])[!-~]+:[!-~]+$"},
+    "operation": {
+      "enum": [
+        "WRITE_MEMORY",
+        "DELETE_MEMORY",
+        "PUBLISH_PROMPT",
+        "ACTIVATE_PROMPT",
+        "ROLLBACK_PROMPT",
+        "REGISTER_KNOWLEDGE_SOURCE",
+        "PUBLISH_KNOWLEDGE_SNAPSHOT",
+        "DELETE_KNOWLEDGE_SNAPSHOT",
+        "QUARANTINE_RESOURCE",
+        "RELEASE_QUARANTINE"
+      ]
+    },
+    "expected_resource_version": {"type": "integer", "minimum": 0},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "payload": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"operation": {"const": "WRITE_MEMORY"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/writeMemory"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "DELETE_MEMORY"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/deleteMemory"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "PUBLISH_PROMPT"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/publishPrompt"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"enum": ["ACTIVATE_PROMPT", "ROLLBACK_PROMPT"]}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/changePrompt"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "REGISTER_KNOWLEDGE_SOURCE"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/registerSource"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "PUBLISH_KNOWLEDGE_SNAPSHOT"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/publishSnapshot"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "DELETE_KNOWLEDGE_SNAPSHOT"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/deleteSnapshot"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "QUARANTINE_RESOURCE"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/quarantine"}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "RELEASE_QUARANTINE"}}},
+      "then": {"properties": {"payload": {"$ref": "#/$defs/releaseQuarantine"}}}
+    }
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid", "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "trust": {"enum": ["UNTRUSTED", "IMPORTED", "VERIFIED", "AUTHORITATIVE"]},
+    "objectRef": {"type": "string", "maxLength": 2048, "pattern": "^(object|s3|gs)://[^\\s?#]+$"},
+    "indexRef": {"type": "string", "maxLength": 2048, "pattern": "^vector://[^\\s?#]+$"},
+    "evidenceRef": {"type": "string", "maxLength": 2048, "pattern": "^(evidence://|urn:agenttrust:evidence:)[^\\s?#]+$"},
+    "provenance": {"$ref": "provenance.schema.json"},
+    "supplyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "artifact_digest", "manifest_digest", "signer_key_id", "signature", "verified_at", "expires_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.supply-chain-receipt.v1"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "manifest_digest": {"$ref": "#/$defs/digest"},
+        "signer_key_id": {"$ref": "#/$defs/identifier"},
+        "signature": {"type": "string", "minLength": 32, "maxLength": 512, "pattern": "^[A-Za-z0-9_+/=-]+$"},
+        "verified_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "writeMemory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_id", "owner_subject", "purpose", "classification", "jurisdiction", "visibility", "trust_level", "provenance", "content_digest", "staging_object_ref", "policy_version", "expires_at"],
+      "properties": {
+        "memory_id": {"$ref": "#/$defs/uuid"},
+        "owner_subject": {"$ref": "#/$defs/identifier"},
+        "purpose": {"$ref": "#/$defs/identifier"},
+        "classification": {"$ref": "#/$defs/classification"},
+        "jurisdiction": {"$ref": "#/$defs/identifier"},
+        "visibility": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "trust_level": {"$ref": "#/$defs/trust"},
+        "provenance": {"$ref": "#/$defs/provenance"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "staging_object_ref": {"$ref": "#/$defs/objectRef"},
+        "policy_version": {"$ref": "#/$defs/identifier"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "deleteMemory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["memory_id", "content_digest", "object_ref", "legal_hold_id", "reason_code"],
+      "properties": {
+        "memory_id": {"$ref": "#/$defs/uuid"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "object_ref": {"$ref": "#/$defs/objectRef"},
+        "legal_hold_id": {"$ref": "#/$defs/identifier"},
+        "reason_code": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "publishPrompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_id", "version", "content_digest", "provenance_digest", "artifact_digest", "signature", "supply_chain_receipt", "approved_by", "trust_level", "rollout_percent", "staging_object_ref"],
+      "properties": {
+        "prompt_id": {"$ref": "#/$defs/identifier"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "provenance_digest": {"$ref": "#/$defs/digest"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "signature": {"type": "string", "minLength": 32, "maxLength": 512, "pattern": "^[A-Za-z0-9_+/=-]+$"},
+        "supply_chain_receipt": {"$ref": "#/$defs/supplyReceipt"},
+        "approved_by": {"type": "array", "minItems": 2, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "trust_level": {"enum": ["VERIFIED", "AUTHORITATIVE"]},
+        "rollout_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "staging_object_ref": {"$ref": "#/$defs/objectRef"}
+      }
+    },
+    "changePrompt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prompt_id", "target_version", "rollout_percent", "reason_code"],
+      "properties": {
+        "prompt_id": {"$ref": "#/$defs/identifier"},
+        "target_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "rollout_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "reason_code": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "registerSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "owner_subject", "trust_level", "allowed_subjects", "classification", "jurisdiction", "provenance"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/identifier"},
+        "owner_subject": {"$ref": "#/$defs/identifier"},
+        "trust_level": {"$ref": "#/$defs/trust"},
+        "allowed_subjects": {"type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "classification": {"$ref": "#/$defs/classification"},
+        "jurisdiction": {"$ref": "#/$defs/identifier"},
+        "provenance": {"$ref": "#/$defs/provenance"}
+      }
+    },
+    "publishSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "snapshot_id", "source_version", "content_digest", "artifact_digest", "supply_chain_receipt", "classification", "jurisdiction", "staging_object_ref", "expires_at"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/identifier"},
+        "snapshot_id": {"$ref": "#/$defs/identifier"},
+        "source_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "supply_chain_receipt": {"$ref": "#/$defs/supplyReceipt"},
+        "classification": {"$ref": "#/$defs/classification"},
+        "jurisdiction": {"$ref": "#/$defs/identifier"},
+        "staging_object_ref": {"$ref": "#/$defs/objectRef"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "deleteSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshot_id", "content_digest", "object_ref", "index_ref", "legal_hold_id", "reason_code"],
+      "properties": {
+        "snapshot_id": {"$ref": "#/$defs/identifier"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "object_ref": {"$ref": "#/$defs/objectRef"},
+        "index_ref": {"$ref": "#/$defs/indexRef"},
+        "legal_hold_id": {"$ref": "#/$defs/identifier"},
+        "reason_code": {"$ref": "#/$defs/identifier"}
+      }
+    },
+    "quarantine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quarantine_id", "resource_type", "resource_id", "reason_codes", "detector_digest", "object_ref", "index_ref"],
+      "properties": {
+        "quarantine_id": {"$ref": "#/$defs/uuid"},
+        "resource_type": {"enum": ["MEMORY", "PROMPT", "KNOWLEDGE_SOURCE", "KNOWLEDGE_SNAPSHOT"]},
+        "resource_id": {"$ref": "#/$defs/identifier"},
+        "reason_codes": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}},
+        "detector_digest": {"$ref": "#/$defs/digest"},
+        "object_ref": {"$ref": "#/$defs/objectRef"},
+        "index_ref": {"oneOf": [{"$ref": "#/$defs/indexRef"}, {"type": "null"}]}
+      }
+    },
+    "releaseQuarantine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quarantine_id", "resource_type", "resource_id", "content_digest", "object_ref", "remediation_evidence_ref", "remediation_evidence_digest"],
+      "properties": {
+        "quarantine_id": {"$ref": "#/$defs/uuid"},
+        "resource_type": {"enum": ["MEMORY", "PROMPT", "KNOWLEDGE_SOURCE", "KNOWLEDGE_SNAPSHOT"]},
+        "resource_id": {"$ref": "#/$defs/identifier"},
+        "content_digest": {"$ref": "#/$defs/digest"},
+        "object_ref": {"$ref": "#/$defs/objectRef"},
+        "remediation_evidence_ref": {"$ref": "#/$defs/evidenceRef"},
+        "remediation_evidence_digest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

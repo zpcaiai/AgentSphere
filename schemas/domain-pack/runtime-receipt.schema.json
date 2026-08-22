@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-pack/runtime-receipt.schema.json",
+  "title": "Signed supply-chain runtime receipt",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "operation", "resource_key", "action_hash", "request_digest", "repository_receipt_digest", "signature_receipt_digest", "sbom_receipt_digest", "vulnerability_receipt_digest", "license_receipt_digest", "sandbox_receipt_digest", "revocation_receipt_digest", "installation_receipt_digest", "reconciliation_receipt_digest", "external_effect_count", "production_access_detected", "completed_at", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.supply-chain-runtime-receipt.v1"},
+    "operation": {"enum": ["PUBLISH", "VALIDATE", "APPROVE", "ACTIVATE", "ROLLBACK", "REVOKE", "QUARANTINE", "RECOVER"]},
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 768},
+    "action_hash": {"$ref": "#/$defs/digest"}, "request_digest": {"$ref": "#/$defs/digest"},
+    "repository_receipt_digest": {"$ref": "#/$defs/nullableDigest"}, "signature_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "sbom_receipt_digest": {"$ref": "#/$defs/nullableDigest"}, "vulnerability_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "license_receipt_digest": {"$ref": "#/$defs/nullableDigest"}, "sandbox_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "revocation_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "installation_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "reconciliation_receipt_digest": {"$ref": "#/$defs/nullableDigest"},
+    "external_effect_count": {"type": "integer", "minimum": 0, "maximum": 64}, "production_access_detected": {"const": false},
+    "completed_at": {"type": "string", "format": "date-time"}, "key_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}}
+}

@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 import unittest
 
 from python.durable_worker.orchestrator_api import (
-    ActionRecord, OrchestratorApi, OrchestratorApiError, _command_payload_digest,
+    ActionRecord, OrchestratorApi, OrchestratorApiError, OrchestratorTokenAuthorizer,
+    OrchestratorTokenBinding, _command_payload_digest, _command_receipt,
+    _database_json_object,
     _peer_identity_matches, _strict_json_loads, _validate_database_url,
 )
 
@@ -18,15 +20,17 @@ class Store:
     def __init__(self) -> None:
         self.actions: dict[tuple[str, str], ActionRecord] = {}
         self.idempotency: dict[tuple[str, str], ActionRecord] = {}
+        self.envelopes: dict[tuple[str, str], dict] = {}
         self.stream: list[dict] = []
     async def admit(self, record, envelope):
         key = (record.tenant_id, record.idempotency_key)
         existing = self.idempotency.get(key)
         if existing:
-            if existing.payload_hash != record.payload_hash:
+            if existing.payload_hash != record.payload_hash or self.envelopes[key] != envelope:
                 raise OrchestratorApiError("ORCHESTRATOR_IDEMPOTENCY_CONFLICT", 409)
             return existing, False
         self.idempotency[key] = record
+        self.envelopes[key] = json.loads(json.dumps(envelope))
         self.actions[(record.tenant_id, record.action_id)] = record
         return record, True
     async def mark_workflow_started(self, tenant_id, action_id):
@@ -109,7 +113,7 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         class SigningKey:
             def sign(self, value):
                 return hashlib.sha512(value).digest()
-        self.api = OrchestratorApi(self.store, self.temporal, "service-token", SigningKey())
+        self.api = OrchestratorApi(self.store, self.temporal, SigningKey())
         tenant_id = "00000000-0000-4000-8000-000000000001"
         agent_id = "00000000-0000-4000-8000-000000000004"
         now = datetime.now(timezone.utc)
@@ -166,6 +170,11 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first, second)
         self.assertEqual(first["action_id"], "00000000-0000-4000-8000-000000000002")
         self.assertEqual(first["task_id"], "00000000-0000-4000-8000-000000000003")
+        self.assertEqual(first["schema_version"], "agenttrust.action-acceptance.v1")
+        self.assertTrue(first["execution_pending"])
+        self.assertRegex(first["ingress_digest"], r"^[a-f0-9]{64}$")
+        self.assertRegex(first["evidence_digest"], r"^[a-f0-9]{64}$")
+        self.assertTrue(first["evidence_ref"].startswith("orchestrator-event://"))
         self.assertEqual(len(self.temporal.started), 1)
         self.assertEqual(len(self.temporal.signals), 1)
         self.assertEqual(self.temporal.signals[0]["command_type"], "START")
@@ -174,6 +183,31 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
             "agenttrust:00000000-0000-4000-8000-000000000001:"
             "00000000-0000-4000-8000-000000000003",
         )
+
+    async def test_idempotency_key_is_bound_to_the_complete_ingress_envelope(self) -> None:
+        await self.api.submit(self.envelope)
+        replay = json.loads(json.dumps(self.envelope))
+        replay["request_id"] = "request-rebound"
+        with self.assertRaisesRegex(OrchestratorApiError, "IDEMPOTENCY_CONFLICT"):
+            await self.api.submit(replay)
+
+    def test_database_json_and_command_evidence_are_scope_bound(self) -> None:
+        self.assertEqual(_database_json_object('{"safe":true}'), {"safe": True})
+        tenant = self.envelope["tenant_context"]["tenant_id"]
+        task = "00000000-0000-4000-8000-000000000003"
+        evidence = {
+            "schema_version": "agenttrust.command-acceptance-evidence.v1",
+            "event_ref": f"orchestrator-event://{tenant}/{task}/1",
+            "event_digest": "a" * 64,
+        }
+        self.assertTrue(_command_receipt("command:1", tenant, task, evidence)["accepted"])
+        with self.assertRaisesRegex(OrchestratorApiError, "EVENT_EVIDENCE_INVALID"):
+            _command_receipt(
+                "command:1",
+                tenant,
+                task,
+                {**evidence, "event_ref": f"orchestrator-event://{tenant}/{task}/1/extra"},
+            )
 
     async def test_temporal_workflow_identity_is_tenant_scoped(self) -> None:
         await self.api.submit(self.envelope)
@@ -221,6 +255,19 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.temporal.signals[-1]["expected_state_version"], 2)
         listing = await self.api.list_tasks(tenant, "user:1", 10)
         self.assertEqual(listing["tasks"][0]["task_id"], receipt["task_id"])
+        page = await self.api.authoritative_tasks(tenant, "user:1", "overview", 10)
+        self.assertEqual(page["schema_version"], "agenttrust.authoritative-task-page.v1")
+        self.assertTrue(page["authoritative"])
+        self.assertEqual(page["tenant_id"], tenant)
+        self.assertEqual(page["items"][0]["task_id"], receipt["task_id"])
+        digest_material = dict(page)
+        supplied_digest = digest_material.pop("data_digest")
+        self.assertEqual(
+            supplied_digest,
+            hashlib.sha256(json.dumps(
+                digest_material, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            ).encode("utf-8")).hexdigest(),
+        )
         events = await self.api.task_events(tenant, "user:1", receipt["task_id"], 10)
         self.assertEqual([event["command_type"] for event in events["events"]],
                          ["START", "PAUSE", "RESUME"])
@@ -251,7 +298,9 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
             await self.api.control(tenant, "user:1", receipt["action_id"], "PAUSE")
         self.temporal.rejected.clear()
         self.temporal.processed["caller:key"] = "processed-fingerprint"
-        with self.assertRaisesRegex(OrchestratorApiError, "IDEMPOTENCY_CONFLICT"):
+        with self.assertRaisesRegex(
+            OrchestratorApiError, "COMMAND_ACCEPTANCE_EVIDENCE_MISSING"
+        ):
             await self.api.control(
                 tenant, "user:1", receipt["action_id"], "PAUSE", "caller:key"
             )
@@ -311,6 +360,33 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(OrchestratorApiError, "ACTION_IR_INVALID"):
             await self.api.submit(invalid)
 
+    async def test_side_effecting_action_requires_plan_and_state_bindings(self) -> None:
+        side_effect = json.loads(json.dumps(self.envelope))
+        action = json.loads(bytes(side_effect["payload"]))
+        action["intent"]["operation"] = "write"
+        action.pop("current_state_version")
+        action["extensions"] = {"x-plan-hash": "b" * 64}
+        payload = json.dumps(action, sort_keys=True, separators=(",", ":")).encode()
+        side_effect["payload"] = list(payload)
+        side_effect["payload_hash"] = hashlib.sha256(payload).hexdigest()
+        with self.assertRaisesRegex(OrchestratorApiError, "ACTION_IR_INVALID"):
+            await self.api.submit(side_effect)
+
+        action["current_state_version"] = "1"
+        action["extensions"] = {}
+        payload = json.dumps(action, sort_keys=True, separators=(",", ":")).encode()
+        side_effect["payload"] = list(payload)
+        side_effect["payload_hash"] = hashlib.sha256(payload).hexdigest()
+        with self.assertRaisesRegex(OrchestratorApiError, "ACTION_IR_INVALID"):
+            await self.api.submit(side_effect)
+
+        action["extensions"] = {"x-plan-hash": "b" * 64}
+        payload = json.dumps(action, sort_keys=True, separators=(",", ":")).encode()
+        side_effect["payload"] = list(payload)
+        side_effect["payload_hash"] = hashlib.sha256(payload).hexdigest()
+        accepted = await self.api.submit(side_effect)
+        self.assertTrue(accepted["accepted"])
+
     async def test_gateway_context_and_byte_payload_are_exact(self) -> None:
         unknown_identity = json.loads(json.dumps(self.envelope))
         unknown_identity["identity_context"]["caller_claim"] = "untrusted"
@@ -324,6 +400,10 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         boolean_byte["payload"][0] = True
         with self.assertRaisesRegex(OrchestratorApiError, "INGRESS_INVALID"):
             await self.api.submit(boolean_byte)
+        unsafe_owner = json.loads(json.dumps(self.envelope))
+        unsafe_owner["identity_context"]["owner_subject"] = "user:1\nforged"
+        with self.assertRaisesRegex(OrchestratorApiError, "INGRESS_INVALID"):
+            await self.api.submit(unsafe_owner)
 
     async def test_ingress_digest_uses_cross_language_utf8_canonical_json(self) -> None:
         localized = json.loads(json.dumps(self.envelope))
@@ -395,11 +475,41 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_service_auth_and_agui_resume_fail_closed(self) -> None:
-        with self.assertRaisesRegex(OrchestratorApiError, "UNAUTHENTICATED"):
-            self.api.authenticate(None)
-        self.api.authenticate("Bearer service-token")
-        receipt = await self.api.submit(self.envelope)
         tenant = self.envelope["tenant_context"]["tenant_id"]
+        authorizer = OrchestratorTokenAuthorizer([
+            OrchestratorTokenBinding(
+                "URI:spiffe://agenttrust/runtime", tenant, "runtime", "orchestrator:runtime",
+                hashlib.sha256(b"service-token").hexdigest(),
+            ),
+            OrchestratorTokenBinding(
+                "URI:spiffe://agenttrust/control-api", tenant, "bff", "orchestrator:read",
+                hashlib.sha256(b"read-token").hexdigest(),
+            ),
+        ], frozenset({"URI:spiffe://agenttrust/runtime"}),
+           frozenset({"URI:spiffe://agenttrust/control-api"}))
+        with self.assertRaisesRegex(OrchestratorApiError, "UNAUTHENTICATED"):
+            authorizer.authorize("URI:spiffe://agenttrust/runtime", tenant,
+                                 "orchestrator:runtime", None)
+        self.assertEqual("runtime", authorizer.authorize(
+            "URI:spiffe://agenttrust/runtime", tenant, "orchestrator:runtime",
+            "Bearer service-token"))
+        with self.assertRaisesRegex(ValueError, "TOKEN_BINDINGS_INVALID"):
+            OrchestratorTokenAuthorizer([
+                OrchestratorTokenBinding(
+                    "URI:spiffe://agenttrust/runtime", tenant, "runtime",
+                    "orchestrator:runtime", hashlib.sha256(b"runtime-unique").hexdigest(),
+                ),
+                OrchestratorTokenBinding(
+                    "URI:spiffe://agenttrust/control-api", tenant, "bff",
+                    "orchestrator:read", hashlib.sha256(b"reused").hexdigest(),
+                ),
+                OrchestratorTokenBinding(
+                    "URI:spiffe://agenttrust/control-api", tenant, "bff",
+                    "orchestrator:command", hashlib.sha256(b"reused").hexdigest(),
+                ),
+            ], frozenset({"URI:spiffe://agenttrust/runtime"}),
+               frozenset({"URI:spiffe://agenttrust/control-api"}))
+        receipt = await self.api.submit(self.envelope)
         self.temporal.state = lambda task_id: _async_value({
             **self.temporal.initial_by_workflow[task_id],
             "status": "RUNNING", "recovery_cursor": 1, "terminal": False,
@@ -459,10 +569,7 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["evidence_digest"], "b" * 64)
 
     def test_trusted_proxy_identity_is_exact_san_match(self) -> None:
-        certificate = {"subjectAltName": (
-            ("DNS", "enterprise-control-api.agenttrust.svc"),
-            ("URI", "spiffe://agenttrust/control-api"),
-        )}
+        certificate = {"subjectAltName": (("URI", "spiffe://agenttrust/control-api"),)}
         self.assertTrue(_peer_identity_matches(
             certificate, "URI:spiffe://agenttrust/control-api"
         ))
@@ -472,6 +579,13 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.assertFalse(_peer_identity_matches(
             certificate, "URI:spiffe://agenttrust/control"
+        ))
+        self.assertFalse(_peer_identity_matches(
+            {"subjectAltName": (
+                ("DNS", "enterprise-control-api.agenttrust.svc"),
+                ("URI", "spiffe://agenttrust/control-api"),
+            )},
+            "DNS:enterprise-control-api.agenttrust.svc,URI:spiffe://agenttrust/control-api",
         ))
 
     def test_http_json_body_rejects_duplicate_control_fields(self) -> None:
@@ -488,20 +602,25 @@ class OrchestratorApiTests(unittest.IsolatedAsyncioTestCase):
             ca.write_text("certificate", encoding="utf-8")
             ca.chmod(0o440)
             valid = (
-                "postgresql://database.example/agenttrust?sslmode=verify-full"
+                "postgresql://orchestrator_app@database.example/agenttrust?sslmode=verify-full"
                 f"&sslrootcert={ca}&options=-csearch_path%3Dpg_catalog%2Cpublic"
             )
-            self.assertEqual(_validate_database_url(valid), ca)
+            self.assertEqual(_validate_database_url(valid, "orchestrator_app"), ca)
             with self.assertRaisesRegex(ValueError, "API_CONFIG_INVALID"):
-                _validate_database_url(f"{valid}&SSLMode=disable")
+                _validate_database_url(f"{valid}&SSLMode=disable", "orchestrator_app")
             with self.assertRaisesRegex(ValueError, "API_CONFIG_INVALID"):
-                _validate_database_url(f"{valid}&sslhostnameverifier=allow_all")
+                _validate_database_url(f"{valid}&sslhostnameverifier=allow_all",
+                                       "orchestrator_app")
             with self.assertRaisesRegex(ValueError, "API_CONFIG_INVALID"):
                 _validate_database_url(valid.replace(
                     "-csearch_path%3Dpg_catalog%2Cpublic", "-csearch_path%3Dpublic"
-                ))
+                ), "orchestrator_app")
             with self.assertRaisesRegex(ValueError, "API_CONFIG_INVALID"):
-                _validate_database_url(f"{valid}&OPTIONS=-csearch_path%3Devil%2Cpublic")
+                _validate_database_url(f"{valid}&OPTIONS=-csearch_path%3Devil%2Cpublic",
+                                       "orchestrator_app")
+            with self.assertRaisesRegex(ValueError, "API_CONFIG_INVALID"):
+                _validate_database_url(valid.replace("orchestrator_app@",
+                    "orchestrator_app:embedded@"), "orchestrator_app")
 
 
 async def _async_value(value):

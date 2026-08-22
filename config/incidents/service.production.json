@@ -1,1 +1,25 @@
-{"schema_version":"agenttrust.incident-config.v1","profile":"production","fail_closed":true,"maximum_open_incidents_per_tenant":10000,"logical_replay_effects_allowed":false,"sandbox_replay_production_credentials":false,"live_replay_requires_fresh_lease":true,"live_replay_requires_approval":true}
+{
+  "schema_version": "agenttrust.incident-config.v2",
+  "profile": "production",
+  "fail_closed": true,
+  "data_port": 8090,
+  "management_port": 9101,
+  "readiness_schema": "agenttrust.incident-release-readiness.v1",
+  "authority_routes": {
+    "detection": "/v1/incidents/detections",
+    "human_action": "/v1/incidents/actions",
+    "runtime_execution": "/v1/incidents/executions",
+    "authoritative_list": "/v1/authoritative/incidents",
+    "authoritative_detail": "/v1/authoritative/incidents/{incident_id}"
+  },
+  "route_scopes": ["incident:detect", "incident:mutate", "incident:execute", "incident:query"],
+  "maximum_open_incidents_per_tenant": 10000,
+  "logical_replay_effects_allowed": false,
+  "sandbox_replay_production_credentials": false,
+  "live_replay_requires_fresh_lease": true,
+  "live_replay_requires_two_approvals": true,
+  "release_gate_engine_only": true,
+  "production_closure_issuer": false,
+  "maximum_release_receipt_validity_seconds": 604800,
+  "execution_lease_seconds": 60
+}

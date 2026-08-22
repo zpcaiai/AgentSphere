@@ -48,16 +48,16 @@ management:
       readiness.include: readinessState,db,pep,jwks,authorities
 agenttrust.control:
   console-origins: ${AGENT_TRUST_CONSOLE_ORIGINS}
-  service-token-file: ${AGENT_TRUST_SERVICE_TOKEN_FILE}
-  api-key-pepper: ${AGENT_TRUST_API_KEY_PEPPER}
   iam-issuer: ${AGENT_TRUST_IAM_ISSUER}
   iam-audience: ${AGENT_TRUST_IAM_AUDIENCE}
   iam-authorization-endpoint: ${AGENT_TRUST_IAM_AUTHORIZATION_ENDPOINT}
   iam-token-endpoint: ${AGENT_TRUST_IAM_TOKEN_ENDPOINT}
   iam-user-info-endpoint: ${AGENT_TRUST_IAM_USERINFO_ENDPOINT}
   pep-endpoint: ${AGENT_TRUST_PEP_ENDPOINT}
+  pep-readiness-schema: ${AGENT_TRUST_PEP_READINESS_SCHEMA}
   jwks-endpoint: ${AGENT_TRUST_IAM_JWKS_ENDPOINT}
   authority-endpoints:
+    enterprise: ${AGENT_TRUST_ENTERPRISE_AUTHORITY_ENDPOINT}
     agents: ${AGENT_TRUST_AGENT_REGISTRY_ENDPOINT}
     tasks: ${AGENT_TRUST_ORCHESTRATOR_ENDPOINT}
     approvals: ${AGENT_TRUST_APPROVAL_ENDPOINT}
@@ -70,11 +70,41 @@ agenttrust.control:
     trace: ${AGENT_TRUST_TRACE_ENDPOINT}
     compliance: ${AGENT_TRUST_COMPLIANCE_ENDPOINT}
     audit: ${AGENT_TRUST_AUDIT_ENDPOINT}
+    models: ${AGENT_TRUST_MODEL_GATEWAY_ENDPOINT}
+    data: ${AGENT_TRUST_DATA_GOVERNANCE_ENDPOINT}
+    context: ${AGENT_TRUST_CONTEXT_GOVERNANCE_ENDPOINT}
+    anomalies: ${AGENT_TRUST_RUNTIME_ANOMALY_ENDPOINT}
+    security_evaluations: ${AGENT_TRUST_SECURITY_EVALUATION_ENDPOINT}
+    supply_chain: ${AGENT_TRUST_PACK_SUPPLY_CHAIN_ENDPOINT}
+    domain_packs: ${AGENT_TRUST_DOMAIN_RUNTIME_ENDPOINT}
     sre: ${AGENT_TRUST_SRE_ENDPOINT}
     deployments: ${AGENT_TRUST_DEPLOYMENT_ENDPOINT}
+  authority-readiness-schemas:
+    enterprise: ${AGENT_TRUST_ENTERPRISE_AUTHORITY_READINESS_SCHEMA}
+    agents: ${AGENT_TRUST_AGENT_REGISTRY_READINESS_SCHEMA}
+    tasks: ${AGENT_TRUST_ORCHESTRATOR_READINESS_SCHEMA}
+    approvals: ${AGENT_TRUST_APPROVAL_READINESS_SCHEMA}
+    evidence: ${AGENT_TRUST_EVIDENCE_READINESS_SCHEMA}
+    incidents: ${AGENT_TRUST_INCIDENT_READINESS_SCHEMA}
+    policies: ${AGENT_TRUST_POLICY_ADMIN_READINESS_SCHEMA}
+    tools: ${AGENT_TRUST_TOOL_REGISTRY_READINESS_SCHEMA}
+    credentials: ${AGENT_TRUST_CREDENTIAL_SESSION_READINESS_SCHEMA}
+    packs: ${AGENT_TRUST_PACK_MARKETPLACE_READINESS_SCHEMA}
+    trace: ${AGENT_TRUST_TRACE_READINESS_SCHEMA}
+    compliance: ${AGENT_TRUST_COMPLIANCE_READINESS_SCHEMA}
+    audit: ${AGENT_TRUST_AUDIT_READINESS_SCHEMA}
+    models: ${AGENT_TRUST_MODEL_GATEWAY_READINESS_SCHEMA}
+    data: ${AGENT_TRUST_DATA_GOVERNANCE_READINESS_SCHEMA}
+    context: ${AGENT_TRUST_CONTEXT_GOVERNANCE_READINESS_SCHEMA}
+    anomalies: ${AGENT_TRUST_RUNTIME_ANOMALY_READINESS_SCHEMA}
+    security_evaluations: ${AGENT_TRUST_SECURITY_EVALUATION_READINESS_SCHEMA}
+    supply_chain: ${AGENT_TRUST_PACK_SUPPLY_CHAIN_READINESS_SCHEMA}
+    domain_packs: ${AGENT_TRUST_DOMAIN_RUNTIME_READINESS_SCHEMA}
+    sre: ${AGENT_TRUST_SRE_READINESS_SCHEMA}
+    deployments: ${AGENT_TRUST_DEPLOYMENT_READINESS_SCHEMA}
   maximum-page-size: 100
   authority-timeout-millis: 3000
-  maximum-authority-response-bytes: 8388608
+  maximum-authority-response-bytes: ${AGENT_TRUST_MAXIMUM_AUTHORITY_RESPONSE_BYTES:1048576}
   agui-signing-key-file: ${AGENT_TRUST_AGUI_SIGNING_KEY_FILE}
   agui-resume-hmac-key-file: ${AGENT_TRUST_AGUI_RESUME_HMAC_KEY_FILE}
   agui-resume-ttl-seconds: 300
@@ -85,3 +115,69 @@ agenttrust.control:
   outbound-mtls-required: true
   expected-database-role: ${AGENT_TRUST_DATABASE_EXPECTED_ROLE}
   database-tls-required: true
+  # Every non-Approval read and governed remote operation has a distinct opaque token.
+  # Reusing a raw value across any entry is rejected at startup and on every rotation.
+  authority-tokens:
+    read-token-files:
+      agents: ${AGENT_TRUST_AGENT_REGISTRY_READ_TOKEN_FILE}
+      tasks: ${AGENT_TRUST_ORCHESTRATOR_READ_TOKEN_FILE}
+      evidence: ${AGENT_TRUST_EVIDENCE_READ_TOKEN_FILE}
+      incidents: ${AGENT_TRUST_INCIDENT_READ_TOKEN_FILE}
+      policies: ${AGENT_TRUST_POLICY_ADMIN_READ_TOKEN_FILE}
+      tools: ${AGENT_TRUST_TOOL_REGISTRY_READ_TOKEN_FILE}
+      credentials: ${AGENT_TRUST_IDENTITY_READ_TOKEN_FILE}
+      packs: ${AGENT_TRUST_PACK_MARKETPLACE_READ_TOKEN_FILE}
+      trace: ${AGENT_TRUST_TRACE_READ_TOKEN_FILE}
+      compliance: ${AGENT_TRUST_COMPLIANCE_READ_TOKEN_FILE}
+      audit: ${AGENT_TRUST_AUDIT_READ_TOKEN_FILE}
+      models: ${AGENT_TRUST_MODEL_GATEWAY_READ_TOKEN_FILE}
+      data: ${AGENT_TRUST_DATA_GOVERNANCE_READ_TOKEN_FILE}
+      context: ${AGENT_TRUST_CONTEXT_GOVERNANCE_READ_TOKEN_FILE}
+      anomalies: ${AGENT_TRUST_RUNTIME_ANOMALY_READ_TOKEN_FILE}
+      security_evaluations: ${AGENT_TRUST_SECURITY_EVALUATION_READ_TOKEN_FILE}
+      supply_chain: ${AGENT_TRUST_PACK_SUPPLY_CHAIN_READ_TOKEN_FILE}
+      domain_packs: ${AGENT_TRUST_DOMAIN_RUNTIME_READ_TOKEN_FILE}
+      sre: ${AGENT_TRUST_SRE_READ_TOKEN_FILE}
+      deployments: ${AGENT_TRUST_DEPLOYMENT_READ_TOKEN_FILE}
+    operation-token-files:
+      "enterprise.mutate": ${AGENT_TRUST_ENTERPRISE_MUTATE_TOKEN_FILE}
+      "policies.mutate": ${AGENT_TRUST_POLICY_MUTATE_TOKEN_FILE}
+      "incidents.mutate": ${AGENT_TRUST_INCIDENT_MUTATE_TOKEN_FILE}
+      "packs.mutate": ${AGENT_TRUST_PACK_MARKETPLACE_MUTATE_TOKEN_FILE}
+      "tasks.command": ${AGENT_TRUST_ORCHESTRATOR_COMMAND_TOKEN_FILE}
+      "tasks.transitions": ${AGENT_TRUST_ORCHESTRATOR_TRANSITIONS_TOKEN_FILE}
+  pep-tokens:
+    approval-token-file: ${AGENT_TRUST_PEP_APPROVAL_TOKEN_FILE}
+    query-token-file: ${AGENT_TRUST_PEP_QUERY_TOKEN_FILE}
+  human-assertion:
+    signing-key-file: ${AGENT_TRUST_HUMAN_ASSERTION_SIGNING_KEY_FILE}
+    signing-key-format: ${AGENT_TRUST_HUMAN_ASSERTION_SIGNING_KEY_FORMAT}
+    issuer: ${AGENT_TRUST_HUMAN_ASSERTION_ISSUER}
+    audience: ${AGENT_TRUST_HUMAN_ASSERTION_AUDIENCE}
+    key-id: ${AGENT_TRUST_HUMAN_ASSERTION_KEY_ID}
+    client-identity: ${AGENT_TRUST_HUMAN_ASSERTION_CLIENT_IDENTITY}
+    service-subject: ${AGENT_TRUST_HUMAN_ASSERTION_SERVICE_SUBJECT}
+    assertion-ttl-seconds: ${AGENT_TRUST_HUMAN_ASSERTION_TTL_SECONDS:300}
+    accepted-authentication-contexts: ${AGENT_TRUST_HUMAN_ASSERTION_ACCEPTED_AUTH_CONTEXTS}
+    maximum-authentication-age-seconds: ${AGENT_TRUST_HUMAN_ASSERTION_MAX_AUTH_AGE_SECONDS:900}
+  approval:
+    # Each opaque service token MUST have a distinct raw value/digest. Reusing one token across
+    # scopes is rejected at startup and after CSI/Vault rotation.
+    read-token-file: ${AGENT_TRUST_APPROVAL_READ_TOKEN_FILE}
+    request-token-file: ${AGENT_TRUST_APPROVAL_REQUEST_TOKEN_FILE}
+    decide-token-file: ${AGENT_TRUST_APPROVAL_DECIDE_TOKEN_FILE}
+    issue-token-file: ${AGENT_TRUST_APPROVAL_ISSUE_TOKEN_FILE}
+    revoke-token-file: ${AGENT_TRUST_APPROVAL_REVOKE_TOKEN_FILE}
+    principal-signing-key-file: ${AGENT_TRUST_APPROVAL_PRINCIPAL_SIGNING_KEY_FILE}
+    # Explicitly RAW_BASE64URL (32-byte seed) or PKCS8_PEM; format auto-detection is forbidden.
+    principal-signing-key-format: ${AGENT_TRUST_APPROVAL_PRINCIPAL_SIGNING_KEY_FORMAT}
+    principal-issuer: ${AGENT_TRUST_APPROVAL_PRINCIPAL_ISSUER}
+    principal-audience: ${AGENT_TRUST_APPROVAL_PRINCIPAL_AUDIENCE}
+    principal-key-id: ${AGENT_TRUST_APPROVAL_PRINCIPAL_KEY_ID}
+    # Must exactly equal the SAN extracted by the Approval authority from this BFF's mTLS cert.
+    client-identity: ${AGENT_TRUST_APPROVAL_CLIENT_IDENTITY}
+    # Must exactly equal the subject in the approvals:decide token binding.
+    service-subject: ${AGENT_TRUST_APPROVAL_SERVICE_SUBJECT}
+    assertion-ttl-seconds: ${AGENT_TRUST_APPROVAL_ASSERTION_TTL_SECONDS:300}
+    accepted-strong-auth-acrs: ${AGENT_TRUST_APPROVAL_ACCEPTED_STRONG_AUTH_ACRS}
+    maximum-authentication-age-seconds: ${AGENT_TRUST_APPROVAL_MAX_AUTH_AGE_SECONDS:900}

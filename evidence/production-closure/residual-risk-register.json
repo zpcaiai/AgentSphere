@@ -56,7 +56,7 @@
       "severity": "P1",
       "owner": "UNASSIGNED",
       "status": "OPEN",
-      "description": "The source directory is not a Git repository, so the release remains WORKTREE-NO-GIT and has no clean signed immutable commit/tag or approved remote provenance."
+      "description": "The checked-in evidence bundle is not yet rebound to the exact clean signed immutable candidate commit/tag and verified approved remote provenance, so its release identifier remains WORKTREE-NO-GIT."
     },
     {
       "risk_id": "R-009",

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/security-evaluation/security-evaluation-report-v1.schema.json",
+  "title": "Signed security evaluation engine report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "report_id", "tenant_id", "campaign_id", "release_digest",
+    "configuration_digest", "policy_digest", "pack_digest", "model_digest", "prompt_digest",
+    "metrics", "risk_summary", "coverage", "sample_count", "cleanup_complete", "evidence_complete",
+    "high_risk_regression", "release_blocked", "attestation_class", "production_certified",
+    "generated_at", "key_id", "report_digest", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.security-eval-report.v1"},
+    "report_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "campaign_id": {"type": "string", "format": "uuid"},
+    "release_digest": {"$ref": "#/$defs/digest"},
+    "configuration_digest": {"$ref": "#/$defs/digest"},
+    "policy_digest": {"$ref": "#/$defs/digest"},
+    "pack_digest": {"$ref": "#/$defs/digest"},
+    "model_digest": {"$ref": "#/$defs/digest"},
+    "prompt_digest": {"$ref": "#/$defs/digest"},
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prevent", "detect", "contain", "recover"],
+      "properties": {
+        "prevent": {"$ref": "#/$defs/metric"},
+        "detect": {"$ref": "#/$defs/metric"},
+        "contain": {"$ref": "#/$defs/metric"},
+        "recover": {"$ref": "#/$defs/metric"}
+      }
+    },
+    "risk_summary": {"type": "object"},
+    "coverage": {"type": "object"},
+    "sample_count": {"type": "integer", "minimum": 1},
+    "cleanup_complete": {"type": "boolean"},
+    "evidence_complete": {"type": "boolean"},
+    "high_risk_regression": {"type": "boolean"},
+    "release_blocked": {"type": "boolean"},
+    "attestation_class": {"const": "ENGINE_EVALUATION_ONLY"},
+    "production_certified": {"const": false},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "report_digest": {"$ref": "#/$defs/digest"},
+    "signature": {"type": "string", "minLength": 64, "maxLength": 1024}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "successes", "samples", "rate_millionths", "confidence_low_millionths", "confidence_high_millionths", "latency_p95_ms"],
+      "properties": {
+        "phase": {"enum": ["prevent", "detect", "contain", "recover"]},
+        "successes": {"type": "integer", "minimum": 0},
+        "samples": {"type": "integer", "minimum": 1},
+        "rate_millionths": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "confidence_low_millionths": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "confidence_high_millionths": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "latency_p95_ms": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

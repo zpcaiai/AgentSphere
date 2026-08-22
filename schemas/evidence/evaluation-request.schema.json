@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/evaluation-request.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "task_id", "idempotency_key", "expected_chain_head", "required_event_types", "requested_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.evaluation-request.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,128}$"},
+    "expected_chain_head": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "required_event_types": {
+      "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
+      "items": {"enum": ["TASK_CREATED", "PLAN_GENERATED", "POLICY_EVALUATED", "APPROVAL_DECISION", "CREDENTIAL_ISSUED", "TOOL_PREPARED", "TOOL_EXECUTED", "COMPENSATION", "EVALUATION", "SECURITY_ALERT", "STATE_TRANSITION", "AUDIT_QUERY", "AUDIT_EXPORT", "LEGAL_HOLD", "RETENTION_DELETION"]},
+      "allOf": [
+        {"contains": {"const": "TASK_CREATED"}},
+        {"contains": {"const": "PLAN_GENERATED"}},
+        {"contains": {"const": "POLICY_EVALUATED"}},
+        {"contains": {"const": "CREDENTIAL_ISSUED"}},
+        {"contains": {"const": "TOOL_PREPARED"}},
+        {"contains": {"const": "TOOL_EXECUTED"}}
+      ]
+    },
+    "requested_at": {"type": "string", "format": "date-time"}
+  }
+}

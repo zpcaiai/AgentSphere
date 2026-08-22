@@ -56,7 +56,7 @@ EXPECTED_ADAPTERS = {
     "secret_broker": ("SecretBrokerCredentialLifecycle", "CredentialLifecyclePort", "endpoint", "secret_broker"),
     "industrial": ("HttpIndustrialAdapter", "IndustrialAdapter", "endpoint", "industrial"),
     "backup": ("HttpBackupPort", "BackupPort", "endpoint", "backup"),
-    "policy_distribution": ("HttpPolicyDistributionPort", "PolicyDistributionPort", "endpoint", "policy_distribution"),
+    "policy_activation": ("HttpPepPolicyActivationClient", "PolicyActivationPort", "authority_env", "AGENT_TRUST_POLICY_PEP_ACTIVATION_ENDPOINT"),
     "containment": ("HttpContainmentPort", "ContainmentPort", "endpoint", "containment"),
     "recertification": ("HttpRecertificationPort", "RecertificationPort", "endpoint", "recertification"),
     "enterprise_integration": ("HttpEnterpriseIntegration", "IntegrationPort", "endpoint", "enterprise_integration"),
@@ -201,7 +201,7 @@ def _audit_operation(adapter_id: str, source: str, operation: Mapping[str, Any])
         raise AuditError(f"PRODUCTION_ADAPTER_WIRE_CONTRACT_MISSING:{adapter_id}:{method}:{wire_path}")
     method_call_valid = (
         (method == "GET" and "get_bytes" in call)
-        or (method == "POST" and "post_json" in call)
+        or (method == "POST" and ("post_json" in call or call == ".post("))
         or (method == "FILE_READ" and call == "read_json(")
     )
     if not method_call_valid:
@@ -302,6 +302,20 @@ def _audit_config_bindings(adapters: Sequence[Mapping[str, Any]]) -> None:
             paths = [_absolute_string(value, "PRODUCTION_EVIDENCE_PATH_INVALID") for value in files.values()]
             if len(paths) != len(set(paths)):
                 raise AuditError("PRODUCTION_EVIDENCE_PATH_DUPLICATE")
+        elif kind == "authority_env":
+            template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(
+                encoding="utf-8"
+            )
+            required = {
+                str(selector),
+                "AGENT_TRUST_POLICY_PEP_ACTIVATION_TOKEN_FILE",
+                "AGENT_TRUST_POLICY_OUTBOUND_CA_FILE",
+                "AGENT_TRUST_POLICY_OUTBOUND_CERTIFICATE_FILE",
+                "AGENT_TRUST_POLICY_OUTBOUND_PRIVATE_KEY_FILE",
+                "AGENT_TRUST_POLICY_PEP_ACTIVATION_VERIFYING_KEY_FILE",
+            }
+            if not required.issubset(set(re.findall(r"AGENT_TRUST_[A-Z0-9_]+", template))):
+                raise AuditError(f"PRODUCTION_AUTHORITY_ADAPTER_BINDING_INVALID:{adapter_id}")
         else:
             raise AuditError(f"PRODUCTION_ADAPTER_CONFIG_BINDING_INVALID:{adapter_id}")
     if bound_endpoints != set(endpoints):

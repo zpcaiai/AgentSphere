@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/platform-sre/sre-executor-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command", "actor_subject", "principal_assertion_digest", "approval_ids"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.sre-executor-request.v1"},
+    "command": {"$ref": "sre-command.schema.json"},
+    "actor_subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"},
+    "principal_assertion_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "approval_ids": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}}
+  }
+}

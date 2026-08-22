@@ -10,34 +10,34 @@ export type QuotaConsumeRequest = Schemas["QuotaConsumeRequest"];
 export type QuotaUsage = Schemas["QuotaUsage"];
 export type CostUsageRequest = Schemas["CostUsageRequest"];
 export type ApiKeyIssueRequest = Schemas["ApiKeyIssueRequest"];
-export type ApiKeyIssueResponse = Schemas["ApiKeyIssueResponse"];
+export type EnterpriseActionReceipt = Schemas["EnterpriseActionReceipt"];
 
-export interface AuthorityPage<T> {
-  schema_version: string;
-  authoritative: true;
-  items: T[];
-  next_cursor: string | null;
-}
-
-export interface AgentInventoryItem {
-  agent_id: string;
-  version?: string;
-  posture?: string;
-  safe_summary?: string;
-  [key: string]: unknown;
-}
+export type AuthorityPage<T> = Omit<Schemas["AgentInventoryPage"], "items"> & { items: T[] };
+export type AgentInventoryItem = Schemas["AgentInventoryItem"];
 
 export type TaskCommand = Schemas["TaskCommand"];
-export type PolicySimulationRequest = Schemas["PolicySimulationRequest"];
-
-export interface PolicySimulationResult {
-  schema_version: string;
-  authoritative: true;
-  impact_report_digest: string;
-  safe_summary: string;
-}
-
-export type PolicyPromotionRequest = Schemas["PolicyPromotionRequest"];
+export type PolicyOperation = Schemas["PolicyCommand"]["operation"];
+export type PolicyRule = Schemas["PolicyRule"];
+export type PolicySource = Schemas["PolicySource"];
+export type PolicyAction = Schemas["PolicyAction"];
+export type PolicyCommand = Schemas["PolicyCommand"];
+export type PolicyActionReceipt = Schemas["PolicyActionReceipt"];
+export type PolicySummary = Schemas["PolicySummary"];
+export type PolicyPage = Schemas["PolicyPage"];
+export type PolicyArtifact = Schemas["PolicyArtifact"];
+export type PolicyArtifactPage = Schemas["PolicyArtifactPage"];
+export type PolicyArtifactType = PolicyArtifactPage["artifact_type"];
+export type Incident = Schemas["Incident"];
+export type IncidentPage = Schemas["IncidentPage"];
+export type IncidentOperation = Schemas["IncidentCommand"]["operation"];
+export type IncidentCommand = Schemas["IncidentCommand"];
+export type IncidentActionReceipt = Schemas["IncidentActionReceipt"];
+export type PackRelease = Schemas["PackRelease"];
+export type PackInstallation = Schemas["PackInstallation"];
+export type PackPage = Schemas["PackPage"];
+export type MarketplaceTypedCommand = Schemas["MarketplaceTypedCommand"];
+export type MarketplaceCommand = Schemas["MarketplaceCommand"];
+export type MarketplaceActionReceipt = Schemas["MarketplaceActionReceipt"];
 
 export type GovernedWriteCommand =
   | { kind: "CREATE_TENANT"; resource: string; payload: TenantRequest; reason: string }
@@ -48,5 +48,4 @@ export type GovernedWriteCommand =
   | { kind: "RECORD_COST"; resource: string; payload: CostUsageRequest; reason: string }
   | { kind: "ISSUE_API_KEY"; resource: "api-key:new"; payload: ApiKeyIssueRequest; reason: string }
   | { kind: "REVOKE_API_KEY"; resource: string; payload: string; reason: string }
-  | { kind: "PROMOTE_POLICY"; resource: string; payload: PolicyPromotionRequest; reason: string }
   | { kind: `TASK_${TaskCommand["command_type"]}`; resource: string; payload: TaskCommand; reason: string };

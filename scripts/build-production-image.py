@@ -51,10 +51,46 @@ def command_for(
         dockerfile = root / "Dockerfile.execution"
         arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
                      "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "registry" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.registry"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "agent-registry" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.agent-registry"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "policy-admin" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.policy-admin"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "incident-release" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.incident-release"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "pack-marketplace" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.pack-marketplace"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component in {
+        "approval", "pep", "identity", "tool-proxy", "evidence",
+        "context-governance", "security-evaluation", "platform-sre", "runtime-anomaly",
+        "model-gateway", "data-governance", "pack-supply-chain", "domain-runtime",
+    } and len(bases) == 2:
+        dockerfile = root / f"Dockerfile.{component}"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "audit" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.audit-retention"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
     elif component == "enterprise-control" and len(bases) == 2:
         dockerfile = root / "Dockerfile.enterprise-control"
         arguments = ["--build-arg", f"MAVEN_BUILDER_IMAGE={bases[0]}",
                      "--build-arg", f"JAVA_RUNTIME_IMAGE={bases[1]}"]
+    elif component == "enterprise-authority" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.enterprise-authority"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
     elif (
         component == "console" and len(bases) == 2 and _valid_https(control_api_url)
         and _valid_ed25519_key(agui_verify_key)
@@ -107,8 +143,12 @@ def _valid_ed25519_key(value: str | None) -> bool:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="build-production-image")
     parser.add_argument("--component", choices=(
-        "runtime", "orchestrator", "transition", "execution", "enterprise-control", "console",
-        "migrations",
+        "runtime", "orchestrator", "transition", "execution", "registry", "agent-registry",
+        "policy-admin", "incident-release", "pack-marketplace",
+        "approval", "pep", "identity", "tool-proxy", "evidence", "audit",
+        "context-governance", "security-evaluation", "platform-sre", "runtime-anomaly",
+        "model-gateway", "data-governance", "pack-supply-chain", "domain-runtime",
+        "enterprise-control", "enterprise-authority", "console", "migrations",
     ), required=True)
     parser.add_argument("--output-image", required=True)
     parser.add_argument("--base-image", action="append", required=True)

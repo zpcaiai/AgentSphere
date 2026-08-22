@@ -17,12 +17,17 @@ describe("AdminWorkbench", () => {
     });
   });
 
-  it("keeps one-time key material explicit and clearable", async () => {
+  it("renders durable acceptance without any browser-visible credential", async () => {
     const wrapper = mount(AdminWorkbench, { props: { tenantId: "11111111-1111-4111-8111-111111111111", projectId: null,
-      issuedApiKey: { schema_version: "agenttrust.api-key.v1", api_key_id: "key-id", one_time_secret: `atk_${"A".repeat(43)}`,
-        created_at: "2026-08-13T00:00:00Z", expires_at: "2026-08-14T00:00:00Z", scopes: ["tasks:read"] } } });
-    expect(wrapper.find(".one-time-secret").text()).toContain(`atk_${"A".repeat(43)}`);
-    await wrapper.find(".one-time-secret button").trigger("click");
-    expect(wrapper.emitted("clearApiKey")).toHaveLength(1);
+      actionReceipt: { schema_version: "agenttrust.enterprise-action-receipt.v1",
+        action_id: "22222222-2222-4222-8222-222222222222",
+        task_id: "33333333-3333-4333-8333-333333333333", accepted: true,
+        start_requested: true, execution_pending: true, ingress_digest: "a".repeat(64),
+        evidence_ref: "orchestrator-event://11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/1",
+        evidence_digest: "b".repeat(64) } } });
+    expect(wrapper.find(".action-receipt").text()).toContain("33333333-3333-4333-8333-333333333333");
+    expect(wrapper.html()).not.toContain("one_time_secret");
+    await wrapper.find(".action-receipt button").trigger("click");
+    expect(wrapper.emitted("clearReceipt")).toHaveLength(1);
   });
 });

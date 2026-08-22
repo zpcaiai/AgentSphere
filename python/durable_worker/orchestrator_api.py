@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import ssl
 from typing import Any, Mapping, Protocol, Sequence
+import unicodedata
 from urllib import parse as urllib_parse
 import uuid
 
@@ -32,6 +33,13 @@ from python.durable_worker.worker import (
 
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _TOKEN = re.compile(r"^[A-Za-z0-9._:-]{1,256}$")
+_ORCHESTRATOR_BINDING_SCHEMA = "agenttrust.orchestrator-token-bindings.v1"
+_ORCHESTRATOR_SCOPES = frozenset({
+    "orchestrator:runtime",
+    "orchestrator:read",
+    "orchestrator:command",
+    "orchestrator:transitions",
+})
 
 
 class OrchestratorApiError(RuntimeError):
@@ -49,6 +57,125 @@ class ActionRecord:
     status: str
     payload_hash: str
     idempotency_key: str
+
+
+@dataclass(frozen=True)
+class OrchestratorTokenBinding:
+    client_identity: str
+    tenant_id: str
+    subject: str
+    scope: str
+    token_sha256: str
+
+
+class OrchestratorTokenAuthorizer:
+    """Exact mTLS SAN, tenant, route-scope and opaque-token binding authority."""
+
+    def __init__(
+        self,
+        bindings: Sequence[OrchestratorTokenBinding],
+        runtime_identities: frozenset[str],
+        bff_identities: frozenset[str],
+    ) -> None:
+        if not bindings or not runtime_identities or not bff_identities:
+            raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID")
+        allowed = runtime_identities | bff_identities
+        security_tuples: set[tuple[str, str, str]] = set()
+        exact: set[OrchestratorTokenBinding] = set()
+        for binding in bindings:
+            try:
+                tenant = str(uuid.UUID(binding.tenant_id))
+            except ValueError as error:
+                raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID") from error
+            runtime_scope = binding.scope == "orchestrator:runtime"
+            if (
+                binding.client_identity not in allowed
+                or tenant != binding.tenant_id
+                or binding.scope not in _ORCHESTRATOR_SCOPES
+                or runtime_scope != (binding.client_identity in runtime_identities)
+                or binding.client_identity in runtime_identities
+                    and binding.client_identity in bff_identities
+                or not _safe_subject(binding.subject)
+                or not _DIGEST.fullmatch(binding.token_sha256)
+                or (binding.client_identity, tenant, binding.token_sha256)
+                    in security_tuples
+                or binding in exact
+            ):
+                raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID")
+            security_tuples.add((binding.client_identity, tenant, binding.token_sha256))
+            exact.add(binding)
+        if any(not any(item.client_identity == identity for item in exact) for identity in allowed):
+            raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID")
+        self._bindings = frozenset(exact)
+
+    @classmethod
+    def from_file(
+        cls,
+        path: Path,
+        runtime_identities: str,
+        bff_identities: str,
+    ) -> "OrchestratorTokenAuthorizer":
+        if not _secure_file(path, private=True) or path.stat().st_size > 1_048_576:
+            raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID")
+        try:
+            document = json.loads(path.read_text(encoding="utf-8"),
+                                  object_pairs_hook=_reject_duplicate_pairs)
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+            raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID") from error
+        if (
+            not isinstance(document, dict)
+            or set(document) != {"schema_version", "bindings"}
+            or document.get("schema_version") != _ORCHESTRATOR_BINDING_SCHEMA
+            or not isinstance(document.get("bindings"), list)
+            or not 1 <= len(document["bindings"]) <= 100_000
+        ):
+            raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID")
+        bindings: list[OrchestratorTokenBinding] = []
+        fields = {"client_identity", "tenant_id", "subject", "scope", "token_sha256"}
+        for item in document["bindings"]:
+            if (
+                not isinstance(item, dict)
+                or set(item) != fields
+                or any(not isinstance(item[field], str) for field in fields)
+            ):
+                raise ValueError("ORCHESTRATOR_TOKEN_BINDINGS_INVALID")
+            bindings.append(OrchestratorTokenBinding(**item))
+        return cls(bindings, _parse_identity_allowlist(runtime_identities),
+                   _parse_identity_allowlist(bff_identities))
+
+    def authorize(
+        self,
+        peer_identity: str,
+        tenant_id: str,
+        scope: str,
+        authorization: str | None,
+    ) -> str:
+        try:
+            tenant = str(uuid.UUID(tenant_id))
+        except ValueError as error:
+            raise OrchestratorApiError("ORCHESTRATOR_UNAUTHENTICATED", 401) from error
+        token = authorization[len("Bearer "):] if authorization and authorization.startswith(
+            "Bearer "
+        ) else ""
+        if (
+            tenant != tenant_id
+            or scope not in _ORCHESTRATOR_SCOPES
+            or not token
+            or len(token) > 8_192
+            or any(not character.isascii() or ord(character) < 33 or ord(character) > 126
+                   for character in token)
+        ):
+            raise OrchestratorApiError("ORCHESTRATOR_UNAUTHENTICATED", 401)
+        supplied = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        matches = [binding for binding in self._bindings if (
+            binding.client_identity == peer_identity
+            and binding.tenant_id == tenant
+            and binding.scope == scope
+            and hmac.compare_digest(binding.token_sha256, supplied)
+        )]
+        if len(matches) != 1:
+            raise OrchestratorApiError("ORCHESTRATOR_UNAUTHENTICATED", 401)
+        return matches[0].subject
 
 
 class ActionStore(Protocol):
@@ -85,20 +212,13 @@ class TemporalPort(Protocol):
 
 class OrchestratorApi:
     def __init__(
-        self, store: ActionStore, temporal: TemporalPort, service_token: str = "",
+        self, store: ActionStore, temporal: TemporalPort,
         agui_signing_key: Any = None, dependency_probes: Sequence[Any] = (),
     ) -> None:
         self._store = store
         self._temporal = temporal
-        self._service_token = service_token
         self._agui_signing_key = agui_signing_key
         self._dependency_probes = tuple(dependency_probes)
-
-    def authenticate(self, authorization: str | None) -> None:
-        expected = self._service_token
-        supplied = authorization.removeprefix("Bearer ") if authorization else ""
-        if not expected or not supplied or not hmac.compare_digest(supplied, expected):
-            raise OrchestratorApiError("ORCHESTRATOR_UNAUTHENTICATED", 401)
 
     async def ready(self) -> Mapping[str, Any]:
         try:
@@ -219,11 +339,36 @@ class OrchestratorApi:
                     )
             await self._store.append_event(admitted.tenant_id, admitted.task_id, command)
             await self._store.mark_start_requested(admitted.tenant_id, admitted.action_id)
+        durable_start = await self._store.event_for_command(
+            admitted.tenant_id, admitted.task_id, str(command["command_id"])
+        )
+        if durable_start is None:
+            raise OrchestratorApiError("ORCHESTRATOR_EVENT_PERSISTENCE_FAILED", 503)
+        acceptance_evidence = await self._store.append_event(
+            admitted.tenant_id, admitted.task_id, durable_start
+        )
+        event_ref = acceptance_evidence.get("event_ref")
+        event_digest = acceptance_evidence.get("event_digest")
+        if (
+            acceptance_evidence.get("schema_version")
+            != "agenttrust.command-acceptance-evidence.v1"
+            or not isinstance(event_ref, str)
+            or not _valid_event_ref(event_ref, admitted.tenant_id, admitted.task_id)
+            or not isinstance(event_digest, str)
+            or not _DIGEST.fullmatch(event_digest)
+        ):
+            raise OrchestratorApiError("ORCHESTRATOR_EVENT_EVIDENCE_INVALID", 503)
         return {
+            "schema_version": "agenttrust.action-acceptance.v1",
             "action_id": admitted.action_id,
             "task_id": admitted.task_id,
             "accepted": True,
             "start_requested": True,
+            # Durable acceptance is not process execution success or task completion.
+            "execution_pending": True,
+            "ingress_digest": hashlib.sha256(canonical).hexdigest(),
+            "evidence_ref": event_ref,
+            "evidence_digest": event_digest,
         }
 
     async def query(self, tenant_id: str, owner: str, action_id: str) -> Mapping[str, Any]:
@@ -288,7 +433,9 @@ class OrchestratorApi:
             evidence = await self._store.append_event(
                 tenant_id, record.task_id, durable_event
             )
-            return _command_receipt(resolved_command_id, evidence)
+            return _command_receipt(
+                resolved_command_id, tenant_id, record.task_id, evidence
+            )
         processed = state.get("processed_command_fingerprints", {})
         rejected = state.get("rejected_command_fingerprints", {})
         if not isinstance(processed, dict) or not isinstance(rejected, dict):
@@ -333,7 +480,9 @@ class OrchestratorApi:
             evidence = await self._store.append_event(
                 tenant_id, record.task_id, recovered
             )
-            return _command_receipt(resolved_command_id, evidence)
+            return _command_receipt(
+                resolved_command_id, tenant_id, record.task_id, evidence
+            )
         command = _command(
             record,
             command_type,
@@ -346,7 +495,9 @@ class OrchestratorApi:
             code = str(outcome.get("error_code", "ORCHESTRATOR_COMMAND_REJECTED"))
             raise OrchestratorApiError(code, 429 if code.endswith("QUEUE_FULL") else 409)
         evidence = await self._store.append_event(tenant_id, record.task_id, command)
-        return _command_receipt(command["command_id"], evidence)
+        return _command_receipt(
+            command["command_id"], tenant_id, record.task_id, evidence
+        )
 
     async def list_tasks(self, tenant_id: str, owner: str, limit: int) -> Mapping[str, Any]:
         _validate_scope(tenant_id, owner)
@@ -366,6 +517,46 @@ class OrchestratorApi:
                 "terminal": state.get("terminal"),
             })
         return {"tasks": tasks}
+
+    async def authoritative_tasks(
+        self, tenant_id: str, owner: str, resource: str, limit: int
+    ) -> Mapping[str, Any]:
+        """Tenant- and principal-bound task inventory for the enterprise BFF.
+
+        This surface is a view over Temporal's authoritative workflow state and the durable
+        ingress index. It never derives a completion claim from the ingress row alone.
+        """
+        if (
+            not isinstance(resource, str)
+            or not re.fullmatch(r"[a-z][a-z0-9_-]{0,99}", resource)
+        ):
+            raise OrchestratorApiError("ORCHESTRATOR_QUERY_INVALID")
+        listed = await self.list_tasks(tenant_id, owner, limit)
+        items = [
+            {
+                "schema_version": "agenttrust.task-view.v1",
+                "action_id": task["action_id"],
+                "task_id": task["task_id"],
+                "status": task["status"],
+                "recovery_cursor": task["recovery_cursor"],
+                "terminal": task["terminal"],
+            }
+            for task in listed["tasks"]
+        ]
+        page: dict[str, Any] = {
+            "schema_version": "agenttrust.authoritative-task-page.v1",
+            "authoritative": True,
+            "tenant_id": tenant_id,
+            "resource": resource,
+            "items": items,
+            "next_cursor": None,
+        }
+        page["data_digest"] = hashlib.sha256(
+            json.dumps(
+                page, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+        ).hexdigest()
+        return page
 
     async def task_events(
         self, tenant_id: str, owner: str, task_id: str, limit: int
@@ -479,7 +670,7 @@ class OrchestratorApi:
             receipt = await self._store.append_event(
                 tenant_id, task_id, versioned
             )
-            return _command_receipt(command_id, receipt)
+            return _command_receipt(command_id, tenant_id, task_id, receipt)
         if state.get("recovery_cursor") != expected_version:
             raise OrchestratorApiError("ORCHESTRATOR_CONCURRENT_COMMAND", 409)
         outcome = await self._temporal.update_exact(_workflow_id(record), versioned)
@@ -487,7 +678,7 @@ class OrchestratorApi:
             code = str(outcome.get("error_code", "ORCHESTRATOR_COMMAND_REJECTED"))
             raise OrchestratorApiError(code, 429 if code.endswith("QUEUE_FULL") else 409)
         receipt = await self._store.append_event(tenant_id, task_id, versioned)
-        return _command_receipt(command_id, receipt)
+        return _command_receipt(command_id, tenant_id, task_id, receipt)
 
     async def agui_events(
         self, tenant_id: str, actor: str, task_id: str, resume_token: str | None, limit: int
@@ -562,7 +753,14 @@ class PostgresActionStore:
                     "SELECT * FROM orchestrator_ingress_actions WHERE tenant_id=$1::uuid AND idempotency_key=$2 FOR UPDATE",
                     record.tenant_id, record.idempotency_key)
                 if existing:
-                    if existing["payload_hash"] != record.payload_hash:
+                    persisted_envelope = _database_json_object(existing["envelope"])
+                    if (
+                        existing["payload_hash"] != record.payload_hash
+                        or not hmac.compare_digest(
+                            _canonical_json_digest(persisted_envelope),
+                            _canonical_json_digest(envelope),
+                        )
+                    ):
                         raise OrchestratorApiError("ORCHESTRATOR_IDEMPOTENCY_CONFLICT", 409)
                     return _record(existing), False
                 await connection.execute(
@@ -640,7 +838,7 @@ class PostgresActionStore:
                     )
                 if existing is None:
                     raise OrchestratorApiError("ORCHESTRATOR_EVENT_PERSISTENCE_FAILED", 503)
-                persisted = dict(existing["event"])
+                persisted = _database_json_object(existing["event"])
                 try:
                     persisted_fingerprint = command_fingerprint(TaskCommand(**persisted))
                     supplied_fingerprint = command_fingerprint(TaskCommand(**event))
@@ -671,7 +869,10 @@ class PostgresActionStore:
                 await connection.execute("SELECT set_config('app.tenant_id',$1,true)", tenant_id)
                 rows = await connection.fetch("SELECT event FROM orchestrator_stream_events WHERE tenant_id=$1::uuid AND task_id=$2::uuid ORDER BY sequence DESC LIMIT $3",
                                               tenant_id, task_id, limit)
-                return [dict(row["event"]) for row in reversed(rows)]
+                return [
+                    _database_json_object(row["event"])
+                    for row in reversed(rows)
+                ]
 
     async def event_for_command(
         self, tenant_id: str, task_id: str, command_id: str
@@ -685,7 +886,7 @@ class PostgresActionStore:
                     "AND event->>'command_id'=$3 ORDER BY sequence LIMIT 1",
                     tenant_id, task_id, command_id,
                 )
-                return dict(row["event"]) if row else None
+                return _database_json_object(row["event"]) if row else None
 
     async def list_tasks(
         self, tenant_id: str, owner: str, limit: int
@@ -790,7 +991,12 @@ def _validate_scope(tenant_id: str, owner: str, resource_id: str | None = None) 
         resource = uuid.UUID(resource_id) if resource_id is not None else None
     except (AttributeError, TypeError, ValueError) as exc:
         raise OrchestratorApiError("ORCHESTRATOR_REQUEST_INVALID") from exc
-    if tenant.int == 0 or (resource is not None and resource.int == 0) or not owner or len(owner) > 512:
+    if (
+        tenant.int == 0
+        or (resource is not None and resource.int == 0)
+        or not isinstance(owner, str)
+        or not _safe_subject(owner)
+    ):
         raise OrchestratorApiError("ORCHESTRATOR_REQUEST_INVALID")
 
 
@@ -809,14 +1015,14 @@ def _valid_gateway_context(
         or tenant.get("tenant_id") != identity.get("tenant_id")
     ):
         return False
-    bounded_identity = (
-        ("subject", 512), ("owner_subject", 512), ("trust_level", 128),
-    )
-    if any(
-        not isinstance(identity.get(field), str)
-        or not identity[field]
-        or len(identity[field]) > maximum
-        for field, maximum in bounded_identity
+    if (
+        not isinstance(identity.get("subject"), str)
+        or not _safe_subject(identity["subject"])
+        or not isinstance(identity.get("owner_subject"), str)
+        or not _safe_subject(identity["owner_subject"])
+        or not isinstance(identity.get("trust_level"), str)
+        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", identity["trust_level"])
+            is None
     ):
         return False
     if (
@@ -838,7 +1044,7 @@ def _valid_gateway_context(
         and str(tenant_id) == identity["tenant_id"].lower()
         and str(agent_id) == identity["agent_instance_id"].lower()
         and isinstance(quota_profile, str)
-        and 0 < len(quota_profile) <= 128
+        and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", quota_profile) is not None
         and isinstance(trace_id, str)
         and re.fullmatch(r"[0-9A-Fa-f]{32}", trace_id) is not None
         and (
@@ -1014,7 +1220,10 @@ def _strict_json_loads(value: str) -> Any:
 
 
 def _command_receipt(
-    command_id: str, evidence: Mapping[str, Any]
+    command_id: str,
+    tenant_id: str,
+    task_id: str,
+    evidence: Mapping[str, Any],
 ) -> Mapping[str, Any]:
     expected = {"schema_version", "event_ref", "event_digest"}
     event_ref = evidence.get("event_ref")
@@ -1024,8 +1233,7 @@ def _command_receipt(
         or evidence.get("schema_version")
             != "agenttrust.command-acceptance-evidence.v1"
         or not isinstance(event_ref, str)
-        or not event_ref.startswith("orchestrator-event://")
-        or len(event_ref) > 2_048
+        or not _valid_event_ref(event_ref, tenant_id, task_id)
         or not isinstance(event_digest, str)
         or not _DIGEST.fullmatch(event_digest)
     ):
@@ -1039,6 +1247,36 @@ def _command_receipt(
         # Temporal accepted the durable command. It has not asserted execution success.
         "execution_pending": True,
     }
+
+
+def _canonical_json_digest(value: Mapping[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _database_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value, object_pairs_hook=_reject_duplicate_pairs)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise OrchestratorApiError(
+                "ORCHESTRATOR_DATABASE_VALUE_INVALID", 503
+            ) from exc
+        if isinstance(decoded, dict):
+            return decoded
+    raise OrchestratorApiError("ORCHESTRATOR_DATABASE_VALUE_INVALID", 503)
+
+
+def _valid_event_ref(event_ref: str, tenant_id: str, task_id: str) -> bool:
+    return re.fullmatch(
+        rf"orchestrator-event://{re.escape(tenant_id)}/{re.escape(task_id)}/[1-9][0-9]*",
+        event_ref,
+    ) is not None
 
 
 def _parse_bound_action(
@@ -1098,6 +1336,21 @@ def _parse_bound_action(
         or agent_expires_at <= now
     ):
         raise OrchestratorApiError("ORCHESTRATOR_ACTION_IR_INVALID")
+    extensions = action.get("extensions")
+    if not isinstance(extensions, dict) or len(extensions) > 32:
+        raise OrchestratorApiError("ORCHESTRATOR_ACTION_IR_INVALID")
+    if _action_has_side_effects(action):
+        plan_hash = extensions.get("x-plan-hash")
+        state_version = action.get("current_state_version")
+        if (
+            not isinstance(plan_hash, str)
+            or not _DIGEST.fullmatch(plan_hash)
+            or not isinstance(state_version, str)
+            or not state_version
+            or len(state_version) > 128
+            or any(unicodedata.category(character).startswith("C") for character in state_version)
+        ):
+            raise OrchestratorApiError("ORCHESTRATOR_ACTION_IR_INVALID")
     return action
 
 
@@ -1108,57 +1361,134 @@ def _action_has_side_effects(action: Mapping[str, Any]) -> bool:
     }
 
 
-def _peer_identity_matches(peer_certificate: Mapping[str, Any] | None, expected: str) -> bool:
-    if not expected or not isinstance(peer_certificate, Mapping):
-        return False
-    expected_identities: list[tuple[str, str]] = []
-    for configured in expected.split(","):
-        configured = configured.strip()
-        if ":" not in configured:
-            return False
-        identity_type, identity_value = configured.split(":", 1)
-        if identity_type not in {"DNS", "URI"} or not identity_value:
-            return False
-        expected_identities.append((identity_type, identity_value))
-    if not expected_identities:
-        return False
-    subject_alt_names = peer_certificate.get("subjectAltName", ())
-    return any(
-        isinstance(entry, tuple)
-        and len(entry) == 2
-        and any(
-            hmac.compare_digest(str(entry[0]), identity_type)
-            and hmac.compare_digest(str(entry[1]), identity_value)
-            for identity_type, identity_value in expected_identities
-        )
-        for entry in subject_alt_names
+def _safe_subject(value: str) -> bool:
+    return bool(
+        value
+        and len(value) <= 256
+        and value[0].isalnum()
+        and all(character.isascii() and (character.isalnum() or character in "._:@/-")
+                for character in value)
     )
 
 
+def _parse_identity_allowlist(value: str) -> frozenset[str]:
+    identities = frozenset(item.strip() for item in value.split(",") if item.strip())
+    if (
+        not identities
+        or any(
+            len(identity) > 512
+            or not identity.startswith(("DNS:", "URI:"))
+            or not identity.split(":", 1)[1]
+            or any(not character.isascii() or not character.isprintable()
+                   for character in identity)
+            for identity in identities
+        )
+    ):
+        raise ValueError("ORCHESTRATOR_CLIENT_IDENTITIES_INVALID")
+    return identities
+
+
+def _peer_identity(
+    peer_certificate: Mapping[str, Any] | None, expected: str
+) -> str | None:
+    if not isinstance(peer_certificate, Mapping):
+        return None
+    try:
+        expected_identities = _parse_identity_allowlist(expected)
+    except ValueError:
+        return None
+    certificate_identities: list[str] = []
+    for entry in peer_certificate.get("subjectAltName", ()):
+        if not isinstance(entry, tuple) or len(entry) != 2 or entry[0] not in {"DNS", "URI"}:
+            continue
+        identity = f"{entry[0]}:{entry[1]}"
+        if len(identity) > 512 or not identity.split(":", 1)[1]:
+            return None
+        certificate_identities.append(identity)
+    if len(certificate_identities) != 1 or certificate_identities[0] not in expected_identities:
+        return None
+    return certificate_identities[0]
+
+
+def _peer_identity_matches(peer_certificate: Mapping[str, Any] | None, expected: str) -> bool:
+    return _peer_identity(peer_certificate, expected) is not None
+
+
 def _authenticate_request(
-    api: OrchestratorApi, request: Any, trusted_client_identity: str
-) -> None:
-    api.authenticate(request.headers.get("Authorization"))
+    authorizer: OrchestratorTokenAuthorizer,
+    request: Any,
+    trusted_client_identity: str,
+    tenant_id: str,
+    scope: str,
+) -> str:
     transport = request.transport
     ssl_object = transport.get_extra_info("ssl_object") if transport is not None else None
     peer_certificate = ssl_object.getpeercert() if ssl_object is not None else None
-    if not _peer_identity_matches(peer_certificate, trusted_client_identity):
+    identity = _peer_identity(peer_certificate, trusted_client_identity)
+    if identity is None:
         raise OrchestratorApiError("ORCHESTRATOR_SERVICE_IDENTITY_UNTRUSTED", 401)
+    return authorizer.authorize(
+        identity, tenant_id, scope, _single_request_header(request, "Authorization")
+    )
+
+
+def _single_request_header(request: Any, name: str) -> str | None:
+    values = request.headers.getall(name, [])
+    if len(values) != 1 or not isinstance(values[0], str):
+        return None
+    return values[0]
+
+
+def _request_tenant(request: Any) -> str:
+    tenant = _single_request_header(request, "X-AgentTrust-Tenant-Id")
+    legacy = _single_request_header(request, "X-Tenant-Id")
+    try:
+        canonical = str(uuid.UUID(tenant or ""))
+    except ValueError as error:
+        raise OrchestratorApiError("ORCHESTRATOR_SCOPE_MISMATCH", 403) from error
+    if canonical != tenant or legacy is not None and not hmac.compare_digest(legacy, tenant):
+        raise OrchestratorApiError("ORCHESTRATOR_SCOPE_MISMATCH", 403)
+    return canonical
+
+
+def _body_tenant(body: Mapping[str, Any]) -> str | None:
+    candidates: list[Any] = [body.get("tenant_id")]
+    for field in ("tenant_context", "identity_context"):
+        nested = body.get(field)
+        if isinstance(nested, Mapping):
+            candidates.append(nested.get("tenant_id"))
+    values = [value for value in candidates if value is not None]
+    if not values or any(not isinstance(value, str) for value in values):
+        return None
+    if any(not hmac.compare_digest(values[0], value) for value in values[1:]):
+        return None
+    return values[0]
 
 
 def create_app(
     api: OrchestratorApi,
-    trusted_runtime_client_identities: str = "",
-    trusted_bff_client_identities: str = "",
+    trusted_runtime_client_identities: str,
+    trusted_bff_client_identities: str,
+    authorizer: OrchestratorTokenAuthorizer,
 ) -> Any:
     from aiohttp import web
+
     async def json_call(
-        request: Any, operation: Any, trusted_identities: str = trusted_runtime_client_identities
+        request: Any,
+        operation: Any,
+        trusted_identities: str = trusted_runtime_client_identities,
+        scope: str = "orchestrator:runtime",
+        require_body_tenant: bool = True,
     ) -> Any:
         try:
-            _authenticate_request(api, request, trusted_identities)
+            tenant_id = _request_tenant(request)
             body = await request.json(loads=_strict_json_loads)
-            return web.json_response(await operation(body))
+            if not isinstance(body, Mapping) or (
+                require_body_tenant and _body_tenant(body) != tenant_id
+            ):
+                raise OrchestratorApiError("ORCHESTRATOR_SCOPE_MISMATCH", 403)
+            _authenticate_request(authorizer, request, trusted_identities, tenant_id, scope)
+            return web.json_response(await operation(body, tenant_id))
         except OrchestratorApiError as error:
             return web.json_response({"error": str(error)}, status=error.status)
         except (json.JSONDecodeError, ValueError, TypeError, KeyError):
@@ -1174,21 +1504,25 @@ def create_app(
     async def bff_command(request: Any) -> Any:
         return await json_call(
             request,
-            lambda body: api.bff_command(
-                request.headers.get("X-Tenant-Id", ""),
-                request.headers.get("X-Actor-Subject", ""),
+            lambda body, tenant: api.bff_command(
+                tenant,
+                _single_request_header(request, "X-Actor-Subject") or "",
                 request.match_info["task_id"],
                 body,
-                request.headers.get("Idempotency-Key"),
+                _single_request_header(request, "Idempotency-Key"),
             ),
             trusted_bff_client_identities,
+            "orchestrator:command",
+            False,
         )
     async def agui(request: Any) -> Any:
         try:
-            _authenticate_request(api, request, trusted_bff_client_identities)
+            tenant_id = _request_tenant(request)
+            _authenticate_request(authorizer, request, trusted_bff_client_identities, tenant_id,
+                                  "orchestrator:transitions")
             return web.json_response(await api.agui_events(
-                request.headers.get("X-Tenant-Id", ""),
-                request.headers.get("X-Actor-Subject", ""),
+                tenant_id,
+                _single_request_header(request, "X-Actor-Subject") or "",
                 request.match_info["task_id"],
                 request.query.get("resume_token"),
                 int(request.query.get("limit", "100")),
@@ -1200,30 +1534,56 @@ def create_app(
         except Exception:
             return web.json_response({"error": "ORCHESTRATOR_DEPENDENCY_UNAVAILABLE"}, status=503)
     async def bff_events(request: Any) -> Any:
-        async def bound_events(body: Mapping[str, Any]) -> Mapping[str, Any]:
-            tenant_id = request.headers.get("X-Tenant-Id", "")
-            actor = request.headers.get("X-Actor-Subject", "")
+        async def bound_events(body: Mapping[str, Any], tenant_id: str) -> Mapping[str, Any]:
+            actor = _single_request_header(request, "X-Actor-Subject") or ""
             if body.get("tenant_id") != tenant_id or body.get("owner") != actor:
                 raise OrchestratorApiError("ORCHESTRATOR_SCOPE_MISMATCH", 403)
             return await api.task_events(
                 tenant_id, actor, body["task_id"], body.get("limit", 1000)
             )
-        return await json_call(request, bound_events, trusted_bff_client_identities)
+        return await json_call(request, bound_events, trusted_bff_client_identities,
+                               "orchestrator:transitions")
     async def bff_transitions(request: Any) -> Any:
-        async def bound_transitions(body: Mapping[str, Any]) -> Mapping[str, Any]:
-            tenant_id = request.headers.get("X-Tenant-Id", "")
-            actor = request.headers.get("X-Actor-Subject", "")
+        async def bound_transitions(body: Mapping[str, Any], tenant_id: str) -> Mapping[str, Any]:
+            actor = _single_request_header(request, "X-Actor-Subject") or ""
             if body.get("tenant_id") != tenant_id or body.get("owner") != actor:
                 raise OrchestratorApiError("ORCHESTRATOR_SCOPE_MISMATCH", 403)
             return await api.task_transitions(
                 tenant_id, actor, body["task_id"], body.get("limit", 1000)
             )
-        return await json_call(request, bound_transitions, trusted_bff_client_identities)
+        return await json_call(request, bound_transitions, trusted_bff_client_identities,
+                               "orchestrator:transitions")
+    async def authoritative_tasks(request: Any) -> Any:
+        try:
+            tenant_id = _request_tenant(request)
+            _authenticate_request(authorizer, request, trusted_bff_client_identities, tenant_id,
+                                  "orchestrator:read")
+            return web.json_response(await api.authoritative_tasks(
+                tenant_id,
+                _single_request_header(request, "X-Actor-Subject") or "",
+                request.query.get("resource", ""),
+                int(request.query.get("limit", "100")),
+            ))
+        except OrchestratorApiError as error:
+            return web.json_response({"error": str(error)}, status=error.status)
+        except (TypeError, ValueError):
+            return web.json_response({"error": "ORCHESTRATOR_REQUEST_INVALID"}, status=400)
+        except Exception:
+            return web.json_response({"error": "ORCHESTRATOR_DEPENDENCY_UNAVAILABLE"}, status=503)
     app.router.add_get("/ready", ready)
-    app.router.add_post("/v1/actions", lambda request: json_call(request, api.submit))
+    app.router.add_get("/v1/authoritative/tasks", authoritative_tasks)
+    app.router.add_post(
+        "/v1/actions", lambda request: json_call(request, lambda body, _: api.submit(body))
+    )
     app.router.add_post("/v1/tasks/{task_id}/commands", bff_command)
     app.router.add_get("/v1/tasks/{task_id}/agui/events", agui)
-    app.router.add_post("/v1/actions/query", lambda request: json_call(request, lambda b: api.query(b["tenant_id"], b["owner"], b["action_id"])))
+    app.router.add_post(
+        "/v1/actions/query",
+        lambda request: json_call(
+            request, lambda body, _: api.query(body["tenant_id"], body["owner"],
+                                               body["action_id"])
+        ),
+    )
     for operation, command_type in (
         ("start", "START"), ("pause", "PAUSE"), ("resume", "RESUME"),
         ("cancel", "CANCEL"), ("kill", "KILL"), ("checkpoint", "CHECKPOINT"),
@@ -1232,7 +1592,7 @@ def create_app(
         async def control(request: Any, kind: str = command_type) -> Any:
             return await json_call(
                 request,
-                lambda body: api.control(
+                lambda body, _: api.control(
                     body["tenant_id"], body["owner"], body["action_id"], kind,
                     body.get("command_id"),
                 ),
@@ -1242,12 +1602,19 @@ def create_app(
         "/v1/tasks/list",
         lambda request: json_call(
             request,
-            lambda b: api.list_tasks(b["tenant_id"], b["owner"], b.get("limit", 100)),
+            lambda body, _: api.list_tasks(body["tenant_id"], body["owner"],
+                                           body.get("limit", 100)),
         ),
     )
     app.router.add_post("/v1/tasks/events", bff_events)
     app.router.add_post("/v1/tasks/transitions", bff_transitions)
-    app.router.add_post("/v1/tasks/stream-snapshot", lambda request: json_call(request, lambda b: api.stream_snapshot(b["tenant_id"], b["owner"], b["task_id"])))
+    app.router.add_post(
+        "/v1/tasks/stream-snapshot",
+        lambda request: json_call(
+            request, lambda body, _: api.stream_snapshot(body["tenant_id"], body["owner"],
+                                                         body["task_id"])
+        ),
+    )
     return app
 
 
@@ -1255,11 +1622,12 @@ async def run(
     address: str,
     port: int,
     database_url: str,
+    database_password: str,
     temporal_address: str,
     namespace: str,
     task_queue: str,
     temporal_tls: Any,
-    service_token: str,
+    token_authorizer: OrchestratorTokenAuthorizer,
     agui_signing_key: Any,
     server_tls: ssl.SSLContext,
     trusted_runtime_client_identities: str,
@@ -1270,19 +1638,22 @@ async def run(
     import asyncpg
     from aiohttp import web
     from temporalio.client import Client
-    _validate_database_url(database_url)
+    _validate_database_url(database_url, expected_database_role)
     if (
         not temporal_address
         or not namespace
         or not task_queue
-        or not service_token
         or not trusted_runtime_client_identities
         or not trusted_bff_client_identities
         or not expected_database_role
         or not 1 <= port <= 65535
     ):
         raise ValueError("ORCHESTRATOR_API_CONFIG_INVALID")
-    pool = await asyncpg.create_pool(database_url, min_size=2, max_size=20, command_timeout=10)
+    if not database_password or len(database_password) > 65_536:
+        raise ValueError("ORCHESTRATOR_API_CONFIG_INVALID")
+    pool = await asyncpg.create_pool(
+        database_url, password=database_password, min_size=2, max_size=20, command_timeout=10
+    )
     role = await pool.fetchrow(
         "SELECT current_user AS role_name, rolsuper, rolbypassrls, "
         "current_setting('search_path') AS search_path, "
@@ -1302,11 +1673,12 @@ async def run(
     temporal = await Client.connect(temporal_address, namespace=namespace, tls=temporal_tls)
     runner = web.AppRunner(create_app(
         OrchestratorApi(
-            PostgresActionStore(pool), TemporalClientPort(temporal, task_queue), service_token,
+            PostgresActionStore(pool), TemporalClientPort(temporal, task_queue),
             agui_signing_key, dependency_probes,
         ),
         trusted_runtime_client_identities,
         trusted_bff_client_identities,
+        token_authorizer,
     ))
     await runner.setup()
     await web.TCPSite(runner, address, port, ssl_context=server_tls).start()
@@ -1317,7 +1689,7 @@ async def run(
         await pool.close()
 
 
-def _validate_database_url(database_url: str) -> Path:
+def _validate_database_url(database_url: str, expected_role: str) -> Path:
     parsed_database = urllib_parse.urlsplit(database_url)
     try:
         database_options = urllib_parse.parse_qs(
@@ -1346,7 +1718,13 @@ def _validate_database_url(database_url: str) -> Path:
     if (
         parsed_database.scheme not in {"postgres", "postgresql"}
         or not parsed_database.hostname
+        or not parsed_database.username
+        or parsed_database.username != expected_role
+        or parsed_database.password is not None
+        or parsed_database.path in {"", "/"}
+        or "/" in parsed_database.path.strip("/")
         or bool(parsed_database.fragment)
+        or set(normalized_database_options) != {"sslmode", "sslrootcert", "options"}
         or normalized_database_options.get("sslmode") != ["verify-full"]
         or normalized_database_options.get("options") != ["-csearch_path=pg_catalog,public"]
         or len(ssl_root_certificates) != 1
@@ -1364,6 +1742,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8081)
     args = parser.parse_args(argv)
     database_url = _read_required_secret_file("AGENT_TRUST_DATABASE_URL_FILE")
+    database_password = _read_required_secret_file(
+        "AGENT_TRUST_ORCHESTRATOR_DATABASE_PASSWORD_FILE"
+    )
     temporal_paths = tuple(
         Path(os.environ.get(name, ""))
         for name in (
@@ -1406,19 +1787,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         timeout_seconds=3.0,
     )
+    runtime_identities = os.environ.get(
+        "AGENT_TRUST_ORCHESTRATOR_RUNTIME_CLIENT_IDENTITIES", ""
+    )
+    bff_identities = os.environ.get(
+        "AGENT_TRUST_ORCHESTRATOR_BFF_CLIENT_IDENTITIES", ""
+    )
+    token_authorizer = OrchestratorTokenAuthorizer.from_file(
+        Path(os.environ.get("AGENT_TRUST_ORCHESTRATOR_TOKEN_BINDINGS_FILE", "")),
+        runtime_identities,
+        bff_identities,
+    )
     asyncio.run(run(
         args.listen,
         args.port,
         database_url,
+        database_password,
         os.environ.get("AGENT_TRUST_TEMPORAL_ADDRESS", ""),
         os.environ.get("AGENT_TRUST_TEMPORAL_NAMESPACE", ""),
         os.environ.get("AGENT_TRUST_TEMPORAL_TASK_QUEUE", ""),
         temporal_tls,
-        _read_required_secret_file("AGENT_TRUST_ORCHESTRATOR_SERVICE_TOKEN_FILE"),
+        token_authorizer,
         load_agui_signing_key(Path(os.environ.get("AGENT_TRUST_AGUI_SIGNING_KEY_FILE", ""))),
         server_tls,
-        os.environ.get("AGENT_TRUST_ORCHESTRATOR_RUNTIME_CLIENT_IDENTITIES", ""),
-        os.environ.get("AGENT_TRUST_ORCHESTRATOR_BFF_CLIENT_IDENTITIES", ""),
+        runtime_identities,
+        bff_identities,
         os.environ.get("AGENT_TRUST_ORCHESTRATOR_DATABASE_EXPECTED_ROLE", ""),
         (transition_probe, execution_probe),
     ))

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-governance/authoritative-page.schema.json",
+  "title": "Authoritative data-governance resource page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "authoritative", "items", "next_after", "data_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.authoritative-data-page.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "authoritative": {"const": true},
+    "items": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resource", "resource_version", "action_hash", "ledger_execution_id", "fence_digest", "updated_at"],
+        "properties": {
+          "resource": {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*//)[^\\s]+$"},
+          "resource_version": {"type": "integer", "minimum": 1},
+          "action_hash": {"$ref": "#/$defs/digest"},
+          "ledger_execution_id": {"type": "string", "format": "uuid"},
+          "fence_digest": {"$ref": "#/$defs/digest"},
+          "updated_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "next_after": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^(?!/)(?!.*\\.\\.)(?!.*//)[^\\s]+$"},
+        {"type": "null"}
+      ]
+    },
+    "data_digest": {
+      "allOf": [
+        {"$ref": "#/$defs/digest"},
+        {"description": "JCS SHA-256 of the complete page object with data_digest omitted."}
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

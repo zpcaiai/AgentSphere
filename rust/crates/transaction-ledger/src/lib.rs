@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -80,6 +81,16 @@ pub struct OutboxEvent {
     pub published_at: Option<DateTime<Utc>>,
 }
 
+/// Immutable digest-bound locator for a persisted ledger transition event. This is the fact
+/// passed across the Tool Proxy boundary; it never substitutes for signed execution evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct LedgerEventFact {
+    pub event_id: String,
+    pub event_ref: String,
+    pub event_digest: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ManualRecoveryCase {
     pub case_id: String,
@@ -132,7 +143,17 @@ pub trait ExecutionLedger: Send + Sync {
         &self,
         tenant_id: &TenantId,
         execution_id: &ExecutionId,
-    ) -> Result<String, LedgerError>;
+    ) -> Result<String, LedgerError> {
+        Ok(self
+            .status_event_fact(tenant_id, execution_id)
+            .await?
+            .event_ref)
+    }
+    async fn status_event_fact(
+        &self,
+        tenant_id: &TenantId,
+        execution_id: &ExecutionId,
+    ) -> Result<LedgerEventFact, LedgerError>;
     async fn stale_non_terminal(
         &self,
         tenant_id: &TenantId,
@@ -245,7 +266,8 @@ impl InMemoryExecutionLedger {
     }
     pub fn snapshot(&self) -> Result<Vec<u8>, LedgerError> {
         let state = self.state.lock();
-        serde_json::to_vec(&(&state.by_execution, &state.outbox)).map_err(|_| LedgerError::StoreFailure)
+        serde_json::to_vec(&(&state.by_execution, &state.outbox))
+            .map_err(|_| LedgerError::StoreFailure)
     }
     pub fn from_snapshot(bytes: &[u8]) -> Result<Self, LedgerError> {
         let (by_execution, outbox): (BTreeMap<ExecutionId, ExecutionRecord>, Vec<OutboxEvent>) =
@@ -407,7 +429,7 @@ impl ExecutionLedger for InMemoryExecutionLedger {
     async fn mark_failed(&self, fence: &ExecutionFence, error: String) -> Result<(), LedgerError> {
         self.transition(
             fence,
-            &[ExecutionStatus::Running],
+            &[ExecutionStatus::Prepared, ExecutionStatus::Running],
             ExecutionStatus::Failed,
             |record| record.last_error_code = Some(error),
         )
@@ -453,19 +475,26 @@ impl ExecutionLedger for InMemoryExecutionLedger {
         }
         Ok(record)
     }
-    async fn status_event_ref(
+    async fn status_event_fact(
         &self,
         tenant_id: &TenantId,
         execution_id: &ExecutionId,
-    ) -> Result<String, LedgerError> {
+    ) -> Result<LedgerEventFact, LedgerError> {
         let state = self.state.lock();
-        let record = state.by_execution.get(execution_id).ok_or(LedgerError::NotFound)?;
+        let record = state
+            .by_execution
+            .get(execution_id)
+            .ok_or(LedgerError::NotFound)?;
         if &record.intent.tenant_id != tenant_id {
             return Err(LedgerError::NotFound);
         }
-        let event = state.outbox.iter().rev().find(|event| &event.execution_id == execution_id)
+        let event = state
+            .outbox
+            .iter()
+            .rev()
+            .find(|event| &event.execution_id == execution_id)
             .ok_or(LedgerError::NotFound)?;
-        Ok(format!("ledger-event:{}", event.event_id))
+        ledger_event_fact(tenant_id, event)
     }
     async fn stale_non_terminal(
         &self,
@@ -736,7 +765,7 @@ impl ExecutionLedger for PostgresExecutionLedger {
         pg_transition(
             &self.pool,
             fence,
-            "RUNNING",
+            "PREPARED,RUNNING",
             "FAILED",
             None,
             Some(&error),
@@ -822,23 +851,41 @@ impl ExecutionLedger for PostgresExecutionLedger {
             .map_err(|_| LedgerError::StoreFailure)?;
         Ok(record)
     }
-    async fn status_event_ref(
+    async fn status_event_fact(
         &self,
         tenant_id: &TenantId,
         execution_id: &ExecutionId,
-    ) -> Result<String, LedgerError> {
+    ) -> Result<LedgerEventFact, LedgerError> {
         let tenant_uuid = Uuid::parse_str(&tenant_id.0).map_err(|_| LedgerError::NotFound)?;
         let execution_uuid = Uuid::parse_str(&execution_id.0).map_err(|_| LedgerError::NotFound)?;
-        let mut transaction = self.pool.begin().await.map_err(|_| LedgerError::StoreFailure)?;
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
         sqlx::query("SELECT set_config('app.tenant_id', $1, true)")
-            .bind(&tenant_id.0).execute(&mut *transaction).await.map_err(|_| LedgerError::StoreFailure)?;
-        let event_id = sqlx::query_scalar::<_, Uuid>(
-            "SELECT event_id FROM execution_outbox WHERE tenant_id=$1 AND execution_id=$2 ORDER BY created_at DESC,event_id DESC LIMIT 1",
+            .bind(&tenant_id.0)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        let row = sqlx::query(
+            "SELECT event_id,event_type,payload,created_at FROM execution_outbox WHERE tenant_id=$1 AND execution_id=$2 ORDER BY created_at DESC,event_id DESC LIMIT 1",
         )
         .bind(tenant_uuid).bind(execution_uuid).fetch_optional(&mut *transaction).await
         .map_err(|_| LedgerError::StoreFailure)?.ok_or(LedgerError::NotFound)?;
-        transaction.commit().await.map_err(|_| LedgerError::StoreFailure)?;
-        Ok(format!("ledger-event:{event_id}"))
+        let event = OutboxEvent {
+            event_id: row.try_get::<Uuid, _>("event_id").map_err(|_| LedgerError::StoreFailure)?.to_string(),
+            execution_id: execution_id.clone(),
+            event_type: row.try_get("event_type").map_err(|_| LedgerError::StoreFailure)?,
+            payload: row.try_get("payload").map_err(|_| LedgerError::StoreFailure)?,
+            created_at: row.try_get("created_at").map_err(|_| LedgerError::StoreFailure)?,
+            published_at: None,
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(|_| LedgerError::StoreFailure)?;
+        ledger_event_fact(tenant_id, &event)
     }
     async fn stale_non_terminal(
         &self,
@@ -867,6 +914,45 @@ impl ExecutionLedger for PostgresExecutionLedger {
     }
 }
 
+#[derive(Serialize)]
+struct LedgerEventDigestMaterial<'a> {
+    schema_version: &'static str,
+    tenant_id: &'a TenantId,
+    event_id: &'a str,
+    execution_id: &'a ExecutionId,
+    event_type: &'a str,
+    payload: &'a Value,
+    created_at: DateTime<Utc>,
+}
+
+fn ledger_event_fact(
+    tenant_id: &TenantId,
+    event: &OutboxEvent,
+) -> Result<LedgerEventFact, LedgerError> {
+    let event_id = Uuid::parse_str(&event.event_id).map_err(|_| LedgerError::StoreFailure)?;
+    if event_id.to_string() != event.event_id {
+        return Err(LedgerError::StoreFailure);
+    }
+    let material = LedgerEventDigestMaterial {
+        schema_version: "agenttrust.ledger-event-fact.v1",
+        tenant_id,
+        event_id: &event.event_id,
+        execution_id: &event.execution_id,
+        event_type: &event.event_type,
+        payload: &event.payload,
+        created_at: event.created_at.to_owned(),
+    };
+    let canonical = serde_jcs::to_vec(&material).map_err(|_| LedgerError::StoreFailure)?;
+    Ok(LedgerEventFact {
+        event_id: event.event_id.clone(),
+        event_ref: format!("ledger-event:{}", event.event_id),
+        event_digest: hex::encode(Sha256::digest(canonical)),
+    })
+}
+
+// Keeping every optional mutation explicit makes terminal ledger transitions auditable at each
+// call site; collapsing these fields into an untyped map would weaken the SQL binding contract.
+#[allow(clippy::too_many_arguments)]
 async fn pg_transition(
     pool: &PgPool,
     fence: &ExecutionFence,
@@ -1059,6 +1145,62 @@ mod tests {
             ledger.reserve(second).await,
             Err(LedgerError::IdempotencyConflict)
         );
+    }
+
+    #[tokio::test]
+    async fn prepared_reservation_can_terminally_record_pre_execution_denial() {
+        let ledger = InMemoryExecutionLedger::default();
+        let base = intent("client:denied", "hash-denied");
+        let reservation = ledger
+            .reserve(base.clone())
+            .await
+            .unwrap_or_else(|_| panic!("reserve"));
+        ledger
+            .mark_failed(&reservation.fence, "EXECUTION_AUTHORIZATION_DENIED".into())
+            .await
+            .unwrap_or_else(|_| panic!("deny"));
+        let record = ledger
+            .get(&base.tenant_id, &reservation.execution_id)
+            .await
+            .unwrap_or_else(|_| panic!("record"));
+        assert_eq!(record.status, ExecutionStatus::Failed);
+        assert_eq!(
+            record.last_error_code.as_deref(),
+            Some("EXECUTION_AUTHORIZATION_DENIED")
+        );
+    }
+
+    #[tokio::test]
+    async fn ledger_event_fact_is_stable_and_changes_with_the_persisted_transition() {
+        let ledger = InMemoryExecutionLedger::default();
+        let base = intent("client:event-fact", "hash-event-fact");
+        let reservation = ledger
+            .reserve(base.clone())
+            .await
+            .unwrap_or_else(|_| panic!("reserve"));
+        let reserved = ledger
+            .status_event_fact(&base.tenant_id, &reservation.execution_id)
+            .await
+            .unwrap_or_else(|_| panic!("reserved fact"));
+        assert_eq!(reserved.event_digest.len(), 64);
+        assert_eq!(reserved.event_ref, format!("ledger-event:{}", reserved.event_id));
+        assert_eq!(
+            ledger
+                .status_event_fact(&base.tenant_id, &reservation.execution_id)
+                .await
+                .unwrap_or_else(|_| panic!("replay fact")),
+            reserved
+        );
+        ledger
+            .mark_started(&reservation.fence, None)
+            .await
+            .unwrap_or_else(|_| panic!("start"));
+        let running = ledger
+            .status_event_fact(&base.tenant_id, &reservation.execution_id)
+            .await
+            .unwrap_or_else(|_| panic!("running fact"));
+        assert_ne!(running.event_id, reserved.event_id);
+        assert_ne!(running.event_digest, reserved.event_digest);
     }
 
     struct Resolver;

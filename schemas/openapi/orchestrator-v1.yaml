@@ -22,6 +22,15 @@ info:
       Each data-plane bearer is authorized only when its lowercase SHA-256 digest and the
       verified client-certificate SAN, tenant, and scope exactly match one binding. The service
       does not accept one global bearer as authority for every tenant.
+  x-agenttrust-orchestrator-authentication:
+    bindingSchema: agenttrust.orchestrator-token-bindings.v1
+    bindingFields: [client_identity, tenant_id, subject, scope, token_sha256]
+    scopes: [orchestrator:runtime, orchestrator:read, orchestrator:command,
+             orchestrator:transitions]
+    description: >-
+      Every non-readiness request binds one canonical tenant header, one exact certificate SAN,
+      one route-fixed scope and one independently rotatable opaque-token digest. Reusing a raw
+      token across scopes is rejected when the binding document is loaded.
   x-agenttrust-worker-management:
     defaultListen: 127.0.0.1
     defaultPort: 9092
@@ -65,7 +74,13 @@ paths:
     post:
       tags: [Orchestrator]
       operationId: createTask
-      description: Admits an idempotent gateway envelope, starts its workflow, and durably signals START.
+      parameters: [{$ref: '#/components/parameters/TenantHeader'}]
+      description: >-
+        Admits an idempotent gateway envelope, starts its workflow, and durably signals START.
+        A side-effecting Canonical Action payload must bind both current_state_version and a
+        lowercase SHA-256 extensions.x-plan-hash before admission; otherwise the request fails
+        closed before a Temporal workflow is created. The response includes immutable START
+        acceptance evidence but explicitly keeps execution pending.
       requestBody:
         required: true
         content:
@@ -84,6 +99,7 @@ paths:
     post:
       tags: [Orchestrator]
       operationId: queryTask
+      parameters: [{$ref: '#/components/parameters/TenantHeader'}]
       requestBody: {$ref: '#/components/requestBodies/ActionScope'}
       responses:
         '200':
@@ -97,6 +113,7 @@ paths:
     post: &commandOperation
       tags: [Orchestrator]
       operationId: startTask
+      parameters: [{$ref: '#/components/parameters/TenantHeader'}]
       requestBody: {$ref: '#/components/requestBodies/CommandScope'}
       responses:
         '200':
@@ -139,6 +156,7 @@ paths:
     post:
       tags: [Orchestrator]
       operationId: listTasks
+      parameters: [{$ref: '#/components/parameters/TenantHeader'}]
       requestBody:
         required: true
         content:
@@ -163,6 +181,30 @@ paths:
                     maxItems: 100
                     items: {$ref: '#/components/schemas/TaskSummary'}
         '400': {$ref: '#/components/responses/Error'}
+  /v1/authoritative/tasks:
+    get:
+      tags: [Orchestrator]
+      operationId: authoritativeTaskInventory
+      security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      description: >-
+        Tenant- and actor-bound view over authoritative Temporal workflow state. Ingress rows
+        are used only as an index and never as proof that a task or execution completed.
+      parameters:
+        - {$ref: '#/components/parameters/TenantHeader'}
+        - {$ref: '#/components/parameters/LegacyTenantHeader'}
+        - {$ref: '#/components/parameters/ActorHeader'}
+        - {name: resource, in: query, required: true, schema: {type: string, pattern: '^[a-z][a-z0-9_-]{0,99}$'}}
+        - {name: limit, in: query, required: true, schema: {type: integer, minimum: 1, maximum: 100}}
+      responses:
+        '200':
+          description: Bounded authoritative task page.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuthoritativeTaskPage'}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
   /v1/tasks/events:
     post:
       tags: [Orchestrator]
@@ -172,8 +214,9 @@ paths:
         The mTLS-authenticated BFF must supply tenant and actor headers exactly matching
         tenant_id and owner in the compatibility request body.
       parameters:
-        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
-        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+        - {$ref: '#/components/parameters/TenantHeader'}
+        - {$ref: '#/components/parameters/LegacyTenantHeader'}
+        - {$ref: '#/components/parameters/ActorHeader'}
       requestBody:
         required: true
         content:
@@ -207,8 +250,9 @@ paths:
         Returns only the tenant-bound authoritative transition ring and current Temporal state.
         Submission and rejection audit entries are never mixed into this recovery surface.
       parameters:
-        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
-        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+        - {$ref: '#/components/parameters/TenantHeader'}
+        - {$ref: '#/components/parameters/LegacyTenantHeader'}
+        - {$ref: '#/components/parameters/ActorHeader'}
       requestBody:
         required: true
         content:
@@ -239,8 +283,9 @@ paths:
           in: path
           required: true
           schema: {$ref: '#/components/schemas/Uuid'}
-        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
-        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+        - {$ref: '#/components/parameters/TenantHeader'}
+        - {$ref: '#/components/parameters/LegacyTenantHeader'}
+        - {$ref: '#/components/parameters/ActorHeader'}
         - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
       requestBody:
         required: true
@@ -268,8 +313,9 @@ paths:
           in: path
           required: true
           schema: {$ref: '#/components/schemas/Uuid'}
-        - {name: X-Tenant-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Uuid'}}
-        - {name: X-Actor-Subject, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 512}}
+        - {$ref: '#/components/parameters/TenantHeader'}
+        - {$ref: '#/components/parameters/LegacyTenantHeader'}
+        - {$ref: '#/components/parameters/ActorHeader'}
         - {name: resume_token, in: query, schema: {type: string, pattern: '^[0-9]+$'}}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 100}}
       responses:
@@ -285,6 +331,7 @@ paths:
       tags: [Orchestrator]
       operationId: taskStreamSnapshot
       security: [{orchestratorServiceBearer: [], mutualTLS: []}]
+      parameters: [{$ref: '#/components/parameters/TenantHeader'}]
       requestBody:
         required: true
         content:
@@ -338,6 +385,23 @@ components:
       scheme: bearer
     mutualTLS:
       type: mutualTLS
+  parameters:
+    TenantHeader:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    LegacyTenantHeader:
+      name: X-Tenant-Id
+      in: header
+      required: false
+      description: If supplied by the enterprise BFF, it must exactly equal X-AgentTrust-Tenant-Id.
+      schema: {$ref: '#/components/schemas/Uuid'}
+    ActorHeader:
+      name: X-Actor-Subject
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
   responses:
     Error:
       description: Stable fail-closed machine error.
@@ -372,7 +436,7 @@ components:
       required: [tenant_id, owner]
       properties:
         tenant_id: {$ref: '#/components/schemas/Uuid'}
-        owner: {type: string, minLength: 1, maxLength: 512}
+        owner: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
     ActionScope:
       allOf:
         - {$ref: '#/components/schemas/OwnerScope'}
@@ -398,18 +462,18 @@ components:
       additionalProperties: false
       required: [subject, tenant_id, owner_subject, agent_instance_id, trust_level]
       properties:
-        subject: {type: string, minLength: 1, maxLength: 512}
+        subject: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
         tenant_id: {$ref: '#/components/schemas/Uuid'}
-        owner_subject: {type: string, minLength: 1, maxLength: 512}
+        owner_subject: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
         agent_instance_id: {$ref: '#/components/schemas/Uuid'}
-        trust_level: {type: string, minLength: 1, maxLength: 128}
+        trust_level: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
     TenantContext:
       type: object
       additionalProperties: false
       required: [tenant_id, quota_profile]
       properties:
         tenant_id: {$ref: '#/components/schemas/Uuid'}
-        quota_profile: {type: string, minLength: 1, maxLength: 128}
+        quota_profile: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'}
     TraceContext:
       type: object
       additionalProperties: false
@@ -444,12 +508,20 @@ components:
     IngressReceipt:
       type: object
       additionalProperties: false
-      required: [action_id, task_id, accepted, start_requested]
+      required: [schema_version, action_id, task_id, accepted, start_requested,
+                 execution_pending, ingress_digest, evidence_ref, evidence_digest]
       properties:
+        schema_version: {const: agenttrust.action-acceptance.v1}
         action_id: {$ref: '#/components/schemas/Uuid'}
         task_id: {$ref: '#/components/schemas/Uuid'}
         accepted: {const: true}
         start_requested: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/Digest'}
+        evidence_ref:
+          type: string
+          pattern: '^orchestrator-event://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$'
+        evidence_digest: {$ref: '#/components/schemas/Digest'}
     CommandReceipt:
       type: object
       additionalProperties: false
@@ -458,12 +530,12 @@ components:
       properties:
         schema_version: {const: agenttrust.command-receipt.v1}
         accepted: {const: true}
-        command_id: {type: string, minLength: 1, maxLength: 256}
+        command_id: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
         evidence_ref:
           type: string
           minLength: 1
           maxLength: 2048
-          pattern: '^orchestrator-event://[0-9a-f-]+/[0-9a-f-]+/[1-9][0-9]*$'
+          pattern: '^orchestrator-event://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[1-9][0-9]*$'
         evidence_digest: {$ref: '#/components/schemas/Digest'}
         execution_pending:
           const: true
@@ -477,6 +549,33 @@ components:
         status: {$ref: '#/components/schemas/TaskStatus'}
         recovery_cursor: {type: integer, minimum: 0}
         terminal: {type: boolean}
+    AuthoritativeTaskPage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, authoritative, tenant_id, resource, items, next_cursor,
+                 data_digest]
+      properties:
+        schema_version: {const: agenttrust.authoritative-task-page.v1}
+        authoritative: {const: true}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        resource: {type: string, pattern: '^[a-z][a-z0-9_-]{0,99}$'}
+        items:
+          type: array
+          maxItems: 100
+          items: {$ref: '#/components/schemas/AuthoritativeTaskView'}
+        next_cursor: {type: 'null'}
+        data_digest: {$ref: '#/components/schemas/Digest'}
+    AuthoritativeTaskView:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, status, recovery_cursor, terminal]
+      properties:
+        schema_version: {const: agenttrust.task-view.v1}
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        status: {$ref: '#/components/schemas/TaskStatus'}
+        recovery_cursor: {type: integer, minimum: 0}
+        terminal: {type: boolean}
     TaskView:
       allOf:
         - {$ref: '#/components/schemas/TaskSummary'}
@@ -484,7 +583,7 @@ components:
           required: [tenant_id, owner_subject, evidence_refs]
           properties:
             tenant_id: {$ref: '#/components/schemas/Uuid'}
-            owner_subject: {type: string}
+            owner_subject: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
             evidence_refs:
               type: array
               uniqueItems: true
@@ -517,7 +616,7 @@ components:
       properties:
         schema_version: {const: agenttrust.orchestrator-state.v1}
         event_id: {type: string, minLength: 1, maxLength: 256}
-        command_id: {type: string, minLength: 1, maxLength: 256}
+        command_id: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
         from: {$ref: '#/components/schemas/TaskStatus'}
         to: {$ref: '#/components/schemas/TaskStatus'}
         recovery_cursor: {type: integer, minimum: 1, maximum: 1000000}
@@ -544,7 +643,7 @@ components:
           enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT, VERIFY, COMPLETE, NEEDS_HUMAN]
         expected_state_version: {type: integer, minimum: 0}
         payload_digest: {$ref: '#/components/schemas/Digest'}
-        requested_by: {type: string, minLength: 1, maxLength: 512}
+        requested_by: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
         requested_at: {type: string, format: date-time}
     PublicTaskCommand:
       type: object
@@ -630,12 +729,12 @@ components:
         tenant_id: {$ref: '#/components/schemas/Uuid'}
         task_id: {$ref: '#/components/schemas/Uuid'}
         action_id: {$ref: '#/components/schemas/Uuid'}
-        command_id: {type: string, minLength: 1, maxLength: 256}
+        command_id: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
         command_type: {enum: [START, PAUSE, RESUME, CANCEL, KILL, CHECKPOINT, VERIFY, COMPLETE, NEEDS_HUMAN]}
         recovery_cursor: {type: integer, minimum: 0}
         ingress_digest: {$ref: '#/components/schemas/Digest'}
         payload_digest: {$ref: '#/components/schemas/Digest'}
-        requested_by: {type: string, minLength: 1, maxLength: 512}
+        requested_by: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$'}
     ActionMaterializationRef:
       type: object
       additionalProperties: false
@@ -646,7 +745,7 @@ components:
         action_id: {$ref: '#/components/schemas/Uuid'}
         payload_hash: {$ref: '#/components/schemas/Digest'}
         store: {const: ORCHESTRATOR_INGRESS_POSTGRESQL}
-        uri: {type: string, pattern: '^orchestrator-ingress://[0-9a-f-]+/[0-9a-f-]+$'}
+        uri: {type: string, pattern: '^orchestrator-ingress://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'}
     ExecutionRecord:
       type: object
       additionalProperties: false
@@ -670,7 +769,7 @@ components:
         tenant_id: {$ref: '#/components/schemas/Uuid'}
         task_id: {$ref: '#/components/schemas/Uuid'}
         action_id: {$ref: '#/components/schemas/Uuid'}
-        command_id: {type: string, minLength: 1, maxLength: 256}
+        command_id: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$'}
         recovery_cursor: {type: integer, minimum: 0}
         payload_digest: {$ref: '#/components/schemas/Digest'}
         decision: {enum: [VERIFIED, GRANTED, ACTIVE, REVOKED, PASS, CONTAINED]}

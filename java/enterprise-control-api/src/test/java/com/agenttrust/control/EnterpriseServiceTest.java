@@ -2,8 +2,6 @@ package com.agenttrust.control;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.PrincipalContext;
@@ -18,7 +16,8 @@ class EnterpriseServiceTest {
     void crossTenantAndMissingSeparationAreDenied() {
         UUID tenant = UUID.randomUUID();
         var principal = new PrincipalContext("admin:1", tenant,
-            Set.of("tenant-admin"), Set.of("project:1"), Set.of("approval:1"));
+            Set.of("tenant-admin"), Set.of("project:1"), Set.of("approval:1"), Set.of(),
+            true, Instant.now(), "urn:agenttrust:acr:mfa");
         var crossTenant = new AdminIntent("agenttrust.enterprise-control.v1",
             UUID.randomUUID(), UUID.randomUUID(), "project:1", "create",
             "organization:x", "admin:1", Set.of("approval:1"),
@@ -31,6 +30,14 @@ class EnterpriseServiceTest {
             "admin:1", Set.of(), "a".repeat(64), Instant.now());
         assertThrows(ControlDeniedException.class,
             () -> EnterpriseService.requireContext(principal, missingApproval,
+                Set.of("tenant-admin"), true));
+        var weakPrincipal = new PrincipalContext("admin:1", tenant,
+            Set.of("tenant-admin"), Set.of("project:1"), Set.of("approval:1"));
+        var otherwiseValid = new AdminIntent("agenttrust.enterprise-control.v1",
+            UUID.randomUUID(), tenant, "project:1", "create", "organization:x",
+            "admin:1", Set.of("approval:1"), "a".repeat(64), Instant.now());
+        assertThrows(ControlDeniedException.class,
+            () -> EnterpriseService.requireContext(weakPrincipal, otherwiseValid,
                 Set.of("tenant-admin"), true));
     }
 
@@ -68,19 +75,4 @@ class EnterpriseServiceTest {
             bound, "promote reviewed policy", java.util.Map.of("policy", "different")));
     }
 
-    @Test
-    void voidIdempotencyReplayMustMatchTheOriginalStatusAndPayloadExactly() {
-        var mapper = new ObjectMapper();
-        var payload = mapper.createObjectNode().put("completed", true);
-        var replay = new EnterpriseRepository.IdempotencyReservation(true, 202, payload);
-        assertTrue(EnterpriseService.isExactVoidReplay(replay, 202));
-        assertFalse(EnterpriseService.isExactVoidReplay(
-            new EnterpriseRepository.IdempotencyReservation(false, 0, null), 202));
-        assertThrows(ConflictException.class,
-            () -> EnterpriseService.isExactVoidReplay(replay, 201));
-        assertThrows(ConflictException.class,
-            () -> EnterpriseService.isExactVoidReplay(
-                new EnterpriseRepository.IdempotencyReservation(true, 202,
-                    mapper.createObjectNode().put("completed", false)), 202));
-    }
 }

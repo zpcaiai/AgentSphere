@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/audit-retention/api.schema.json",
+  "oneOf": [
+    {"$ref": "#/$defs/appendRequest"}, {"$ref": "#/$defs/appendResponse"},
+    {"$ref": "#/$defs/queryRequest"}, {"$ref": "#/$defs/queryResponse"},
+    {"$ref": "#/$defs/authoritativeQueryRequest"},
+    {"$ref": "#/$defs/authoritativeAuditPage"},
+    {"$ref": "#/$defs/queryPrincipalEvidence"},
+    {"$ref": "#/$defs/retentionPolicyRequest"}, {"$ref": "#/$defs/legalHoldPlaceRequest"},
+    {"$ref": "#/$defs/legalHoldReleaseRequest"}, {"$ref": "#/$defs/exportRequest"},
+    {"$ref": "#/$defs/exportResponse"}, {"$ref": "#/$defs/deletionRequest"},
+    {"$ref": "#/$defs/deletionResponse"}, {"$ref": "#/$defs/controlRequest"},
+    {"$ref": "#/$defs/nodeRequest"}, {"$ref": "#/$defs/edgeRequest"},
+    {"$ref": "#/$defs/mutationReceipt"}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid"},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "dateTime": {"type": "string", "format": "date-time"},
+    "idempotencyKey": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,128}$"},
+    "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "auditDraft": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "request_id", "tenant_id", "task_id", "event_type", "actor_subject", "resource", "classification", "payload_hash", "safe_summary", "artifact_hashes", "occurred_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.audit-retention.v1"},
+        "request_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "task_id": {"$ref": "#/$defs/uuid"},
+        "event_type": {"type": "string", "minLength": 1, "maxLength": 128},
+        "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "resource": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "classification": {"$ref": "#/$defs/classification"},
+        "payload_hash": {"$ref": "#/$defs/digest"},
+        "safe_summary": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "artifact_hashes": {"type": "array", "maxItems": 10000, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
+        "occurred_at": {"$ref": "#/$defs/dateTime"}
+      }
+    },
+    "auditRecord": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "record_id", "sequence", "previous_hash", "record_hash", "key_id", "signature", "draft"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.audit-retention.v1"}, "record_id": {"$ref": "#/$defs/uuid"},
+        "sequence": {"type": "integer", "minimum": 1}, "previous_hash": {"$ref": "#/$defs/digest"},
+        "record_hash": {"$ref": "#/$defs/digest"}, "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "signature": {"type": "string", "minLength": 1, "maxLength": 1024}, "draft": {"$ref": "#/$defs/auditDraft"}
+      }
+    },
+    "mutationReceipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "operation_id", "tenant_id", "idempotency_key", "request_digest", "operation", "resource_ref", "result_digest", "chain_head", "issued_at", "issuer", "key_id", "key_usage", "signature"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.audit-mutation-receipt.v1"}, "operation_id": {"$ref": "#/$defs/uuid"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"},
+        "request_digest": {"$ref": "#/$defs/digest"}, "operation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "resource_ref": {"type": "string", "minLength": 1, "maxLength": 2048}, "result_digest": {"$ref": "#/$defs/digest"},
+        "chain_head": {"$ref": "#/$defs/digest"}, "issued_at": {"$ref": "#/$defs/dateTime"},
+        "issuer": {"type": "string", "minLength": 1, "maxLength": 256}, "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "key_usage": {"const": "AUDIT_MUTATION_RECEIPT"}, "signature": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    },
+    "appendRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "idempotency_key", "records", "requested_at"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-append-request.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "records": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {"$ref": "#/$defs/auditDraft"}}, "requested_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "appendResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "records", "receipt"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-append-response.v1"}, "records": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {"$ref": "#/$defs/auditRecord"}}, "receipt": {"$ref": "#/$defs/mutationReceipt"}}
+    },
+    "queryRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "idempotency_key", "audit_task_id", "actor_subject", "resource_prefix", "maximum_classification", "occurred_from", "occurred_until", "offset", "limit", "requested_at"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-query-request.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "resource_prefix": {"type": "string", "minLength": 1, "maxLength": 2048}, "maximum_classification": {"$ref": "#/$defs/classification"}, "occurred_from": {"$ref": "#/$defs/dateTime"}, "occurred_until": {"$ref": "#/$defs/dateTime"}, "offset": {"type": "integer", "minimum": 0, "maximum": 1000000}, "limit": {"type": "integer", "minimum": 1, "maximum": 1000}, "requested_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "queryResponse": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "records", "next_offset", "receipt"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-query-response.v1"}, "records": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/$defs/auditRecord"}}, "next_offset": {"type": ["integer", "null"], "minimum": 0}, "receipt": {"$ref": "#/$defs/mutationReceipt"}}
+    },
+    "authoritativeQueryRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "idempotency_key", "audit_task_id", "actor_subject", "resource", "resource_prefix", "maximum_classification", "occurred_from", "occurred_until", "offset", "limit", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authoritative-audit-query-request.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"},
+        "idempotency_key": {"$ref": "#/$defs/idempotencyKey"},
+        "audit_task_id": {"$ref": "#/$defs/uuid"},
+        "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\r\\n]+$"},
+        "resource": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,99}$"},
+        "resource_prefix": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^[^\\r\\n]+$"},
+        "maximum_classification": {"$ref": "#/$defs/classification"},
+        "occurred_from": {"$ref": "#/$defs/dateTime"},
+        "occurred_until": {"$ref": "#/$defs/dateTime"},
+        "offset": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+        "requested_at": {"$ref": "#/$defs/dateTime"}
+      }
+    },
+    "authoritativeAuditPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "authoritative", "tenant_id", "resource", "items", "next_offset", "receipt", "data_digest"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authoritative-audit-page.v1"},
+        "authoritative": {"const": true},
+        "tenant_id": {"$ref": "#/$defs/uuid"},
+        "resource": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,99}$"},
+        "items": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/auditRecord"}},
+        "next_offset": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000100},
+        "receipt": {"$ref": "#/$defs/mutationReceipt"},
+        "data_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "queryPrincipalEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "audit_task_id", "actor_subject", "client_identity", "service_subject", "scope", "assertion_jti", "assertion_digest", "request_digest", "response_digest", "receipt_digest", "recorded_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.audit-query-principal-evidence.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"},
+        "audit_task_id": {"$ref": "#/$defs/uuid"},
+        "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "client_identity": {"type": "string", "pattern": "^(DNS|URI):.{1,508}$"},
+        "service_subject": {"type": "string", "pattern": "^[A-Za-z0-9_.:/@-]{1,256}$"},
+        "scope": {"const": "audit:query"},
+        "assertion_jti": {"$ref": "#/$defs/uuid"},
+        "assertion_digest": {"$ref": "#/$defs/digest"},
+        "request_digest": {"$ref": "#/$defs/digest"},
+        "response_digest": {"$ref": "#/$defs/digest"},
+        "receipt_digest": {"$ref": "#/$defs/digest"},
+        "recorded_at": {"$ref": "#/$defs/dateTime"}
+      }
+    },
+    "retentionPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "policy_id", "tenant_id", "event_type", "classification", "compliance_profile", "retain_seconds", "anonymize_after_seconds", "policy_digest"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "policy_id": {"type": "string", "minLength": 1, "maxLength": 256}, "tenant_id": {"$ref": "#/$defs/uuid"}, "event_type": {"type": "string", "minLength": 1, "maxLength": 128}, "classification": {"$ref": "#/$defs/classification"}, "compliance_profile": {"type": "string", "minLength": 1, "maxLength": 128}, "retain_seconds": {"type": "integer", "minimum": 1}, "anonymize_after_seconds": {"type": ["integer", "null"], "minimum": 1}, "policy_digest": {"$ref": "#/$defs/digest"}}
+    },
+    "retentionPolicyRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "idempotency_key", "policy", "actor_subject", "audit_task_id", "requested_at"],
+      "properties": {"schema_version": {"const": "agenttrust.retention-policy-request.v1"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "policy": {"$ref": "#/$defs/retentionPolicy"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "requested_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "legalHold": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "hold_id", "tenant_id", "task_id", "actor_subject", "resource_prefix", "starts_at", "ends_at", "placed_by", "reason_code", "released_at", "released_by"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "hold_id": {"$ref": "#/$defs/uuid"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "task_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]}, "actor_subject": {"type": ["string", "null"], "maxLength": 512}, "resource_prefix": {"type": ["string", "null"], "maxLength": 2048}, "starts_at": {"$ref": "#/$defs/dateTime"}, "ends_at": {"oneOf": [{"$ref": "#/$defs/dateTime"}, {"type": "null"}]}, "placed_by": {"type": "string", "minLength": 1, "maxLength": 512}, "reason_code": {"type": "string", "minLength": 1, "maxLength": 256}, "released_at": {"oneOf": [{"$ref": "#/$defs/dateTime"}, {"type": "null"}]}, "released_by": {"type": ["string", "null"], "maxLength": 512}}
+    },
+    "legalHoldPlaceRequest": {
+      "type": "object", "additionalProperties": false, "required": ["schema_version", "idempotency_key", "hold", "audit_task_id", "requested_at"],
+      "properties": {"schema_version": {"const": "agenttrust.legal-hold-place-request.v1"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "hold": {"$ref": "#/$defs/legalHold"}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "requested_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "legalHoldReleaseRequest": {
+      "type": "object", "additionalProperties": false, "required": ["schema_version", "tenant_id", "hold_id", "idempotency_key", "released_by", "reason_code", "audit_task_id", "requested_at"],
+      "properties": {"schema_version": {"const": "agenttrust.legal-hold-release-request.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "hold_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "released_by": {"type": "string", "minLength": 1, "maxLength": 512}, "reason_code": {"type": "string", "minLength": 1, "maxLength": 256}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "requested_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "exportRequest": {
+      "type": "object", "additionalProperties": false, "required": ["schema_version", "tenant_id", "idempotency_key", "audit_task_id", "actor_subject", "maximum_classification", "transformed", "retention_until", "requested_at"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-export-request.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "maximum_classification": {"$ref": "#/$defs/classification"}, "transformed": {"const": false}, "retention_until": {"$ref": "#/$defs/dateTime"}, "requested_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "exportManifest": {
+      "type": "object", "additionalProperties": false, "required": ["schema_version", "export_id", "tenant_id", "record_hashes", "chain_head", "transformed", "transformation_hash", "key_id", "manifest_hash", "signature", "exported_at"],
+      "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "export_id": {"$ref": "#/$defs/uuid"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "record_hashes": {"type": "array", "minItems": 1, "maxItems": 100000, "items": {"$ref": "#/$defs/digest"}}, "chain_head": {"$ref": "#/$defs/digest"}, "transformed": {"const": false}, "transformation_hash": {"type": "null"}, "key_id": {"type": "string", "minLength": 1, "maxLength": 128}, "manifest_hash": {"$ref": "#/$defs/digest"}, "signature": {"type": "string", "minLength": 1, "maxLength": 1024}, "exported_at": {"$ref": "#/$defs/dateTime"}}
+    },
+    "exportPackage": {"type": "object", "additionalProperties": false, "required": ["manifest", "records"], "properties": {"manifest": {"$ref": "#/$defs/exportManifest"}, "records": {"type": "array", "minItems": 1, "maxItems": 100000, "items": {"$ref": "#/$defs/auditRecord"}}}},
+    "exportResponse": {"type": "object", "additionalProperties": false, "required": ["schema_version", "package", "worm_receipt", "receipt"], "properties": {"schema_version": {"const": "agenttrust.audit-export-response.v1"}, "package": {"$ref": "#/$defs/exportPackage"}, "worm_receipt": {"$ref": "../evidence/worm-object-receipt.schema.json"}, "receipt": {"$ref": "#/$defs/mutationReceipt"}}},
+    "deletionRequest": {"type": "object", "additionalProperties": false, "required": ["schema_version", "tenant_id", "idempotency_key", "audit_task_id", "actor_subject", "policy_id", "delete_before", "requested_at"], "properties": {"schema_version": {"const": "agenttrust.audit-deletion-request.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "policy_id": {"type": "string", "minLength": 1, "maxLength": 256}, "delete_before": {"$ref": "#/$defs/dateTime"}, "requested_at": {"$ref": "#/$defs/dateTime"}}},
+    "deletionProof": {"type": "object", "additionalProperties": false, "required": ["schema_version", "deletion_id", "tenant_id", "policy_id", "deleted_payload_hashes", "protected_record_ids", "executed_at"], "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "deletion_id": {"$ref": "#/$defs/uuid"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "policy_id": {"type": "string", "minLength": 1, "maxLength": 256}, "deleted_payload_hashes": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/$defs/digest"}}, "protected_record_ids": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/uuid"}}, "executed_at": {"$ref": "#/$defs/dateTime"}}},
+    "deletionObjectReceipt": {"type": "object", "additionalProperties": false, "required": ["schema_version", "tenant_id", "artifact_hash", "object_ref", "version_id", "deletion_marker", "deleted_at", "proof_digest"], "properties": {"schema_version": {"const": "agenttrust.retention-deletion-receipt.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "artifact_hash": {"$ref": "#/$defs/digest"}, "object_ref": {"type": "string", "pattern": "^object-lock://", "maxLength": 2048}, "version_id": {"type": "string", "minLength": 1, "maxLength": 512}, "deletion_marker": {"type": "string", "minLength": 1, "maxLength": 512}, "deleted_at": {"$ref": "#/$defs/dateTime"}, "proof_digest": {"$ref": "#/$defs/digest"}}},
+    "deletionResponse": {"type": "object", "additionalProperties": false, "required": ["schema_version", "proof", "object_receipts", "receipt"], "properties": {"schema_version": {"const": "agenttrust.audit-deletion-response.v1"}, "proof": {"$ref": "#/$defs/deletionProof"}, "object_receipts": {"type": "array", "maxItems": 10000, "items": {"$ref": "#/$defs/deletionObjectReceipt"}}, "receipt": {"$ref": "#/$defs/mutationReceipt"}}},
+    "control": {"type": "object", "additionalProperties": false, "required": ["schema_version", "control_id", "requirement_ids", "owner", "policy_refs", "test_refs", "external_mappings"], "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "control_id": {"type": "string", "minLength": 1, "maxLength": 256}, "requirement_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "owner": {"type": "string", "minLength": 1}, "policy_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "test_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}, "external_mappings": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}}},
+    "controlRequest": {"type": "object", "additionalProperties": false, "required": ["schema_version", "tenant_id", "idempotency_key", "control", "actor_subject", "audit_task_id", "requested_at"], "properties": {"schema_version": {"const": "agenttrust.control-registration-request.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "control": {"$ref": "#/$defs/control"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "requested_at": {"$ref": "#/$defs/dateTime"}}},
+    "node": {"type": "object", "additionalProperties": false, "required": ["schema_version", "node_id", "tenant_id", "node_type", "digest", "classification"], "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "node_id": {"type": "string", "minLength": 1, "maxLength": 512}, "tenant_id": {"$ref": "#/$defs/uuid"}, "node_type": {"type": "string", "minLength": 1, "maxLength": 128}, "digest": {"$ref": "#/$defs/digest"}, "classification": {"$ref": "#/$defs/classification"}}},
+    "nodeRequest": {"type": "object", "additionalProperties": false, "required": ["schema_version", "idempotency_key", "node", "actor_subject", "audit_task_id", "requested_at"], "properties": {"schema_version": {"const": "agenttrust.evidence-node-request.v1"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "node": {"$ref": "#/$defs/node"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "requested_at": {"$ref": "#/$defs/dateTime"}}},
+    "edge": {"type": "object", "additionalProperties": false, "required": ["schema_version", "tenant_id", "from_node", "relation", "to_node"], "properties": {"schema_version": {"const": "agenttrust.audit-retention.v1"}, "tenant_id": {"$ref": "#/$defs/uuid"}, "from_node": {"type": "string", "minLength": 1, "maxLength": 512}, "relation": {"type": "string", "minLength": 1, "maxLength": 128}, "to_node": {"type": "string", "minLength": 1, "maxLength": 512}}},
+    "edgeRequest": {"type": "object", "additionalProperties": false, "required": ["schema_version", "idempotency_key", "edge", "actor_subject", "audit_task_id", "requested_at"], "properties": {"schema_version": {"const": "agenttrust.evidence-edge-request.v1"}, "idempotency_key": {"$ref": "#/$defs/idempotencyKey"}, "edge": {"$ref": "#/$defs/edge"}, "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512}, "audit_task_id": {"$ref": "#/$defs/uuid"}, "requested_at": {"$ref": "#/$defs/dateTime"}}}
+  }
+}

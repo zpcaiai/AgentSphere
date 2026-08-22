@@ -21,11 +21,11 @@
       "source": "rust/crates/production-runtime/src/adapters.rs",
       "config_binding": {"kind": "endpoint", "selector": "orchestrator", "client_identity_required": true, "token_required": true},
       "operations": [
-        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions", "transport_call": ".post_json("},
-        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/query", "transport_call": ".post_json("},
-        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/cancel", "transport_call": ".post_json("},
-        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/kill", "transport_call": ".post_json("},
-        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/tasks/stream-snapshot", "transport_call": ".post_json("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions", "transport_call": ".post_json_tenant("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/query", "transport_call": ".post_json_tenant("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/cancel", "transport_call": ".post_json_tenant("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/actions/kill", "transport_call": ".post_json_tenant("},
+        {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "POST", "wire_path": "/v1/tasks/stream-snapshot", "transport_call": ".post_json_tenant("},
         {"scope": "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter", "method": "GET", "wire_path": "/ready", "transport_call": ".get_bytes("}
       ]
     },
@@ -78,13 +78,13 @@
       ]
     },
     {
-      "family_id": "policy_distribution",
-      "adapter": "HttpPolicyDistributionPort",
-      "trait": "PolicyDistributionPort",
-      "source": "rust/crates/production-runtime/src/ops.rs",
-      "config_binding": {"kind": "endpoint", "selector": "policy_distribution", "client_identity_required": true, "token_required": true},
+      "family_id": "policy_activation",
+      "adapter": "HttpPepPolicyActivationClient",
+      "trait": "PolicyActivationPort",
+      "source": "rust/crates/policy-administration/src/authority.rs",
+      "config_binding": {"kind": "authority_env", "selector": "AGENT_TRUST_POLICY_PEP_ACTIVATION_ENDPOINT", "client_identity_required": true, "token_required": true},
       "operations": [
-        {"scope": "impl PolicyDistributionPort for HttpPolicyDistributionPort", "method": "POST", "wire_path": "/v1/policy/bundles", "transport_call": ".post_json_blocking("}
+        {"scope": "impl PolicyActivationPort for HttpPepPolicyActivationClient", "method": "POST", "wire_path": "/v1/policies/activations", "transport_call": ".post("}
       ]
     },
     {
@@ -204,7 +204,7 @@
     {"condition_id": "SECRET_BROKER_DYNAMIC_LEASES", "probes": [{"path": "python/production_gates/tests/test_external_services.py", "test": "test_vault_health_token_and_dynamic_lease_lifecycle"}]},
     {"condition_id": "DEDICATED_LINUX_GVISOR", "probes": [{"path": "rust/crates/sandbox-runtime/src/lib.rs", "test": "macos_cannot_claim_gvisor_production_isolation"}], "runtime_symbols": [{"path": "scripts/run-linux-isolation-gate.sh", "symbols": ["AGENT_TRUST_RUNSC_BINARY", "--runtime runsc", "production_evidence=true"]}]},
     {"condition_id": "PRODUCTION_MULTIZONE_TEMPORAL", "probes": [{"path": "python/durable_worker/tests/test_worker.py", "test": "test_duplicate_signal_is_idempotent_and_conflict_is_rejected"}, {"path": "python/durable_worker/tests/test_orchestrator_api.py", "test": "test_owner_is_enforced_for_query_and_control"}]},
-    {"condition_id": "MANAGED_DATABASE_MULTI_ZONE", "probes": [{"path": "python/platform_sre/tests/test_postgres_failover_drill.py", "test": "test_broad_or_relative_work_root_is_denied_before_execution"}], "runtime_symbols": [{"path": "python/platform_sre/postgres_failover_drill.py", "symbols": ["pg_basebackup", "promote", "production_evidence\": False"]}]},
+    {"condition_id": "MANAGED_DATABASE_MULTI_ZONE", "probes": [{"path": "python/durable_worker/tests/test_orchestrator_api.py", "test": "test_idempotency_key_is_bound_to_the_complete_ingress_envelope"}, {"path": "python/platform_sre/tests/test_postgres_failover_drill.py", "test": "test_broad_or_relative_work_root_is_denied_before_execution"}], "runtime_symbols": [{"path": "python/durable_worker/orchestrator_api.py", "symbols": ["_database_json_object", "ORCHESTRATOR_IDEMPOTENCY_CONFLICT"]}, {"path": "migrations/orchestrator/0036_01_24_production_orchestrator_hardening.sql", "symbols": ["orchestrator_stream_command_once_idx", "ORCHESTRATOR_STREAM_APPEND_ONLY"]}, {"path": "python/platform_sre/postgres_failover_drill.py", "symbols": ["pg_basebackup", "promote", "production_evidence\": False"]}]},
     {"condition_id": "LOCKED_RETENTION_OBJECT_STORAGE", "probes": [{"path": "python/production_gates/tests/test_object_store_retention.py", "test": "test_compliance_retention_and_versioning_are_verified_read_only"}]},
     {"condition_id": "MODEL_GENERATION_STREAM_DLP_BILLING_RESIDENCY", "probes": [{"path": "rust/crates/production-runtime/src/adapters.rs", "test": "parses_real_sse_chunks_and_usage"}, {"path": "rust/crates/model-gateway/src/lib.rs", "test": "secrets_and_concurrent_overspend_are_denied"}]},
     {"condition_id": "MCP_REAL_ENDPOINT", "probes": [{"path": "rust/crates/production-runtime/src/protocols.rs", "test": "empty_peer_sets_fail_closed"}]},

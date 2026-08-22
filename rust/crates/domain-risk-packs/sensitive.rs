@@ -2,6 +2,7 @@ use crate::{DOMAIN_PACKS_SCHEMA_VERSION, tool, unsigned_pack_manifest};
 use agent_trust_contracts::{EffectClass, EvaluationStatus, TenantId};
 use agent_trust_pack_supply_chain::DomainPackManifest;
 use chrono::{DateTime, Utc};
+#[cfg(test)]
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -55,8 +56,13 @@ pub struct ConsentRecord {
     pub withdrawn_at: Option<DateTime<Utc>>,
 }
 
+pub trait ConsentService: Send + Sync {
+    fn authorize_share(&self, request: &ShareAuthorizationRequest) -> Result<(), SensitiveError>;
+}
+
+#[cfg(test)]
 #[derive(Default)]
-pub struct ConsentService {
+pub struct InMemoryConsentService {
     consents: RwLock<BTreeMap<(TenantId, String), ConsentRecord>>,
 }
 
@@ -71,7 +77,8 @@ pub struct ShareAuthorizationRequest {
     pub requested_at: DateTime<Utc>,
 }
 
-impl ConsentService {
+#[cfg(test)]
+impl InMemoryConsentService {
     pub fn grant(&self, consent: ConsentRecord) -> Result<(), SensitiveError> {
         if consent.schema_version != DOMAIN_PACKS_SCHEMA_VERSION
             || consent.consent_id.is_empty()
@@ -94,7 +101,7 @@ impl ConsentService {
         Ok(())
     }
 
-    pub fn authorize_share(
+    fn lookup_share(
         &self,
         request: &ShareAuthorizationRequest,
     ) -> Result<(), SensitiveError> {
@@ -123,6 +130,13 @@ impl ConsentService {
             return Err(SensitiveError::ShareDenied);
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl ConsentService for InMemoryConsentService {
+    fn authorize_share(&self, request: &ShareAuthorizationRequest) -> Result<(), SensitiveError> {
+        self.lookup_share(request)
     }
 }
 
@@ -485,7 +499,7 @@ mod tests {
             SensitivePolicyPack::validate_boundary(&value, &boundary),
             Err(SensitiveError::BoundaryDenied)
         );
-        let consent = ConsentService::default();
+        let consent = InMemoryConsentService::default();
         assert_eq!(
             consent.authorize_share(&ShareAuthorizationRequest {
                 tenant_id: value.tenant_id.clone(),

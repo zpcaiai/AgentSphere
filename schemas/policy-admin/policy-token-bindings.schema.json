@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/policy-admin/policy-token-bindings.schema.json",
+  "title": "Policy Administration Route Token Bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.policy-admin-token-bindings.v1"},
+    "bindings": {
+      "type": "array", "minItems": 3, "maxItems": 10000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):[^\\s]{1,508}$"},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,256}$"},
+          "scope": {"enum": ["policy:mutate", "policy:execute", "policy:query"]},
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/policy-bundle-keyring.schema.json",
+  "title": "PEP policy bundle verification keyring",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "keys"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.policy-bundle-keyring.v1"},
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key_id", "status", "verifying_key_file", "valid_from", "valid_until"],
+        "properties": {
+          "key_id": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,128}$"},
+          "status": {"enum": ["ACTIVE", "RETIRED", "REVOKED"]},
+          "verifying_key_file": {"type": "string", "pattern": "^/"},
+          "valid_from": {"type": "string", "format": "date-time"},
+          "valid_until": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  }
+}

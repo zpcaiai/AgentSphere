@@ -1,0 +1,87 @@
+{
+  "schema_version": "agenttrust.runtime-anomaly-failure-injection-matrix.v1",
+  "production_certification": false,
+  "scenarios": [
+    {
+      "id": "SIGNAL_SOURCE_KEY_REVOKED",
+      "injection": "submit an otherwise valid signal signed by a revoked source key",
+      "required_result": "PRINCIPAL_DENIED",
+      "invariants": ["NO_SIGNAL_ROW", "NO_RESPONSE_COMMAND", "NO_EVIDENCE_SUCCESS"]
+    },
+    {
+      "id": "SIGNAL_DUPLICATE_DIGEST_MISMATCH",
+      "injection": "reuse an event id with different safe features or signature material",
+      "required_result": "IDEMPOTENCY_CONFLICT",
+      "invariants": ["ORIGINAL_SIGNAL_IMMUTABLE", "NO_SECOND_AGGREGATE", "NO_SECOND_RESPONSE"]
+    },
+    {
+      "id": "SIGNAL_CLOCK_REPLAY",
+      "injection": "send an event outside the configured clock and trajectory window",
+      "required_result": "SIGNAL_CLOCK_INVALID",
+      "invariants": ["NO_BASELINE_UPDATE", "NO_FINDING_SUPPRESSION"]
+    },
+    {
+      "id": "ENCODED_SANDBOX_EVASION",
+      "injection": "base64 or percent encode a sandbox escape marker in bounded safe features",
+      "required_result": "DETERMINISTIC_FINDING",
+      "invariants": ["SEMANTIC_PROVIDER_NOT_REQUIRED", "CONTINUOUS_AUTHORIZATION_REQUESTED"]
+    },
+    {
+      "id": "SLOW_EXFILTRATION_WINDOW",
+      "injection": "spread distinct unapproved destinations across the bounded trajectory lookback",
+      "required_result": "PAUSE_OR_STRONGER",
+      "invariants": ["WINDOW_BOUNDED", "LOCAL_FAIL_CLOSED_STATE_COMMITTED"]
+    },
+    {
+      "id": "CREDENTIAL_MOVEMENT",
+      "injection": "record credential discovery or lateral-use indicators",
+      "required_result": "REVOKE_CREDENTIAL",
+      "invariants": ["REVOCATION_EPOCH_INCREMENTED", "OLD_LEASE_REJECTED", "INCIDENT_REQUIRED"]
+    },
+    {
+      "id": "ORCHESTRATOR_TIMEOUT",
+      "injection": "drop the response after orchestration admission may have committed",
+      "required_result": "UNKNOWN",
+      "invariants": ["SAME_IDEMPOTENCY_KEY_AND_ACTION_HASH", "NO_UNGOVERNED_FALLBACK", "LOCAL_RESTRICTION_PRESERVED"]
+    },
+    {
+      "id": "DOWNSTREAM_RESPONSE_TIMEOUT",
+      "injection": "drop a Supervisor, credential or Incident response after the effect may have committed",
+      "required_result": "UNKNOWN",
+      "invariants": ["EXECUTION_MARKED_UNKNOWN", "NO_NEW_IDEMPOTENCY_KEY", "NO_FALSE_SUCCEEDED"]
+    },
+    {
+      "id": "CRASH_AFTER_MUTATION_BEFORE_EVIDENCE",
+      "injection": "terminate after database commit and before Evidence acknowledgement",
+      "required_result": "MUTATED_PENDING_EVIDENCE",
+      "invariants": ["SAME_OUTBOX_EVENT_ID_AND_PAYLOAD_DIGEST", "BOUNDED_RECOVERY", "TASK_SUCCESS_NOT_REPORTED"]
+    },
+    {
+      "id": "EVIDENCE_RECEIPT_BINDING_MISMATCH",
+      "injection": "return the wrong event id, idempotency key, payload digest or evidence ref",
+      "required_result": "DEPENDENCY_UNAVAILABLE",
+      "invariants": ["OUTBOX_REMAINS_PENDING", "NO_FALSE_SUCCEEDED"]
+    },
+    {
+      "id": "EVIDENCE_RECEIPT_SIGNATURE_MISMATCH",
+      "injection": "return a structurally valid receipt or nested event signed by an unknown or incorrect Evidence key",
+      "required_result": "DEPENDENCY_UNAVAILABLE",
+      "invariants": ["OUTBOX_REMAINS_PENDING", "NO_FALSE_SUCCEEDED", "HISTORICAL_KEYRING_REQUIRED"]
+    },
+    {
+      "id": "EVIDENCE_DELAYED_EXACT_REPLAY",
+      "injection": "retry the same persisted authority Evidence request after more than five minutes",
+      "required_result": "EXACT_REPLAY_RECEIPT",
+      "invariants": ["ORIGINAL_TIMESTAMPS_REUSED", "REQUEST_DIGEST_UNCHANGED", "NO_SECOND_EVENT"]
+    }
+  ],
+  "external_execution": {
+    "status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+    "required": [
+      "real PostgreSQL forced-RLS role matrix",
+      "real mTLS SAN and route-token negative matrix",
+      "live Supervisor credential and Incident ambiguity drills",
+      "multi-zone recovery and sustained production load"
+    ]
+  }
+}

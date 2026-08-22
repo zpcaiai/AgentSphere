@@ -1,8 +1,8 @@
 use agent_trust_contracts::{DataClassification, PolicyVersion, TaskId, TenantId};
 use agent_trust_data_governance::{DataPolicyPortImpl, DeploymentMode, DeploymentPolicy};
 use agent_trust_evidence_evaluator::{
-    ArtifactStore, AuditSink, EvidenceBuilder, EvidenceChainVerifier, EvidenceEventDraft,
-    EvidenceEventType, InMemoryArtifactStore, InMemoryAuditChain,
+    ArtifactStore, AuditSink, EVIDENCE_SCHEMA_VERSION, EvidenceBuilder, EvidenceChainVerifier,
+    EvidenceEventDraft, EvidenceEventType, InMemoryArtifactStore, InMemoryAuditChain,
 };
 use agent_trust_model_gateway::{
     BudgetManager, DeploymentKind, DeterministicRoutePlanner, MODEL_SCHEMA_VERSION,
@@ -127,6 +127,7 @@ async fn restricted_model_output_becomes_offline_verifiable_evidence() {
     );
     audit
         .append(EvidenceEventDraft {
+            schema_version: EVIDENCE_SCHEMA_VERSION.into(),
             tenant_id: tenant.clone(),
             task_id: task.clone(),
             event_type: EvidenceEventType::ToolExecuted,

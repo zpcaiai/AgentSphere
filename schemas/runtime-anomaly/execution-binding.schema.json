@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/execution-binding.schema.json",
+  "title": "Runtime Anomaly PEP Ledger Execution Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "action_hash", "ledger_execution_id", "ledger_event_id",
+    "ledger_event_digest", "fence_digest", "resource_version", "idempotency_key", "trace_id",
+    "policy_decision_id", "policy_decision_digest", "authorization_evidence_ref",
+    "authorization_evidence_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly-execution-binding.v1" },
+    "tenant_id": { "$ref": "#/$defs/uuid" },
+    "action_hash": { "$ref": "#/$defs/digest" },
+    "ledger_execution_id": { "$ref": "#/$defs/uuid" },
+    "ledger_event_id": { "$ref": "#/$defs/uuid" },
+    "ledger_event_digest": { "$ref": "#/$defs/digest" },
+    "fence_digest": { "$ref": "#/$defs/digest" },
+    "resource_version": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+    "idempotency_key": { "type": "string", "minLength": 16, "maxLength": 256 },
+    "trace_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "policy_decision_id": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "policy_decision_digest": { "$ref": "#/$defs/digest" },
+    "authorization_evidence_ref": { "type": "string", "pattern": "^evidence://", "maxLength": 1024 },
+    "authorization_evidence_digest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "uuid": { "type": "string", "format": "uuid" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

@@ -1,8 +1,13 @@
 //! Deterministic data-policy filtering followed by bounded model route optimization.
 
+pub mod authority;
+pub mod adapters;
+pub mod production;
+pub mod server;
+
 use agent_trust_contracts::{
-    DataClassification, DataPolicyPort, DataPolicyRequest, PolicyVersion, SchemaVersion, TaskId,
-    TenantId,
+    DataClassification, DataPolicyDecision, DataPolicyPort, DataPolicyRequest, PolicyVersion,
+    SchemaVersion, TaskId, TenantId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -12,6 +17,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
+    time::Duration,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -517,6 +523,7 @@ pub struct ModelEvidence {
     pub provider_request_id: String,
     pub route_reasons: Vec<String>,
     pub data_policy_version: PolicyVersion,
+    pub data_policy_decision_digest: String,
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cost_microunits: u64,
@@ -642,11 +649,9 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
     ) -> Result<ModelGatewayResult, ModelError> {
         validate_request(&request)?;
         let prompt_hash = PromptDataGuard::inspect(&request.prompt, 4 * 1024 * 1024)?;
-        let candidates = self.allowed_candidates(&request)?;
+        let (candidates, policy_decisions) = self.allowed_candidates(&request)?;
         let ranked = self.route_planner.rank(&request, &candidates)?;
-        if ranked.is_empty() {
-            return Err(ModelError::NoCompliantProvider);
-        }
+        validate_route_plan(&candidates, &ranked)?;
         let reservation = self.budget.reserve(
             request.tenant_id.clone(),
             request.task_id.clone(),
@@ -671,9 +676,27 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                 last_error = ModelError::ProviderUnavailable;
                 continue;
             };
-            match adapter.generate(provider_request.clone()).await {
-                Ok(response) => {
+            match tokio::time::timeout(
+                Duration::from_millis(request.maximum_latency_ms),
+                adapter.generate(provider_request.clone()),
+            )
+            .await
+            {
+                Ok(Ok(response)) => {
                     let tokens = response.input_tokens.saturating_add(response.output_tokens);
+                    if tokens == 0
+                        || response.provider_request_id.is_empty()
+                        || response.provider_request_id.len() > 512
+                        || response.finish_reason.is_empty()
+                        || response.finish_reason.len() > 64
+                        || std::str::from_utf8(&response.output).is_err()
+                    {
+                        self.budget.finalize(
+                            &reservation.reservation_id,
+                            reservation.amount_microunits,
+                        )?;
+                        return Err(ModelError::ProviderProtocolInvalid);
+                    }
                     let cost = tokens.saturating_mul(provider.cost_microunits_per_token);
                     if response.output.len() > request.maximum_output_bytes
                         || response.output.len() > provider.maximum_output_bytes
@@ -689,10 +712,13 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                     );
                     self.budget.finalize(&reservation.reservation_id, cost)?;
                     let output_hash = output_hash?;
-                    let decision = self
-                        .data_policy
-                        .evaluate(&data_policy_request(&request, &provider))
-                        .map_err(|_| ModelError::DataPolicyDenied)?;
+                    let decision = policy_decisions
+                        .get(&provider.key())
+                        .ok_or(ModelError::DataPolicyDenied)?;
+                    let data_policy_decision_digest = hex(Sha256::digest(
+                        serde_jcs::to_vec(decision)
+                            .map_err(|_| ModelError::DataPolicyDenied)?,
+                    ));
                     return Ok(ModelGatewayResult {
                         output: response.output.clone(),
                         untrusted_content: true,
@@ -701,7 +727,8 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                             provider_key: provider.key(),
                             provider_request_id: response.provider_request_id,
                             route_reasons: route.reasons,
-                            data_policy_version: decision.policy_version,
+                            data_policy_version: decision.policy_version.clone(),
+                            data_policy_decision_digest,
                             input_tokens: response.input_tokens,
                             output_tokens: response.output_tokens,
                             cost_microunits: cost,
@@ -710,7 +737,16 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                         },
                     });
                 }
-                Err(error) => last_error = error,
+                // Once a provider request has started, a transport error or timeout is an
+                // ambiguous external outcome. Do not fall back and risk a second bill/side
+                // effect. Account the full reservation until durable reconciliation resolves it.
+                Ok(Err(_)) | Err(_) => {
+                    self.budget.finalize(
+                        &reservation.reservation_id,
+                        reservation.amount_microunits,
+                    )?;
+                    return Err(ModelError::ProviderOutcomeUnknown);
+                }
             }
         }
         let _ = self.budget.finalize(&reservation.reservation_id, 0);
@@ -729,8 +765,9 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
             return Err(ModelError::CapabilityMissing);
         }
         let prompt_hash = PromptDataGuard::inspect(&request.prompt, 4 * 1024 * 1024)?;
-        let candidates = self.allowed_candidates(&request)?;
+        let (candidates, policy_decisions) = self.allowed_candidates(&request)?;
         let ranked = self.route_planner.rank(&request, &candidates)?;
+        validate_route_plan(&candidates, &ranked)?;
         let reservation = self.budget.reserve(
             request.tenant_id.clone(),
             request.task_id.clone(),
@@ -755,12 +792,25 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                 last_error = ModelError::ProviderUnavailable;
                 continue;
             };
-            match adapter.stream(provider_request.clone()).await {
-                Ok(response) => {
+            match tokio::time::timeout(
+                Duration::from_millis(request.maximum_latency_ms),
+                adapter.stream(provider_request.clone()),
+            )
+            .await
+            {
+                Ok(Ok(response)) => {
                     let mut expected_sequence = 1_u64;
                     let mut output = Vec::new();
+                    let tokens = response.input_tokens.saturating_add(response.output_tokens);
+                    let cost = tokens.saturating_mul(provider.cost_microunits_per_token);
+                    let ambiguous_cost = if tokens == 0 {
+                        reservation.amount_microunits
+                    } else {
+                        cost
+                    };
                     if response.chunks.is_empty() || response.chunks.len() > 10_000 {
-                        self.budget.finalize(&reservation.reservation_id, 0)?;
+                        self.budget
+                            .finalize(&reservation.reservation_id, ambiguous_cost)?;
                         return Err(ModelError::StreamInvalid);
                     }
                     for (index, chunk) in response.chunks.iter().enumerate() {
@@ -768,9 +818,16 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                         if chunk.schema_version != MODEL_SCHEMA_VERSION
                             || chunk.sequence != expected_sequence
                             || chunk.bytes.is_empty()
+                            || chunk.bytes.len() > 1_048_576
+                            || std::str::from_utf8(&chunk.bytes).is_err()
                             || chunk.finish_reason.is_some() != final_chunk
+                            || chunk
+                                .finish_reason
+                                .as_ref()
+                                .is_some_and(|reason| reason.is_empty() || reason.len() > 64)
                         {
-                            self.budget.finalize(&reservation.reservation_id, 0)?;
+                            self.budget
+                                .finalize(&reservation.reservation_id, ambiguous_cost)?;
                             return Err(ModelError::StreamInvalid);
                         }
                         expected_sequence += 1;
@@ -780,12 +837,19 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                                 .maximum_output_bytes
                                 .min(provider.maximum_output_bytes)
                         {
-                            self.budget.finalize(&reservation.reservation_id, 0)?;
+                            self.budget
+                                .finalize(&reservation.reservation_id, ambiguous_cost)?;
                             return Err(ModelError::ResponseTooLarge);
                         }
                     }
-                    let tokens = response.input_tokens.saturating_add(response.output_tokens);
-                    let cost = tokens.saturating_mul(provider.cost_microunits_per_token);
+                    if response.provider_request_id.is_empty()
+                        || response.provider_request_id.len() > 512
+                        || tokens == 0
+                    {
+                        self.budget
+                            .finalize(&reservation.reservation_id, ambiguous_cost)?;
+                        return Err(ModelError::ProviderProtocolInvalid);
+                    }
                     let output_hash = ResponseDataGuard::inspect(
                         &output,
                         request
@@ -794,10 +858,13 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                     );
                     self.budget.finalize(&reservation.reservation_id, cost)?;
                     let output_hash = output_hash?;
-                    let decision = self
-                        .data_policy
-                        .evaluate(&data_policy_request(&request, &provider))
-                        .map_err(|_| ModelError::DataPolicyDenied)?;
+                    let decision = policy_decisions
+                        .get(&provider.key())
+                        .ok_or(ModelError::DataPolicyDenied)?;
+                    let data_policy_decision_digest = hex(Sha256::digest(
+                        serde_jcs::to_vec(decision)
+                            .map_err(|_| ModelError::DataPolicyDenied)?,
+                    ));
                     return Ok(ModelStreamGatewayResult {
                         chunks: response.chunks,
                         untrusted_content: true,
@@ -806,7 +873,8 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                             provider_key: provider.key(),
                             provider_request_id: response.provider_request_id,
                             route_reasons: route.reasons,
-                            data_policy_version: decision.policy_version,
+                            data_policy_version: decision.policy_version.clone(),
+                            data_policy_decision_digest,
                             input_tokens: response.input_tokens,
                             output_tokens: response.output_tokens,
                             cost_microunits: cost,
@@ -815,7 +883,13 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                         },
                     });
                 }
-                Err(error) => last_error = error,
+                Ok(Err(_)) | Err(_) => {
+                    self.budget.finalize(
+                        &reservation.reservation_id,
+                        reservation.amount_microunits,
+                    )?;
+                    return Err(ModelError::ProviderOutcomeUnknown);
+                }
             }
         }
         let _ = self.budget.finalize(&reservation.reservation_id, 0);
@@ -824,8 +898,10 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
     fn allowed_candidates(
         &self,
         request: &ModelRequestEnvelope,
-    ) -> Result<Vec<ProviderProfile>, ModelError> {
+    ) -> Result<(Vec<ProviderProfile>, BTreeMap<String, DataPolicyDecision>), ModelError> {
         let mut allowed = Vec::new();
+        let mut decisions = BTreeMap::new();
+        let mut transformation_required = false;
         for provider in self.registry.active() {
             if !provider.approved_tenants.contains(&request.tenant_id)
                 || !request.allowed_provider_ids.contains(&provider.provider_id)
@@ -840,14 +916,27 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                 .data_policy
                 .evaluate(&data_policy_request(request, &provider))
                 .map_err(|_| ModelError::DataPolicyDenied)?;
+            validate_data_policy_decision(&decision)?;
+            // This library guard only rejects secrets; it does not implement arbitrary
+            // policy-requested transformations. Production injects the Batch 18 guard and
+            // may proceed only after the transformed payload is reclassified and re-evaluated.
             if decision.allowed {
-                allowed.push(provider);
+                if decision.required_transformations.is_empty() {
+                    decisions.insert(provider.key(), decision);
+                    allowed.push(provider);
+                } else {
+                    transformation_required = true;
+                }
             }
         }
         if allowed.is_empty() {
-            Err(ModelError::NoCompliantProvider)
+            if transformation_required {
+                Err(ModelError::DataTransformationRequired)
+            } else {
+                Err(ModelError::NoCompliantProvider)
+            }
         } else {
-            Ok(allowed)
+            Ok((allowed, decisions))
         }
     }
 }
@@ -868,18 +957,83 @@ fn data_policy_request(
         cross_domain_approval_id: None,
     }
 }
+fn validate_route_plan(
+    candidates: &[ProviderProfile],
+    ranked: &[RouteCandidate],
+) -> Result<(), ModelError> {
+    if candidates.is_empty() || ranked.is_empty() || ranked.len() > candidates.len() {
+        return Err(ModelError::RoutePlanInvalid);
+    }
+    let allowed: BTreeSet<String> = candidates.iter().map(ProviderProfile::key).collect();
+    let mut seen = BTreeSet::new();
+    for route in ranked {
+        if !allowed.contains(&route.provider_key)
+            || !seen.insert(route.provider_key.as_str())
+            || route.provider_key.is_empty()
+            || route.provider_key.len() > 768
+            || route.score_millionths > 1_000_000
+            || route.reasons.is_empty()
+            || route.reasons.len() > 32
+            || route
+                .reasons
+                .iter()
+                .any(|reason| reason.is_empty() || reason.len() > 256)
+        {
+            return Err(ModelError::RoutePlanInvalid);
+        }
+    }
+    Ok(())
+}
+fn validate_data_policy_decision(decision: &DataPolicyDecision) -> Result<(), ModelError> {
+    if decision.schema_version.0.is_empty()
+        || decision.schema_version.0.len() > 128
+        || decision.policy_version.0.is_empty()
+        || decision.policy_version.0.len() > 256
+        || decision.reason_codes.is_empty()
+        || decision.reason_codes.len() > 64
+        || decision
+            .reason_codes
+            .iter()
+            .any(|reason| reason.is_empty() || reason.len() > 256)
+        || decision.required_transformations.len() > 64
+        || decision
+            .required_transformations
+            .iter()
+            .any(|transformation| transformation.is_empty() || transformation.len() > 128)
+        || decision.maximum_retention_seconds == 0
+        || decision.maximum_retention_seconds > 315_576_000
+    {
+        return Err(ModelError::DataPolicyDenied);
+    }
+    Ok(())
+}
 fn validate_profile(profile: &ProviderProfile) -> Result<(), ModelError> {
+    let endpoint_digest_valid = profile
+        .endpoint_digest
+        .strip_prefix("sha256:")
+        .is_some_and(is_lower_hex_digest);
     if profile.schema_version != MODEL_SCHEMA_VERSION
         || profile.provider_id.is_empty()
+        || profile.provider_id.len() > 128
         || profile.model_id.is_empty()
+        || profile.model_id.len() > 256
         || profile.model_version.is_empty()
+        || profile.model_version.len() > 256
+        || profile.region.is_empty()
+        || profile.region.len() > 128
+        || profile.jurisdiction.is_empty()
+        || profile.jurisdiction.len() > 128
+        || profile.data_terms_version.is_empty()
+        || profile.data_terms_version.len() > 256
         || profile.capabilities.is_empty()
+        || profile.capabilities.len() > 16
+        || profile.approved_tenants.is_empty()
+        || profile.approved_tenants.len() > 10_000
         || profile.maximum_context_bytes == 0
+        || profile.maximum_context_bytes > 16 * 1024 * 1024
         || profile.maximum_output_bytes == 0
-        || profile
-            .endpoint_digest
-            .strip_prefix("sha256:")
-            .is_none_or(|hash| hash.len() != 64)
+        || profile.maximum_output_bytes > 32 * 1024 * 1024
+        || !endpoint_digest_valid
     {
         Err(ModelError::ProviderInvalid)
     } else {
@@ -889,17 +1043,45 @@ fn validate_profile(profile: &ProviderProfile) -> Result<(), ModelError> {
 fn validate_request(request: &ModelRequestEnvelope) -> Result<(), ModelError> {
     if request.schema_version != MODEL_SCHEMA_VERSION
         || request.task_type.is_empty()
+        || request.task_type.len() > 128
+        || request.source_jurisdiction.is_empty()
+        || request.source_jurisdiction.len() > 128
+        || request.deployment_profile.is_empty()
+        || request.deployment_profile.len() > 128
         || request.allowed_provider_ids.is_empty()
+        || request.allowed_provider_ids.len() > 100
+        || request
+            .allowed_provider_ids
+            .iter()
+            .any(|provider| provider.is_empty() || provider.len() > 128)
         || request.required_capabilities.is_empty()
+        || request.required_capabilities.len() > 16
         || request.maximum_latency_ms == 0
+        || request.maximum_latency_ms > 300_000
         || request.maximum_cost_microunits == 0
+        || request.maximum_cost_microunits > i64::MAX as u64
         || request.maximum_output_bytes == 0
+        || request.maximum_output_bytes > 32 * 1024 * 1024
+        || request.prompt.is_empty()
+        || request.prompt.len() > 4 * 1024 * 1024
+        || std::str::from_utf8(&request.prompt).is_err()
         || request.idempotency_key.is_empty()
+        || request.idempotency_key.len() > 128
+        || !request
+            .idempotency_key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte))
     {
         Err(ModelError::RequestInvalid)
     } else {
         Ok(())
     }
+}
+fn is_lower_hex_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 fn hex(bytes: impl AsRef<[u8]>) -> String {
     bytes
@@ -921,18 +1103,24 @@ pub enum ModelError {
     ProviderNotFound,
     #[error("MODEL_PROVIDER_UNAVAILABLE")]
     ProviderUnavailable,
+    #[error("MODEL_PROVIDER_OUTCOME_UNKNOWN")]
+    ProviderOutcomeUnknown,
     #[error("MODEL_PROVIDER_PROTOCOL_INVALID")]
     ProviderProtocolInvalid,
     #[error("MODEL_VERSION_CONFLICT")]
     VersionConflict,
     #[error("MODEL_REQUEST_INVALID")]
     RequestInvalid,
+    #[error("MODEL_ROUTE_PLAN_INVALID")]
+    RoutePlanInvalid,
     #[error("MODEL_PROMPT_DENIED")]
     PromptDenied,
     #[error("MODEL_SECRET_DETECTED")]
     SecretDetected,
     #[error("MODEL_DATA_POLICY_DENIED")]
     DataPolicyDenied,
+    #[error("MODEL_DATA_TRANSFORMATION_REQUIRED")]
+    DataTransformationRequired,
     #[error("MODEL_NO_COMPLIANT_PROVIDER")]
     NoCompliantProvider,
     #[error("MODEL_CAPABILITY_MISSING")]
@@ -954,7 +1142,7 @@ pub enum ModelError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_trust_contracts::{ContractError, DataPolicyDecision};
+    use agent_trust_contracts::ContractError;
     use parking_lot::Mutex;
 
     struct Policy;
@@ -973,7 +1161,7 @@ mod tests {
                 allowed: !(request.contains_secret || sensitive && public)
                     && request.source_jurisdiction == request.destination_jurisdiction,
                 policy_version: PolicyVersion("data-v1".into()),
-                reason_codes: vec![],
+                reason_codes: vec!["TEST_POLICY".into()],
                 required_transformations: vec![],
                 maximum_retention_seconds: 3600,
             })
@@ -983,6 +1171,22 @@ mod tests {
         key: String,
         fail: bool,
         calls: Mutex<u32>,
+    }
+    struct InjectingRoutePlanner {
+        provider_key: String,
+    }
+    impl RoutePlanner for InjectingRoutePlanner {
+        fn rank(
+            &self,
+            _: &ModelRequestEnvelope,
+            _: &[ProviderProfile],
+        ) -> Result<Vec<RouteCandidate>, ModelError> {
+            Ok(vec![RouteCandidate {
+                provider_key: self.provider_key.clone(),
+                score_millionths: 1_000_000,
+                reasons: vec!["injected".into()],
+            }])
+        }
     }
     struct Wire;
     #[async_trait]
@@ -1109,6 +1313,95 @@ mod tests {
             .unwrap_or_else(|_| panic!("generate"));
         assert!(result.evidence.provider_key.starts_with("local:"));
         assert_eq!(*public_adapter.calls.lock(), 0);
+    }
+
+    #[tokio::test]
+    async fn ambiguous_provider_failure_never_falls_back_or_releases_budget() {
+        let tenant = TenantId::new();
+        let registry = Arc::new(ProviderRegistry::default());
+        let local = profile(&tenant, "local", DeploymentKind::Local, 2);
+        let public = profile(&tenant, "public", DeploymentKind::PublicApi, 1);
+        registry
+            .approve(local.clone())
+            .unwrap_or_else(|_| panic!("local"));
+        registry
+            .approve(public.clone())
+            .unwrap_or_else(|_| panic!("public"));
+        let local_adapter = Arc::new(Adapter {
+            key: local.key(),
+            fail: true,
+            calls: Mutex::new(0),
+        });
+        let public_adapter = Arc::new(Adapter {
+            key: public.key(),
+            fail: false,
+            calls: Mutex::new(0),
+        });
+        let budget = Arc::new(BudgetManager::default());
+        budget.set_limit(tenant.clone(), 100_000);
+        let gateway = ModelGateway::new(
+            Arc::new(Policy),
+            registry,
+            Arc::new(DeterministicRoutePlanner),
+            budget.clone(),
+            vec![local_adapter.clone(), public_adapter.clone()],
+        )
+        .unwrap_or_else(|_| panic!("gateway"));
+        let result = gateway
+            .generate(request(tenant.clone(), DataClassification::Internal))
+            .await;
+        assert_eq!(result.err(), Some(ModelError::ProviderOutcomeUnknown));
+        assert_eq!(*local_adapter.calls.lock(), 1);
+        assert_eq!(*public_adapter.calls.lock(), 0);
+        assert_eq!(
+            budget.reserve(tenant, TaskId::new(), 1).err(),
+            Some(ModelError::BudgetExceeded)
+        );
+    }
+
+    #[tokio::test]
+    async fn route_planner_cannot_reintroduce_a_policy_denied_provider() {
+        let tenant = TenantId::new();
+        let registry = Arc::new(ProviderRegistry::default());
+        let public = profile(&tenant, "public", DeploymentKind::PublicApi, 1);
+        let local = profile(&tenant, "local", DeploymentKind::Local, 2);
+        registry
+            .approve(public.clone())
+            .unwrap_or_else(|_| panic!("public"));
+        registry
+            .approve(local.clone())
+            .unwrap_or_else(|_| panic!("local"));
+        let public_adapter = Arc::new(Adapter {
+            key: public.key(),
+            fail: false,
+            calls: Mutex::new(0),
+        });
+        let local_adapter = Arc::new(Adapter {
+            key: local.key(),
+            fail: false,
+            calls: Mutex::new(0),
+        });
+        let budget = Arc::new(BudgetManager::default());
+        budget.set_limit(tenant.clone(), 100_000);
+        let gateway = ModelGateway::new(
+            Arc::new(Policy),
+            registry,
+            Arc::new(InjectingRoutePlanner {
+                provider_key: public.key(),
+            }),
+            budget,
+            vec![public_adapter.clone(), local_adapter.clone()],
+        )
+        .unwrap_or_else(|_| panic!("gateway"));
+        assert_eq!(
+            gateway
+                .generate(request(tenant, DataClassification::Restricted))
+                .await
+                .err(),
+            Some(ModelError::RoutePlanInvalid)
+        );
+        assert_eq!(*public_adapter.calls.lock(), 0);
+        assert_eq!(*local_adapter.calls.lock(), 0);
     }
 
     #[tokio::test]

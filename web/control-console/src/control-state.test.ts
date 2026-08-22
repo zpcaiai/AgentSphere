@@ -3,6 +3,7 @@ import {
   approvalIdempotencyKey,
   buildAdminIntent,
   extractTaskAuthorityStatuses,
+  SERVICE_SECTIONS,
   safeAuthorityRows,
   taskCompletionLabel,
   validateDashboard,
@@ -16,10 +17,21 @@ const taskData = {
   items: [{ task_id: "task-1", runtime_status: "COMPLETED", ledger_terminal: true,
     evaluation_passed: true, evidence_verified: false, status_digest: digest, state_version: 4 }],
 };
+const sections = Object.fromEntries(SERVICE_SECTIONS.map((section) => [section, {
+  schema_version: "agenttrust.authority-view.v1" as const,
+  section,
+  authoritative: true as const,
+  available: true,
+  data: { items: [] },
+  data_digest: digest,
+  fetched_at: "2026-08-13T00:00:00Z",
+}])) as EnterpriseDashboard["sections"];
+sections.TASKS = { schema_version: "agenttrust.authority-view.v1", section: "TASKS",
+  authoritative: true, available: true, data: taskData, data_digest: digest,
+  fetched_at: "2026-08-13T00:00:00Z" };
 const dashboard: EnterpriseDashboard = {
   schema_version: "agenttrust.enterprise-dashboard.v1", tenant_id: tenantId, complete: true,
-  unavailable_sections: [], sections: { TASKS: { schema_version: "agenttrust.authority-view.v1", section: "TASKS",
-    authoritative: true, available: true, data: taskData, data_digest: digest, fetched_at: "2026-08-13T00:00:00Z" } },
+  unavailable_sections: [], sections, generated_at: "2026-08-13T00:00:00Z",
 };
 
 describe("authoritative console state", () => {
@@ -45,14 +57,22 @@ describe("authoritative console state", () => {
     expect(() => validateDashboard(contradictory)).toThrow("ENTERPRISE_COMPLETENESS_INVALID");
   });
 
+  it("rejects dashboards that omit a required authority section", () => {
+    const incomplete = structuredClone(dashboard);
+    Reflect.deleteProperty(incomplete.sections, "DATA");
+    expect(() => validateDashboard(incomplete)).toThrow("ENTERPRISE_DASHBOARD_INVALID");
+  });
+
   it("redacts secrets and bounds structured payloads", () => {
     const section: AuthoritySection<unknown> = {
       schema_version: "agenttrust.authority-view.v1", section: "EVIDENCE", authoritative: true,
       available: true, data: [{ id: "e1", secret: "leak", safe_summary: "safe", prompt: "sensitive",
-        nested: { unsafe: true } }], data_digest: digest, fetched_at: "2026-08-13T00:00:00Z",
+        prompt_digest: digest, content_base64: "unsafe", nested: { unsafe: true } }],
+      data_digest: digest, fetched_at: "2026-08-13T00:00:00Z",
     };
     expect(safeAuthorityRows(section)[0]!.values).toMatchObject({ secret: "[REDACTED]", prompt: "[REDACTED]",
-      safe_summary: "safe", nested: "[STRUCTURED_DATA_REDACTED]" });
+      prompt_digest: digest, content_base64: "[REDACTED]", safe_summary: "safe",
+      nested: "[STRUCTURED_DATA_REDACTED]" });
   });
 
   it("canonicalizes and binds the governed request payload", async () => {
@@ -72,6 +92,20 @@ describe("authoritative console state", () => {
       "741c60e6c35aace23c59fad505a6daed5ba4c4252b8a2776a830acbe3fa77c4e",
     );
     expect(first.intent.action_digest).not.toBe(changed.intent.action_digest);
+    vi.useRealTimers();
+  });
+
+  it("preserves ordered arrays in the governed request digest", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("22222222-2222-4222-8222-222222222222");
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T01:02:03.000Z"));
+    const input = { tenant_id: tenantId, project_id: null, operation: "RUN_WORKFLOW",
+      resource: "workflow:one", requested_by: "subject:1", approval_ids: ["a"], reason: "reason",
+      csrf_token: "csrf" };
+    const first = await buildAdminIntent({ ...input, payload: { steps: ["authorize", "execute"] } });
+    const reordered = await buildAdminIntent({ ...input, payload: { steps: ["execute", "authorize"] } });
+
+    expect(first.intent.action_digest).not.toBe(reordered.intent.action_digest);
     vi.useRealTimers();
   });
 

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/medical-assist.schema.json",
+  "title": "Minimum-necessary medical assistance command",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "patient_ref_hash", "care_relationship_digest", "purpose_of_use", "requested_fields", "data_policy_decision_digest", "residency_decision_digest", "private_deployment", "model_manifest_digest", "clinical_evidence_digest", "output_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-risk-packs.v1"}, "tenant_id": {"type": "string", "format": "uuid"},
+    "patient_ref_hash": {"$ref": "#/$defs/digest"}, "care_relationship_digest": {"$ref": "#/$defs/digest"},
+    "purpose_of_use": {"enum": ["TREATMENT", "OPERATIONS", "CODING", "SAFETY_REVIEW"]},
+    "requested_fields": {"type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Za-z0-9_.\\/-]{1,128}$"}},
+    "data_policy_decision_digest": {"$ref": "#/$defs/digest"}, "residency_decision_digest": {"$ref": "#/$defs/digest"},
+    "private_deployment": {"const": true}, "model_manifest_digest": {"$ref": "#/$defs/digest"},
+    "clinical_evidence_digest": {"$ref": "#/$defs/digest"}, "output_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

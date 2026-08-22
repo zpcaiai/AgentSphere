@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/platform-sre/sre-token-bindings.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.sre-token-bindings.v1"},
+    "bindings": {
+      "type": "array", "minItems": 3, "maxItems": 10000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS:|URI:)[!-~]{1,508}$"},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"},
+          "scope": {"enum": ["sre:mutate", "sre:execute", "sre:read"]},
+          "token_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

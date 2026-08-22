@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/governance-evidence.schema.json",
+  "title": "Immutable PEP human-governance decision evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "evidence_id", "tenant_id", "stage", "decision_id", "decision",
+    "reason_codes", "request_digest", "assertion_digest", "assertion_jti",
+    "principal_subject", "operation", "resource", "project_id", "approval_ids",
+    "policy_version", "policy_bundle_hash", "policy_decision_digest", "evaluated_at",
+    "recorded_at", "evidence_digest", "evidence_ref"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.pep-governance-evidence.v1"},
+    "evidence_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "stage": {"enum": ["GOVERNANCE_APPROVAL", "GOVERNANCE_QUERY"]},
+    "decision_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "decision": {"enum": ["ALLOW", "DENY"]},
+    "reason_codes": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+    "request_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "assertion_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "assertion_jti": {"type": "string", "format": "uuid"},
+    "principal_subject": {"type": "string", "minLength": 1, "maxLength": 256},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 128},
+    "resource": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "project_id": {"type": ["string", "null"], "maxLength": 256},
+    "approval_ids": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+    "policy_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "policy_bundle_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "policy_decision_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "evidence_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^urn:agenttrust:pep-governance-evidence:"}
+  }
+}

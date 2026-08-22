@@ -2,19 +2,19 @@ package com.agenttrust.control;
 
 import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.ApiKeyIssueRequest;
-import com.agenttrust.control.AdminModels.ApiKeyIssueResponse;
 import com.agenttrust.control.AdminModels.CostUsageRequest;
 import com.agenttrust.control.AdminModels.DashboardResponse;
+import com.agenttrust.control.AdminModels.EnterpriseActionReceipt;
 import com.agenttrust.control.AdminModels.IntegrationRequest;
 import com.agenttrust.control.AdminModels.OrganizationRequest;
 import com.agenttrust.control.AdminModels.ProjectRequest;
 import com.agenttrust.control.AdminModels.QuotaConsumeRequest;
-import com.agenttrust.control.AdminModels.QuotaUsageResponse;
 import com.agenttrust.control.AdminModels.TenantRequest;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
-import com.agenttrust.control.AdminModels.PolicyPromotionRequest;
-import com.agenttrust.control.AdminModels.PolicySimulationRequest;
+import com.agenttrust.control.AdminModels.PolicyCommandRequest;
 import com.agenttrust.control.AdminModels.TaskCommand;
+import com.agenttrust.control.IncidentModels.IncidentCommandRequest;
+import com.agenttrust.control.MarketplaceModels.MarketplaceCommandRequest;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import java.net.URI;
@@ -37,96 +37,108 @@ public final class EnterpriseController {
     private final EnterpriseService service;
     private final AuthoritativeBff bff;
     private final GovernedAuthorityGateway authorities;
+    private final PolicyAuthorityGateway policyAuthority;
+    private final IncidentAuthorityGateway incidentAuthority;
+    private final PackMarketplaceGateway packMarketplace;
     private final AguiResumeService agui;
     private final AuthenticatedPrincipalResolver principals;
 
     public EnterpriseController(EnterpriseService service, AuthoritativeBff bff,
                                 GovernedAuthorityGateway authorities,
+                                PolicyAuthorityGateway policyAuthority,
+                                IncidentAuthorityGateway incidentAuthority,
+                                PackMarketplaceGateway packMarketplace,
                                 AguiResumeService agui,
                                 AuthenticatedPrincipalResolver principals) {
         this.service = service;
         this.bff = bff;
         this.authorities = authorities;
+        this.policyAuthority = policyAuthority;
+        this.incidentAuthority = incidentAuthority;
+        this.packMarketplace = packMarketplace;
         this.agui = agui;
         this.principals = principals;
     }
 
     @PostMapping
-    ResponseEntity<Void> createTenant(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> createTenant(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedTenantRequest request) {
         requireIdempotencyKey(key);
-        service.createTenant(principals.resolve(authentication, tenantId), request.tenant(), request.intent(), request.reason(), key);
-        return ResponseEntity.created(URI.create("/v1/tenants/" + tenantId)).build();
+        return accepted(tenantId, service.createTenant(principals.resolve(authentication, tenantId),
+            request.tenant(), request.intent(), request.reason(), key));
     }
 
     @PostMapping("/organizations")
-    ResponseEntity<Void> createOrganization(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> createOrganization(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedOrganizationRequest request) {
         requireIdempotencyKey(key);
-        service.createOrganization(principals.resolve(authentication, tenantId), request.organization(), request.intent(), request.reason(), key);
-        return ResponseEntity.created(URI.create("/v1/tenants/" + tenantId
-            + "/organizations/" + request.organization().organizationId())).build();
+        return accepted(tenantId, service.createOrganization(
+            principals.resolve(authentication, tenantId), request.organization(), request.intent(),
+            request.reason(), key));
     }
 
     @PostMapping("/projects")
-    ResponseEntity<Void> createProject(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> createProject(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedProjectRequest request) {
         requireIdempotencyKey(key);
-        service.createProject(principals.resolve(authentication, tenantId), request.project(), request.intent(), request.reason(), key);
-        return ResponseEntity.created(URI.create("/v1/tenants/" + tenantId
-            + "/projects/" + request.project().projectId())).build();
+        return accepted(tenantId, service.createProject(principals.resolve(authentication, tenantId),
+            request.project(), request.intent(), request.reason(), key));
     }
 
     @PostMapping("/integrations")
-    ResponseEntity<Void> createIntegration(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> createIntegration(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedIntegrationRequest request) {
         requireIdempotencyKey(key);
-        service.createIntegration(principals.resolve(authentication, tenantId), request.integration(), request.intent(), request.reason(), key);
-        return ResponseEntity.created(URI.create("/v1/tenants/" + tenantId
-            + "/integrations/" + request.integration().integrationId())).build();
+        return accepted(tenantId, service.createIntegration(
+            principals.resolve(authentication, tenantId), request.integration(), request.intent(),
+            request.reason(), key));
     }
 
     @PostMapping("/quota/consume")
-    QuotaUsageResponse consumeQuota(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> consumeQuota(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedQuotaRequest request) {
         requireIdempotencyKey(key);
-        return service.consumeQuota(principals.resolve(authentication, tenantId), request.quota(), request.intent(), request.reason(), key);
+        return accepted(tenantId, service.consumeQuota(principals.resolve(authentication, tenantId),
+            request.quota(), request.intent(), request.reason(), key));
     }
 
     @PostMapping("/costs")
-    ResponseEntity<Void> recordCost(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> recordCost(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedCostRequest request) {
         requireIdempotencyKey(key);
-        service.recordCost(principals.resolve(authentication, tenantId), request.cost(), request.intent(), request.reason(), key);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        return accepted(tenantId, service.recordCost(principals.resolve(authentication, tenantId),
+            request.cost(), request.intent(), request.reason(), key));
     }
 
     @PostMapping("/api-keys")
-    ResponseEntity<ApiKeyIssueResponse> issueApiKey(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> issueApiKey(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedApiKeyIssueRequest request) {
         requireIdempotencyKey(key);
-        return ResponseEntity.status(HttpStatus.CREATED)
+        EnterpriseActionReceipt receipt = service.issueApiKey(
+            principals.resolve(authentication, tenantId), request.apiKey(), request.intent(),
+            request.reason(), key);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .location(taskLocation(tenantId, receipt))
             .header("Cache-Control", "no-store")
             .header("Pragma", "no-cache")
-            .body(service.issueApiKey(principals.resolve(authentication, tenantId), request.apiKey(),
-                request.intent(), request.reason(), key));
+            .body(receipt);
     }
 
     @PostMapping("/api-keys/{apiKeyId}/revoke")
-    ResponseEntity<Void> revokeApiKey(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> revokeApiKey(Authentication authentication,
         @PathVariable UUID tenantId, @PathVariable UUID apiKeyId,
         @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedAdminIntent request) {
         requireIdempotencyKey(key);
-        service.revokeApiKey(principals.resolve(authentication, tenantId), apiKeyId, request.intent(), request.reason(), key);
-        return ResponseEntity.noContent().build();
+        return accepted(tenantId, service.revokeApiKey(principals.resolve(authentication, tenantId),
+            apiKeyId, request.intent(), request.reason(), key));
     }
 
     @GetMapping("/dashboard")
@@ -154,21 +166,83 @@ public final class EnterpriseController {
         return ResponseEntity.status(HttpStatus.ACCEPTED).build();
     }
 
-    @PostMapping("/policies/{bundleId}/simulate")
-    JsonNode simulatePolicyBundle(Authentication authentication, @PathVariable UUID tenantId,
-        @PathVariable String bundleId, @Valid @RequestBody PolicySimulationRequest request) {
-        return authorities.simulatePolicy(principals.resolve(authentication, tenantId), bundleId, request);
+    @GetMapping("/policies")
+    JsonNode listPolicies(Authentication authentication, @PathVariable UUID tenantId,
+        @RequestParam(name = "after_policy_id", required = false) String afterPolicyId,
+        @RequestParam(defaultValue = "50") int limit) {
+        return policyAuthority.listPolicies(principals.resolve(authentication, tenantId),
+            afterPolicyId, limit);
     }
 
-    @PostMapping("/policies/{bundleId}/promotions")
-    ResponseEntity<Void> promotePolicyBundle(Authentication authentication,
-        @PathVariable UUID tenantId, @PathVariable String bundleId,
-        @RequestHeader("Idempotency-Key") String key,
-        @Valid @RequestBody GovernedPolicyPromotion request) {
+    @GetMapping("/policies/{policyId}/{artifactPath:sources|analyses|reviews|simulations|impact-reports|promotions|exceptions}")
+    JsonNode listPolicyArtifacts(Authentication authentication, @PathVariable UUID tenantId,
+        @PathVariable String policyId, @PathVariable String artifactPath,
+        @RequestParam(defaultValue = "50") int limit) {
+        return policyAuthority.listArtifacts(principals.resolve(authentication, tenantId), policyId,
+            PolicyAuthorityGateway.ArtifactType.fromPath(artifactPath), limit);
+    }
+
+    @PostMapping("/policies/actions")
+    ResponseEntity<JsonNode> submitPolicyAction(Authentication authentication,
+        @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
+        @Valid @RequestBody PolicyCommandRequest request) {
         requireIdempotencyKey(key);
-        authorities.promotePolicy(principals.resolve(authentication, tenantId), bundleId, request.promotion(),
-            request.intent(), request.reason(), key);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        JsonNode receipt = policyAuthority.submitAction(
+            principals.resolve(authentication, tenantId), request, key);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .location(URI.create("/v1/tenants/" + tenantId + "/tasks/"
+                + receipt.path("task_id").textValue() + "/agui/snapshot"))
+            .header("Cache-Control", "no-store").header("Pragma", "no-cache").body(receipt);
+    }
+
+    @GetMapping("/incidents")
+    ResponseEntity<JsonNode> listIncidents(Authentication authentication, @PathVariable UUID tenantId,
+        @RequestParam(name = "after_incident_id", required = false) String afterIncidentId,
+        @RequestParam(defaultValue = "50") int limit) {
+        return noStore(incidentAuthority.list(principals.resolve(authentication, tenantId),
+            afterIncidentId, limit));
+    }
+
+    @GetMapping("/incidents/{incidentId}")
+    ResponseEntity<JsonNode> getIncident(Authentication authentication, @PathVariable UUID tenantId,
+        @PathVariable UUID incidentId) {
+        return noStore(incidentAuthority.detail(
+            principals.resolve(authentication, tenantId), incidentId));
+    }
+
+    @PostMapping("/incidents/actions")
+    ResponseEntity<JsonNode> submitIncidentAction(Authentication authentication,
+        @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
+        @Valid @RequestBody IncidentCommandRequest request) {
+        requireIdempotencyKey(key);
+        JsonNode receipt = incidentAuthority.submit(
+            principals.resolve(authentication, tenantId), request, key);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .location(URI.create("/v1/tenants/" + tenantId + "/tasks/"
+                + receipt.path("task_id").textValue() + "/agui/snapshot"))
+            .header("Cache-Control", "no-store").header("Pragma", "no-cache").body(receipt);
+    }
+
+    @GetMapping("/packs")
+    ResponseEntity<JsonNode> listPacks(Authentication authentication, @PathVariable UUID tenantId,
+        @RequestParam(required = false) String query,
+        @RequestParam(name = "after_pack_id", required = false) String afterPackId,
+        @RequestParam(defaultValue = "50") int limit) {
+        return noStore(packMarketplace.list(principals.resolve(authentication, tenantId), query,
+            afterPackId, limit));
+    }
+
+    @PostMapping("/packs/actions")
+    ResponseEntity<JsonNode> submitPackAction(Authentication authentication,
+        @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
+        @Valid @RequestBody MarketplaceCommandRequest request) {
+        requireIdempotencyKey(key);
+        JsonNode receipt = packMarketplace.submit(
+            principals.resolve(authentication, tenantId), request, key);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .location(URI.create("/v1/tenants/" + tenantId + "/tasks/"
+                + receipt.path("task_id").textValue() + "/agui/snapshot"))
+            .header("Cache-Control", "no-store").header("Pragma", "no-cache").body(receipt);
     }
 
     @PostMapping("/approvals/{caseId}/intents")
@@ -196,16 +270,36 @@ public final class EnterpriseController {
     }
 
     @PostMapping("/admin/actions")
-    ResponseEntity<Void> submitIntent(Authentication authentication,
+    ResponseEntity<EnterpriseActionReceipt> submitIntent(Authentication authentication,
         @PathVariable UUID tenantId, @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody GovernedAdminIntent request) {
         requireIdempotencyKey(key);
-        service.submitIntent(principals.resolve(authentication, tenantId), request.intent(), request.reason(), key);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        return accepted(tenantId, service.submitIntent(principals.resolve(authentication, tenantId),
+            request.intent(), request.reason(), key));
+    }
+
+    private static ResponseEntity<EnterpriseActionReceipt> accepted(
+        UUID tenantId, EnterpriseActionReceipt receipt
+    ) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .location(taskLocation(tenantId, receipt))
+            .header("Cache-Control", "no-store")
+            .header("Pragma", "no-cache")
+            .body(receipt);
+    }
+
+    private static ResponseEntity<JsonNode> noStore(JsonNode body) {
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+            .header("Pragma", "no-cache").body(body);
+    }
+
+    private static URI taskLocation(UUID tenantId, EnterpriseActionReceipt receipt) {
+        return URI.create("/v1/tenants/" + tenantId + "/tasks/" + receipt.taskId()
+            + "/agui/snapshot");
     }
 
     private static void requireIdempotencyKey(String key) {
-        if (key == null || key.length() < 16 || key.length() > 128) {
+        if (key == null || !key.matches("[A-Za-z0-9._:-]{16,128}")) {
             throw new ControlDeniedException("CONTROL_IDEMPOTENCY_KEY_INVALID");
         }
     }
@@ -245,11 +339,6 @@ public final class EnterpriseController {
                                       @jakarta.validation.constraints.NotNull @Valid AdminIntent intent,
                                       @jakarta.validation.constraints.NotBlank
                                       @jakarta.validation.constraints.Size(max = 2000) String reason) {}
-    public record GovernedPolicyPromotion(
-        @jakarta.validation.constraints.NotNull @Valid PolicyPromotionRequest promotion,
-        @jakarta.validation.constraints.NotNull @Valid AdminIntent intent,
-        @jakarta.validation.constraints.NotBlank
-        @jakarta.validation.constraints.Size(max = 2000) String reason) {}
     public record ApprovalIntentEnvelope(
         @com.fasterxml.jackson.annotation.JsonProperty("approval_intent")
         @jakarta.validation.constraints.NotNull @Valid ApprovalIntent approvalIntent) {}

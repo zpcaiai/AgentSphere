@@ -1,0 +1,25 @@
+{
+  "schema_version": "agenttrust.runtime-anomaly-engine-evaluation.v1",
+  "corpus": "threat-scenarios/runtime/runtime-anomaly-v1.json",
+  "rule_bundle": "SOURCE_WORKTREE_UNCOMMITTED",
+  "status": "NOT_RUN_RESOURCE_FREEZE",
+  "production_certified": false,
+  "metrics": {
+    "deterministic_detection_rate": null,
+    "false_positive_rate": null,
+    "p50_block_latency_ms": null,
+    "p99_block_latency_ms": null
+  },
+  "required_commands_after_freeze": [
+    "cargo test --locked -p agent-trust-runtime-anomaly",
+    "cargo clippy --locked -p agent-trust-runtime-anomaly --all-targets -- -D warnings",
+    "cargo build --locked --release -p agent-trust-runtime-anomaly --bin agenttrust-runtime-anomaly-authority"
+  ],
+  "external_gates": [
+    "real PostgreSQL role and RLS matrix",
+    "real mTLS SAN and route-token negative matrix",
+    "live Supervisor credential and Incident endpoint ambiguity drills",
+    "multi-zone HA DR and sustained production load",
+    "customer acceptance and independent certification"
+  ]
+}

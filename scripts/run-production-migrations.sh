@@ -48,14 +48,58 @@ validate_role_name() {
 }
 
 enterprise_application_role=${AGENT_TRUST_ENTERPRISE_APPLICATION_ROLE:-}
+enterprise_authority_application_role=${AGENT_TRUST_ENTERPRISE_AUTHORITY_APPLICATION_ROLE:-}
 orchestrator_application_role=${AGENT_TRUST_ORCHESTRATOR_APPLICATION_ROLE:-}
 execution_application_role=${AGENT_TRUST_EXECUTION_APPLICATION_ROLE:-}
-if ! validate_role_name "$enterprise_application_role" \
-  || ! validate_role_name "$orchestrator_application_role" \
-  || ! validate_role_name "$execution_application_role" \
-  || [ "$enterprise_application_role" = "$orchestrator_application_role" ] \
-  || [ "$enterprise_application_role" = "$execution_application_role" ] \
-  || [ "$orchestrator_application_role" = "$execution_application_role" ]; then
+registry_application_role=${AGENT_TRUST_REGISTRY_APPLICATION_ROLE:-}
+agent_registry_application_role=${AGENT_TRUST_AGENT_REGISTRY_APPLICATION_ROLE:-}
+policy_admin_application_role=${AGENT_TRUST_POLICY_ADMIN_APPLICATION_ROLE:-}
+incident_release_application_role=${AGENT_TRUST_INCIDENT_RELEASE_APPLICATION_ROLE:-}
+pack_marketplace_application_role=${AGENT_TRUST_PACK_MARKETPLACE_APPLICATION_ROLE:-}
+approval_application_role=${AGENT_TRUST_APPROVAL_APPLICATION_ROLE:-}
+pep_application_role=${AGENT_TRUST_PEP_APPLICATION_ROLE:-}
+identity_application_role=${AGENT_TRUST_IDENTITY_APPLICATION_ROLE:-}
+tool_proxy_application_role=${AGENT_TRUST_TOOL_PROXY_APPLICATION_ROLE:-}
+evidence_application_role=${AGENT_TRUST_EVIDENCE_APPLICATION_ROLE:-}
+audit_application_role=${AGENT_TRUST_AUDIT_APPLICATION_ROLE:-}
+model_gateway_application_role=${AGENT_TRUST_MODEL_GATEWAY_APPLICATION_ROLE:-}
+data_governance_application_role=${AGENT_TRUST_DATA_GOVERNANCE_APPLICATION_ROLE:-}
+context_governance_application_role=${AGENT_TRUST_CONTEXT_GOVERNANCE_APPLICATION_ROLE:-}
+runtime_anomaly_application_role=${AGENT_TRUST_RUNTIME_ANOMALY_APPLICATION_ROLE:-}
+security_evaluation_application_role=${AGENT_TRUST_SECURITY_EVALUATION_APPLICATION_ROLE:-}
+pack_supply_chain_application_role=${AGENT_TRUST_PACK_SUPPLY_CHAIN_APPLICATION_ROLE:-}
+domain_runtime_application_role=${AGENT_TRUST_DOMAIN_RUNTIME_APPLICATION_ROLE:-}
+platform_sre_application_role=${AGENT_TRUST_PLATFORM_SRE_APPLICATION_ROLE:-}
+application_roles="${enterprise_application_role}
+${enterprise_authority_application_role}
+${orchestrator_application_role}
+${execution_application_role}
+${registry_application_role}
+${agent_registry_application_role}
+${policy_admin_application_role}
+${incident_release_application_role}
+${pack_marketplace_application_role}
+${approval_application_role}
+${pep_application_role}
+${identity_application_role}
+${tool_proxy_application_role}
+${evidence_application_role}
+${audit_application_role}
+${model_gateway_application_role}
+${data_governance_application_role}
+${context_governance_application_role}
+${runtime_anomaly_application_role}
+${security_evaluation_application_role}
+${pack_supply_chain_application_role}
+${domain_runtime_application_role}
+${platform_sre_application_role}"
+for application_role_name in $application_roles; do
+  if ! validate_role_name "$application_role_name"; then
+    echo "MIGRATION_APPLICATION_ROLES_INVALID" >&2
+    exit 78
+  fi
+done
+if [ "$(printf '%s\n' "$application_roles" | sort -u | wc -l | tr -d ' ')" -ne 23 ]; then
   echo "MIGRATION_APPLICATION_ROLES_INVALID" >&2
   exit 78
 fi
@@ -169,8 +213,18 @@ DECLARE
   application_role record;
 BEGIN
   IF current_user IN (
-       '$enterprise_application_role', '$orchestrator_application_role',
-       '$execution_application_role'
+       '$enterprise_application_role', '$enterprise_authority_application_role',
+       '$orchestrator_application_role',
+       '$execution_application_role', '$registry_application_role', '$approval_application_role',
+       '$agent_registry_application_role',
+       '$policy_admin_application_role',
+       '$incident_release_application_role', '$pack_marketplace_application_role',
+       '$pep_application_role', '$identity_application_role', '$tool_proxy_application_role',
+       '$evidence_application_role', '$audit_application_role',
+       '$model_gateway_application_role', '$data_governance_application_role',
+       '$context_governance_application_role', '$runtime_anomaly_application_role',
+       '$security_evaluation_application_role', '$pack_supply_chain_application_role',
+       '$domain_runtime_application_role', '$platform_sre_application_role'
      )
      OR NOT has_schema_privilege(current_user, 'public', 'CREATE')
      OR EXISTS (
@@ -191,8 +245,18 @@ BEGIN
            role.rolreplication, role.rolbypassrls
       FROM pg_roles AS role
      WHERE role.rolname IN (
-       '$enterprise_application_role', '$orchestrator_application_role',
-       '$execution_application_role'
+       '$enterprise_application_role', '$enterprise_authority_application_role',
+       '$orchestrator_application_role',
+       '$execution_application_role', '$registry_application_role', '$approval_application_role',
+       '$agent_registry_application_role',
+       '$policy_admin_application_role',
+       '$incident_release_application_role', '$pack_marketplace_application_role',
+       '$pep_application_role', '$identity_application_role', '$tool_proxy_application_role',
+       '$evidence_application_role', '$audit_application_role',
+       '$model_gateway_application_role', '$data_governance_application_role',
+       '$context_governance_application_role', '$runtime_anomaly_application_role',
+       '$security_evaluation_application_role', '$pack_supply_chain_application_role',
+       '$domain_runtime_application_role', '$platform_sre_application_role'
      )
   LOOP
     IF application_role.rolsuper OR application_role.rolcreaterole
@@ -214,10 +278,20 @@ BEGIN
   IF (
     SELECT count(*) FROM pg_roles
      WHERE rolname IN (
-       '$enterprise_application_role', '$orchestrator_application_role',
-       '$execution_application_role'
+       '$enterprise_application_role', '$enterprise_authority_application_role',
+       '$orchestrator_application_role',
+       '$execution_application_role', '$registry_application_role', '$approval_application_role',
+       '$agent_registry_application_role',
+       '$policy_admin_application_role',
+       '$incident_release_application_role', '$pack_marketplace_application_role',
+       '$pep_application_role', '$identity_application_role', '$tool_proxy_application_role',
+       '$evidence_application_role', '$audit_application_role',
+       '$model_gateway_application_role', '$data_governance_application_role',
+       '$context_governance_application_role', '$runtime_anomaly_application_role',
+       '$security_evaluation_application_role', '$pack_supply_chain_application_role',
+       '$domain_runtime_application_role', '$platform_sre_application_role'
      )
-  ) <> 3 THEN
+  ) <> 23 THEN
     RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_MISSING';
   END IF;
 END
@@ -310,33 +384,198 @@ done <"$manifest"
 
 if [ "$mode" = "--apply" ]; then
   cat >>"$sql_file" <<SQL
+DO \$database_acl\$
+DECLARE
+  role_name text;
+BEGIN
+  EXECUTE format(
+    'REVOKE TEMPORARY ON DATABASE %I FROM PUBLIC',
+    current_database()
+  );
+  FOREACH role_name IN ARRAY ARRAY[
+    '$enterprise_application_role', '$enterprise_authority_application_role',
+    '$orchestrator_application_role', '$execution_application_role',
+    '$registry_application_role', '$agent_registry_application_role',
+    '$policy_admin_application_role',
+    '$incident_release_application_role', '$pack_marketplace_application_role',
+    '$approval_application_role', '$pep_application_role',
+    '$identity_application_role', '$tool_proxy_application_role',
+    '$evidence_application_role', '$audit_application_role',
+    '$model_gateway_application_role', '$data_governance_application_role',
+    '$context_governance_application_role', '$runtime_anomaly_application_role',
+    '$security_evaluation_application_role', '$pack_supply_chain_application_role',
+    '$domain_runtime_application_role', '$platform_sre_application_role'
+  ] LOOP
+    EXECUTE format(
+      'GRANT CONNECT ON DATABASE %I TO %I', current_database(), role_name
+    );
+    EXECUTE format(
+      'REVOKE TEMPORARY ON DATABASE %I FROM %I', current_database(), role_name
+    );
+  END LOOP;
+END
+\$database_acl\$;
 REVOKE CREATE ON SCHEMA public FROM $enterprise_application_role;
+REVOKE CREATE ON SCHEMA public FROM $enterprise_authority_application_role;
 REVOKE CREATE ON SCHEMA public FROM $orchestrator_application_role;
 REVOKE CREATE ON SCHEMA public FROM $execution_application_role;
+REVOKE CREATE ON SCHEMA public FROM $registry_application_role;
+REVOKE CREATE ON SCHEMA public FROM $agent_registry_application_role;
+REVOKE CREATE ON SCHEMA public FROM $policy_admin_application_role;
+REVOKE CREATE ON SCHEMA public FROM $incident_release_application_role;
+REVOKE CREATE ON SCHEMA public FROM $pack_marketplace_application_role;
+REVOKE CREATE ON SCHEMA public FROM $approval_application_role;
+REVOKE CREATE ON SCHEMA public FROM $pep_application_role;
+REVOKE CREATE ON SCHEMA public FROM $identity_application_role;
+REVOKE CREATE ON SCHEMA public FROM $tool_proxy_application_role;
+REVOKE CREATE ON SCHEMA public FROM $evidence_application_role;
+REVOKE CREATE ON SCHEMA public FROM $audit_application_role;
 GRANT USAGE ON SCHEMA public TO $enterprise_application_role;
+GRANT USAGE ON SCHEMA public TO $enterprise_authority_application_role;
 GRANT USAGE ON SCHEMA public TO $orchestrator_application_role;
 GRANT USAGE ON SCHEMA public TO $execution_application_role;
+GRANT USAGE ON SCHEMA public TO $registry_application_role;
+GRANT USAGE ON SCHEMA public TO $agent_registry_application_role;
+GRANT USAGE ON SCHEMA public TO $policy_admin_application_role;
+GRANT USAGE ON SCHEMA public TO $incident_release_application_role;
+GRANT USAGE ON SCHEMA public TO $pack_marketplace_application_role;
+GRANT USAGE ON SCHEMA public TO $approval_application_role;
+GRANT USAGE ON SCHEMA public TO $pep_application_role;
+GRANT USAGE ON SCHEMA public TO $identity_application_role;
+GRANT USAGE ON SCHEMA public TO $tool_proxy_application_role;
+GRANT USAGE ON SCHEMA public TO $evidence_application_role;
+GRANT USAGE ON SCHEMA public TO $audit_application_role;
 REVOKE ALL ON public.agenttrust_schema_migrations FROM $enterprise_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $enterprise_authority_application_role;
 REVOKE ALL ON public.agenttrust_schema_migrations FROM $orchestrator_application_role;
 REVOKE ALL ON public.agenttrust_schema_migrations FROM $execution_application_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
-  public.enterprise_request_idempotency,
-  public.enterprise_organizations,
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $registry_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $agent_registry_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $policy_admin_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $incident_release_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $pack_marketplace_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $approval_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $pep_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $identity_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $tool_proxy_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $evidence_application_role;
+REVOKE ALL ON public.agenttrust_schema_migrations FROM $audit_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $enterprise_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $enterprise_authority_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $orchestrator_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $execution_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $registry_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $agent_registry_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $policy_admin_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $incident_release_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $pack_marketplace_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $approval_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $pep_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $identity_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $tool_proxy_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $evidence_application_role;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM $audit_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $enterprise_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $enterprise_authority_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $orchestrator_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $execution_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $registry_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $agent_registry_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $policy_admin_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $incident_release_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $pack_marketplace_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $approval_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $pep_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $identity_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $tool_proxy_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $evidence_application_role;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM $audit_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $enterprise_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $enterprise_authority_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $orchestrator_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $execution_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $registry_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $agent_registry_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $policy_admin_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $incident_release_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $pack_marketplace_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $approval_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $pep_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $identity_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $tool_proxy_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $evidence_application_role;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM $audit_application_role;
+DO \$column_acl\$
+DECLARE
+  column_acl record;
+BEGIN
+  FOR column_acl IN
+    SELECT grants.table_schema, grants.table_name, grants.column_name,
+           grants.grantee, grants.privilege_type
+      FROM information_schema.column_privileges AS grants
+     WHERE grants.table_schema = 'public'
+       AND grants.grantee IN (
+         '$enterprise_application_role', '$enterprise_authority_application_role',
+         '$orchestrator_application_role', '$execution_application_role',
+         '$registry_application_role', '$agent_registry_application_role',
+         '$policy_admin_application_role',
+         '$incident_release_application_role', '$pack_marketplace_application_role',
+         '$approval_application_role', '$pep_application_role',
+         '$identity_application_role', '$tool_proxy_application_role',
+         '$evidence_application_role', '$audit_application_role'
+       )
+  LOOP
+    EXECUTE format(
+      'REVOKE %s (%I) ON TABLE %I.%I FROM %I',
+      column_acl.privilege_type, column_acl.column_name,
+      column_acl.table_schema, column_acl.table_name, column_acl.grantee
+    );
+  END LOOP;
+END
+\$column_acl\$;
+GRANT SELECT, INSERT ON TABLE public.enterprise_remote_actions,
+  public.enterprise_approval_intents TO $enterprise_application_role;
+GRANT UPDATE (status, response_payload, evidence_ref, attempts, next_attempt_at,
+              last_error_code, updated_at)
+ON TABLE public.enterprise_remote_actions TO $enterprise_application_role;
+GRANT UPDATE (status, evidence_ref, attempts, next_attempt_at, last_error_code, updated_at)
+ON TABLE public.enterprise_approval_intents TO $enterprise_application_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.spring_session,
+  public.spring_session_attributes TO $enterprise_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.enterprise_principal_assertion_replay,
+  public.enterprise_action_ingress,
+  public.enterprise_resource_versions,
+  public.enterprise_authority_executions
+TO $enterprise_authority_application_role;
+GRANT INSERT ON TABLE public.enterprise_authority_outbox
+TO $enterprise_authority_application_role;
+GRANT UPDATE (state, receipt, updated_at) ON TABLE public.enterprise_action_ingress
+TO $enterprise_authority_application_role;
+GRANT UPDATE (resource_version, action_hash, ledger_execution_id, fence_digest, updated_at)
+ON TABLE public.enterprise_resource_versions TO $enterprise_authority_application_role;
+GRANT UPDATE (state, safe_result, safe_result_digest, stable_error, updated_at)
+ON TABLE public.enterprise_authority_executions TO $enterprise_authority_application_role;
+GRANT SELECT, INSERT ON TABLE
   public.enterprise_tenants,
+  public.enterprise_organizations,
   public.enterprise_projects,
   public.enterprise_integrations,
   public.enterprise_quota_usage,
   public.enterprise_cost_usage,
   public.enterprise_api_keys,
-  public.enterprise_admin_actions,
-  public.enterprise_remote_actions,
-  public.enterprise_approval_intents,
-  public.spring_session,
-  public.spring_session_attributes
-TO $enterprise_application_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
+  public.enterprise_admin_actions
+TO $enterprise_authority_application_role;
+GRANT UPDATE (used, limit_value) ON TABLE public.enterprise_quota_usage
+TO $enterprise_authority_application_role;
+GRANT UPDATE (revoked_at, revocation_reason) ON TABLE public.enterprise_api_keys
+TO $enterprise_authority_application_role;
+GRANT SELECT, INSERT ON TABLE
   public.orchestrator_ingress_actions,
   public.orchestrator_stream_events
+TO $orchestrator_application_role;
+GRANT UPDATE (status, updated_at) ON TABLE public.orchestrator_ingress_actions
 TO $orchestrator_application_role;
 GRANT USAGE ON SEQUENCE public.orchestrator_stream_events_sequence_seq
 TO $orchestrator_application_role;
@@ -360,6 +599,515 @@ GRANT INSERT ON TABLE public.idempotency_records
 TO $execution_application_role;
 GRANT SELECT, INSERT ON TABLE public.execution_outbox TO $execution_application_role;
 GRANT USAGE ON SEQUENCE public.execution_fence_seq TO $execution_application_role;
+REVOKE ALL ON TABLE
+  public.tools,
+  public.tool_versions,
+  public.tool_signatures,
+  public.registry_events,
+  public.registry_snapshots,
+  public.registry_publisher_keys,
+  public.registry_tenant_revisions,
+  public.registry_idempotency_records,
+  public.executor_profiles,
+  public.credential_profiles,
+  public.approval_profiles,
+  public.capabilities,
+  public.capability_versions
+FROM $registry_application_role;
+GRANT SELECT ON TABLE
+  public.tools,
+  public.tool_versions,
+  public.tool_signatures,
+  public.registry_events,
+  public.registry_snapshots,
+  public.registry_publisher_keys,
+  public.registry_tenant_revisions,
+  public.registry_idempotency_records,
+  public.executor_profiles,
+  public.credential_profiles,
+  public.approval_profiles,
+  public.capabilities,
+  public.capability_versions
+TO $registry_application_role;
+GRANT INSERT ON TABLE
+  public.tools,
+  public.tool_versions,
+  public.tool_signatures,
+  public.registry_events,
+  public.registry_snapshots,
+  public.registry_publisher_keys,
+  public.registry_tenant_revisions,
+  public.registry_idempotency_records
+TO $registry_application_role;
+GRANT UPDATE ON TABLE
+  public.tool_versions,
+  public.registry_publisher_keys,
+  public.registry_tenant_revisions
+TO $registry_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.agent_assets,
+  public.agent_discovery_facts,
+  public.agent_posture_findings,
+  public.agent_boms,
+  public.agent_ownership_confirmations,
+  public.agent_relationship_edges,
+  public.agent_relationship_supersessions,
+  public.agent_posture_resolutions,
+  public.agent_lifecycle_records,
+  public.agent_registry_idempotency,
+  public.agent_registry_audit_heads,
+  public.agent_registry_audit_events,
+  public.agent_registry_outbox
+TO $agent_registry_application_role;
+GRANT UPDATE ON TABLE public.agent_assets, public.agent_registry_audit_heads
+TO $agent_registry_application_role;
+REVOKE ALL ON TABLE
+  public.policy_sources,
+  public.policy_analysis_results,
+  public.policy_simulation_runs,
+  public.policy_impact_reports,
+  public.policy_reviews,
+  public.policy_bundles,
+  public.policy_exceptions,
+  public.policy_promotions,
+  public.policy_activation_intents,
+  public.policy_resource_versions,
+  public.policy_principal_assertion_replay,
+  public.policy_action_ingress,
+  public.policy_authority_executions,
+  public.policy_evidence_events,
+  public.policy_evidence_outbox
+FROM $policy_admin_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.policy_sources,
+  public.policy_analysis_results,
+  public.policy_simulation_runs,
+  public.policy_impact_reports,
+  public.policy_reviews,
+  public.policy_bundles,
+  public.policy_exceptions,
+  public.policy_promotions,
+  public.policy_activation_intents,
+  public.policy_resource_versions,
+  public.policy_principal_assertion_replay,
+  public.policy_action_ingress,
+  public.policy_authority_executions,
+  public.policy_evidence_events
+TO $policy_admin_application_role;
+GRANT INSERT ON TABLE public.policy_evidence_outbox
+TO $policy_admin_application_role;
+GRANT UPDATE (lifecycle_state, updated_at) ON TABLE public.policy_sources
+TO $policy_admin_application_role;
+GRANT UPDATE (status, deprecated_at) ON TABLE public.policy_bundles
+TO $policy_admin_application_role;
+GRANT UPDATE (revoked_at, revocation_reason_digest, expired_at)
+ON TABLE public.policy_exceptions TO $policy_admin_application_role;
+GRANT UPDATE (state, completed_at) ON TABLE public.policy_promotions
+TO $policy_admin_application_role;
+GRANT UPDATE (state, claim_owner, claim_expires_at, acknowledgement_digest,
+              acknowledgement, updated_at, activated_at)
+ON TABLE public.policy_activation_intents TO $policy_admin_application_role;
+GRANT UPDATE (resource_version, action_hash, ledger_execution_id, fence_digest, updated_at)
+ON TABLE public.policy_resource_versions TO $policy_admin_application_role;
+GRANT UPDATE (state, receipt, updated_at) ON TABLE public.policy_action_ingress
+TO $policy_admin_application_role;
+GRANT UPDATE (state, safe_result, safe_result_digest, stable_error, updated_at)
+ON TABLE public.policy_authority_executions TO $policy_admin_application_role;
+REVOKE ALL ON TABLE
+  public.incidents,
+  public.replay_runs,
+  public.release_gate_results,
+  public.incident_principal_assertion_replay,
+  public.incident_action_ingress,
+  public.incident_resource_versions,
+  public.incident_authority_executions,
+  public.incident_timeline,
+  public.containment_actions,
+  public.incident_evidence_preservations,
+  public.replay_plans,
+  public.root_cause_reports,
+  public.incident_recertifications,
+  public.release_gate_runs,
+  public.release_gate_certificates,
+  public.release_canary_events,
+  public.incident_evidence_events,
+  public.incident_evidence_outbox
+FROM $incident_release_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.incidents,
+  public.replay_runs,
+  public.incident_principal_assertion_replay,
+  public.incident_action_ingress,
+  public.incident_resource_versions,
+  public.incident_authority_executions,
+  public.incident_timeline,
+  public.containment_actions,
+  public.incident_evidence_preservations,
+  public.replay_plans,
+  public.root_cause_reports,
+  public.incident_recertifications,
+  public.release_gate_runs,
+  public.release_gate_certificates,
+  public.release_canary_events
+TO $incident_release_application_role;
+GRANT INSERT ON TABLE public.incident_evidence_events,
+  public.incident_evidence_outbox TO $incident_release_application_role;
+GRANT UPDATE (status, owner, severity, resource_version, updated_at)
+ON TABLE public.incidents TO $incident_release_application_role;
+GRANT UPDATE (state, receipt, updated_at)
+ON TABLE public.incident_action_ingress TO $incident_release_application_role;
+GRANT UPDATE (resource_version, action_hash, ledger_execution_id, fence_digest, updated_at)
+ON TABLE public.incident_resource_versions TO $incident_release_application_role;
+GRANT UPDATE (state, execution_owner, execution_lease_until, safe_result,
+              safe_result_digest, stable_error, updated_at)
+ON TABLE public.incident_authority_executions TO $incident_release_application_role;
+GRANT UPDATE (state, updated_at)
+ON TABLE public.release_gate_runs TO $incident_release_application_role;
+REVOKE ALL ON TABLE
+  public.marketplace_publishers,
+  public.marketplace_publisher_keys,
+  public.marketplace_pack_names,
+  public.marketplace_tenant_catalog,
+  public.marketplace_releases,
+  public.marketplace_installations,
+  public.marketplace_upgrade_plans,
+  public.marketplace_canary_results,
+  public.marketplace_revocations,
+  public.marketplace_resource_versions,
+  public.marketplace_principal_assertion_replay,
+  public.marketplace_action_ingress,
+  public.marketplace_authority_executions,
+  public.marketplace_evidence_events,
+  public.marketplace_evidence_outbox
+FROM $pack_marketplace_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.marketplace_publishers,
+  public.marketplace_publisher_keys,
+  public.marketplace_pack_names,
+  public.marketplace_tenant_catalog,
+  public.marketplace_releases,
+  public.marketplace_installations,
+  public.marketplace_upgrade_plans,
+  public.marketplace_canary_results,
+  public.marketplace_revocations,
+  public.marketplace_resource_versions,
+  public.marketplace_principal_assertion_replay,
+  public.marketplace_action_ingress,
+  public.marketplace_authority_executions
+TO $pack_marketplace_application_role;
+GRANT INSERT ON TABLE public.marketplace_evidence_events,
+  public.marketplace_evidence_outbox TO $pack_marketplace_application_role;
+GRANT UPDATE (trust_status, verified_by, verified_at, revoked_at, updated_at)
+ON TABLE public.marketplace_publishers TO $pack_marketplace_application_role;
+GRANT UPDATE (status, revoked_at)
+ON TABLE public.marketplace_publisher_keys TO $pack_marketplace_application_role;
+GRANT UPDATE (control_plane_version, region, entitlements, allowed_compatibility,
+              minimum_publisher_trust, maximum_risk, configured_by, updated_at)
+ON TABLE public.marketplace_tenant_catalog TO $pack_marketplace_application_role;
+GRANT UPDATE (review_status, reviewed_by, review_digest, published_at, revoked_at, updated_at)
+ON TABLE public.marketplace_releases TO $pack_marketplace_application_role;
+GRANT UPDATE (state, approved_by, approval_digest, artifact_receipt_digest,
+              previous_installation_id, production_certificate_digest,
+              deactivation_reason_digest, approved_at, installed_at, activated_at,
+              deactivated_at, revoked_at, updated_at)
+ON TABLE public.marketplace_installations TO $pack_marketplace_application_role;
+GRANT UPDATE (state, rollback_reason_digest, completed_at, rolled_back_at, updated_at)
+ON TABLE public.marketplace_upgrade_plans TO $pack_marketplace_application_role;
+GRANT UPDATE (resource_version, action_hash, policy_decision_id, ledger_entry_id,
+              ledger_execution_id, fence_digest, updated_at)
+ON TABLE public.marketplace_resource_versions TO $pack_marketplace_application_role;
+GRANT UPDATE (state, receipt, updated_at)
+ON TABLE public.marketplace_action_ingress TO $pack_marketplace_application_role;
+GRANT UPDATE (state, safe_result, safe_result_digest, stable_error, updated_at)
+ON TABLE public.marketplace_authority_executions TO $pack_marketplace_application_role;
+REVOKE ALL ON TABLE
+  public.pep_authorization_requests,
+  public.pep_policy_decisions,
+  public.pep_execution_authorizations,
+  public.pep_human_assertion_uses,
+  public.pep_governance_evidence,
+  public.pep_evidence_outbox,
+  public.pep_policy_bundle_artifacts,
+  public.pep_policy_activation_requests,
+  public.pep_active_policy_bundles,
+  public.pep_policy_activation_evidence,
+  public.pep_policy_activation_outbox
+FROM $pep_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.pep_authorization_requests,
+  public.pep_policy_decisions,
+  public.pep_execution_authorizations,
+  public.pep_human_assertion_uses,
+  public.pep_governance_evidence,
+  public.pep_evidence_outbox,
+  public.pep_policy_bundle_artifacts,
+  public.pep_policy_activation_requests,
+  public.pep_active_policy_bundles,
+  public.pep_policy_activation_evidence,
+  public.pep_policy_activation_outbox
+TO $pep_application_role;
+GRANT UPDATE ON TABLE public.pep_authorization_requests TO $pep_application_role;
+GRANT UPDATE (state, claim_owner, claim_expires_at, pdp_ack_digest, pdp_ack_body,
+              response_digest, response_body, completed_at, updated_at)
+ON TABLE public.pep_policy_activation_requests TO $pep_application_role;
+GRANT UPDATE (activation_id, policy_id, sequence, bundle_digest, policy_version,
+              pdp_ack_digest, activated_at)
+ON TABLE public.pep_active_policy_bundles TO $pep_application_role;
+REVOKE ALL ON TABLE
+  public.approval_cases,
+  public.approval_decisions,
+  public.approval_grants,
+  public.approval_notification_outbox,
+  public.approval_consumptions,
+  public.approval_mutation_receipts,
+  public.approval_principal_assertion_uses,
+  public.approval_events
+FROM $approval_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.approval_cases,
+  public.approval_decisions,
+  public.approval_grants,
+  public.approval_notification_outbox,
+  public.approval_consumptions,
+  public.approval_mutation_receipts,
+  public.approval_principal_assertion_uses,
+  public.approval_events
+TO $approval_application_role;
+GRANT UPDATE (status, updated_at) ON TABLE public.approval_cases
+TO $approval_application_role;
+GRANT UPDATE (remaining_uses, revoked_at, revoked_by, revocation_reason_digest,
+              revocation_receipt, last_consumed_at)
+ON TABLE public.approval_grants TO $approval_application_role;
+REVOKE ALL ON TABLE
+  public.agent_principals,
+  public.credential_profiles,
+  public.credential_handles,
+  public.identity_revocations,
+  public.identity_tenant_epochs,
+  public.identity_task_lifecycle,
+  public.identity_credential_signing_keys,
+  public.identity_credential_idempotency,
+  public.identity_credential_events,
+  public.identity_credential_outbox
+FROM $identity_application_role;
+GRANT SELECT ON TABLE public.agent_principals, public.credential_profiles,
+  public.identity_credential_signing_keys TO $identity_application_role;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.credential_handles,
+  public.identity_tenant_epochs, public.identity_task_lifecycle
+TO $identity_application_role;
+GRANT SELECT, INSERT ON TABLE public.identity_revocations,
+  public.identity_credential_idempotency TO $identity_application_role;
+GRANT INSERT ON TABLE public.identity_credential_events,
+  public.identity_credential_outbox TO $identity_application_role;
+REVOKE ALL ON TABLE public.tool_proxy_invocations,
+  public.tool_proxy_audit_events, public.tool_proxy_outbox
+FROM $tool_proxy_application_role;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.tool_proxy_invocations
+TO $tool_proxy_application_role;
+GRANT INSERT ON TABLE public.tool_proxy_audit_events, public.tool_proxy_outbox
+TO $tool_proxy_application_role;
+REVOKE ALL ON TABLE
+  public.audit_events, public.evidence_chain_heads,
+  public.execution_evidence_receipts, public.evidence_artifacts,
+  public.evidence_artifact_requests, public.evidence_event_requests,
+  public.authority_evidence_event_requests,
+  public.evidence_packages,
+  public.evidence_package_requests, public.evaluation_results,
+  public.evidence_outbox, public.executions, public.pep_execution_authorizations,
+  public.orchestrator_tasks, public.orchestrator_ingress_actions
+FROM $evidence_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.audit_events, public.execution_evidence_receipts,
+  public.evidence_artifacts, public.evidence_artifact_requests,
+  public.evidence_event_requests, public.authority_evidence_event_requests,
+  public.evidence_packages,
+  public.evidence_package_requests,
+  public.evaluation_results, public.evidence_outbox
+TO $evidence_application_role;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.evidence_chain_heads
+TO $evidence_application_role;
+GRANT SELECT ON TABLE public.executions, public.pep_execution_authorizations,
+  public.orchestrator_tasks, public.orchestrator_ingress_actions
+TO $evidence_application_role;
+REVOKE ALL ON TABLE
+  public.audit_records, public.audit_chain_heads, public.audit_retention_policies,
+  public.legal_holds, public.audit_export_manifests, public.audit_deletion_proofs,
+  public.audit_operation_replays, public.audit_retention_outbox,
+  public.audit_human_assertion_uses, public.audit_control_definitions, public.audit_evidence_nodes,
+  public.audit_evidence_edges
+FROM $audit_application_role;
+GRANT SELECT, INSERT ON TABLE
+  public.audit_records, public.audit_retention_policies, public.legal_holds,
+  public.audit_export_manifests, public.audit_deletion_proofs,
+  public.audit_operation_replays, public.audit_retention_outbox,
+  public.audit_human_assertion_uses, public.audit_control_definitions, public.audit_evidence_nodes,
+  public.audit_evidence_edges
+TO $audit_application_role;
+GRANT SELECT, INSERT, UPDATE ON TABLE public.audit_chain_heads
+TO $audit_application_role;
+GRANT UPDATE (released_by, released_at, release_reason) ON TABLE public.legal_holds
+TO $audit_application_role;
+DO \$production_authority_role_baseline\$
+DECLARE role_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY[
+    '$model_gateway_application_role', '$data_governance_application_role',
+    '$context_governance_application_role', '$runtime_anomaly_application_role',
+    '$security_evaluation_application_role', '$pack_supply_chain_application_role',
+    '$domain_runtime_application_role', '$platform_sre_application_role'
+  ] LOOP
+    EXECUTE format('REVOKE CREATE ON SCHEMA public FROM %I', role_name);
+    EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', role_name);
+    EXECUTE format('REVOKE ALL ON public.agenttrust_schema_migrations FROM %I', role_name);
+    EXECUTE format('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM %I', role_name);
+    EXECUTE format('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM %I', role_name);
+    EXECUTE format('REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM %I', role_name);
+  END LOOP;
+END
+\$production_authority_role_baseline\$;
+GRANT SELECT ON TABLE
+  public.model_provider_revisions,public.model_provider_revocations,
+  public.model_tenant_provider_approvals,public.model_budget_accounts,
+  public.model_gateway_requests,public.model_budget_reservations,
+  public.model_stream_chunk_digests,public.model_execution_evidence,
+  public.model_billing_usage_lines,public.model_billing_reconciliations,
+  public.model_evidence_outbox,public.model_authority_evidence_outbox,
+  public.model_data_governance_outbox TO $model_gateway_application_role;
+GRANT INSERT ON TABLE
+  public.model_gateway_requests,public.model_budget_reservations,
+  public.model_stream_chunk_digests,public.model_execution_evidence,
+  public.model_billing_usage_lines,public.model_billing_reconciliations,
+  public.model_evidence_outbox,public.model_authority_evidence_outbox,
+  public.model_data_governance_outbox TO $model_gateway_application_role;
+GRANT UPDATE (reserved_microunits,spent_microunits,account_version,updated_at)
+  ON public.model_budget_accounts TO $model_gateway_application_role;
+GRANT UPDATE (state,owner_instance_id,lease_expires_at,selected_provider_key,
+  provider_request_id,output_digest,output_artifact_ref,output_artifact_digest,
+  safe_response,stable_error,evidence_ref,evidence_digest,updated_at,completed_at)
+  ON public.model_gateway_requests TO $model_gateway_application_role;
+GRANT UPDATE (actual_microunits,state,provider_key,provider_request_id,finalized_at)
+  ON public.model_budget_reservations TO $model_gateway_application_role;
+GRANT UPDATE (provider_statement_digest,reconciliation_state,reconciled_at)
+  ON public.model_billing_usage_lines TO $model_gateway_application_role;
+GRANT UPDATE (state,signed_receipt,evidence_ref,evidence_digest,updated_at,delivered_at)
+  ON public.model_authority_evidence_outbox TO $model_gateway_application_role;
+GRANT UPDATE (state,mutation_result,evidence_ref,evidence_digest,updated_at,completed_at)
+  ON public.model_data_governance_outbox TO $model_gateway_application_role;
+GRANT SELECT,INSERT ON TABLE
+  public.data_resource_versions,public.data_authority_ingress,
+  public.data_authority_executions,public.governed_data_labels,
+  public.data_policy_decision_records,public.data_dlp_scan_summaries,
+  public.data_transform_receipts,public.data_cross_domain_grants,
+  public.data_cross_domain_consumptions,public.data_retention_records,
+  public.data_legal_holds,public.data_export_intents,public.data_evidence_outbox
+  TO $data_governance_application_role;
+GRANT UPDATE (resource_version,action_hash,ledger_execution_id,fence_digest,updated_at)
+  ON public.data_resource_versions TO $data_governance_application_role;
+GRANT UPDATE (state,receipt,updated_at) ON public.data_authority_ingress TO $data_governance_application_role;
+GRANT UPDATE (state,execution_owner,execution_lease_until,evidence_event_id,result,completed_at,updated_at)
+  ON public.data_authority_executions TO $data_governance_application_role;
+GRANT UPDATE (consumed_at,consumption_id) ON public.data_cross_domain_grants TO $data_governance_application_role;
+GRANT UPDATE (state,released_at,release_approval_id,release_evidence_ref,release_evidence_digest,
+  release_adapter_receipt,release_action_hash,release_ledger_execution_id)
+  ON public.data_legal_holds TO $data_governance_application_role;
+GRANT UPDATE (state,artifact_ref,artifact_digest,watermark_digest,signature_digest,
+  worm_receipt_ref,worm_receipt_digest,completion_adapter_receipt,completed_at,
+  completion_action_hash,completion_ledger_execution_id)
+  ON public.data_export_intents TO $data_governance_application_role;
+GRANT UPDATE (state,delivery_receipt,delivered_at) ON public.data_evidence_outbox TO $data_governance_application_role;
+GRANT SELECT,INSERT ON TABLE
+  public.governed_memory_entries,public.prompt_versions,public.knowledge_snapshots,
+  public.context_knowledge_sources,public.context_deletion_tombstones,
+  public.context_quarantine_records,public.context_resource_versions,
+  public.context_action_ingress,public.context_authority_executions,
+  public.context_retrieval_decisions,public.context_evidence_outbox
+  TO $context_governance_application_role;
+GRANT UPDATE (status,ledger_execution_id,fence_digest,resource_version,quarantine_reason_digest,updated_at)
+  ON public.governed_memory_entries TO $context_governance_application_role;
+GRANT UPDATE (status,rollout_percent,resource_version,activated_at,updated_at)
+  ON public.prompt_versions TO $context_governance_application_role;
+GRANT UPDATE (quarantined,resource_version,updated_at,index_ref,tombstoned)
+  ON public.knowledge_snapshots TO $context_governance_application_role;
+GRANT UPDATE (quarantined,resource_version,updated_at)
+  ON public.context_knowledge_sources TO $context_governance_application_role;
+GRANT UPDATE (released_by,remediation_evidence_ref,remediation_evidence_digest,released_at)
+  ON public.context_quarantine_records TO $context_governance_application_role;
+GRANT UPDATE (resource_version,action_hash,ledger_execution_id,fence_digest,updated_at)
+  ON public.context_resource_versions TO $context_governance_application_role;
+GRANT UPDATE (state,receipt,updated_at) ON public.context_action_ingress TO $context_governance_application_role;
+GRANT UPDATE (state,external_receipts,safe_result,evidence_request,evidence_ref,evidence_digest,
+  evidence_receipt,stable_error,execution_owner,execution_lease_until,updated_at)
+  ON public.context_authority_executions TO $context_governance_application_role;
+GRANT UPDATE (delivered_at) ON public.context_evidence_outbox TO $context_governance_application_role;
+GRANT SELECT,INSERT ON TABLE
+  public.runtime_anomaly_signal_sources,public.runtime_anomaly_trajectories,
+  public.runtime_anomaly_signals,public.runtime_anomaly_findings,
+  public.runtime_anomaly_aggregates,public.runtime_anomaly_baselines,
+  public.runtime_anomaly_feedback,public.runtime_anomaly_cases,
+  public.runtime_anomaly_action_ingress,public.runtime_anomaly_authority_executions,
+  public.runtime_anomaly_response_commands,public.runtime_anomaly_evidence_events,
+  public.runtime_anomaly_evidence_outbox TO $runtime_anomaly_application_role;
+GRANT UPDATE ON TABLE public.runtime_anomaly_signal_sources,public.runtime_anomaly_trajectories,
+  public.runtime_anomaly_cases,public.runtime_anomaly_action_ingress,
+  public.runtime_anomaly_authority_executions,public.runtime_anomaly_response_commands,
+  public.runtime_anomaly_evidence_outbox TO $runtime_anomaly_application_role;
+GRANT SELECT,INSERT ON TABLE public.security_eval_datasets,public.security_eval_dataset_versions,
+  public.attack_scenarios,public.security_campaigns,public.security_eval_campaign_scenarios,
+  public.security_eval_scenario_results,public.security_findings,public.security_eval_remediations,
+  public.security_eval_retests,public.security_eval_baselines,public.security_eval_reports,
+  public.security_eval_kill_switches,public.security_eval_resource_versions,
+  public.security_eval_action_ingress,public.security_eval_authority_executions,
+  public.security_eval_evidence_outbox TO $security_evaluation_application_role;
+GRANT INSERT ON TABLE public.security_eval_evidence_events TO $security_evaluation_application_role;
+GRANT UPDATE ON TABLE public.security_eval_datasets,public.security_campaigns,public.security_findings,
+  public.security_eval_remediations,public.security_eval_kill_switches,
+  public.security_eval_resource_versions,public.security_eval_action_ingress,
+  public.security_eval_authority_executions,public.security_eval_evidence_outbox
+  TO $security_evaluation_application_role;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.supply_chain_publishers,
+  public.supply_chain_publisher_keys,public.supply_chain_artifact_revisions,
+  public.supply_chain_pack_releases,public.supply_chain_conformance_runs,
+  public.supply_chain_pack_approvals,public.supply_chain_installations,
+  public.supply_chain_revocations,public.supply_chain_authority_commands,
+  public.supply_chain_evidence_events,public.supply_chain_evidence_outbox
+  TO $pack_supply_chain_application_role;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.domain_pack_executions,
+  public.domain_expert_approvals,public.domain_physical_supervision,
+  public.domain_pack_evidence_outbox,public.coding_repository_resources,
+  public.coding_execution_cases,public.industrial_asset_models,
+  public.industrial_point_policies,public.industrial_setpoint_cases,
+  public.industrial_telemetry_outcomes,public.industrial_stage_certifications,
+  public.energy_assets,public.energy_forecast_snapshots,public.energy_dispatch_cases,
+  public.energy_outcomes,public.energy_fallback_drills,public.medical_care_relationships,
+  public.medical_access_decisions,public.medical_clinical_evidence,
+  public.medical_human_reviews,public.medical_evaluation_findings,
+  public.sensitive_consent_records,public.sensitive_conversation_cases,
+  public.sensitive_source_citations,public.sensitive_human_escalations,
+  public.sensitive_evaluation_findings TO $domain_runtime_application_role;
+GRANT SELECT,INSERT ON TABLE public.sre_service_slos,public.sre_sli_observations,
+  public.sre_burn_alerts,public.sre_incident_links,public.sre_deployment_topologies,
+  public.sre_zone_health_observations,public.backup_manifests,public.sre_backup_artifacts,
+  public.recovery_drills,public.sre_dr_plans,public.sre_dr_events,public.sre_chaos_campaigns,
+  public.sre_chaos_results,public.sre_load_campaigns,public.sre_load_results,
+  public.deployment_rollouts,public.sre_canary_observations,public.sre_cost_capacity_observations,
+  public.sre_observability_evidence,public.sre_resource_versions,public.sre_action_ingress,
+  public.sre_principal_assertion_replay,public.sre_authority_executions,public.sre_evidence_outbox
+  TO $platform_sre_application_role;
+GRANT UPDATE (service,sli_kind,window_seconds,target_millionths,minimum_samples,
+  fast_burn_threshold_millionths,slow_burn_threshold_millionths,release_blocking,status,
+  resource_version,updated_at) ON public.sre_service_slos TO $platform_sre_application_role;
+GRANT UPDATE (deployment_mode,release_digest,topology_digest,zones,components,quorum_rules,
+  disruption_budgets,immutable_image_digests,status,resource_version,updated_at)
+  ON public.sre_deployment_topologies TO $platform_sre_application_role;
+GRANT UPDATE (state,owner_subject,resolved_at,resource_version) ON public.sre_burn_alerts TO $platform_sre_application_role;
+GRANT UPDATE (status,resource_version,updated_at) ON public.sre_dr_plans,public.sre_chaos_campaigns,public.sre_load_campaigns TO $platform_sre_application_role;
+GRANT UPDATE (status,current_canary_percent,resource_version,updated_at) ON public.deployment_rollouts TO $platform_sre_application_role;
+GRANT UPDATE (resource_version,action_hash,ledger_execution_id,ledger_event_id,ledger_event_digest,fence_digest,updated_at)
+  ON public.sre_resource_versions TO $platform_sre_application_role;
+GRANT UPDATE (state,receipt,updated_at) ON public.sre_action_ingress TO $platform_sre_application_role;
+GRANT UPDATE (state,execution_owner,lease_expires_at,external_receipt,safe_result,evidence_request,evidence_ref,evidence_digest,updated_at)
+  ON public.sre_authority_executions TO $platform_sre_application_role;
+GRANT UPDATE (delivered_at,delivery_attempts) ON public.sre_evidence_outbox TO $platform_sre_application_role;
 SQL
 fi
 
@@ -427,12 +1175,17 @@ DO \$application_grants\$
 DECLARE
   table_name text;
   privilege_name text;
+  column_name text;
   enterprise_tables constant text[] := ARRAY[
-    'enterprise_request_idempotency', 'enterprise_organizations', 'enterprise_tenants',
+    'enterprise_remote_actions', 'enterprise_approval_intents',
+    'spring_session', 'spring_session_attributes'
+  ];
+  enterprise_authority_tables constant text[] := ARRAY[
+    'enterprise_principal_assertion_replay', 'enterprise_action_ingress',
+    'enterprise_resource_versions', 'enterprise_authority_executions',
+    'enterprise_authority_outbox', 'enterprise_tenants', 'enterprise_organizations',
     'enterprise_projects', 'enterprise_integrations', 'enterprise_quota_usage',
-    'enterprise_cost_usage', 'enterprise_api_keys', 'enterprise_admin_actions',
-    'enterprise_remote_actions', 'enterprise_approval_intents', 'spring_session',
-    'spring_session_attributes'
+    'enterprise_cost_usage', 'enterprise_api_keys', 'enterprise_admin_actions'
   ];
   orchestrator_tables constant text[] := ARRAY[
     'orchestrator_ingress_actions', 'orchestrator_stream_events'
@@ -441,30 +1194,269 @@ DECLARE
     'orchestrator_ingress_actions', 'tool_versions', 'registry_snapshots', 'executions',
     'idempotency_records', 'execution_outbox'
   ];
+  registry_tables constant text[] := ARRAY[
+    'tools', 'tool_versions', 'tool_signatures', 'registry_events',
+    'registry_snapshots', 'registry_publisher_keys', 'registry_tenant_revisions',
+    'registry_idempotency_records', 'executor_profiles', 'credential_profiles',
+    'approval_profiles', 'capabilities', 'capability_versions'
+  ];
+  agent_registry_tables constant text[] := ARRAY[
+    'agent_assets', 'agent_discovery_facts', 'agent_posture_findings', 'agent_boms',
+    'agent_ownership_confirmations', 'agent_relationship_edges',
+    'agent_relationship_supersessions', 'agent_posture_resolutions',
+    'agent_lifecycle_records', 'agent_registry_idempotency',
+    'agent_registry_audit_heads', 'agent_registry_audit_events', 'agent_registry_outbox'
+  ];
+  policy_admin_tables constant text[] := ARRAY[
+    'policy_sources', 'policy_analysis_results', 'policy_simulation_runs',
+    'policy_impact_reports', 'policy_reviews', 'policy_bundles', 'policy_exceptions',
+    'policy_promotions', 'policy_activation_intents', 'policy_resource_versions',
+    'policy_principal_assertion_replay',
+    'policy_action_ingress', 'policy_authority_executions', 'policy_evidence_events',
+    'policy_evidence_outbox'
+  ];
+  incident_release_tables constant text[] := ARRAY[
+    'incidents', 'replay_runs', 'incident_principal_assertion_replay',
+    'incident_action_ingress', 'incident_resource_versions',
+    'incident_authority_executions', 'incident_timeline', 'containment_actions',
+    'incident_evidence_preservations', 'replay_plans', 'root_cause_reports',
+    'incident_recertifications', 'release_gate_runs', 'release_gate_certificates',
+    'release_canary_events', 'incident_evidence_events', 'incident_evidence_outbox'
+  ];
+  pack_marketplace_tables constant text[] := ARRAY[
+    'marketplace_publishers', 'marketplace_publisher_keys', 'marketplace_pack_names',
+    'marketplace_tenant_catalog', 'marketplace_releases', 'marketplace_installations',
+    'marketplace_upgrade_plans', 'marketplace_canary_results', 'marketplace_revocations',
+    'marketplace_resource_versions', 'marketplace_principal_assertion_replay',
+    'marketplace_action_ingress', 'marketplace_authority_executions',
+    'marketplace_evidence_events', 'marketplace_evidence_outbox'
+  ];
+  approval_tables constant text[] := ARRAY[
+    'approval_cases', 'approval_decisions', 'approval_grants',
+    'approval_notification_outbox', 'approval_consumptions',
+    'approval_mutation_receipts', 'approval_principal_assertion_uses', 'approval_events'
+  ];
+  pep_tables constant text[] := ARRAY[
+    'pep_authorization_requests', 'pep_policy_decisions',
+    'pep_execution_authorizations', 'pep_human_assertion_uses',
+    'pep_governance_evidence', 'pep_evidence_outbox',
+    'pep_policy_bundle_artifacts', 'pep_policy_activation_requests',
+    'pep_active_policy_bundles', 'pep_policy_activation_evidence',
+    'pep_policy_activation_outbox'
+  ];
+  identity_tables constant text[] := ARRAY[
+    'agent_principals', 'credential_profiles', 'credential_handles',
+    'identity_revocations', 'identity_tenant_epochs', 'identity_task_lifecycle',
+    'identity_credential_signing_keys', 'identity_credential_idempotency',
+    'identity_credential_events', 'identity_credential_outbox'
+  ];
+  tool_proxy_tables constant text[] := ARRAY[
+    'tool_proxy_invocations', 'tool_proxy_audit_events', 'tool_proxy_outbox'
+  ];
+  evidence_tables constant text[] := ARRAY[
+    'audit_events', 'evidence_chain_heads', 'execution_evidence_receipts',
+    'evidence_artifacts', 'evidence_artifact_requests', 'evidence_event_requests',
+    'authority_evidence_event_requests',
+    'evidence_packages',
+    'evidence_package_requests', 'evaluation_results', 'evidence_outbox',
+    'executions', 'pep_execution_authorizations', 'orchestrator_tasks',
+    'orchestrator_ingress_actions'
+  ];
+  audit_tables constant text[] := ARRAY[
+    'audit_records', 'audit_chain_heads', 'audit_retention_policies', 'legal_holds',
+    'audit_export_manifests', 'audit_deletion_proofs', 'audit_operation_replays',
+    'audit_retention_outbox', 'audit_human_assertion_uses', 'audit_control_definitions',
+    'audit_evidence_nodes',
+    'audit_evidence_edges'
+  ];
 BEGIN
   FOREACH table_name IN ARRAY enterprise_tables LOOP
     IF to_regclass(format('public.%I', table_name)) IS NULL THEN
       RAISE EXCEPTION 'MIGRATION_ENTERPRISE_TABLE_MISSING:%', table_name;
     END IF;
-    FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'] LOOP
-      IF NOT has_table_privilege(
-        '$enterprise_application_role', format('public.%I', table_name), privilege_name
-      ) THEN
-        RAISE EXCEPTION 'MIGRATION_ENTERPRISE_GRANT_MISSING:%.%', table_name, privilege_name;
-      END IF;
-    END LOOP;
+    IF table_name IN ('spring_session', 'spring_session_attributes') THEN
+      FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'] LOOP
+        IF NOT has_table_privilege(
+          '$enterprise_application_role', format('public.%I', table_name), privilege_name
+        ) THEN
+          RAISE EXCEPTION 'MIGRATION_ENTERPRISE_SESSION_GRANT_MISSING:%.%',
+            table_name, privilege_name;
+        END IF;
+      END LOOP;
+    ELSIF NOT has_table_privilege(
+      '$enterprise_application_role', format('public.%I', table_name), 'SELECT'
+    ) OR NOT has_table_privilege(
+      '$enterprise_application_role', format('public.%I', table_name), 'INSERT'
+    ) OR has_table_privilege(
+      '$enterprise_application_role', format('public.%I', table_name),
+      'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_QUEUE_GRANTS_INVALID:%', table_name;
+    END IF;
   END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'status','response_payload','evidence_ref','attempts','next_attempt_at',
+    'last_error_code','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_application_role', 'public.enterprise_remote_actions', column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_REMOTE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'status','evidence_ref','attempts','next_attempt_at','last_error_code','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_application_role', 'public.enterprise_approval_intents', column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_APPROVAL_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND grantee='$enterprise_application_role'
+       AND privilege_type='UPDATE'
+       AND (
+         (table_name='enterprise_remote_actions' AND column_name NOT IN (
+           'status','response_payload','evidence_ref','attempts','next_attempt_at',
+           'last_error_code','updated_at'
+         )) OR
+         (table_name='enterprise_approval_intents' AND column_name NOT IN (
+           'status','evidence_ref','attempts','next_attempt_at','last_error_code','updated_at'
+         )) OR
+         table_name NOT IN (
+           'enterprise_remote_actions','enterprise_approval_intents',
+           'spring_session','spring_session_attributes'
+         )
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_ENTERPRISE_EXCESS_COLUMN_UPDATE_GRANT';
+  END IF;
+  FOREACH table_name IN ARRAY enterprise_authority_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_TABLE_MISSING:%', table_name;
+    END IF;
+    IF table_name = 'enterprise_authority_outbox' THEN
+      IF NOT has_table_privilege(
+        '$enterprise_authority_application_role', format('public.%I', table_name), 'INSERT'
+      ) OR has_table_privilege(
+        '$enterprise_authority_application_role', format('public.%I', table_name),
+        'SELECT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      ) THEN
+        RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_OUTBOX_GRANTS_INVALID';
+      END IF;
+    ELSIF NOT has_table_privilege(
+      '$enterprise_authority_application_role', format('public.%I', table_name), 'SELECT'
+    ) OR NOT has_table_privilege(
+      '$enterprise_authority_application_role', format('public.%I', table_name), 'INSERT'
+    ) OR has_table_privilege(
+      '$enterprise_authority_application_role', format('public.%I', table_name),
+      'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['state','receipt','updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_authority_application_role', 'public.enterprise_action_ingress',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_INGRESS_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_authority_application_role', 'public.enterprise_resource_versions',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_VERSION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','safe_result','safe_result_digest','stable_error','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_authority_application_role', 'public.enterprise_authority_executions',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_EXECUTION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['used','limit_value'] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_authority_application_role', 'public.enterprise_quota_usage',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_QUOTA_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['revoked_at','revocation_reason'] LOOP
+    IF NOT has_column_privilege(
+      '$enterprise_authority_application_role', 'public.enterprise_api_keys',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_API_KEY_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND grantee='$enterprise_authority_application_role'
+       AND privilege_type='UPDATE'
+       AND NOT (
+         (table_name='enterprise_action_ingress' AND column_name IN ('state','receipt','updated_at')) OR
+         (table_name='enterprise_resource_versions' AND column_name IN (
+           'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
+         )) OR
+         (table_name='enterprise_authority_executions' AND column_name IN (
+           'state','safe_result','safe_result_digest','stable_error','updated_at'
+         )) OR
+         (table_name='enterprise_quota_usage' AND column_name IN ('used','limit_value')) OR
+         (table_name='enterprise_api_keys' AND column_name IN ('revoked_at','revocation_reason'))
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_EXCESS_COLUMN_UPDATE_GRANT';
+  END IF;
   FOREACH table_name IN ARRAY orchestrator_tables LOOP
     IF to_regclass(format('public.%I', table_name)) IS NULL THEN
       RAISE EXCEPTION 'MIGRATION_ORCHESTRATOR_TABLE_MISSING:%', table_name;
     END IF;
-    FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'] LOOP
+    FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT'] LOOP
       IF NOT has_table_privilege(
         '$orchestrator_application_role', format('public.%I', table_name), privilege_name
       ) THEN
         RAISE EXCEPTION 'MIGRATION_ORCHESTRATOR_GRANT_MISSING:%.%', table_name, privilege_name;
       END IF;
     END LOOP;
+  END LOOP;
+  IF has_table_privilege(
+       '$orchestrator_application_role', 'public.orchestrator_ingress_actions', 'UPDATE,DELETE'
+     )
+     OR has_table_privilege(
+       '$orchestrator_application_role', 'public.orchestrator_stream_events', 'UPDATE,DELETE'
+     )
+     OR EXISTS (
+       SELECT 1 FROM information_schema.column_privileges
+        WHERE table_schema = 'public'
+          AND grantee = '$orchestrator_application_role'
+          AND privilege_type = 'UPDATE'
+          AND NOT (
+            table_name = 'orchestrator_ingress_actions'
+            AND column_name IN ('status', 'updated_at')
+          )
+     )
+  THEN
+    RAISE EXCEPTION 'MIGRATION_ORCHESTRATOR_EXCESS_MUTATION_GRANT';
+  END IF;
+  FOREACH column_name IN ARRAY ARRAY['status', 'updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$orchestrator_application_role', 'public.orchestrator_ingress_actions',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_ORCHESTRATOR_UPDATE_GRANT_MISSING:%', column_name;
+    END IF;
   END LOOP;
   IF NOT has_sequence_privilege(
     '$orchestrator_application_role',
@@ -483,6 +1475,300 @@ BEGIN
       RAISE EXCEPTION 'MIGRATION_EXECUTION_READ_GRANT_MISSING:%', table_name;
     END IF;
   END LOOP;
+  FOREACH table_name IN ARRAY pep_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR NOT has_table_privilege(
+         '$pep_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         '$pep_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR (
+         table_name = 'pep_authorization_requests'
+         AND NOT has_table_privilege(
+           '$pep_application_role', format('public.%I', table_name), 'UPDATE'
+         )
+       )
+       OR (
+         table_name <> 'pep_authorization_requests'
+         AND has_table_privilege(
+           '$pep_application_role', format('public.%I', table_name), 'UPDATE'
+         )
+       )
+       OR has_table_privilege(
+         '$pep_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_PEP_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','claim_owner','claim_expires_at','pdp_ack_digest','pdp_ack_body',
+    'response_digest','response_body','completed_at','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pep_application_role', 'public.pep_policy_activation_requests',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PEP_ACTIVATION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'activation_id','policy_id','sequence','bundle_digest','policy_version',
+    'pdp_ack_digest','activated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pep_application_role', 'public.pep_active_policy_bundles', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PEP_ACTIVE_BUNDLE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND grantee='$pep_application_role'
+       AND privilege_type='UPDATE'
+       AND table_name <> 'pep_authorization_requests'
+       AND NOT (
+         (table_name='pep_policy_activation_requests' AND column_name IN (
+           'state','claim_owner','claim_expires_at','pdp_ack_digest','pdp_ack_body',
+           'response_digest','response_body','completed_at','updated_at'
+         )) OR
+         (table_name='pep_active_policy_bundles' AND column_name IN (
+           'activation_id','policy_id','sequence','bundle_digest','policy_version',
+           'pdp_ack_digest','activated_at'
+         ))
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_PEP_EXCESS_COLUMN_UPDATE_GRANT';
+  END IF;
+  FOREACH table_name IN ARRAY approval_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR NOT has_table_privilege(
+         '$approval_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         '$approval_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$approval_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_APPROVAL_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['status', 'updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$approval_application_role', 'public.approval_cases', column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_APPROVAL_CASE_UPDATE_GRANT_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'remaining_uses', 'revoked_at', 'revoked_by', 'revocation_reason_digest',
+    'revocation_receipt', 'last_consumed_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$approval_application_role', 'public.approval_grants', column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_APPROVAL_GRANT_UPDATE_GRANT_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1
+      FROM information_schema.columns AS columns
+     WHERE columns.table_schema = 'public'
+       AND columns.table_name = ANY (approval_tables)
+       AND NOT (
+         (columns.table_name = 'approval_cases'
+          AND columns.column_name = ANY (ARRAY['status', 'updated_at']))
+         OR
+         (columns.table_name = 'approval_grants'
+          AND columns.column_name = ANY (ARRAY[
+            'remaining_uses', 'revoked_at', 'revoked_by', 'revocation_reason_digest',
+            'revocation_receipt', 'last_consumed_at'
+          ]))
+       )
+       AND has_column_privilege(
+         '$approval_application_role',
+         format('public.%I', columns.table_name), columns.column_name, 'UPDATE'
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_APPROVAL_EXCESS_COLUMN_UPDATE_GRANT';
+  END IF;
+  FOREACH table_name IN ARRAY identity_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_IDENTITY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'agent_principals', 'credential_profiles', 'identity_credential_signing_keys'
+  ] LOOP
+    IF NOT has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'INSERT,UPDATE'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_IDENTITY_READ_ONLY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'credential_handles', 'identity_tenant_epochs', 'identity_task_lifecycle'
+  ] LOOP
+    FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE'] LOOP
+      IF NOT has_table_privilege(
+        '$identity_application_role', format('public.%I', table_name), privilege_name
+      ) THEN
+        RAISE EXCEPTION 'MIGRATION_IDENTITY_MUTABLE_GRANT_MISSING:%.%',
+          table_name, privilege_name;
+      END IF;
+    END LOOP;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'identity_revocations', 'identity_credential_idempotency'
+  ] LOOP
+    IF NOT has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'UPDATE'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_IDENTITY_APPEND_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'identity_credential_events', 'identity_credential_outbox'
+  ] LOOP
+    IF NOT has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$identity_application_role', format('public.%I', table_name), 'SELECT,UPDATE'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_IDENTITY_WRITE_ONLY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY tool_proxy_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR has_table_privilege(
+         '$tool_proxy_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_TOOL_PROXY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE'] LOOP
+    IF NOT has_table_privilege(
+      '$tool_proxy_application_role', 'public.tool_proxy_invocations', privilege_name
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_TOOL_PROXY_INVOCATION_GRANT_MISSING:%', privilege_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY['tool_proxy_audit_events', 'tool_proxy_outbox'] LOOP
+    IF NOT has_table_privilege(
+         '$tool_proxy_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$tool_proxy_application_role', format('public.%I', table_name), 'SELECT,UPDATE'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_TOOL_PROXY_WRITE_ONLY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY evidence_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR has_table_privilege(
+         '$evidence_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_EVIDENCE_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'audit_events', 'execution_evidence_receipts', 'evidence_artifacts',
+    'evidence_artifact_requests', 'evidence_event_requests',
+    'authority_evidence_event_requests', 'evidence_packages',
+    'evidence_package_requests',
+    'evaluation_results', 'evidence_outbox'
+  ] LOOP
+    IF NOT has_table_privilege(
+         '$evidence_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         '$evidence_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$evidence_application_role', format('public.%I', table_name), 'UPDATE'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_EVIDENCE_APPEND_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE'] LOOP
+    IF NOT has_table_privilege(
+      '$evidence_application_role', 'public.evidence_chain_heads', privilege_name
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_EVIDENCE_CHAIN_GRANT_MISSING:%', privilege_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'executions', 'pep_execution_authorizations', 'orchestrator_tasks',
+    'orchestrator_ingress_actions'
+  ] LOOP
+    IF NOT has_table_privilege(
+         '$evidence_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR has_table_privilege(
+         '$evidence_application_role', format('public.%I', table_name), 'INSERT,UPDATE'
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_EVIDENCE_LEDGER_READ_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY audit_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR NOT has_table_privilege(
+         '$audit_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         '$audit_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$audit_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+       OR (
+         table_name = 'audit_chain_heads'
+         AND NOT has_table_privilege(
+           '$audit_application_role', format('public.%I', table_name), 'UPDATE'
+         )
+       )
+       OR (
+         table_name <> 'audit_chain_heads'
+         AND has_table_privilege(
+           '$audit_application_role', format('public.%I', table_name), 'UPDATE'
+         )
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_AUDIT_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['released_by', 'released_at', 'release_reason'] LOOP
+    IF NOT has_column_privilege(
+      '$audit_application_role', 'public.legal_holds', column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_AUDIT_LEGAL_HOLD_GRANT_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND table_name='legal_holds'
+       AND grantee='$audit_application_role' AND privilege_type='UPDATE'
+       AND column_name NOT IN ('released_by','released_at','release_reason')
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_AUDIT_LEGAL_HOLD_EXCESS_GRANT';
+  END IF;
   IF NOT has_table_privilege(
        '$execution_application_role', 'public.executions', 'INSERT'
      )
@@ -502,6 +1788,426 @@ BEGIN
        '$execution_application_role', 'public.execution_fence_seq', 'USAGE'
      ) THEN
     RAISE EXCEPTION 'MIGRATION_EXECUTION_WRITE_GRANT_MISSING';
+  END IF;
+  FOREACH table_name IN ARRAY registry_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'MIGRATION_REGISTRY_TABLE_MISSING:%', table_name;
+    END IF;
+    IF NOT has_table_privilege(
+      '$registry_application_role', format('public.%I', table_name), 'SELECT'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_REGISTRY_GRANT_MISSING:%.SELECT', table_name;
+    END IF;
+    IF has_table_privilege(
+      '$registry_application_role', format('public.%I', table_name),
+      'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_REGISTRY_EXCESS_GRANT:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'tools','tool_versions','tool_signatures','registry_events','registry_snapshots',
+    'registry_publisher_keys','registry_tenant_revisions','registry_idempotency_records'
+  ] LOOP
+    IF NOT has_table_privilege(
+      '$registry_application_role', format('public.%I', table_name), 'INSERT'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_REGISTRY_GRANT_MISSING:%.INSERT', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY ARRAY[
+    'tool_versions','registry_publisher_keys','registry_tenant_revisions'
+  ] LOOP
+    IF NOT has_table_privilege(
+      '$registry_application_role', format('public.%I', table_name), 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_REGISTRY_GRANT_MISSING:%.UPDATE', table_name;
+    END IF;
+  END LOOP;
+  IF has_table_privilege('$registry_application_role','public.tools','UPDATE')
+     OR has_table_privilege('$registry_application_role','public.tool_signatures','UPDATE')
+     OR has_table_privilege('$registry_application_role','public.registry_events','UPDATE')
+     OR has_table_privilege('$registry_application_role','public.registry_snapshots','UPDATE')
+     OR has_table_privilege('$registry_application_role','public.registry_idempotency_records','UPDATE')
+     OR has_table_privilege('$registry_application_role','public.executor_profiles','INSERT,UPDATE')
+     OR has_table_privilege('$registry_application_role','public.credential_profiles','INSERT,UPDATE')
+     OR has_table_privilege('$registry_application_role','public.approval_profiles','INSERT,UPDATE')
+     OR has_table_privilege('$registry_application_role','public.capabilities','INSERT,UPDATE')
+     OR has_table_privilege('$registry_application_role','public.capability_versions','INSERT,UPDATE') THEN
+    RAISE EXCEPTION 'MIGRATION_REGISTRY_EXCESS_WRITE_GRANT';
+  END IF;
+  FOREACH table_name IN ARRAY agent_registry_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL
+       OR NOT has_table_privilege(
+         '$agent_registry_application_role', format('public.%I', table_name), 'SELECT'
+       )
+       OR NOT has_table_privilege(
+         '$agent_registry_application_role', format('public.%I', table_name), 'INSERT'
+       )
+       OR has_table_privilege(
+         '$agent_registry_application_role', format('public.%I', table_name),
+         'DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+       OR (
+         table_name IN ('agent_assets','agent_registry_audit_heads')
+         AND NOT has_table_privilege(
+           '$agent_registry_application_role', format('public.%I', table_name), 'UPDATE'
+         )
+       )
+       OR (
+         table_name NOT IN ('agent_assets','agent_registry_audit_heads')
+         AND has_table_privilege(
+           '$agent_registry_application_role', format('public.%I', table_name), 'UPDATE'
+         )
+       ) THEN
+      RAISE EXCEPTION 'MIGRATION_AGENT_REGISTRY_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH table_name IN ARRAY policy_admin_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_TABLE_MISSING:%', table_name;
+    END IF;
+    IF table_name = 'policy_evidence_outbox' THEN
+      IF NOT has_table_privilege(
+        '$policy_admin_application_role', format('public.%I', table_name), 'INSERT'
+      ) OR has_table_privilege(
+        '$policy_admin_application_role', format('public.%I', table_name),
+        'SELECT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      ) THEN
+        RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_OUTBOX_GRANTS_INVALID';
+      END IF;
+    ELSIF NOT has_table_privilege(
+      '$policy_admin_application_role', format('public.%I', table_name), 'SELECT'
+    ) OR NOT has_table_privilege(
+      '$policy_admin_application_role', format('public.%I', table_name), 'INSERT'
+    ) OR has_table_privilege(
+      '$policy_admin_application_role', format('public.%I', table_name),
+      'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['lifecycle_state','updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_sources', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_SOURCE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['status','deprecated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_bundles', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_BUNDLE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['revoked_at','revocation_reason_digest','expired_at'] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_exceptions', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_EXCEPTION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['state','completed_at'] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_promotions', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_PROMOTION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','claim_owner','claim_expires_at','acknowledgement_digest',
+    'acknowledgement','updated_at','activated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_activation_intents',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_ACTIVATION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_resource_versions', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_VERSION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['state','receipt','updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_action_ingress', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_INGRESS_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','safe_result','safe_result_digest','stable_error','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$policy_admin_application_role', 'public.policy_authority_executions',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_EXECUTION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND grantee='$policy_admin_application_role'
+       AND privilege_type='UPDATE'
+       AND NOT (
+         (table_name='policy_sources' AND column_name IN ('lifecycle_state','updated_at')) OR
+         (table_name='policy_bundles' AND column_name IN ('status','deprecated_at')) OR
+         (table_name='policy_exceptions' AND column_name IN (
+           'revoked_at','revocation_reason_digest','expired_at'
+         )) OR
+         (table_name='policy_promotions' AND column_name IN ('state','completed_at')) OR
+         (table_name='policy_activation_intents' AND column_name IN (
+           'state','claim_owner','claim_expires_at','acknowledgement_digest',
+           'acknowledgement','updated_at','activated_at'
+         )) OR
+         (table_name='policy_resource_versions' AND column_name IN (
+           'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
+         )) OR
+         (table_name='policy_action_ingress' AND column_name IN ('state','receipt','updated_at')) OR
+         (table_name='policy_authority_executions' AND column_name IN (
+           'state','safe_result','safe_result_digest','stable_error','updated_at'
+         ))
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_POLICY_ADMIN_EXCESS_COLUMN_UPDATE_GRANT';
+  END IF;
+  FOREACH table_name IN ARRAY incident_release_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_TABLE_MISSING:%', table_name;
+    END IF;
+    IF table_name IN ('incident_evidence_events', 'incident_evidence_outbox') THEN
+      IF NOT has_table_privilege(
+        '$incident_release_application_role', format('public.%I', table_name), 'INSERT'
+      ) OR has_table_privilege(
+        '$incident_release_application_role', format('public.%I', table_name),
+        'SELECT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      ) THEN
+        RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_EVIDENCE_GRANTS_INVALID:%', table_name;
+      END IF;
+    ELSIF NOT has_table_privilege(
+      '$incident_release_application_role', format('public.%I', table_name), 'SELECT'
+    ) OR NOT has_table_privilege(
+      '$incident_release_application_role', format('public.%I', table_name), 'INSERT'
+    ) OR has_table_privilege(
+      '$incident_release_application_role', format('public.%I', table_name),
+      'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  IF has_table_privilege(
+       '$incident_release_application_role', 'public.release_gate_results',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     ) THEN
+    RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_LEGACY_GATE_GRANT';
+  END IF;
+  FOREACH column_name IN ARRAY ARRAY[
+    'status','owner','severity','resource_version','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$incident_release_application_role', 'public.incidents', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_INCIDENT_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['state','receipt','updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$incident_release_application_role', 'public.incident_action_ingress',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_INGRESS_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$incident_release_application_role', 'public.incident_resource_versions',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_VERSION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','execution_owner','execution_lease_until','safe_result',
+    'safe_result_digest','stable_error','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$incident_release_application_role', 'public.incident_authority_executions',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_EXECUTION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['state','updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$incident_release_application_role', 'public.release_gate_runs', column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_GATE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND grantee='$incident_release_application_role'
+       AND privilege_type='UPDATE'
+       AND NOT (
+         (table_name='incidents' AND column_name IN (
+           'status','owner','severity','resource_version','updated_at'
+         )) OR
+         (table_name='incident_action_ingress' AND column_name IN (
+           'state','receipt','updated_at'
+         )) OR
+         (table_name='incident_resource_versions' AND column_name IN (
+           'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
+         )) OR
+         (table_name='incident_authority_executions' AND column_name IN (
+           'state','execution_owner','execution_lease_until','safe_result',
+           'safe_result_digest','stable_error','updated_at'
+         )) OR
+         (table_name='release_gate_runs' AND column_name IN ('state','updated_at'))
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_EXCESS_COLUMN_UPDATE_GRANT';
+  END IF;
+  FOREACH table_name IN ARRAY pack_marketplace_tables LOOP
+    IF to_regclass(format('public.%I', table_name)) IS NULL THEN
+      RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_TABLE_MISSING:%', table_name;
+    END IF;
+    IF table_name IN ('marketplace_evidence_events', 'marketplace_evidence_outbox') THEN
+      IF NOT has_table_privilege(
+        '$pack_marketplace_application_role', format('public.%I', table_name), 'INSERT'
+      ) OR has_table_privilege(
+        '$pack_marketplace_application_role', format('public.%I', table_name),
+        'SELECT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+      ) THEN
+        RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_EVIDENCE_GRANTS_INVALID:%', table_name;
+      END IF;
+    ELSIF NOT has_table_privilege(
+      '$pack_marketplace_application_role', format('public.%I', table_name), 'SELECT'
+    ) OR NOT has_table_privilege(
+      '$pack_marketplace_application_role', format('public.%I', table_name), 'INSERT'
+    ) OR has_table_privilege(
+      '$pack_marketplace_application_role', format('public.%I', table_name),
+      'UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_GRANTS_INVALID:%', table_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'trust_status','verified_by','verified_at','revoked_at','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_publishers',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_PUBLISHER_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['status','revoked_at'] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_publisher_keys',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_KEY_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'control_plane_version','region','entitlements','allowed_compatibility',
+    'minimum_publisher_trust','maximum_risk','configured_by','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_tenant_catalog',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_CATALOG_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'review_status','reviewed_by','review_digest','published_at','revoked_at','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_releases',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_RELEASE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','approved_by','approval_digest','artifact_receipt_digest',
+    'previous_installation_id','production_certificate_digest',
+    'deactivation_reason_digest','approved_at','installed_at','activated_at',
+    'deactivated_at','revoked_at','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_installations',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_INSTALLATION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','rollback_reason_digest','completed_at','rolled_back_at','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_upgrade_plans',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_UPGRADE_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'resource_version','action_hash','policy_decision_id','ledger_entry_id',
+    'ledger_execution_id','fence_digest','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_resource_versions',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_VERSION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY['state','receipt','updated_at'] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_action_ingress',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_INGRESS_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'state','safe_result','safe_result_digest','stable_error','updated_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$pack_marketplace_application_role', 'public.marketplace_authority_executions',
+      column_name, 'UPDATE'
+    ) THEN RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_EXECUTION_UPDATE_MISSING:%', column_name;
+    END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.column_privileges
+     WHERE table_schema='public' AND grantee='$pack_marketplace_application_role'
+       AND privilege_type='UPDATE'
+       AND NOT (
+         (table_name='marketplace_publishers' AND column_name IN (
+           'trust_status','verified_by','verified_at','revoked_at','updated_at'
+         )) OR
+         (table_name='marketplace_publisher_keys' AND column_name IN ('status','revoked_at')) OR
+         (table_name='marketplace_tenant_catalog' AND column_name IN (
+           'control_plane_version','region','entitlements','allowed_compatibility',
+           'minimum_publisher_trust','maximum_risk','configured_by','updated_at'
+         )) OR
+         (table_name='marketplace_releases' AND column_name IN (
+           'review_status','reviewed_by','review_digest','published_at','revoked_at','updated_at'
+         )) OR
+         (table_name='marketplace_installations' AND column_name IN (
+           'state','approved_by','approval_digest','artifact_receipt_digest',
+           'previous_installation_id','production_certificate_digest',
+           'deactivation_reason_digest','approved_at','installed_at','activated_at',
+           'deactivated_at','revoked_at','updated_at'
+         )) OR
+         (table_name='marketplace_upgrade_plans' AND column_name IN (
+           'state','rollback_reason_digest','completed_at','rolled_back_at','updated_at'
+         )) OR
+         (table_name='marketplace_resource_versions' AND column_name IN (
+           'resource_version','action_hash','policy_decision_id','ledger_entry_id',
+           'ledger_execution_id','fence_digest','updated_at'
+         )) OR
+         (table_name='marketplace_action_ingress' AND column_name IN (
+           'state','receipt','updated_at'
+         )) OR
+         (table_name='marketplace_authority_executions' AND column_name IN (
+           'state','safe_result','safe_result_digest','stable_error','updated_at'
+         ))
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_PACK_MARKETPLACE_EXCESS_COLUMN_UPDATE_GRANT';
   END IF;
   IF has_table_privilege(
        '$execution_application_role', 'public.orchestrator_ingress_actions',
@@ -530,15 +2236,133 @@ BEGIN
     RAISE EXCEPTION 'MIGRATION_EXECUTION_EXCESS_TABLE_GRANT';
   END IF;
   IF has_schema_privilege('$enterprise_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$enterprise_authority_application_role', 'public', 'CREATE')
      OR has_schema_privilege('$orchestrator_application_role', 'public', 'CREATE')
      OR has_schema_privilege('$execution_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$registry_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$agent_registry_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$policy_admin_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$incident_release_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$pack_marketplace_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$approval_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$pep_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$identity_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$tool_proxy_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$evidence_application_role', 'public', 'CREATE')
+     OR has_schema_privilege('$audit_application_role', 'public', 'CREATE')
      OR NOT has_schema_privilege('$enterprise_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$enterprise_authority_application_role', 'public', 'USAGE')
      OR NOT has_schema_privilege('$orchestrator_application_role', 'public', 'USAGE')
-     OR NOT has_schema_privilege('$execution_application_role', 'public', 'USAGE') THEN
+     OR NOT has_schema_privilege('$execution_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$registry_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$agent_registry_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$policy_admin_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$incident_release_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$pack_marketplace_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$approval_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$pep_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$identity_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$tool_proxy_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$evidence_application_role', 'public', 'USAGE')
+     OR NOT has_schema_privilege('$audit_application_role', 'public', 'USAGE')
+     OR NOT has_database_privilege(
+       '$enterprise_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$enterprise_authority_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$orchestrator_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$execution_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$registry_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$agent_registry_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$policy_admin_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$incident_release_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$pack_marketplace_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$approval_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$pep_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$identity_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$tool_proxy_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$evidence_application_role', current_database(), 'CONNECT'
+     )
+     OR NOT has_database_privilege(
+       '$audit_application_role', current_database(), 'CONNECT'
+     )
+     OR has_database_privilege(
+       '$enterprise_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$enterprise_authority_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$orchestrator_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$execution_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$registry_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$agent_registry_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$policy_admin_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$incident_release_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$pack_marketplace_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$approval_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$pep_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$identity_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$tool_proxy_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$evidence_application_role', current_database(), 'TEMP'
+     )
+     OR has_database_privilege(
+       '$audit_application_role', current_database(), 'TEMP'
+     ) THEN
     RAISE EXCEPTION 'MIGRATION_APPLICATION_SCHEMA_GRANTS_INVALID';
   END IF;
   IF has_table_privilege(
        '$enterprise_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$enterprise_authority_application_role', 'public.agenttrust_schema_migrations',
        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
      )
      OR has_table_privilege(
@@ -547,6 +2371,50 @@ BEGIN
      )
      OR has_table_privilege(
        '$execution_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$registry_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$agent_registry_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$policy_admin_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$incident_release_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$pack_marketplace_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$approval_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$pep_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$identity_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$tool_proxy_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$evidence_application_role', 'public.agenttrust_schema_migrations',
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+     )
+     OR has_table_privilege(
+       '$audit_application_role', 'public.agenttrust_schema_migrations',
        'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
      ) THEN
     RAISE EXCEPTION 'MIGRATION_HISTORY_APPLICATION_ACCESS_DENIED';
@@ -568,6 +2436,17 @@ BEGIN
       JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
      WHERE namespace.nspname = 'public'
        AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (enterprise_authority_tables)
+       AND has_table_privilege(
+         '$enterprise_authority_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
        AND relation.relname <> ALL (orchestrator_tables)
        AND has_table_privilege(
          '$orchestrator_application_role', relation.oid,
@@ -581,7 +2460,128 @@ BEGIN
        AND relation.relkind IN ('r', 'p')
        AND relation.relname <> ALL (execution_tables)
        AND has_table_privilege(
-         '$execution_application_role', relation.oid,
+       '$execution_application_role', relation.oid,
+       'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (registry_tables)
+       AND has_table_privilege(
+         '$registry_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (agent_registry_tables)
+       AND has_table_privilege(
+         '$agent_registry_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (policy_admin_tables)
+       AND has_table_privilege(
+         '$policy_admin_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (incident_release_tables)
+       AND has_table_privilege(
+         '$incident_release_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (pack_marketplace_tables)
+       AND has_table_privilege(
+         '$pack_marketplace_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (approval_tables)
+       AND has_table_privilege(
+         '$approval_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (pep_tables)
+       AND has_table_privilege(
+         '$pep_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (identity_tables)
+       AND has_table_privilege(
+         '$identity_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (tool_proxy_tables)
+       AND has_table_privilege(
+         '$tool_proxy_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (evidence_tables)
+       AND has_table_privilege(
+         '$evidence_application_role', relation.oid,
+         'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS relation
+      JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND relation.relkind IN ('r', 'p')
+       AND relation.relname <> ALL (audit_tables)
+       AND has_table_privilege(
+         '$audit_application_role', relation.oid,
          'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'
        )
   ) THEN
@@ -598,10 +2598,49 @@ BEGIN
            '$enterprise_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
          )
          OR has_table_privilege(
+           '$enterprise_authority_application_role', relation.oid,
+           'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
            '$orchestrator_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
          )
          OR has_table_privilege(
            '$execution_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$registry_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$agent_registry_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$policy_admin_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$incident_release_application_role', relation.oid,
+           'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$pack_marketplace_application_role', relation.oid,
+           'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$approval_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$pep_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$identity_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$tool_proxy_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$evidence_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
+         )
+         OR has_table_privilege(
+           '$audit_application_role', relation.oid, 'TRUNCATE,REFERENCES,TRIGGER'
          )
        )
   ) THEN
@@ -622,6 +2661,15 @@ BEGIN
       JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
      WHERE namespace.nspname = 'public'
        AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$enterprise_authority_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
        AND (
          sequence.relname <> 'orchestrator_stream_events_sequence_seq'
          OR has_sequence_privilege('$orchestrator_application_role', sequence.oid, 'SELECT,UPDATE')
@@ -635,18 +2683,172 @@ BEGIN
       JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
      WHERE namespace.nspname = 'public'
        AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$agent_registry_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$policy_admin_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$incident_release_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$pack_marketplace_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
        AND (
          sequence.relname <> 'execution_fence_seq'
          OR has_sequence_privilege('$execution_application_role', sequence.oid, 'SELECT,UPDATE')
        )
        AND has_sequence_privilege(
-         '$execution_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       '$execution_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$registry_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$approval_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$pep_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$identity_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$tool_proxy_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$evidence_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
+       )
+  ) OR EXISTS (
+    SELECT 1
+      FROM pg_class AS sequence
+      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
+     WHERE namespace.nspname = 'public'
+       AND sequence.relkind = 'S'
+       AND has_sequence_privilege(
+         '$audit_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
        )
   ) THEN
     RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_EXCESS_SEQUENCE_GRANT';
   END IF;
+  IF EXISTS (
+    SELECT 1
+      FROM pg_proc AS function
+      JOIN pg_namespace AS namespace ON namespace.oid = function.pronamespace
+     WHERE namespace.nspname = 'public'
+       AND (
+         has_function_privilege('$enterprise_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege(
+           '$enterprise_authority_application_role', function.oid, 'EXECUTE'
+         )
+         OR has_function_privilege('$orchestrator_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$execution_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$registry_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$agent_registry_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$policy_admin_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$incident_release_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$pack_marketplace_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$approval_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$pep_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$identity_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$tool_proxy_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$evidence_application_role', function.oid, 'EXECUTE')
+         OR has_function_privilege('$audit_application_role', function.oid, 'EXECUTE')
+       )
+  ) THEN
+    RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_EXCESS_FUNCTION_GRANT';
+  END IF;
 END
 \$application_grants\$;
+DO \$production_authority_posture\$
+DECLARE role_name text;
+BEGIN
+  FOREACH role_name IN ARRAY ARRAY[
+    '$model_gateway_application_role', '$data_governance_application_role',
+    '$context_governance_application_role', '$runtime_anomaly_application_role',
+    '$security_evaluation_application_role', '$pack_supply_chain_application_role',
+    '$domain_runtime_application_role', '$platform_sre_application_role'
+  ] LOOP
+    IF NOT has_database_privilege(role_name,current_database(),'CONNECT')
+       OR has_database_privilege(role_name,current_database(),'TEMP')
+       OR NOT has_schema_privilege(role_name,'public','USAGE')
+       OR has_schema_privilege(role_name,'public','CREATE')
+       OR has_table_privilege(role_name,'public.agenttrust_schema_migrations','SELECT,INSERT,UPDATE,DELETE')
+       OR NOT EXISTS (SELECT 1 FROM information_schema.role_table_grants
+                       WHERE grantee=role_name AND table_schema='public')
+       OR EXISTS (SELECT 1 FROM information_schema.role_table_grants
+                   WHERE grantee=role_name AND table_schema='public'
+                     AND privilege_type IN ('DELETE','TRUNCATE','REFERENCES','TRIGGER'))
+       OR EXISTS (SELECT 1 FROM information_schema.role_routine_grants
+                   WHERE grantee=role_name AND routine_schema='public')
+       OR EXISTS (SELECT 1 FROM information_schema.role_usage_grants
+                   WHERE grantee=role_name AND object_type='SEQUENCE') THEN
+      RAISE EXCEPTION 'MIGRATION_PRODUCTION_AUTHORITY_ROLE_POSTURE_INVALID:%', role_name;
+    END IF;
+  END LOOP;
+END
+\$production_authority_posture\$;
 SELECT pg_advisory_unlock(hashtextextended('agenttrust-production-migrations', 0));
 SQL
 

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/risk-signal.schema.json",
+  "title": "Runtime Anomaly Risk Signal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "event_id", "tenant_id", "task_id", "agent_instance_id", "kind",
+    "action", "resource", "resource_class", "value", "confidence_millionths",
+    "source_version", "occurred_at"
+  ],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly.v1" },
+    "event_id": { "$ref": "#/$defs/uuid" },
+    "tenant_id": { "$ref": "#/$defs/uuid" },
+    "task_id": { "$ref": "#/$defs/uuid" },
+    "agent_instance_id": { "$ref": "#/$defs/uuid" },
+    "kind": {
+      "enum": [
+        "TOOL", "RESOURCE", "NETWORK", "FILE", "CREDENTIAL", "POLICY_DENY",
+        "APPROVAL", "PROCESS", "TELEMETRY", "AUDIT_CONTROL"
+      ]
+    },
+    "action": { "$ref": "#/$defs/safeIdentifier" },
+    "resource": { "type": "string", "minLength": 1, "maxLength": 1024 },
+    "resource_class": { "$ref": "#/$defs/safeIdentifier" },
+    "value": {
+      "description": "Bounded safe features only; raw secrets, payloads and private reasoning are forbidden.",
+      "$ref": "#/$defs/safeValue"
+    },
+    "confidence_millionths": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "source_version": { "$ref": "#/$defs/safeIdentifier" },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "safeIdentifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "safeValue": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number", "minimum": -1000000000000000000, "maximum": 1000000000000000000 },
+        { "type": "string", "maxLength": 4096 },
+        {
+          "type": "array",
+          "maxItems": 1024,
+          "items": { "$ref": "#/$defs/safeValue" }
+        },
+        {
+          "type": "object",
+          "maxProperties": 1024,
+          "propertyNames": { "$ref": "#/$defs/safeIdentifier" },
+          "additionalProperties": { "$ref": "#/$defs/safeValue" }
+        }
+      ]
+    }
+  }
+}

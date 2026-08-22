@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/executor-request.schema.json",
+  "title": "Runtime Anomaly Executor Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command", "actor_subject", "actor_kind", "approval_ids"],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly-executor-request.v1" },
+    "command": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "command_id", "task_id", "resource", "operation", "expected_resource_version", "requested_at", "payload"],
+      "properties": {
+        "schema_version": { "const": "agenttrust.runtime-anomaly-command.v1" },
+        "tenant_id": { "type": "string", "format": "uuid" },
+        "command_id": { "type": "string", "format": "uuid" },
+        "task_id": { "type": "string", "format": "uuid" },
+        "resource": { "type": "string", "minLength": 3, "maxLength": 1024 },
+        "operation": {
+          "enum": [
+            "REGISTER_SOURCE", "REVOKE_SOURCE", "START_TRAJECTORY", "UPDATE_BASELINE",
+            "RECORD_FEEDBACK", "ACKNOWLEDGE_CASE", "RECOVER_PAUSED_TASK",
+            "COMPLETE_TRAJECTORY", "APPLY_CONTINUOUS_AUTHORIZATION"
+          ]
+        },
+        "expected_resource_version": { "type": "integer", "minimum": 0 },
+        "requested_at": { "type": "string", "format": "date-time" },
+        "payload": { "type": "object" }
+      }
+    },
+    "actor_subject": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "actor_kind": { "enum": ["HUMAN", "SERVICE"] },
+    "approval_ids": {
+      "type": "array", "maxItems": 16, "uniqueItems": true,
+      "items": { "type": "string", "format": "uuid" }
+    }
+  }
+}

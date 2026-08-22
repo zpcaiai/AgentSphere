@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/evidence-event-request.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "task_id", "idempotency_key", "expected_task_state_version", "event", "requested_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.evidence-event-request.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,128}$"},
+    "expected_task_state_version": {"type": "integer", "minimum": 0},
+    "event": {
+      "allOf": [
+        {"$ref": "../openapi/execution-v1.yaml#/components/schemas/EvidenceEventDraft"},
+        {"properties": {"event_type": {"not": {"const": "TOOL_EXECUTED"}}}}
+      ]
+    },
+    "requested_at": {"type": "string", "format": "date-time"}
+  }
+}

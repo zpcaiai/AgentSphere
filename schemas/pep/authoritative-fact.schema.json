@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/authoritative-fact.schema.json",
+  "title": "Signed authoritative fact envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "status", "tenant_id", "action_hash", "authority_uri", "version", "payload", "observed_at", "valid_until", "issuer", "key_id", "key_usage", "digest", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.authoritative-fact-envelope.v1"},
+    "kind": {"enum": ["IDENTITY", "RESOURCE_STATE", "BUDGET", "TRAJECTORY_RISK", "REGISTRY", "ENVIRONMENT"]},
+    "status": {"enum": ["VERIFIED", "UNKNOWN", "STALE", "ERROR"]},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "action_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "authority_uri": {"type": "string", "format": "uri", "pattern": "^https://", "maxLength": 2048},
+    "version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "payload": {"type": "object"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_usage": {"const": "AUTHORITATIVE_FACT"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "signature": {"type": "string", "minLength": 1, "maxLength": 256}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "IDENTITY"}}, "required": ["kind"]},
+      "then": {
+        "properties": {
+          "payload": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["subject", "uses_dev_verifier", "revocation_epoch"],
+            "properties": {
+              "subject": {"type": "string", "minLength": 1, "maxLength": 512},
+              "uses_dev_verifier": {"type": "boolean"},
+              "revocation_epoch": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

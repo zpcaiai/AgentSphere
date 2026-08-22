@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/identity/human-principal-request-binding.schema.json",
+  "title": "Human principal request binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "method",
+    "path",
+    "tenant_id",
+    "client_identity",
+    "service_subject",
+    "scope",
+    "idempotency_key",
+    "body"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.human-principal-request-binding.v1"},
+    "method": {"enum": ["POST", "PUT", "PATCH", "DELETE"]},
+    "path": {"type": "string", "pattern": "^/", "minLength": 1, "maxLength": 2048},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "client_identity": {"type": "string", "pattern": "^(DNS|URI):[^\\s]+$", "maxLength": 512},
+    "service_subject": {"$ref": "#/$defs/identifier"},
+    "scope": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "body": {}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9_.:/@-]{1,256}$"}
+  }
+}

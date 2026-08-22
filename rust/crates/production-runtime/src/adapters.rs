@@ -240,9 +240,11 @@ struct AckResponse {
 #[async_trait]
 impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
     async fn submit(&self, envelope: InboundEnvelope) -> Result<IngressResponse, GatewayError> {
+        let tenant_id = envelope.tenant_context.tenant_id.0.clone();
         self.transport
-            .post_json(
+            .post_json_tenant(
                 "/v1/actions",
+                &tenant_id,
                 &envelope,
                 envelope.idempotency_key.as_deref(),
             )
@@ -256,8 +258,9 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
         action: &agent_trust_contracts::ActionId,
     ) -> Result<ActionView, GatewayError> {
         self.transport
-            .post_json(
+            .post_json_tenant(
                 "/v1/actions/query",
+                &tenant.0,
                 &ActionQuery {
                     tenant_id: tenant,
                     owner,
@@ -276,8 +279,9 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
     ) -> Result<(), GatewayError> {
         let response: AckResponse = self
             .transport
-            .post_json(
+            .post_json_tenant(
                 "/v1/actions/cancel",
+                &tenant.0,
                 &ActionQuery {
                     tenant_id: tenant,
                     owner,
@@ -301,8 +305,9 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
     ) -> Result<(), GatewayError> {
         let response: AckResponse = self
             .transport
-            .post_json(
+            .post_json_tenant(
                 "/v1/actions/kill",
+                &tenant.0,
                 &ActionQuery {
                     tenant_id: tenant,
                     owner,
@@ -326,8 +331,9 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
     ) -> Result<Vec<String>, GatewayError> {
         let response: StreamResponse = self
             .transport
-            .post_json(
+            .post_json_tenant(
                 "/v1/tasks/stream-snapshot",
+                &tenant.0,
                 &TaskQuery {
                     tenant_id: tenant,
                     owner,
@@ -494,13 +500,28 @@ fn parse_sse_response(bytes: &[u8], maximum: usize) -> Result<ProviderStreamResp
     let mut input_tokens = 0;
     let mut output_tokens = 0;
     let mut total = 0usize;
+    let mut event_count = 0usize;
     for line in text.lines().filter_map(|line| line.strip_prefix("data: ")) {
+        event_count = event_count
+            .checked_add(1)
+            .ok_or(ModelError::StreamInvalid)?;
+        if event_count > 10_002 {
+            return Err(ModelError::StreamInvalid);
+        }
         if line == "[DONE]" {
             continue;
         }
         let value: Value = serde_json::from_str(line).map_err(|_| ModelError::StreamInvalid)?;
-        if request_id.is_none() {
-            request_id = value.get("id").and_then(Value::as_str).map(str::to_owned);
+        let event_request_id = value
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or(ModelError::StreamInvalid)?;
+        match request_id.as_deref() {
+            Some(expected) if expected != event_request_id => {
+                return Err(ModelError::StreamInvalid);
+            }
+            None => request_id = Some(event_request_id.to_owned()),
+            _ => {}
         }
         if let Some(usage) = value.get("usage") {
             input_tokens = usage
@@ -523,10 +544,24 @@ fn parse_sse_response(bytes: &[u8], maximum: usize) -> Result<ProviderStreamResp
         if content.is_empty() && finish.is_none() {
             continue;
         }
+        if chunks
+            .last()
+            .is_some_and(|chunk: &ModelStreamChunk| chunk.finish_reason.is_some())
+        {
+            return Err(ModelError::StreamInvalid);
+        }
+        // OpenAI-compatible streams commonly send finish_reason in a final event with
+        // no content. Attach it to the preceding non-empty chunk so the shared bounded
+        // stream contract keeps every chunk non-empty and exactly one terminal marker.
+        if content.is_empty() {
+            let terminal = chunks.last_mut().ok_or(ModelError::StreamInvalid)?;
+            terminal.finish_reason = finish;
+            continue;
+        }
         total = total
             .checked_add(content.len())
             .ok_or(ModelError::ResponseTooLarge)?;
-        if total > maximum || chunks.len() >= 100_000 {
+        if total > maximum || chunks.len() >= 10_000 {
             return Err(ModelError::ResponseTooLarge);
         }
         chunks.push(ModelStreamChunk {
@@ -536,7 +571,11 @@ fn parse_sse_response(bytes: &[u8], maximum: usize) -> Result<ProviderStreamResp
             finish_reason: finish,
         });
     }
-    if chunks.is_empty() {
+    if chunks.is_empty()
+        || !chunks
+            .last()
+            .is_some_and(|chunk| chunk.finish_reason.is_some())
+    {
         return Err(ModelError::StreamInvalid);
     }
     if input_tokens == 0 || output_tokens == 0 {
@@ -708,6 +747,32 @@ mod tests {
         assert_eq!(response.chunks.len(), 2);
         assert_eq!(response.output_tokens, 2);
         assert_eq!(response.chunks[1].finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn attaches_contentless_terminal_sse_event_to_last_chunk() {
+        let stream = concat!(
+            "data: {\"id\":\"request-4\",\"choices\":[{\"delta\":{\"content\":\"hello\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"request-4\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":1}}\n\n",
+            "data: [DONE]\n\n"
+        );
+        let response =
+            parse_sse_response(stream.as_bytes(), 32).unwrap_or_else(|_| panic!("stream"));
+        assert_eq!(response.chunks.len(), 1);
+        assert_eq!(response.chunks[0].bytes, b"hello");
+        assert_eq!(response.chunks[0].finish_reason.as_deref(), Some("stop"));
+    }
+
+    #[test]
+    fn rejects_sse_request_id_substitution() {
+        let stream = concat!(
+            "data: {\"id\":\"request-5\",\"choices\":[{\"delta\":{\"content\":\"a\"},\"finish_reason\":null}]}\n\n",
+            "data: {\"id\":\"other-request\",\"choices\":[{\"delta\":{\"content\":\"b\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}\n\n"
+        );
+        assert!(matches!(
+            parse_sse_response(stream.as_bytes(), 32),
+            Err(ModelError::StreamInvalid)
+        ));
     }
 
     #[test]

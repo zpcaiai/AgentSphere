@@ -558,7 +558,7 @@ pub enum McpError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_trust_contracts::{ResourceVersion, SchemaVersion};
+    use agent_trust_contracts::*;
     use ed25519_dalek::{Signer, SigningKey};
     use uuid::Uuid;
 
@@ -614,6 +614,73 @@ mod tests {
         (registry, snapshot, publisher)
     }
 
+    fn execution_authorization(
+        snapshot: &ToolSchemaSnapshot,
+        signing: &SigningKey,
+        action_hash: ActionHash,
+    ) -> ExecutionAuthorization {
+        let now = Utc::now();
+        let mut authorization = ExecutionAuthorization {
+            schema_version: SchemaVersion(EXECUTION_AUTHORIZATION_SCHEMA_VERSION.into()),
+            authorization_id: Uuid::new_v4().to_string(),
+            tenant_id: TenantId::new(),
+            task_id: TaskId::new(),
+            step_id: StepId::new(),
+            agent_instance_id: AgentInstanceId::new(),
+            action_hash,
+            tool_id: ToolId(snapshot.namespaced_tool_id.clone()),
+            tool_version: ToolVersion(snapshot.server_version.clone()),
+            tool_snapshot_hash: snapshot.snapshot_hash.clone(),
+            implementation_digest: format!("sha256:{}", "d".repeat(64)),
+            executor_profile: "mcp".into(),
+            operation: "tools/call".into(),
+            resource: format!("mcp://{}/{}", snapshot.server_id, snapshot.tool_name),
+            canonical_arguments_hash: "c".repeat(64),
+            target_profile: snapshot.server_id.clone(),
+            environment: "test".into(),
+            idempotency_key: IdempotencyKey(Uuid::new_v4().to_string()),
+            ledger_execution_id: ExecutionId::new(),
+            ledger_event_id: Uuid::new_v4().to_string(),
+            ledger_event_digest: "2".repeat(64),
+            fence_digest: "e".repeat(64),
+            policy_decision_id: "decision".into(),
+            policy_decision_digest: "3".repeat(64),
+            policy_version: PolicyVersion("policy-1".into()),
+            policy_bundle_hash: "f".repeat(64),
+            policy_input_hash: "0".repeat(64),
+            authorization_evidence_ref: String::new(),
+            authorization_evidence_digest: String::new(),
+            preapproval_digest: "1".repeat(64),
+            approval_ids: vec![],
+            approval_consumption_ref: None,
+            approval_receipt_digest: None,
+            resource_version: ResourceVersion("v1".into()),
+            sandbox_profile: "mcp".into(),
+            network_profile: "none".into(),
+            credential_profile: "opaque".into(),
+            workload_credential_id: Uuid::new_v4().to_string(),
+            workload_credential_claims_digest: "2".repeat(64),
+            workload_credential_audience: "tool-proxy".into(),
+            workload_credential_revocation_epoch: 0,
+            max_execution_ms: 1000,
+            max_result_bytes: 1024,
+            issued_at: now - chrono::Duration::seconds(1),
+            expires_at: now + chrono::Duration::minutes(1),
+            single_use: true,
+            issuer: "pep".into(),
+            key_id: "pep-key".into(),
+            key_usage: PEP_EXECUTION_AUTHORIZATION_KEY_USAGE.into(),
+            signature: String::new(),
+        };
+        authorization
+            .bind_evidence()
+            .unwrap_or_else(|_| panic!("bind evidence"));
+        authorization
+            .sign(signing)
+            .unwrap_or_else(|_| panic!("sign"));
+        authorization
+    }
+
     #[test]
     fn schema_or_binary_drift_freezes_server() {
         let (registry, snapshot, _) = install();
@@ -650,27 +717,7 @@ mod tests {
         let verifier = McpAuthorizationVerifier::default();
         verifier.add_key("pep-key".into(), "pep".into(), pep.verifying_key());
         let now = Utc::now();
-        let mut auth = ExecutionAuthorization {
-            schema_version: SchemaVersion("agenttrust.policy.v1".into()),
-            authorization_id: Uuid::new_v4().to_string(),
-            action_hash: ActionHash("a".repeat(64)),
-            tool_snapshot_hash: snapshot.snapshot_hash.clone(),
-            policy_decision_id: "decision".into(),
-            approval_ids: vec![],
-            resource_version: ResourceVersion("v1".into()),
-            sandbox_profile: "mcp".into(),
-            network_profile: "none".into(),
-            credential_profile: "opaque".into(),
-            max_execution_ms: 1000,
-            max_result_bytes: 1024,
-            issued_at: now - chrono::Duration::seconds(1),
-            expires_at: now + chrono::Duration::minutes(1),
-            single_use: true,
-            issuer: "pep".into(),
-            key_id: "pep-key".into(),
-            signature: String::new(),
-        };
-        auth.sign(&pep).unwrap_or_else(|_| panic!("sign"));
+        let auth = execution_authorization(&snapshot, &pep, ActionHash("a".repeat(64)));
         assert!(
             verifier
                 .verify_and_consume(&auth, &auth.action_hash, &snapshot.snapshot_hash, now)
@@ -688,28 +735,7 @@ mod tests {
         let pep = SigningKey::from_bytes(&[43u8; 32]);
         let verifier = Arc::new(McpAuthorizationVerifier::default());
         verifier.add_key("pep-key".into(), "pep".into(), pep.verifying_key());
-        let now = Utc::now();
-        let mut auth = ExecutionAuthorization {
-            schema_version: SchemaVersion("agenttrust.policy.v1".into()),
-            authorization_id: Uuid::new_v4().to_string(),
-            action_hash: ActionHash("b".repeat(64)),
-            tool_snapshot_hash: snapshot.snapshot_hash.clone(),
-            policy_decision_id: "decision".into(),
-            approval_ids: vec![],
-            resource_version: ResourceVersion("v1".into()),
-            sandbox_profile: "mcp".into(),
-            network_profile: "none".into(),
-            credential_profile: "opaque".into(),
-            max_execution_ms: 1000,
-            max_result_bytes: 1024,
-            issued_at: now - chrono::Duration::seconds(1),
-            expires_at: now + chrono::Duration::minutes(1),
-            single_use: true,
-            issuer: "pep".into(),
-            key_id: "pep-key".into(),
-            signature: String::new(),
-        };
-        auth.sign(&pep).unwrap_or_else(|_| panic!("sign"));
+        let auth = execution_authorization(&snapshot, &pep, ActionHash("b".repeat(64)));
         let proxy = McpSecurityProxy::new(registry, verifier, Arc::new(Transport), 1)
             .unwrap_or_else(|_| panic!("proxy"));
         let result = proxy

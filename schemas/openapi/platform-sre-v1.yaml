@@ -1,0 +1,241 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Platform SRE Authority
+  version: 1.0.0
+  description: >-
+    Strong-human ingress and runtime-only executor boundary for SLO, topology, backup/restore,
+    DR, chaos, capacity/load, upgrade/rollback, cost and observability governance. Signed engine
+    reports are explicitly not production certificates.
+servers:
+  - url: https://platform-sre.internal:8097
+paths:
+  /ready:
+    get:
+      operationId: platformSreReady
+      security:
+        - mutualTLS: []
+      responses:
+        '200':
+          description: All mandatory dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: ../platform-sre/sre-readiness.schema.json
+        '503':
+          $ref: '#/components/responses/Error'
+  /v1/sre/actions:
+    post:
+      operationId: submitPlatformSreAction
+      security:
+        - mutualTLS: []
+          bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: X-AgentTrust-Human-Assertion
+          in: header
+          required: true
+          schema: {type: string, minLength: 64, maxLength: 87384}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../platform-sre/sre-command.schema.json
+      responses:
+        '202':
+          description: Canonical Action admitted; execution is still pending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionReceipt'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/sre/executions:
+    post:
+      operationId: executePlatformSreMutation
+      security:
+        - mutualTLS: []
+          bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ActionHash'
+        - $ref: '#/components/parameters/LedgerExecutionId'
+        - $ref: '#/components/parameters/LedgerEntryId'
+        - $ref: '#/components/parameters/LedgerEntryDigest'
+        - $ref: '#/components/parameters/FenceDigest'
+        - $ref: '#/components/parameters/ResourceVersion'
+        - $ref: '#/components/parameters/TraceId'
+        - $ref: '#/components/parameters/PolicyDecisionId'
+        - $ref: '#/components/parameters/PolicyDecisionDigest'
+        - $ref: '#/components/parameters/AuthorizationEvidenceRef'
+        - $ref: '#/components/parameters/AuthorizationEvidenceDigest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../platform-sre/sre-executor-request.schema.json
+      responses:
+        '200':
+          description: Mutation and authoritative Evidence delivery completed.
+          content:
+            application/json:
+              schema:
+                $ref: ../platform-sre/sre-mutation-result.schema.json
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /v1/authoritative/sre/resources:
+    get:
+      operationId: listAuthoritativeSreResources
+      security:
+        - mutualTLS: []
+          bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: after
+          in: query
+          required: false
+          schema: {type: string, minLength: 1, maxLength: 2048}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      responses:
+        '200':
+          description: Tenant-scoped resource-fence page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourcePage'
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+components:
+  securitySchemes:
+    mutualTLS: {type: mutualTLS}
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    TenantId:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:/-]+$'}
+    ActionHash:
+      name: X-AgentTrust-Action-Hash
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    LedgerExecutionId:
+      name: X-AgentTrust-Ledger-Execution-Id
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    LedgerEntryId:
+      name: X-AgentTrust-Ledger-Entry-Id
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    LedgerEntryDigest:
+      name: X-AgentTrust-Ledger-Entry-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    FenceDigest:
+      name: X-AgentTrust-Fence-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    ResourceVersion:
+      name: X-AgentTrust-Resource-Version
+      in: header
+      required: true
+      schema: {type: integer, minimum: 0}
+    TraceId:
+      name: X-AgentTrust-Trace-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 128}
+    PolicyDecisionId:
+      name: X-AgentTrust-Policy-Decision-Id
+      in: header
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 256}
+    PolicyDecisionDigest:
+      name: X-AgentTrust-Policy-Decision-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+    AuthorizationEvidenceRef:
+      name: X-AgentTrust-Authorization-Evidence-Ref
+      in: header
+      required: true
+      schema: {type: string, minLength: 12, maxLength: 2048, pattern: '^(evidence://|urn:agenttrust:evidence:)'}
+    AuthorizationEvidenceDigest:
+      name: X-AgentTrust-Authorization-Evidence-Digest
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Digest'}
+  schemas:
+    Uuid: {type: string, format: uuid, pattern: '^[0-9a-f-]{36}$'}
+    Digest: {type: string, pattern: '^[0-9a-f]{64}$'}
+    ActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: {const: agenttrust.sre-action-receipt.v1}
+        action_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        accepted: {const: true}
+        execution_pending: {const: true}
+        ingress_digest: {$ref: '#/components/schemas/Digest'}
+        ledger_evidence_ref: {type: string, pattern: '^(evidence://|urn:agenttrust:evidence:)'}
+        ledger_evidence_digest: {$ref: '#/components/schemas/Digest'}
+    ResourceSummary:
+      type: object
+      additionalProperties: false
+      required: [resource, resource_version, action_hash, ledger_execution_id, ledger_event_id, ledger_event_digest, fence_digest, updated_at]
+      properties:
+        resource: {type: string, maxLength: 64, pattern: '^sre:(slo|alert|topology|backup|restore|dr|chaos|load|rollout|cost-capacity|observability)/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'}
+        resource_version: {type: integer, minimum: 1}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        ledger_execution_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_digest: {$ref: '#/components/schemas/Digest'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        updated_at: {type: string, format: date-time}
+    ResourcePage:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, authoritative, items, next_after, data_digest]
+      properties:
+        schema_version: {const: agenttrust.sre-resource-page.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        authoritative: {const: true}
+        items: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/ResourceSummary'}}
+        next_after: {oneOf: [{type: string, maxLength: 64, pattern: '^sre:(slo|alert|topology|backup|restore|dr|chaos|load|rollout|cost-capacity|observability)/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'}, {type: 'null'}]}
+        data_digest: {$ref: '#/components/schemas/Digest'}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: {const: agenttrust.sre-error.v1}
+        error: {type: string, pattern: '^SRE_', maxLength: 128}
+  responses:
+    Error:
+      description: Stable, secret-free failure.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}

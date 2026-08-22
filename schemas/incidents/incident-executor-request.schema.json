@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/incidents/incident-executor-request.schema.json",
+  "title": "Incident authority executor request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command", "actor_subject", "actor_kind", "principal_assertion_digest", "approval_ids"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.incident-executor-request.v1"},
+    "command": {"$ref": "incident-command.schema.json"},
+    "actor_subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "actor_kind": {"enum": ["HUMAN", "WORKLOAD"]},
+    "principal_assertion_digest": {"anyOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "approval_ids": {
+      "type": "array",
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"actor_kind": {"const": "HUMAN"}}},
+      "then": {"properties": {"principal_assertion_digest": {"$ref": "#/$defs/digest"}}},
+      "else": {"properties": {"principal_assertion_digest": {"type": "null"}, "command": {"properties": {"operation": {"const": "DETECT"}}}}}
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/policy-admin/policy-command.schema.json",
+  "title": "Governed Policy Lifecycle Command",
+  "oneOf": [
+    {"$ref": "#/$defs/create_draft"},
+    {"$ref": "#/$defs/validate"},
+    {"$ref": "#/$defs/simulate"},
+    {"$ref": "#/$defs/shadow"},
+    {"$ref": "#/$defs/impact"},
+    {"$ref": "#/$defs/approve"},
+    {"$ref": "#/$defs/sign"},
+    {"$ref": "#/$defs/promote"},
+    {"$ref": "#/$defs/rollback"},
+    {"$ref": "#/$defs/deprecate"},
+    {"$ref": "#/$defs/create_exception"},
+    {"$ref": "#/$defs/revoke_exception"}
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "command_id", "policy_id", "operation", "expected_resource_version", "payload", "requested_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.policy-command.v1"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "command_id": {"type": "string", "format": "uuid"},
+        "policy_id": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,256}$"},
+        "operation": {"type": "string"},
+        "expected_resource_version": {"type": "integer", "minimum": 0},
+        "payload": {"type": "object"},
+        "requested_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "create_draft": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "CREATE_DRAFT"}, "payload": {"$ref": "#/$defs/draft_payload"}}}]},
+    "validate": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "VALIDATE"}, "payload": {"$ref": "#/$defs/empty_payload"}}}]},
+    "simulate": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "SIMULATE"}, "payload": {"$ref": "#/$defs/simulation_payload"}}}]},
+    "shadow": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "SHADOW_EVALUATE"}, "payload": {"$ref": "#/$defs/simulation_payload"}}}]},
+    "impact": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "IMPACT_ANALYZE"}, "payload": {"$ref": "#/$defs/impact_payload"}}}]},
+    "approve": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "APPROVE"}, "payload": {"$ref": "#/$defs/approval_payload"}}}]},
+    "sign": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "SIGN"}, "payload": {"$ref": "#/$defs/empty_payload"}}}]},
+    "promote": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "PROMOTE"}, "payload": {"$ref": "#/$defs/promotion_payload"}}}]},
+    "rollback": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "ROLLBACK"}, "payload": {"$ref": "#/$defs/rollback_payload"}}}]},
+    "deprecate": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "DEPRECATE"}, "payload": {"$ref": "#/$defs/deprecate_payload"}}}]},
+    "create_exception": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "CREATE_EXCEPTION"}, "payload": {"$ref": "#/$defs/create_exception_payload"}}}]},
+    "revoke_exception": {"allOf": [{"$ref": "#/$defs/base"}, {"properties": {"operation": {"const": "REVOKE_EXCEPTION"}, "payload": {"$ref": "#/$defs/revoke_exception_payload"}}}]},
+    "empty_payload": {"type": "object", "additionalProperties": false, "maxProperties": 0},
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "string_set": {"type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 2048}},
+    "draft_payload": {
+      "type": "object", "additionalProperties": false, "required": ["source"],
+      "properties": {"source": {"$ref": "#/$defs/source"}}
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "source_id", "tenant_id", "version", "rules", "default_decision", "author", "source_digest", "created_at"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.policy-admin.v1"},
+        "source_id": {"type": "string", "pattern": "^[A-Za-z0-9._:/-]{1,256}$"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "rules": {"type": "array", "minItems": 1, "maxItems": 10000, "items": {"$ref": "policy-bundle.schema.json#/$defs/rule"}},
+        "default_decision": {"enum": ["DENY", "KILL", "PAUSE", "REQUIRE_APPROVAL"]},
+        "author": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,256}$"},
+        "source_digest": {"$ref": "#/$defs/digest"},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "simulation_payload": {
+      "type": "object", "additionalProperties": false, "required": ["baseline_bundle_digest", "actions"],
+      "properties": {
+        "baseline_bundle_digest": {"$ref": "#/$defs/digest"},
+        "actions": {"type": "array", "minItems": 1, "maxItems": 10000, "items": {"$ref": "#/$defs/policy_action"}}
+      }
+    },
+    "policy_action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["action_id", "tenant_id", "agent_id", "subject", "tool", "resource", "risk"],
+      "properties": {
+        "action_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "agent_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "subject": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "tool": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "resource": {"type": "string", "minLength": 1, "maxLength": 2048},
+        "risk": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]}
+      }
+    },
+    "impact_payload": {"type": "object", "additionalProperties": false, "required": ["simulation_id"], "properties": {"simulation_id": {"type": "string", "format": "uuid"}}},
+    "approval_payload": {"type": "object", "additionalProperties": false, "required": ["decision", "review_digest"], "properties": {"decision": {"const": "APPROVE"}, "review_digest": {"$ref": "#/$defs/digest"}}},
+    "promotion_payload": {"type": "object", "additionalProperties": false, "required": ["bundle_digest", "impact_report_digest", "environment"], "properties": {"bundle_digest": {"$ref": "#/$defs/digest"}, "impact_report_digest": {"$ref": "#/$defs/digest"}, "environment": {"enum": ["DEV", "STAGING", "CANARY", "PRODUCTION"]}}},
+    "rollback_payload": {"type": "object", "additionalProperties": false, "required": ["target_bundle_digest", "reason_digest", "environment"], "properties": {"target_bundle_digest": {"$ref": "#/$defs/digest"}, "reason_digest": {"$ref": "#/$defs/digest"}, "environment": {"enum": ["DEV", "STAGING", "CANARY", "PRODUCTION"]}}},
+    "deprecate_payload": {"type": "object", "additionalProperties": false, "required": ["bundle_digest", "reason_digest"], "properties": {"bundle_digest": {"$ref": "#/$defs/digest"}, "reason_digest": {"$ref": "#/$defs/digest"}}},
+    "create_exception_payload": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exception_id", "owner_subject", "scope", "reason_digest", "compensating_controls", "approval_ids", "expires_at"],
+      "properties": {
+        "exception_id": {"type": "string", "format": "uuid"},
+        "owner_subject": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,256}$"},
+        "scope": {"$ref": "#/$defs/string_set"},
+        "reason_digest": {"$ref": "#/$defs/digest"},
+        "compensating_controls": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "approval_ids": {"type": "array", "minItems": 2, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "revoke_exception_payload": {"type": "object", "additionalProperties": false, "required": ["exception_id", "reason_digest"], "properties": {"exception_id": {"type": "string", "format": "uuid"}, "reason_digest": {"$ref": "#/$defs/digest"}}}
+  }
+}

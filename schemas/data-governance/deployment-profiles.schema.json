@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-governance/deployment-profiles.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "policy_version", "key_id", "issued_at", "expires_at",
+    "profiles", "signature_algorithm", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-deployment-profiles.v1"},
+    "policy_version": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,256}$"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,256}$"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/profile"}
+    },
+    "signature_algorithm": {"const": "Ed25519"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+  },
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id", "mode", "allowed_external_endpoints", "telemetry_export",
+        "update_channel", "maximum_classification"
+      ],
+      "properties": {
+        "profile_id": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$"},
+        "mode": {"enum": ["SAAS", "VPC", "ON_PREM", "OFFLINE", "HYBRID"]},
+        "allowed_external_endpoints": {
+          "type": "array", "uniqueItems": true, "maxItems": 100,
+          "items": {"type": "string", "format": "uri", "pattern": "^https://"}
+        },
+        "telemetry_export": {"type": "boolean"},
+        "update_channel": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$"},
+        "maximum_classification": {
+          "enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "OFFLINE"}}, "required": ["mode"]},
+          "then": {
+            "properties": {
+              "allowed_external_endpoints": {"maxItems": 0},
+              "telemetry_export": {"const": false},
+              "update_channel": {"const": "offline-bundle"}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

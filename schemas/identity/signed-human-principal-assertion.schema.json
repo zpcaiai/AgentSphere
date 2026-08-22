@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/identity/signed-human-principal-assertion.schema.json",
+  "title": "Request-bound signed human principal assertion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tenant_id",
+    "subject",
+    "roles",
+    "project_ids",
+    "approval_ids",
+    "owned_resources",
+    "strong_auth",
+    "authentication_time",
+    "authentication_context",
+    "issuer",
+    "audience",
+    "issued_at",
+    "expires_at",
+    "jti",
+    "request_digest",
+    "client_identity",
+    "service_subject",
+    "scope",
+    "key_id",
+    "key_usage",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-human-principal-assertion.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "subject": {"$ref": "#/$defs/identifier"},
+    "roles": {"$ref": "#/$defs/identifiers64"},
+    "project_ids": {"$ref": "#/$defs/identifiers1024"},
+    "approval_ids": {"$ref": "#/$defs/identifiers1024"},
+    "owned_resources": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 1024,
+      "items": {"type": "string", "minLength": 1, "maxLength": 2048}
+    },
+    "strong_auth": {"type": "boolean"},
+    "authentication_time": {"type": "string", "format": "date-time"},
+    "authentication_context": {"$ref": "#/$defs/identifier"},
+    "issuer": {"$ref": "#/$defs/identifier"},
+    "audience": {"type": "string", "minLength": 1, "maxLength": 256},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "jti": {"type": "string", "format": "uuid"},
+    "request_digest": {"$ref": "#/$defs/digest"},
+    "client_identity": {"type": "string", "pattern": "^(DNS|URI):[^\\s]+$", "maxLength": 512},
+    "service_subject": {"$ref": "#/$defs/identifier"},
+    "scope": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9_.:/@-]{1,128}$"},
+    "key_usage": {"const": "HUMAN_PRINCIPAL_ASSERTION"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9_.:/@-]{1,256}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifiers64": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/identifier"}
+    },
+    "identifiers1024": {
+      "type": "array",
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/identifier"}
+    }
+  }
+}

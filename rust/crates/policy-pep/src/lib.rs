@@ -1,9 +1,17 @@
 //! Fail-closed policy enforcement, obligations, minimal approval, and execution grants.
 
+pub mod activation;
+pub mod authority;
+pub mod governance;
+pub mod postgres;
+pub mod server;
+
 use agent_trust_action_ir::{CanonicalAction, PolicyInput, hash as action_hash};
 use agent_trust_contracts::{
-    ActionHash, Decision, EffectClass, ExecutionAuthorization, MinimalApprovalGrant, Obligation,
-    PolicyDecision, ResourceVersion, RiskLevel, SchemaVersion,
+    ActionHash, Decision, EXECUTION_AUTHORIZATION_SCHEMA_VERSION, EffectClass,
+    ExecutionAuthorization, ExecutionId, IdempotencyKey, MinimalApprovalGrant, Obligation,
+    PEP_EXECUTION_AUTHORIZATION_KEY_USAGE, PolicyDecision, ResourceVersion, RiskLevel,
+    SchemaVersion,
 };
 use agent_trust_registry::{ResolvedToolSnapshot, ToolRegistry};
 use async_trait::async_trait;
@@ -17,13 +25,22 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub const POLICY_SCHEMA_VERSION: &str = "agenttrust.policy.v1";
+pub use agent_trust_contracts::EnforcementStage;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum EnforcementStage {
-    PreApproval,
-    PreExecution,
-    Continuous,
+#[derive(Debug, Clone)]
+pub struct ExecutionAuthorizationContext {
+    pub ledger_execution_id: ExecutionId,
+    pub ledger_event_id: String,
+    pub ledger_event_digest: String,
+    pub fence_digest: String,
+    pub target_profile: String,
+    pub preapproval_digest: String,
+    pub approval_consumption_ref: Option<String>,
+    pub approval_receipt_digest: Option<String>,
+    pub workload_credential_id: String,
+    pub workload_credential_claims_digest: String,
+    pub workload_credential_audience: String,
+    pub workload_credential_revocation_epoch: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +52,7 @@ pub struct EnforcementRequest {
     pub policy_input: PolicyInput,
     pub approval: Option<MinimalApprovalGrant>,
     pub idempotency_key: Option<String>,
+    pub execution_context: Option<ExecutionAuthorizationContext>,
     pub identity_uses_dev_verifier: bool,
     pub resource_state_fresh: bool,
     pub now: DateTime<Utc>,
@@ -235,6 +253,9 @@ impl MinimalApprovalKernel {
 
 #[derive(Debug, Clone)]
 pub enum EnforcementOutcome {
+    Denied {
+        decision: PolicyDecision,
+    },
     PreApprovalPassed {
         decision: PolicyDecision,
         receipts: Vec<EnforcementReceipt>,
@@ -264,7 +285,7 @@ pub struct PolicyEnforcementPoint<R: ToolRegistry, P: PolicyDecisionPointPort> {
     issuer: String,
     key_id: String,
     signing_key: SigningKey,
-    allowed_policy_bundles: BTreeSet<String>,
+    active_policy_bundle_digest: String,
     runtime_handler: Option<Arc<dyn ObligationHandler>>,
 }
 
@@ -276,7 +297,7 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
         issuer: String,
         key_id: String,
         signing_key: SigningKey,
-        allowed_policy_bundles: BTreeSet<String>,
+        active_policy_bundle_digest: String,
     ) -> Self {
         Self {
             registry,
@@ -285,7 +306,7 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
             issuer,
             key_id,
             signing_key,
-            allowed_policy_bundles,
+            active_policy_bundle_digest,
             runtime_handler: None,
         }
     }
@@ -307,14 +328,14 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
             .pdp
             .evaluate(&request.policy_input, request.stage)
             .await?;
-        validate_decision(
+        validate_policy_decision(
             &decision,
             &input_hash,
             request.now,
-            &self.allowed_policy_bundles,
+            &self.active_policy_bundle_digest,
         )?;
         if matches!(decision.decision, Decision::Deny) {
-            return Err(PolicyError::LocalGuardDenied);
+            return Ok(EnforcementOutcome::Denied { decision });
         }
 
         let approval_required = decision.decision == Decision::RequireApproval
@@ -366,6 +387,41 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
     }
 
     async fn local_hard_guard(&self, request: &EnforcementRequest) -> Result<(), PolicyError> {
+        if (request.stage == EnforcementStage::PreExecution) != request.execution_context.is_some()
+        {
+            return Err(PolicyError::LocalGuardDenied);
+        }
+        if let Some(context) = &request.execution_context {
+            if Uuid::parse_str(&context.ledger_execution_id.0).is_err()
+                || Uuid::parse_str(&context.ledger_event_id).is_err()
+                || !is_lower_hex_digest(&context.ledger_event_digest)
+                || !is_lower_hex_digest(&context.fence_digest)
+                || !is_lower_hex_digest(&context.preapproval_digest)
+                || context.target_profile.is_empty()
+                || context.target_profile.len() > 256
+                || Uuid::parse_str(&context.workload_credential_id).is_err()
+                || !is_lower_hex_digest(&context.workload_credential_claims_digest)
+                || context.workload_credential_audience != "tool-proxy"
+                || context
+                    .approval_receipt_digest
+                    .as_deref()
+                    .is_some_and(|digest| !is_lower_hex_digest(digest))
+                || context
+                    .approval_consumption_ref
+                    .as_deref()
+                    .is_some_and(|reference| reference.is_empty() || reference.len() > 2_048)
+            {
+                return Err(PolicyError::ExecutionAuthInvalid);
+            }
+        }
+        if request.stage == EnforcementStage::PreExecution
+            && !request
+                .idempotency_key
+                .as_deref()
+                .is_some_and(valid_idempotency_key)
+        {
+            return Err(PolicyError::ExecutionAuthInvalid);
+        }
         if action_hash(&request.action).map_err(|_| PolicyError::LocalGuardDenied)?
             != request.action_hash
         {
@@ -483,29 +539,97 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
         request: &EnforcementRequest,
         decision: &PolicyDecision,
     ) -> Result<ExecutionAuthorization, PolicyError> {
+        let context = request
+            .execution_context
+            .as_ref()
+            .ok_or(PolicyError::ExecutionAuthInvalid)?;
+        let idempotency_key = request
+            .idempotency_key
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .ok_or(PolicyError::ExecutionAuthInvalid)?;
+        let approval_present = request.approval.is_some();
+        if approval_present
+            != (context.approval_consumption_ref.is_some()
+                && context.approval_receipt_digest.is_some())
+            || context.approval_consumption_ref.is_some()
+                != context.approval_receipt_digest.is_some()
+        {
+            return Err(PolicyError::ExecutionAuthInvalid);
+        }
         let obligations = ObligationConfig::from_obligations(&decision.obligations, &request.tool);
         let expires_at = request.now + chrono::Duration::seconds(60);
         let mut authorization = ExecutionAuthorization {
-            schema_version: SchemaVersion(POLICY_SCHEMA_VERSION.into()),
+            schema_version: SchemaVersion(EXECUTION_AUTHORIZATION_SCHEMA_VERSION.into()),
             authorization_id: Uuid::new_v4().to_string(),
+            tenant_id: request.action.environment.tenant_id.clone(),
+            task_id: request.action.task_id.clone(),
+            step_id: request.action.step_id.clone(),
+            agent_instance_id: request.action.agent.agent_instance_id.clone(),
             action_hash: request.action_hash.clone(),
+            tool_id: request.tool.tool_id.clone(),
+            tool_version: request.tool.tool_version.clone(),
             tool_snapshot_hash: request.tool.snapshot_hash.clone(),
+            implementation_digest: request.tool.implementation.digest.clone(),
+            executor_profile: request.tool.executor_profile.clone(),
+            operation: request.action.intent.operation.clone(),
+            resource: request.action.resource.locator.clone(),
+            canonical_arguments_hash: hex_string(
+                Sha256::digest(
+                    serde_jcs::to_vec(request.action.arguments())
+                        .map_err(|_| PolicyError::ExecutionAuthInvalid)?,
+                )
+                .as_slice(),
+            ),
+            target_profile: context.target_profile.clone(),
+            environment: request.action.environment.deployment.clone(),
+            idempotency_key: IdempotencyKey(idempotency_key.to_string()),
+            ledger_execution_id: context.ledger_execution_id.clone(),
+            ledger_event_id: context.ledger_event_id.clone(),
+            ledger_event_digest: context.ledger_event_digest.clone(),
+            fence_digest: context.fence_digest.clone(),
             policy_decision_id: decision.decision_id.clone(),
+            policy_decision_digest: hex_string(
+                Sha256::digest(
+                    serde_jcs::to_vec(decision).map_err(|_| PolicyError::ExecutionAuthInvalid)?,
+                )
+                .as_slice(),
+            ),
+            policy_version: decision.policy_version.clone(),
+            policy_bundle_hash: decision.policy_bundle_hash.clone(),
+            policy_input_hash: decision.input_hash.clone(),
+            authorization_evidence_ref: String::new(),
+            authorization_evidence_digest: String::new(),
+            preapproval_digest: context.preapproval_digest.clone(),
             approval_ids: request
                 .approval
                 .iter()
                 .map(|grant| grant.approval_id.clone())
                 .collect(),
+            approval_consumption_ref: context.approval_consumption_ref.clone(),
+            approval_receipt_digest: context.approval_receipt_digest.clone(),
             resource_version: ResourceVersion(
                 request
                     .action
                     .current_state_version
                     .clone()
+                    .or_else(|| {
+                        request
+                            .action
+                            .resource
+                            .version
+                            .as_ref()
+                            .map(|version| version.0.clone())
+                    })
                     .unwrap_or_else(|| "unversioned-read".into()),
             ),
             sandbox_profile: obligations.sandbox_profile,
             network_profile: obligations.network_profile,
             credential_profile: obligations.credential_profile,
+            workload_credential_id: context.workload_credential_id.clone(),
+            workload_credential_claims_digest: context.workload_credential_claims_digest.clone(),
+            workload_credential_audience: context.workload_credential_audience.clone(),
+            workload_credential_revocation_epoch: context.workload_credential_revocation_epoch,
             max_execution_ms: obligations
                 .max_execution_ms
                 .min(request.tool.limits.timeout_ms),
@@ -517,8 +641,12 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
             single_use: true,
             issuer: self.issuer.clone(),
             key_id: self.key_id.clone(),
+            key_usage: PEP_EXECUTION_AUTHORIZATION_KEY_USAGE.into(),
             signature: String::new(),
         };
+        authorization
+            .bind_evidence()
+            .map_err(|_| PolicyError::ExecutionAuthInvalid)?;
         authorization
             .sign(&self.signing_key)
             .map_err(|_| PolicyError::ExecutionAuthInvalid)?;
@@ -594,17 +722,17 @@ pub fn policy_input_hash(input: &PolicyInput) -> Result<String, PolicyError> {
     ))
 }
 
-fn validate_decision(
+pub fn validate_policy_decision(
     decision: &PolicyDecision,
     input_hash: &str,
     now: DateTime<Utc>,
-    allowed_bundles: &BTreeSet<String>,
+    active_bundle_digest: &str,
 ) -> Result<(), PolicyError> {
     if decision.schema_version.0 != POLICY_SCHEMA_VERSION
         || decision.input_hash != input_hash
         || now < decision.evaluated_at
         || now >= decision.expires_at
-        || !allowed_bundles.contains(&decision.policy_bundle_hash)
+        || decision.policy_bundle_hash != active_bundle_digest
     {
         return Err(PolicyError::DecisionInvalid);
     }
@@ -613,6 +741,21 @@ fn validate_decision(
 
 fn hex_string(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn is_lower_hex_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn valid_idempotency_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -669,7 +812,7 @@ mod tests {
                 decision: Decision::Allow,
                 reason_codes: vec!["ALLOW_TEST".into()],
                 policy_version: PolicyVersion("p1".into()),
-                policy_bundle_hash: "bundle".into(),
+                policy_bundle_hash: "b".repeat(64),
                 input_hash: policy_input_hash(input)?,
                 evaluated_at: Utc::now() - chrono::Duration::seconds(1),
                 expires_at: Utc::now() + chrono::Duration::minutes(1),
@@ -825,7 +968,11 @@ mod tests {
             },
             credential_refs: vec![],
             requested_at: Utc::now(),
-            extensions: BTreeMap::new(),
+            extensions: if effect == EffectClass::Pure {
+                BTreeMap::new()
+            } else {
+                BTreeMap::from([("x-plan-hash".into(), Value::String("b".repeat(64)))])
+            },
         };
         let action =
             normalize(draft, &NormalizationContext::default()).unwrap_or_else(|_| panic!("action"));
@@ -862,11 +1009,21 @@ mod tests {
                 tool: snapshot,
                 policy_input: input,
                 approval: None,
-                idempotency_key: if effect == EffectClass::Pure {
-                    None
-                } else {
-                    Some("key".into())
-                },
+                idempotency_key: Some("key".into()),
+                execution_context: Some(ExecutionAuthorizationContext {
+                    ledger_execution_id: ExecutionId::new(),
+                    ledger_event_id: Uuid::new_v4().to_string(),
+                    ledger_event_digest: "9".repeat(64),
+                    fence_digest: "f".repeat(64),
+                    target_profile: "repo-primary".into(),
+                    preapproval_digest: "a".repeat(64),
+                    approval_consumption_ref: None,
+                    approval_receipt_digest: None,
+                    workload_credential_id: Uuid::new_v4().to_string(),
+                    workload_credential_claims_digest: "c".repeat(64),
+                    workload_credential_audience: "tool-proxy".into(),
+                    workload_credential_revocation_epoch: 0,
+                }),
                 identity_uses_dev_verifier: false,
                 resource_state_fresh: true,
                 now: Utc::now(),
@@ -884,7 +1041,7 @@ mod tests {
             "pep".into(),
             "key".into(),
             SigningKey::from_bytes(&[2u8; 32]),
-            BTreeSet::from(["bundle".into()]),
+            "b".repeat(64),
         );
         let result = pep
             .enforce(request)
@@ -910,7 +1067,7 @@ mod tests {
             "pep".into(),
             "key".into(),
             SigningKey::from_bytes(&[2u8; 32]),
-            BTreeSet::from(["bundle".into()]),
+            "b".repeat(64),
         );
         assert!(matches!(
             pep.enforce(request).await,
@@ -929,7 +1086,7 @@ mod tests {
             "pep".into(),
             "key".into(),
             SigningKey::from_bytes(&[2u8; 32]),
-            BTreeSet::from(["bundle".into()]),
+            "b".repeat(64),
         );
         assert!(matches!(
             pep.enforce(request).await,

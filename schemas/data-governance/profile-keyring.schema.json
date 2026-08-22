@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/data-governance/profile-keyring.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "keys", "revoked_key_ids"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.data-profile-keyring.v1"},
+    "keys": {
+      "type": "object", "minProperties": 1, "maxProperties": 100,
+      "propertyNames": {"pattern": "^[A-Za-z0-9._:-]{1,256}$"},
+      "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9+/]{43}=$"}
+    },
+    "revoked_key_ids": {
+      "type": "array", "uniqueItems": true, "maxItems": 100,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,256}$"}
+    }
+  }
+}

@@ -1,1 +1,26 @@
-{"schema_version":"agenttrust.policy-admin-config.v1","profile":"production","fail_closed":true,"static_analysis_required":true,"simulation_has_side_effects":false,"promotion_approvals":2,"canary_required":true,"automatic_rollback":true,"p0_p1_exceptions_allowed":false}
+{
+  "schema_version": "agenttrust.policy-admin-config.v1",
+  "profile": "production",
+  "data_port": 8090,
+  "management_port": 9101,
+  "readiness_schema": "agenttrust.policy-admin-readiness.v1",
+  "fail_closed": true,
+  "static_analysis_required": true,
+  "simulation_has_side_effects": false,
+  "promotion_approvals": 2,
+  "canary_required": true,
+  "automatic_rollback": true,
+  "p0_p1_exceptions_allowed": false,
+  "canonical_action_required": true,
+  "pep_authorization_required": true,
+  "ledger_binding_required": true,
+  "evidence_outbox_required": true,
+  "mtls_single_san_required": true,
+  "route_scopes": ["policy:mutate", "policy:execute", "policy:query"],
+  "exception_expiry_scan_seconds": 30,
+  "lifecycle_operations": [
+    "CREATE_DRAFT", "VALIDATE", "SIMULATE", "SHADOW_EVALUATE", "IMPACT_ANALYZE",
+    "APPROVE", "SIGN", "PROMOTE", "ROLLBACK", "DEPRECATE", "CREATE_EXCEPTION",
+    "REVOKE_EXCEPTION"
+  ]
+}

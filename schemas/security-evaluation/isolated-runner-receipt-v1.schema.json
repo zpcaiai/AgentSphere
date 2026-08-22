@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/security-evaluation/isolated-runner-receipt-v1.schema.json",
+  "title": "Isolated security runner receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "receipt_id", "tenant_id", "campaign_id", "operation",
+    "environment_profile", "environment_attestation_digest", "request_digest", "result_digest",
+    "maximum_steps", "maximum_requests", "maximum_tokens", "maximum_cost_microunits",
+    "observed_steps", "observed_requests", "observed_tokens", "observed_cost_microunits",
+    "cleanup_receipt_digest", "production_access_detected", "physical_side_effect_detected",
+    "kill_switch_armed", "completed_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.security-eval-runner-receipt.v1"},
+    "receipt_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "campaign_id": {"type": "string", "format": "uuid"},
+    "operation": {"enum": ["START_CAMPAIGN", "ABORT_CAMPAIGN", "TRIP_KILL_SWITCH"]},
+    "environment_profile": {"type": "string", "pattern": "^isolated-[A-Za-z0-9._-]{1,96}$"},
+    "environment_attestation_digest": {"$ref": "#/$defs/digest"},
+    "request_digest": {"$ref": "#/$defs/digest"},
+    "result_digest": {"$ref": "#/$defs/digest"},
+    "maximum_steps": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "maximum_requests": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "maximum_tokens": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+    "maximum_cost_microunits": {"type": "integer", "minimum": 1, "maximum": 1000000000000},
+    "observed_steps": {"type": "integer", "minimum": 0, "maximum": 100000},
+    "observed_requests": {"type": "integer", "minimum": 0, "maximum": 100000},
+    "observed_tokens": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+    "observed_cost_microunits": {"type": "integer", "minimum": 0, "maximum": 1000000000000},
+    "cleanup_receipt_digest": {"$ref": "#/$defs/digest"},
+    "production_access_detected": {"const": false},
+    "physical_side_effect_detected": {"const": false},
+    "kill_switch_armed": {"const": true},
+    "completed_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

@@ -1435,7 +1435,7 @@ mod tests {
             },
             registry_revision: 1,
             resolved_at: Utc::now(),
-            snapshot_hash: "snapshot".into(),
+            snapshot_hash: "b".repeat(64),
             input_schema: serde_json::json!({}),
             output_schema: serde_json::json!({}),
         };
@@ -1448,16 +1448,47 @@ mod tests {
         verifier.add_issuer_key("key".into(), "pep".into(), signing.verifying_key());
         let now = Utc::now();
         let mut authorization = ExecutionAuthorization {
-            schema_version: SchemaVersion(agent_trust_policy_pep::POLICY_SCHEMA_VERSION.into()),
+            schema_version: SchemaVersion(EXECUTION_AUTHORIZATION_SCHEMA_VERSION.into()),
             authorization_id: Uuid::new_v4().to_string(),
-            action_hash: ActionHash("action".into()),
+            tenant_id: TenantId::new(),
+            task_id: TaskId::new(),
+            step_id: StepId::new(),
+            agent_instance_id: AgentInstanceId::new(),
+            action_hash: ActionHash("a".repeat(64)),
+            tool_id: tool.tool_id.clone(),
+            tool_version: tool.tool_version.clone(),
             tool_snapshot_hash: tool.snapshot_hash.clone(),
+            implementation_digest: tool.implementation.digest.clone(),
+            executor_profile: tool.executor_profile.clone(),
+            operation: "execute".into(),
+            resource: "workspace:output".into(),
+            canonical_arguments_hash: "c".repeat(64),
+            target_profile: "local".into(),
+            environment: "test".into(),
+            idempotency_key: IdempotencyKey(Uuid::new_v4().to_string()),
+            ledger_execution_id: ExecutionId::new(),
+            ledger_event_id: Uuid::new_v4().to_string(),
+            ledger_event_digest: "2".repeat(64),
+            fence_digest: "d".repeat(64),
             policy_decision_id: "decision".into(),
+            policy_decision_digest: "3".repeat(64),
+            policy_version: PolicyVersion("policy-1".into()),
+            policy_bundle_hash: "e".repeat(64),
+            policy_input_hash: "f".repeat(64),
+            authorization_evidence_ref: String::new(),
+            authorization_evidence_digest: String::new(),
+            preapproval_digest: "0".repeat(64),
             approval_ids: vec![],
+            approval_consumption_ref: None,
+            approval_receipt_digest: None,
             resource_version: ResourceVersion("v1".into()),
             sandbox_profile: "local-safe".into(),
             network_profile: "none".into(),
             credential_profile: "none".into(),
+            workload_credential_id: Uuid::new_v4().to_string(),
+            workload_credential_claims_digest: "1".repeat(64),
+            workload_credential_audience: "tool-proxy".into(),
+            workload_credential_revocation_epoch: 0,
             max_execution_ms: 5000,
             max_result_bytes: output_limit * 2,
             issued_at: now - chrono::Duration::seconds(1),
@@ -1465,8 +1496,12 @@ mod tests {
             single_use: true,
             issuer: "pep".into(),
             key_id: "key".into(),
+            key_usage: PEP_EXECUTION_AUTHORIZATION_KEY_USAGE.into(),
             signature: String::new(),
         };
+        authorization
+            .bind_evidence()
+            .unwrap_or_else(|_| panic!("bind evidence"));
         authorization
             .sign(&signing)
             .unwrap_or_else(|_| panic!("sign"));

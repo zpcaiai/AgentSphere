@@ -1,0 +1,741 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Enterprise Approval API
+  version: 1.0.0
+  description: >-
+    Tenant-isolated approval case lifecycle and atomic, single-use production
+    grant consumption. The data plane requires native TLS 1.3 mutual TLS,
+    an exact allow-listed DNS or URI SAN, and a tenant/scope/opaque-service-token
+    binding. Human mutations additionally require a short-lived Ed25519
+    principal assertion bound to the authenticated service and exact request.
+servers:
+  - url: https://approval.agenttrust.invalid
+security:
+  - mutualTLS: []
+    bearerAuth: []
+paths:
+  /ready:
+    get:
+      operationId: getApprovalReadiness
+      security:
+        - mutualTLS: []
+      responses:
+        '200':
+          description: Approval datastore and required schema are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+        '503':
+          description: Approval datastore or required schema is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Readiness'
+  /v1/authoritative/approvals:
+    get:
+      operationId: listAuthoritativeApprovalCases
+      x-required-service-scope: approvals:read
+      description: >-
+        Returns a tenant-scoped, bounded approval inbox page. The resource
+        parameter is a dashboard view selector and is bound into the signed
+        cursor; it is not interpreted as an approval resource authorization
+        filter. Cursor signatures prevent cross-tenant, cross-view, or ordering
+        substitution. Raw justification and human identity assertion material
+        are never returned by this safe view.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: resource
+          in: query
+          required: false
+          schema:
+            type: string
+            default: summary
+            minLength: 1
+            maxLength: 100
+            pattern: '^[a-z][a-z0-9_-]{0,99}$'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 5462
+            pattern: '^[A-Za-z0-9_-]+$'
+      responses:
+        '200':
+          description: Authoritative approval inbox page and canonical data digest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthoritativeApprovalPage'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/cases:
+    post:
+      operationId: createApprovalCase
+      x-required-service-scope: approvals:request
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PrincipalAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalCaseCreateEnvelope'
+      responses:
+        '201':
+          description: Durable approval case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalCase'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/cases/{case_id}:
+    get:
+      operationId: getApprovalCase
+      x-required-service-scope: approvals:read
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Tenant-scoped approval case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalCase'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/cases/{case_id}/decisions:
+    post:
+      operationId: decideApprovalCase
+      x-required-service-scope: approvals:decide
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PrincipalAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionEnvelope'
+      responses:
+        '200':
+          description: Case with the durable decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalCase'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/cases/{case_id}/grants:
+    post:
+      operationId: issueApprovalGrant
+      x-required-service-scope: approvals:issue
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PrincipalAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalGrantIssueRequest'
+      responses:
+        '200':
+          description: Ed25519-signed, action-bound, single-use grant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnterpriseApprovalGrant'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/grants/{grant_id}/revoke:
+    post:
+      operationId: revokeApprovalGrant
+      x-required-service-scope: approvals:revoke
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/GrantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/PrincipalAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalGrantRevocationRequest'
+      responses:
+        '200':
+          description: Signed revocation receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalGrantRevocationReceipt'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/grants/consume:
+    post:
+      operationId: consumeApprovalGrant
+      x-required-service-scope: approvals:consume
+      description: >-
+        Atomically selects the uniquely action-bound grant, verifies its
+        signature and lifecycle, decrements remaining uses from one to zero,
+        and persists the signed receipt and replay response in one transaction.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalGrantRequest'
+      responses:
+        '200':
+          description: Execution-client-compatible atomic consumption receipt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalGrantReceipt'
+        default:
+          $ref: '#/components/responses/Error'
+  /v1/approvals/consumptions/{consumption_ref}:
+    get:
+      operationId: getSignedApprovalConsumption
+      x-required-service-scope: approvals:verify
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ConsumptionRef'
+      responses:
+        '200':
+          description: Full Ed25519-signed consumption payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedApprovalConsumptionReceipt'
+        default:
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    mutualTLS:
+      type: mutualTLS
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-service-token
+  parameters:
+    TenantId:
+      name: x-agenttrust-tenant-id
+      in: header
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9_.:/-]+$'
+    PrincipalAssertion:
+      name: x-agenttrust-principal-assertion
+      in: header
+      required: true
+      description: >-
+        Base64url-no-pad encoding of SignedApprovalPrincipalAssertion. Its
+        request_digest is lowercase SHA-256 of RFC 8785 JCS over
+        {schema_version: agenttrust.approval-principal-request-binding.v1,
+        method, path, tenant_id, client_identity, service_subject, scope,
+        idempotency_key, body}. `body` is the strict typed DTO reserialization;
+        set-valued arrays such as roles, owned_resources, and required_roles are
+        lexicographically sorted before JCS. The assertion is verified independently from
+        the opaque BFF service token and has a maximum lifetime of 300 seconds.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 43691
+        pattern: '^[A-Za-z0-9_-]+$'
+    CaseId:
+      name: case_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    GrantId:
+      name: grant_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Uuid'
+    ConsumptionRef:
+      name: consumption_ref
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 2048
+        pattern: '^urn:agenttrust:approval-consumption:[0-9a-f-]{36}:sha256:[0-9a-f]{64}:kid:[A-Za-z0-9_.-]{1,128}:sig:[A-Za-z0-9_-]{86}$'
+  responses:
+    Error:
+      description: Stable fail-closed error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    Digest:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    DateTime:
+      type: string
+      format: date-time
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready]
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-readiness.v1 }
+        ready: { type: boolean }
+    ApprovalCaseView:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - case_id
+        - domain
+        - safe_summary
+        - action_hash
+        - resource
+        - resource_version
+        - policy_version
+        - risk
+        - evidence_refs
+        - status
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-case-view.v1 }
+        case_id: { $ref: '#/components/schemas/Uuid' }
+        domain: { type: string, enum: [CODING, INDUSTRIAL] }
+        safe_summary: { type: string, minLength: 1, maxLength: 2000 }
+        action_hash: { $ref: '#/components/schemas/Digest' }
+        resource: { type: string, minLength: 1, maxLength: 2048 }
+        resource_version: { type: string, minLength: 1, maxLength: 2048 }
+        policy_version: { type: string, minLength: 1, maxLength: 2048 }
+        risk: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        evidence_refs:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 2048 }
+        status: { type: string, enum: [PENDING, APPROVED, REJECTED, EXPIRED, REVOKED] }
+    AuthoritativeApprovalPage:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - authoritative
+        - tenant_id
+        - resource
+        - items
+        - next_cursor
+        - data_digest
+      properties:
+        schema_version: { type: string, const: agenttrust.authoritative-approval-page.v1 }
+        authoritative: { type: boolean, const: true }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        resource:
+          type: string
+          minLength: 1
+          maxLength: 100
+          pattern: '^[a-z][a-z0-9_-]{0,99}$'
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/ApprovalCaseView' }
+        next_cursor:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 5462
+              pattern: '^[A-Za-z0-9_-]+$'
+            - type: 'null'
+        data_digest:
+          allOf:
+            - $ref: '#/components/schemas/Digest'
+          description: >-
+            Lowercase SHA-256 of RFC 8785 JCS over the response object fields
+            schema_version, authoritative, tenant_id, resource, items, and
+            next_cursor, excluding data_digest itself.
+    SignedApprovalPrincipalAssertion:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - subject
+        - roles
+        - owned_resources
+        - strong_auth
+        - issuer
+        - audience
+        - issued_at
+        - expires_at
+        - jti
+        - request_digest
+        - client_identity
+        - scope
+        - key_id
+        - signature
+      properties:
+        schema_version: { type: string, const: agenttrust.signed-approval-principal-assertion.v1 }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        subject: { type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$' }
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$' }
+        owned_resources:
+          type: array
+          maxItems: 1024
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 2048 }
+        strong_auth: { type: boolean, const: true }
+        issuer: { type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$' }
+        audience: { type: string, minLength: 1, maxLength: 256 }
+        issued_at: { $ref: '#/components/schemas/DateTime' }
+        expires_at: { $ref: '#/components/schemas/DateTime' }
+        jti: { $ref: '#/components/schemas/Uuid' }
+        request_digest: { $ref: '#/components/schemas/Digest' }
+        client_identity: { type: string, minLength: 5, maxLength: 512, pattern: '^(DNS|URI):.+$' }
+        scope:
+          type: string
+          enum: [approvals:request, approvals:decide, approvals:issue, approvals:revoke]
+        key_id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$' }
+        signature: { type: string, pattern: '^[A-Za-z0-9_-]{86}$' }
+    RiskLevel:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+    ApprovalType:
+      type: string
+      enum: [ACTION, SCOPE, ESCALATION, DUAL, EMERGENCY]
+    ApprovalStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED, REVOKED, EXPIRED, CONSUMED, POST_REVIEW_REQUIRED]
+    ApprovalRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - tenant_id
+        - task_id
+        - step_id
+        - action_hash
+        - plan_hash
+        - parameter_hash
+        - resource
+        - resource_version
+        - policy_version
+        - environment
+        - risk
+        - requester_subject
+        - agent_owner_subject
+        - justification
+        - requested_ttl_seconds
+        - requested_uses
+      properties:
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        task_id: { $ref: '#/components/schemas/Uuid' }
+        step_id: { $ref: '#/components/schemas/Uuid' }
+        action_hash: { $ref: '#/components/schemas/Digest' }
+        plan_hash: { $ref: '#/components/schemas/Digest' }
+        parameter_hash: { $ref: '#/components/schemas/Digest' }
+        resource: { type: string, minLength: 1, maxLength: 2048 }
+        resource_version: { type: string, minLength: 1, maxLength: 2048 }
+        policy_version: { type: string, minLength: 1, maxLength: 2048 }
+        environment: { type: string, minLength: 1, maxLength: 2048 }
+        risk: { $ref: '#/components/schemas/RiskLevel' }
+        requester_subject: { type: string, minLength: 1, maxLength: 256 }
+        agent_owner_subject: { type: string, minLength: 1, maxLength: 256 }
+        justification: { type: string, minLength: 1, maxLength: 4096 }
+        requested_ttl_seconds: { type: integer, minimum: 1, maximum: 604800 }
+        requested_uses: { type: integer, const: 1 }
+    ApprovalPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - policy_id
+        - policy_version
+        - approval_type
+        - minimum_approvers
+        - required_roles
+        - prohibit_requester
+        - prohibit_agent_owner
+        - require_resource_owner
+        - maximum_ttl_seconds
+        - maximum_uses
+        - maximum_risk
+      properties:
+        policy_id: { type: string, minLength: 1, maxLength: 256 }
+        policy_version: { type: string, minLength: 1, maxLength: 256 }
+        approval_type: { $ref: '#/components/schemas/ApprovalType' }
+        minimum_approvers: { type: integer, minimum: 1, maximum: 64 }
+        required_roles:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 256 }
+        prohibit_requester: { type: boolean }
+        prohibit_agent_owner: { type: boolean }
+        require_resource_owner: { type: boolean }
+        maximum_ttl_seconds: { type: integer, minimum: 1, maximum: 604800 }
+        maximum_uses: { type: integer, const: 1 }
+        maximum_risk: { $ref: '#/components/schemas/RiskLevel' }
+    ApprovalCaseCreateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request, policy]
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-case-create.v1 }
+        request: { $ref: '#/components/schemas/ApprovalRequest' }
+        policy: { $ref: '#/components/schemas/ApprovalPolicy' }
+    ApprovalDecisionRecord:
+      type: object
+      additionalProperties: false
+      required: [approver_subject, roles, decision, reason, decided_at, strong_auth]
+      properties:
+        approver_subject: { type: string, minLength: 1, maxLength: 256 }
+        roles:
+          type: array
+          uniqueItems: true
+          maxItems: 64
+          items: { type: string, minLength: 1, maxLength: 256 }
+        decision: { type: string, enum: [APPROVE, REJECT, POST_REVIEWED] }
+        reason: { type: string, minLength: 1, maxLength: 4096 }
+        decided_at: { $ref: '#/components/schemas/DateTime' }
+        strong_auth: { type: boolean, const: true }
+    ApprovalCase:
+      type: object
+      additionalProperties: false
+      required: [schema_version, case_id, request, policy, status, decisions, created_at, expires_at, post_review_due_at]
+      properties:
+        schema_version: { type: string, const: agenttrust.enterprise-approval.v1 }
+        case_id: { $ref: '#/components/schemas/Uuid' }
+        request: { $ref: '#/components/schemas/ApprovalRequest' }
+        policy: { $ref: '#/components/schemas/ApprovalPolicy' }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+        decisions:
+          type: array
+          maxItems: 64
+          items: { $ref: '#/components/schemas/ApprovalDecisionRecord' }
+        created_at: { $ref: '#/components/schemas/DateTime' }
+        expires_at: { $ref: '#/components/schemas/DateTime' }
+        post_review_due_at:
+          oneOf:
+            - $ref: '#/components/schemas/DateTime'
+            - type: 'null'
+    ApprovalDecisionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, decision, reason]
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-decision.v1 }
+        decision: { type: string, enum: [APPROVE, REJECT, POST_REVIEWED] }
+        reason: { type: string, minLength: 1, maxLength: 4096 }
+    ApprovalGrantIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version]
+      properties:
+        schema_version: { type: string, const: agenttrust.enterprise-approval.v1 }
+    ApprovalGrantRevocationRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, reason]
+      properties:
+        schema_version: { type: string, const: agenttrust.enterprise-approval.v1 }
+        reason: { type: string, minLength: 1, maxLength: 4096 }
+    EnterpriseApprovalGrant:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - grant_id
+        - case_id
+        - tenant_id
+        - task_id
+        - step_id
+        - action_hash
+        - plan_hash
+        - parameter_hash
+        - resource
+        - resource_version
+        - policy_version
+        - environment
+        - maximum_risk
+        - approver_subjects
+        - issued_at
+        - expires_at
+        - maximum_uses
+        - break_glass
+        - issuer
+        - key_id
+        - signature
+      properties:
+        schema_version: { type: string, const: agenttrust.enterprise-approval.v1 }
+        grant_id: { $ref: '#/components/schemas/Uuid' }
+        case_id: { $ref: '#/components/schemas/Uuid' }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        task_id: { $ref: '#/components/schemas/Uuid' }
+        step_id: { $ref: '#/components/schemas/Uuid' }
+        action_hash: { $ref: '#/components/schemas/Digest' }
+        plan_hash: { $ref: '#/components/schemas/Digest' }
+        parameter_hash: { $ref: '#/components/schemas/Digest' }
+        resource: { type: string, minLength: 1, maxLength: 2048 }
+        resource_version: { type: string, minLength: 1, maxLength: 2048 }
+        policy_version: { type: string, minLength: 1, maxLength: 2048 }
+        environment: { type: string, minLength: 1, maxLength: 2048 }
+        maximum_risk: { $ref: '#/components/schemas/RiskLevel' }
+        approver_subjects:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 256 }
+        issued_at: { $ref: '#/components/schemas/DateTime' }
+        expires_at: { $ref: '#/components/schemas/DateTime' }
+        maximum_uses: { type: integer, const: 1 }
+        break_glass: { type: boolean }
+        issuer: { type: string, minLength: 1, maxLength: 128 }
+        key_id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$' }
+        signature: { type: string, pattern: '^[A-Za-z0-9_-]{86}$' }
+    ApprovalGrantRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - task_id
+        - step_id
+        - action_hash
+        - plan_hash
+        - parameter_hash
+        - resource
+        - resource_version
+        - policy_version
+        - environment
+        - maximum_risk
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-grant-request.v1 }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        task_id: { $ref: '#/components/schemas/Uuid' }
+        step_id: { $ref: '#/components/schemas/Uuid' }
+        action_hash: { $ref: '#/components/schemas/Digest' }
+        plan_hash: { $ref: '#/components/schemas/Digest' }
+        parameter_hash: { $ref: '#/components/schemas/Digest' }
+        resource: { type: string, minLength: 1, maxLength: 2048 }
+        resource_version: { type: string, minLength: 1, maxLength: 2048 }
+        policy_version: { type: string, minLength: 1, maxLength: 2048 }
+        environment: { type: string, minLength: 1, maxLength: 2048 }
+        maximum_risk: { $ref: '#/components/schemas/RiskLevel' }
+    ApprovalGrantReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, grant, consumed_at, remaining_uses, consumption_ref]
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-grant-receipt.v1 }
+        grant: { $ref: '#/components/schemas/EnterpriseApprovalGrant' }
+        consumed_at: { $ref: '#/components/schemas/DateTime' }
+        remaining_uses: { type: integer, const: 0 }
+        consumption_ref:
+          type: string
+          maxLength: 2048
+          pattern: '^urn:agenttrust:approval-consumption:[0-9a-f-]{36}:sha256:[0-9a-f]{64}:kid:[A-Za-z0-9_.-]+:sig:[A-Za-z0-9_-]{86}$'
+    SignedApprovalConsumptionReceipt:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - receipt_id
+        - tenant_id
+        - grant_id
+        - case_id
+        - request
+        - grant
+        - request_digest
+        - grant_digest
+        - idempotency_key_digest
+        - consumed_by
+        - client_identity
+        - consumed_at
+        - remaining_uses
+        - issuer
+        - key_id
+        - signature
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-consumption.v1 }
+        receipt_id: { $ref: '#/components/schemas/Uuid' }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        grant_id: { $ref: '#/components/schemas/Uuid' }
+        case_id: { $ref: '#/components/schemas/Uuid' }
+        request: { $ref: '#/components/schemas/ApprovalGrantRequest' }
+        grant: { $ref: '#/components/schemas/EnterpriseApprovalGrant' }
+        request_digest: { $ref: '#/components/schemas/Digest' }
+        grant_digest: { $ref: '#/components/schemas/Digest' }
+        idempotency_key_digest: { $ref: '#/components/schemas/Digest' }
+        consumed_by: { type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$' }
+        client_identity: { type: string, minLength: 5, maxLength: 512, pattern: '^(DNS|URI):.+$' }
+        consumed_at: { $ref: '#/components/schemas/DateTime' }
+        remaining_uses: { type: integer, const: 0 }
+        issuer: { type: string, minLength: 1, maxLength: 128 }
+        key_id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$' }
+        signature: { type: string, pattern: '^[A-Za-z0-9_-]{86}$' }
+    ApprovalGrantRevocationReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, receipt_id, tenant_id, grant_id, case_id, reason_digest, revoked_by, principal_assertion_jti, principal_assertion_digest, revoked_at, issuer, key_id, signature]
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-grant-revocation.v1 }
+        receipt_id: { $ref: '#/components/schemas/Uuid' }
+        tenant_id: { $ref: '#/components/schemas/Uuid' }
+        grant_id: { $ref: '#/components/schemas/Uuid' }
+        case_id: { $ref: '#/components/schemas/Uuid' }
+        reason_digest: { $ref: '#/components/schemas/Digest' }
+        revoked_by: { type: string, minLength: 1, maxLength: 256 }
+        principal_assertion_jti: { $ref: '#/components/schemas/Uuid' }
+        principal_assertion_digest: { $ref: '#/components/schemas/Digest' }
+        revoked_at: { $ref: '#/components/schemas/DateTime' }
+        issuer: { type: string, minLength: 1, maxLength: 128 }
+        key_id: { type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$' }
+        signature: { type: string, pattern: '^[A-Za-z0-9_-]{86}$' }
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: { type: string, const: agenttrust.approval-error.v1 }
+        error: { type: string, pattern: '^APPROVAL_[A-Z0-9_]+$' }

@@ -1,0 +1,72 @@
+{
+  "schema_version": "agenttrust.data-governance-failure-matrix.v1",
+  "batch": 18,
+  "status": "NOT_RUN_EXTERNAL_ENVIRONMENT",
+  "scenarios": [
+    {
+      "id": "ENTERPRISE_DLP_UNAVAILABLE",
+      "inject": "Return timeout/503 for scan and export preflight.",
+      "expected": "High-risk scan, sanitize, Artifact authorization, and export fail closed; no durable allow decision."
+    },
+    {
+      "id": "ENCODED_COMPRESSED_ESCAPE",
+      "inject": "Nested Base64 containing Gzip/ZIP and oversized expansion markers.",
+      "expected": "Bounded decoder emits blocking encoded/compressed findings or DATA_AUTHORITY_DLP_DENIED."
+    },
+    {
+      "id": "REDIRECT_BYPASS",
+      "inject": "Object/DLP endpoint or export destination returns 30x to an unapproved origin.",
+      "expected": "HTTP client follows no redirects and redirect_target_digests must be empty; a new authorization is required."
+    },
+    {
+      "id": "PUBLIC_MODEL_FALLBACK",
+      "inject": "Restricted label is routed to model:PublicApi after private-provider failure.",
+      "expected": "Data policy returns PUBLIC_MODEL_DENIED; Model Gateway must not attempt the provider."
+    },
+    {
+      "id": "CROSS_TENANT_EXPORT",
+      "inject": "Use tenant A mTLS/token with tenant B header/body/object/grant identifiers.",
+      "expected": "Exact tenant binding and FORCE RLS deny without revealing resource existence."
+    },
+    {
+      "id": "CROSS_DOMAIN_CONCURRENT_REPLAY",
+      "inject": "Run 64 concurrent exact consumes for one single-use grant.",
+      "expected": "One data_cross_domain_consumptions row commits; 63 requests return replay/state conflict."
+    },
+    {
+      "id": "LEGAL_HOLD_RELEASE_RACE",
+      "inject": "Release and retention-delete authorization race on the same object.",
+      "expected": "Row lock/state trigger preserves ACTIVE hold until exact external release receipt commits."
+    },
+    {
+      "id": "CRASH_AFTER_EXTERNAL_EFFECT",
+      "inject": "Terminate after legal-hold/object adapter acknowledgement but before PostgreSQL commit.",
+      "expected": "Exact replay uses the same idempotency key and receipt; no second physical effect or new action."
+    },
+    {
+      "id": "CRASH_AFTER_DB_COMMIT",
+      "inject": "Terminate after domain transaction/outbox commit but before Evidence acknowledgement.",
+      "expected": "Recovery republishes the same event ID/payload digest and completes only after Evidence receipt."
+    },
+    {
+      "id": "OFFLINE_EGRESS_ATTEMPT",
+      "inject": "Resolve any public/external/SaaS destination under an OFFLINE signed profile.",
+      "expected": "OFFLINE_EGRESS_DENIED and network telemetry confirms zero external connection attempt."
+    },
+    {
+      "id": "ARTIFACT_DURABLE_BINDING_MISMATCH",
+      "inject": "Authorize exact bytes with a label digest, decision ID, or DLP receipt digest from another object or tenant.",
+      "expected": "Tenant-RLS durable preflight denies before object authorization; no export intent or external object write occurs."
+    },
+    {
+      "id": "REQUIRED_TRANSFORM_MISSING",
+      "inject": "Use null transform fields when the durable allowed decision requires transformations, or point at a transform for different output bytes.",
+      "expected": "Artifact authorization and AUTHORIZE_EXPORT both fail closed because the durable transform set/output digest is not exact."
+    },
+    {
+      "id": "EXPORT_TRANSFORM_REPLAY",
+      "inject": "Replay an otherwise valid transform receipt with a different DLP receipt, decision transformation set, object digest, or export intent.",
+      "expected": "The durable prerequisite join and immutable export binding reject the replay; no adapter effect is admitted as a completed export."
+    }
+  ]
+}

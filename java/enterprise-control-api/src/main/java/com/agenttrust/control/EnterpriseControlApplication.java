@@ -5,7 +5,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties(ControlProperties.class)
+@EnableConfigurationProperties({ControlProperties.class, ApprovalIntegrationProperties.class,
+    AuthorityTokenProperties.class, PepTokenProperties.class,
+    HumanPrincipalAssertionProperties.class})
 public class EnterpriseControlApplication {
     public static void main(String[] args) {
         SpringApplication.run(EnterpriseControlApplication.class, args);

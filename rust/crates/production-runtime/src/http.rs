@@ -149,6 +149,41 @@ impl SecureHttpTransport {
         serde_json::from_slice(&bytes).map_err(|_| TransportError::ResponseInvalid)
     }
 
+    pub async fn post_json_tenant<T: Serialize + ?Sized, R: DeserializeOwned>(
+        &self,
+        path: &str,
+        tenant_id: &str,
+        body: &T,
+        idempotency_key: Option<&str>,
+    ) -> Result<R, TransportError> {
+        if tenant_id.is_empty()
+            || tenant_id.len() > 64
+            || !tenant_id
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() || byte == b'-')
+        {
+            return Err(TransportError::Configuration);
+        }
+        let mut request = self
+            .async_client
+            .post(self.url(path)?)
+            .header("x-agenttrust-tenant-id", tenant_id)
+            .json(body);
+        if let Some(token) = self.token()? {
+            request = request.bearer_auth(token);
+        }
+        if let Some(key) = idempotency_key {
+            request = request.header("idempotency-key", key);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|_| TransportError::RequestFailed)?;
+        ensure_success(response.status())?;
+        let bytes = bounded_async_body(response, 8 * 1024 * 1024).await?;
+        serde_json::from_slice(&bytes).map_err(|_| TransportError::ResponseInvalid)
+    }
+
     pub async fn post_json_bytes<T: Serialize + ?Sized>(
         &self,
         path: &str,

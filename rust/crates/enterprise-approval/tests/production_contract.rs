@@ -1,0 +1,332 @@
+use agent_trust_enterprise_approval::{
+    APPROVAL_GRANT_RECEIPT_SCHEMA_VERSION, APPROVAL_GRANT_REQUEST_SCHEMA_VERSION,
+    ApprovalConsumptionRequest, SignedApprovalPrincipalAssertion,
+    approval_principal_request_digest,
+};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use ed25519_dalek::{Signer, SigningKey};
+use serde_json::json;
+use sha2::{Digest, Sha256};
+
+fn must<T, E: std::fmt::Debug>(value: Result<T, E>, context: &str) -> T {
+    match value {
+        Ok(result) => result,
+        Err(error) => panic!("{context}: {error:?}"),
+    }
+}
+
+fn must_str<'a>(value: &'a serde_json::Value, context: &str) -> &'a str {
+    match value.as_str() {
+        Some(result) => result,
+        None => panic!("{context}: expected JSON string"),
+    }
+}
+
+const MIGRATION: &str =
+    include_str!("../../../../migrations/enterprise-approval/0036_01_02_production_approval.sql");
+const OPENAPI: &str = include_str!("../../../../schemas/openapi/approval-v1.yaml");
+const TOKEN_BINDINGS_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/token-bindings.schema.json");
+const PRINCIPAL_ASSERTION_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/principal-assertion.schema.json");
+const PRINCIPAL_KEYRING_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/principal-keyring.schema.json");
+const PRINCIPAL_GOLDEN_VECTOR: &str =
+    include_str!("../../../../schemas/approval/principal-assertion.golden.json");
+const EXECUTION_CLIENT: &str = include_str!("../../production-runtime/src/execution.rs");
+const APPROVAL_SERVER: &str = include_str!("../src/server.rs");
+const APPROVAL_STORE: &str = include_str!("../src/postgres.rs");
+const APPROVAL_PRINCIPAL_SOURCE: &str = include_str!("../src/principal.rs");
+const APPROVAL_BINARY: &str = include_str!("../src/bin/agenttrust-approval-service.rs");
+
+#[test]
+fn consume_request_rejects_wire_extensions() {
+    let value = json!({
+        "schema_version": APPROVAL_GRANT_REQUEST_SCHEMA_VERSION,
+        "tenant_id": "01900000-0000-7000-8000-000000000001",
+        "task_id": "01900000-0000-7000-8000-000000000002",
+        "step_id": "01900000-0000-7000-8000-000000000003",
+        "action_hash": "a".repeat(64),
+        "plan_hash": "b".repeat(64),
+        "parameter_hash": "c".repeat(64),
+        "resource": "urn:agenttrust:resource:one",
+        "resource_version": "version-1",
+        "policy_version": "policy-1",
+        "environment": "production",
+        "maximum_risk": "HIGH",
+        "untrusted_extension": true
+    });
+    assert!(serde_json::from_value::<ApprovalConsumptionRequest>(value).is_err());
+}
+
+#[test]
+fn execution_client_and_service_share_the_consume_wire_versions() {
+    assert!(EXECUTION_CLIENT.contains("agenttrust.approval-grant-request.v1"));
+    assert!(EXECUTION_CLIENT.contains("agenttrust.approval-grant-receipt.v1"));
+    assert_eq!(
+        APPROVAL_GRANT_RECEIPT_SCHEMA_VERSION,
+        "agenttrust.approval-grant-receipt.v1"
+    );
+    for field in [
+        "tenant_id",
+        "task_id",
+        "step_id",
+        "action_hash",
+        "plan_hash",
+        "parameter_hash",
+        "resource_version",
+        "policy_version",
+        "environment",
+        "maximum_risk",
+    ] {
+        assert!(OPENAPI.contains(field));
+        let field_declaration = format!("pub {field}:");
+        assert!(EXECUTION_CLIENT.contains(field_declaration.as_str()));
+    }
+}
+
+#[test]
+fn migration_closes_replay_and_tenant_boundaries() {
+    for invariant in [
+        "FORCE ROW LEVEL SECURITY",
+        "approval_mutation_receipts",
+        "approval_principal_assertion_uses",
+        "UNIQUE (tenant_id, idempotency_key)",
+        "UNIQUE (tenant_id, grant_id)",
+        "approval_grants_binding_unique",
+        "remaining_uses IN (0,1)",
+        "reject_immutable_approval_mutation",
+        "TO PUBLIC",
+        "assertion_request_digest",
+        "signed_assertion jsonb NOT NULL",
+        "approval_decisions_assertion_use_fk",
+        "enforce_approval_case_immutable_binding",
+        "enforce_approval_grant_immutable_binding",
+        "approval_notifications_immutable_payload",
+    ] {
+        assert!(MIGRATION.contains(invariant), "missing {invariant}");
+    }
+}
+
+#[test]
+fn openapi_documents_atomic_signed_consumption() {
+    for invariant in [
+        "/v1/approvals/grants/consume:",
+        "additionalProperties: false",
+        "remaining_uses: { type: integer, const: 0 }",
+        "agenttrust.approval-consumption.v1",
+        "type: mutualTLS",
+        "Idempotency-Key",
+        "x-agenttrust-principal-assertion",
+        "/ready:",
+        "opaque-service-token",
+    ] {
+        assert!(OPENAPI.contains(invariant), "missing {invariant}");
+    }
+}
+
+#[test]
+fn token_binding_contract_has_no_production_bypass() {
+    for invariant in [
+        "agenttrust.approval-token-bindings.v1",
+        "^(DNS|URI):.+$",
+        "approvals:consume",
+        "approvals:verify",
+        "^[0-9a-f]{64}$",
+        "\"additionalProperties\": false",
+    ] {
+        assert!(
+            TOKEN_BINDINGS_SCHEMA.contains(invariant),
+            "missing {invariant}"
+        );
+    }
+    for forbidden in ["\"roles\"", "\"owned_resources\"", "\"strong_auth\""] {
+        assert!(
+            !TOKEN_BINDINGS_SCHEMA.contains(forbidden),
+            "service token must not carry human attribute {forbidden}"
+        );
+    }
+}
+
+#[test]
+fn human_mutations_require_independently_signed_request_bound_principals() {
+    assert_eq!(
+        OPENAPI
+            .matches("$ref: '#/components/parameters/PrincipalAssertion'")
+            .count(),
+        4,
+        "exactly four human mutation operations require the assertion header"
+    );
+    assert_eq!(
+        APPROVAL_SERVER.matches("required_human_principal").count(),
+        5,
+        "four handler calls plus the verifier definition are required"
+    );
+    for invariant in [
+        "agenttrust.signed-approval-principal-assertion.v1",
+        "request_digest",
+        "client_identity",
+        "strong_auth",
+        "approvals:decide",
+        "additionalProperties",
+    ] {
+        assert!(
+            PRINCIPAL_ASSERTION_SCHEMA.contains(invariant),
+            "missing assertion invariant {invariant}"
+        );
+    }
+    for invariant in [
+        "agenttrust.approval-principal-keyring.v1",
+        "Ed25519",
+        "APPROVAL_PRINCIPAL_ASSERTION",
+        "tenant_ids",
+        "not_before",
+        "expires_at",
+    ] {
+        assert!(
+            PRINCIPAL_KEYRING_SCHEMA.contains(invariant),
+            "missing keyring invariant {invariant}"
+        );
+    }
+    for invariant in [
+        "required_human_principal(",
+        "verify_encoded(",
+        "to_header_value",
+        "agenttrust.approval-principal-request-binding.v1",
+        "x-agenttrust-principal-assertion",
+    ] {
+        assert!(
+            APPROVAL_SERVER.contains(invariant) || APPROVAL_PRINCIPAL_SOURCE.contains(invariant),
+            "missing server gate {invariant}"
+        );
+    }
+    for invariant in [
+        "AGENT_TRUST_APPROVAL_PRINCIPAL_KEYS_FILE",
+        "AGENT_TRUST_APPROVAL_PRINCIPAL_AUDIENCE",
+        "AGENT_TRUST_APPROVAL_DATABASE_PASSWORD_FILE",
+    ] {
+        assert!(
+            APPROVAL_BINARY.contains(invariant),
+            "missing config gate {invariant}"
+        );
+    }
+}
+
+#[test]
+fn final_pep_fetches_only_by_the_exact_opaque_reference() {
+    for invariant in [
+        "/v1/approvals/consumptions/{consumption_ref}:",
+        "name: consumption_ref",
+        "approvals:verify",
+    ] {
+        assert!(OPENAPI.contains(invariant), "missing {invariant}");
+    }
+    for invariant in [
+        "UNIQUE (tenant_id, consumption_ref)",
+        "consumption_ref LIKE 'urn:agenttrust:approval-consumption:%'",
+    ] {
+        assert!(MIGRATION.contains(invariant), "missing {invariant}");
+    }
+}
+
+#[test]
+fn authoritative_approval_inbox_is_bounded_tenant_safe_and_cursor_signed() {
+    for invariant in [
+        "/v1/authoritative/approvals:",
+        "x-required-service-scope: approvals:read",
+        "agenttrust.authoritative-approval-page.v1",
+        "agenttrust.approval-case-view.v1",
+        "maximum: 100",
+        "data_digest",
+        "safe_summary",
+        "evidence_refs",
+        "next_cursor",
+    ] {
+        assert!(OPENAPI.contains(invariant), "missing {invariant}");
+    }
+    for invariant in [
+        "list_authoritative_cases(",
+        "MAX_AUTHORITATIVE_PAGE_SIZE",
+        "sign_authoritative_cursor",
+        "decode_authoritative_cursor(",
+        "Review governed coding action",
+        "Review supervised industrial action",
+        "Evidence references are deliberately empty",
+        "canonical_digest(&material)",
+    ] {
+        assert!(APPROVAL_STORE.contains(invariant), "missing {invariant}");
+    }
+    assert!(
+        MIGRATION.contains("approval_cases_authoritative_page_idx"),
+        "authoritative cursor query requires its tenant/order index"
+    );
+}
+
+#[test]
+fn principal_assertion_golden_vector_is_cross_language_stable() {
+    let vector: serde_json::Value = must(
+        serde_json::from_str(PRINCIPAL_GOLDEN_VECTOR),
+        "golden vector must parse",
+    );
+    let request = &vector["request"];
+    let digest = must(
+        approval_principal_request_digest(
+            must_str(&request["method"], "request method"),
+            must_str(&request["path"], "request path"),
+            must_str(&request["tenant_id"], "request tenant"),
+            must_str(&request["client_identity"], "request client identity"),
+            must_str(&request["service_subject"], "request service subject"),
+            must_str(&request["scope"], "request scope"),
+            must_str(&request["idempotency_key"], "request idempotency key"),
+            &request["body"],
+        ),
+        "principal request digest must be computable",
+    );
+    assert_eq!(
+        digest,
+        must_str(&vector["request_digest"], "request digest")
+    );
+
+    let assertion: SignedApprovalPrincipalAssertion = must(
+        serde_json::from_value(vector["signed_assertion"].clone()),
+        "signed assertion must parse",
+    );
+    assert_eq!(
+        must(
+            String::from_utf8(must(assertion.signing_bytes(), "signing bytes")),
+            "signing bytes must be UTF-8",
+        ),
+        must_str(&vector["assertion_signing_jcs"], "assertion signing JCS")
+    );
+    assert_eq!(
+        must(assertion.to_header_value(), "assertion header must encode"),
+        must_str(&vector["header_value_base64url"], "assertion header")
+    );
+
+    let seed = must(
+        URL_SAFE_NO_PAD.decode(must_str(
+            &vector["private_seed_base64url_test_only"],
+            "test seed",
+        )),
+        "test seed must decode",
+    );
+    let seed_bytes: [u8; 32] = must(seed.try_into(), "test seed must contain 32 bytes");
+    let signing = SigningKey::from_bytes(&seed_bytes);
+    assert_eq!(
+        URL_SAFE_NO_PAD.encode(signing.verifying_key().to_bytes()),
+        must_str(&vector["public_key_base64url"], "public key")
+    );
+    assert_eq!(
+        URL_SAFE_NO_PAD.encode(
+            signing
+                .sign(&must(assertion.signing_bytes(), "signing bytes"))
+                .to_bytes(),
+        ),
+        must_str(&vector["signature_base64url"], "signature")
+    );
+    let canonical = must(serde_jcs::to_vec(&assertion), "assertion must canonicalize");
+    assert_eq!(
+        hex::encode(Sha256::digest(canonical)),
+        must_str(&vector["assertion_digest"], "assertion digest")
+    );
+}

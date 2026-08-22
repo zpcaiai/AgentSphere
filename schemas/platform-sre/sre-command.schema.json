@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.example/platform-sre/sre-command.schema.json",
+  "title": "Platform SRE canonical ingress command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "command_id", "task_id", "resource", "operation", "expected_resource_version", "requested_at", "payload"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.sre-command.v1"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "command_id": {"$ref": "#/$defs/uuid"},
+    "task_id": {"$ref": "#/$defs/uuid"},
+    "resource": {"type": "string", "maxLength": 64, "pattern": "^sre:(slo|alert|topology|backup|restore|dr|chaos|load|rollout|cost-capacity|observability)/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", "description": "The UUID must equal the operation-specific primary identifier in payload; the authority enforces this cross-field binding."},
+    "operation": {"enum": ["CONFIGURE_SLO", "RECORD_SLI", "UPDATE_BURN_ALERT", "LINK_INCIDENT", "REGISTER_TOPOLOGY", "RECORD_ZONE_HEALTH", "CREATE_BACKUP", "VERIFY_RESTORE", "PLAN_DR", "FAILOVER", "FAILBACK", "PLAN_CHAOS", "EXECUTE_CHAOS", "PLAN_LOAD", "EXECUTE_LOAD", "PLAN_UPGRADE", "RECORD_CANARY", "ROLLBACK_UPGRADE", "RECORD_COST_CAPACITY", "RECORD_OBSERVABILITY"]},
+    "expected_resource_version": {"type": "integer", "minimum": 0},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "payload": {"type": "object", "maxProperties": 32}
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/configureSlo"},
+    {"$ref": "#/$defs/recordSli"},
+    {"$ref": "#/$defs/updateBurnAlert"},
+    {"$ref": "#/$defs/linkIncident"},
+    {"$ref": "#/$defs/registerTopology"},
+    {"$ref": "#/$defs/recordZoneHealth"},
+    {"$ref": "#/$defs/createBackup"},
+    {"$ref": "#/$defs/verifyRestore"},
+    {"$ref": "#/$defs/planDr"},
+    {"$ref": "#/$defs/failover"},
+    {"$ref": "#/$defs/failback"},
+    {"$ref": "#/$defs/planChaos"},
+    {"$ref": "#/$defs/executeChaos"},
+    {"$ref": "#/$defs/planLoad"},
+    {"$ref": "#/$defs/executeLoad"},
+    {"$ref": "#/$defs/planUpgrade"},
+    {"$ref": "#/$defs/recordCanary"},
+    {"$ref": "#/$defs/rollbackUpgrade"},
+    {"$ref": "#/$defs/recordCostCapacity"},
+    {"$ref": "#/$defs/recordObservability"}
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "evidenceRef": {"type": "string", "minLength": 12, "maxLength": 2048, "pattern": "^(evidence://|urn:agenttrust:evidence:)"},
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$"},
+    "strictObject": {"type": "object", "maxProperties": 256},
+    "configureSlo": {
+      "properties": {
+        "operation": {"const": "CONFIGURE_SLO"},
+        "payload": {
+          "type": "object", "additionalProperties": false,
+          "required": ["slo_id", "service", "sli_kind", "window_seconds", "target_millionths", "minimum_samples", "fast_burn_threshold_millionths", "slow_burn_threshold_millionths", "release_blocking", "status"],
+          "properties": {
+            "slo_id": {"$ref": "#/$defs/uuid"}, "service": {"$ref": "#/$defs/identifier"},
+            "sli_kind": {"enum": ["AVAILABILITY", "AUTHORIZATION_LATENCY", "UNSAFE_ALLOW", "EVIDENCE_COMPLETENESS", "RECOVERY_TIME", "RECOVERY_POINT", "BACKPRESSURE_REJECTION"]},
+            "window_seconds": {"type": "integer", "minimum": 60, "maximum": 2592000},
+            "target_millionths": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "minimum_samples": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+            "fast_burn_threshold_millionths": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+            "slow_burn_threshold_millionths": {"type": "integer", "minimum": 1, "maximum": 1000000000},
+            "release_blocking": {"type": "boolean"}, "status": {"enum": ["ACTIVE", "PAUSED", "RETIRED"]}
+          }
+        }
+      }
+    },
+    "recordSli": {
+      "properties": {"operation": {"const": "RECORD_SLI"}, "payload": {
+        "type": "object", "additionalProperties": false,
+        "required": ["observation_id", "slo_id", "release_digest", "good_events", "total_events", "window_started_at", "window_ended_at", "trace_evidence_ref", "metrics_evidence_ref", "logs_evidence_ref", "evidence_digest", "alert_id"],
+        "properties": {
+          "observation_id": {"$ref": "#/$defs/uuid"}, "slo_id": {"$ref": "#/$defs/uuid"}, "release_digest": {"$ref": "#/$defs/digest"},
+          "good_events": {"type": "integer", "minimum": 0}, "total_events": {"type": "integer", "minimum": 0},
+          "window_started_at": {"type": "string", "format": "date-time"}, "window_ended_at": {"type": "string", "format": "date-time"},
+          "trace_evidence_ref": {"$ref": "#/$defs/evidenceRef"}, "metrics_evidence_ref": {"$ref": "#/$defs/evidenceRef"}, "logs_evidence_ref": {"$ref": "#/$defs/evidenceRef"},
+          "evidence_digest": {"$ref": "#/$defs/digest"}, "alert_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]}
+        }
+      }}
+    },
+    "updateBurnAlert": {"properties": {"operation": {"const": "UPDATE_BURN_ALERT"}, "payload": {"type": "object", "additionalProperties": false, "required": ["alert_id", "state", "owner_subject", "resolved_at"], "properties": {"alert_id": {"$ref": "#/$defs/uuid"}, "state": {"enum": ["ACKNOWLEDGED", "MITIGATING", "RESOLVED"]}, "owner_subject": {"$ref": "#/$defs/identifier"}, "resolved_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]}}}}},
+    "linkIncident": {"properties": {"operation": {"const": "LINK_INCIDENT"}, "payload": {"type": "object", "additionalProperties": false, "required": ["link_id", "alert_id", "incident_id", "incident_evidence_ref"], "properties": {"link_id": {"$ref": "#/$defs/uuid"}, "alert_id": {"$ref": "#/$defs/uuid"}, "incident_id": {"$ref": "#/$defs/uuid"}, "incident_evidence_ref": {"$ref": "#/$defs/evidenceRef"}}}}},
+    "registerTopology": {"properties": {"operation": {"const": "REGISTER_TOPOLOGY"}, "payload": {"type": "object", "additionalProperties": false, "required": ["topology_id", "deployment_mode", "release_digest", "topology_digest", "zones", "components", "quorum_rules", "disruption_budgets", "immutable_image_digests", "status"], "properties": {"topology_id": {"$ref": "#/$defs/uuid"}, "deployment_mode": {"enum": ["SAAS", "PRIVATE", "OFFLINE", "EDGE_HYBRID"]}, "release_digest": {"$ref": "#/$defs/digest"}, "topology_digest": {"$ref": "#/$defs/digest"}, "zones": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}}, "components": {"$ref": "#/$defs/strictObject"}, "quorum_rules": {"$ref": "#/$defs/strictObject"}, "disruption_budgets": {"$ref": "#/$defs/strictObject"}, "immutable_image_digests": {"$ref": "#/$defs/strictObject"}, "status": {"enum": ["REGISTERED", "HEALTHY", "DEGRADED", "FAILED", "RETIRED"]}}}}},
+    "recordZoneHealth": {"properties": {"operation": {"const": "RECORD_ZONE_HEALTH"}, "payload": {"type": "object", "additionalProperties": false, "required": ["observation_id", "topology_id", "zone", "component_health", "dependency_health", "ready_replicas", "required_replicas", "topology_probe_digest", "external_evidence_status", "observed_at"], "properties": {"observation_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "zone": {"$ref": "#/$defs/identifier"}, "component_health": {"$ref": "#/$defs/strictObject"}, "dependency_health": {"$ref": "#/$defs/strictObject"}, "ready_replicas": {"type": "integer", "minimum": 0}, "required_replicas": {"type": "integer", "minimum": 1}, "topology_probe_digest": {"$ref": "#/$defs/digest"}, "external_evidence_status": {"enum": ["NOT_RUN", "OBSERVED", "VERIFIED"]}, "observed_at": {"type": "string", "format": "date-time"}}}}},
+    "createBackup": {"properties": {"operation": {"const": "CREATE_BACKUP"}, "payload": {"type": "object", "additionalProperties": false, "required": ["backup_id", "topology_id", "release_digest", "scope", "scope_digest", "key_version", "minimum_worm_retention_seconds"], "properties": {"backup_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "release_digest": {"$ref": "#/$defs/digest"}, "scope": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}}, "scope_digest": {"$ref": "#/$defs/digest"}, "key_version": {"$ref": "#/$defs/identifier"}, "minimum_worm_retention_seconds": {"type": "integer", "minimum": 86400, "maximum": 315360000}}}}},
+    "verifyRestore": {"properties": {"operation": {"const": "VERIFY_RESTORE"}, "payload": {"type": "object", "additionalProperties": false, "required": ["drill_id", "backup_id", "topology_id", "isolated_environment_ref", "maximum_rto_seconds", "maximum_rpo_seconds", "restore_target_digest"], "properties": {"drill_id": {"$ref": "#/$defs/uuid"}, "backup_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "isolated_environment_ref": {"$ref": "#/$defs/identifier"}, "maximum_rto_seconds": {"type": "integer", "minimum": 1, "maximum": 604800}, "maximum_rpo_seconds": {"type": "integer", "minimum": 0, "maximum": 604800}, "restore_target_digest": {"$ref": "#/$defs/digest"}}}}},
+    "planDr": {"properties": {"operation": {"const": "PLAN_DR"}, "payload": {"type": "object", "additionalProperties": false, "required": ["plan_id", "topology_id", "recovery_drill_id", "source_zones", "target_zones", "maximum_rto_seconds", "maximum_rpo_seconds", "failover_steps", "failback_steps", "health_checks"], "properties": {"plan_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "recovery_drill_id": {"$ref": "#/$defs/uuid"}, "source_zones": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}}, "target_zones": {"type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true, "items": {"$ref": "#/$defs/identifier"}}, "maximum_rto_seconds": {"type": "integer", "minimum": 1}, "maximum_rpo_seconds": {"type": "integer", "minimum": 0}, "failover_steps": {"type": "array", "minItems": 1, "maxItems": 256}, "failback_steps": {"type": "array", "minItems": 1, "maxItems": 256}, "health_checks": {"type": "array", "minItems": 1, "maxItems": 256}}}}},
+    "failover": {"properties": {"operation": {"const": "FAILOVER"}, "payload": {"$ref": "#/$defs/drEventPayload"}}},
+    "failback": {"properties": {"operation": {"const": "FAILBACK"}, "payload": {"$ref": "#/$defs/drEventPayload"}}},
+    "drEventPayload": {"type": "object", "additionalProperties": false, "required": ["event_id", "plan_id", "reason_digest", "expected_health_digest"], "properties": {"event_id": {"$ref": "#/$defs/uuid"}, "plan_id": {"$ref": "#/$defs/uuid"}, "reason_digest": {"$ref": "#/$defs/digest"}, "expected_health_digest": {"$ref": "#/$defs/digest"}}},
+    "planChaos": {"properties": {"operation": {"const": "PLAN_CHAOS"}, "payload": {"type": "object", "additionalProperties": false, "required": ["campaign_id", "topology_id", "environment_ref", "fault_types", "fault_budget_seconds", "blast_radius", "abort_conditions", "cleanup_plan_digest", "production_target_allowed"], "properties": {"campaign_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "environment_ref": {"$ref": "#/$defs/identifier"}, "fault_types": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"enum": ["PROCESS_KILL", "LATENCY", "PACKET_LOSS", "NETWORK_PARTITION", "DISK_FULL", "CLOCK_DRIFT", "CPU_EXHAUSTION", "MEMORY_EXHAUSTION", "CERTIFICATE_FAILURE", "KEY_ROTATION_FAILURE", "STORAGE_FAILURE", "MESSAGE_BACKLOG"]}}, "fault_budget_seconds": {"type": "integer", "minimum": 1, "maximum": 3600}, "blast_radius": {"$ref": "#/$defs/strictObject"}, "abort_conditions": {"type": "array", "minItems": 1, "maxItems": 128}, "cleanup_plan_digest": {"$ref": "#/$defs/digest"}, "production_target_allowed": {"const": false}}}}},
+    "executeChaos": {"properties": {"operation": {"const": "EXECUTE_CHAOS"}, "payload": {"type": "object", "additionalProperties": false, "required": ["result_id", "campaign_id", "fault_type", "execution_authorization_digest"], "properties": {"result_id": {"$ref": "#/$defs/uuid"}, "campaign_id": {"$ref": "#/$defs/uuid"}, "fault_type": {"type": "string"}, "execution_authorization_digest": {"$ref": "#/$defs/digest"}}}}},
+    "planLoad": {"properties": {"operation": {"const": "PLAN_LOAD"}, "payload": {"type": "object", "additionalProperties": false, "required": ["campaign_id", "topology_id", "release_digest", "workload_digest", "duration_seconds", "concurrency", "maximum_requests", "tenant_quota", "stop_conditions"], "properties": {"campaign_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "release_digest": {"$ref": "#/$defs/digest"}, "workload_digest": {"$ref": "#/$defs/digest"}, "duration_seconds": {"type": "integer", "minimum": 60, "maximum": 604800}, "concurrency": {"type": "integer", "minimum": 1, "maximum": 1000000}, "maximum_requests": {"type": "integer", "minimum": 1, "maximum": 10000000000}, "tenant_quota": {"$ref": "#/$defs/strictObject"}, "stop_conditions": {"type": "array", "minItems": 1, "maxItems": 128}}}}},
+    "executeLoad": {"properties": {"operation": {"const": "EXECUTE_LOAD"}, "payload": {"type": "object", "additionalProperties": false, "required": ["result_id", "campaign_id", "execution_authorization_digest"], "properties": {"result_id": {"$ref": "#/$defs/uuid"}, "campaign_id": {"$ref": "#/$defs/uuid"}, "execution_authorization_digest": {"$ref": "#/$defs/digest"}}}}},
+    "planUpgrade": {"properties": {"operation": {"const": "PLAN_UPGRADE"}, "payload": {"type": "object", "additionalProperties": false, "required": ["rollout_id", "topology_id", "from_release_digest", "to_release_digest", "schema_compatible", "api_compatible", "policy_compatible", "pack_compatible", "migration_digest", "rollback_digest", "canary_steps", "maximum_error_rate_millionths"], "properties": {"rollout_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "from_release_digest": {"$ref": "#/$defs/digest"}, "to_release_digest": {"$ref": "#/$defs/digest"}, "schema_compatible": {"const": true}, "api_compatible": {"const": true}, "policy_compatible": {"const": true}, "pack_compatible": {"const": true}, "migration_digest": {"$ref": "#/$defs/digest"}, "rollback_digest": {"$ref": "#/$defs/digest"}, "canary_steps": {"type": "array", "minItems": 1, "maxItems": 20, "uniqueItems": true, "items": {"type": "integer", "minimum": 1, "maximum": 100}}, "maximum_error_rate_millionths": {"type": "integer", "minimum": 0, "maximum": 1000000}}}}},
+    "recordCanary": {"properties": {"operation": {"const": "RECORD_CANARY"}, "payload": {"type": "object", "additionalProperties": false, "required": ["observation_id", "rollout_id", "canary_percent", "error_rate_millionths", "unsafe_allow_count", "evidence_gap_count", "metrics_digest", "evidence_refs", "observed_at"], "properties": {"observation_id": {"$ref": "#/$defs/uuid"}, "rollout_id": {"$ref": "#/$defs/uuid"}, "canary_percent": {"type": "integer", "minimum": 1, "maximum": 100}, "error_rate_millionths": {"type": "integer", "minimum": 0, "maximum": 1000000}, "unsafe_allow_count": {"type": "integer", "minimum": 0}, "evidence_gap_count": {"type": "integer", "minimum": 0}, "metrics_digest": {"$ref": "#/$defs/digest"}, "evidence_refs": {"type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceRef"}}, "observed_at": {"type": "string", "format": "date-time"}}}}},
+    "rollbackUpgrade": {"properties": {"operation": {"const": "ROLLBACK_UPGRADE"}, "payload": {"type": "object", "additionalProperties": false, "required": ["rollout_id", "reason_digest", "rollback_artifact_digest"], "properties": {"rollout_id": {"$ref": "#/$defs/uuid"}, "reason_digest": {"$ref": "#/$defs/digest"}, "rollback_artifact_digest": {"$ref": "#/$defs/digest"}}}}},
+    "recordCostCapacity": {"properties": {"operation": {"const": "RECORD_COST_CAPACITY"}, "payload": {"type": "object", "additionalProperties": false, "required": ["observation_id", "topology_id", "release_digest", "period_started_at", "period_ended_at", "task_count", "request_count", "compute_microunits", "storage_microunits", "network_microunits", "model_microunits", "maximum_global_tasks", "maximum_tasks_per_tenant", "queue_capacity", "connection_pool_capacity", "evidence_buffer_capacity", "source_digest"], "properties": {"observation_id": {"$ref": "#/$defs/uuid"}, "topology_id": {"$ref": "#/$defs/uuid"}, "release_digest": {"$ref": "#/$defs/digest"}, "period_started_at": {"type": "string", "format": "date-time"}, "period_ended_at": {"type": "string", "format": "date-time"}, "task_count": {"type": "integer", "minimum": 0}, "request_count": {"type": "integer", "minimum": 0}, "compute_microunits": {"type": "integer", "minimum": 0}, "storage_microunits": {"type": "integer", "minimum": 0}, "network_microunits": {"type": "integer", "minimum": 0}, "model_microunits": {"type": "integer", "minimum": 0}, "maximum_global_tasks": {"type": "integer", "minimum": 1}, "maximum_tasks_per_tenant": {"type": "integer", "minimum": 1}, "queue_capacity": {"type": "integer", "minimum": 1}, "connection_pool_capacity": {"type": "integer", "minimum": 1}, "evidence_buffer_capacity": {"type": "integer", "minimum": 1}, "source_digest": {"$ref": "#/$defs/digest"}}}}},
+    "recordObservability": {"properties": {"operation": {"const": "RECORD_OBSERVABILITY"}, "payload": {"type": "object", "additionalProperties": false, "required": ["evidence_id", "trace_id", "trace_digest", "log_digest", "metrics_digest", "redaction_policy_digest", "immutable_refs", "collected_at"], "properties": {"evidence_id": {"$ref": "#/$defs/uuid"}, "trace_id": {"$ref": "#/$defs/identifier"}, "trace_digest": {"$ref": "#/$defs/digest"}, "log_digest": {"$ref": "#/$defs/digest"}, "metrics_digest": {"$ref": "#/$defs/digest"}, "redaction_policy_digest": {"$ref": "#/$defs/digest"}, "immutable_refs": {"type": "array", "minItems": 3, "maxItems": 128, "uniqueItems": true, "items": {"$ref": "#/$defs/evidenceRef"}}, "collected_at": {"type": "string", "format": "date-time"}}}}}
+  }
+}

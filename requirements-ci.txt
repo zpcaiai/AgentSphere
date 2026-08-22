@@ -1,0 +1,6 @@
+-r python/durable_worker/requirements.production.txt
+
+# Validate every public OpenAPI document as a complete OpenAPI 3.x contract.
+openapi-spec-validator==0.9.0
+# Registry wire-contract compatibility tests validate the Draft 2020-12 source schema directly.
+jsonschema==4.25.1

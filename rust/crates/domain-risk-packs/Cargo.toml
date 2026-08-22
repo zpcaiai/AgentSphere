@@ -9,16 +9,32 @@ rust-version.workspace = true
 path = "lib.rs"
 
 [dependencies]
+agent-trust-action-ir = { path = "../action-ir" }
 agent-trust-contracts = { path = "../contracts" }
 agent-trust-pack-supply-chain = { path = "../pack-supply-chain" }
 agent-trust-industrial-edge-gateway = { path = "../industrial-edge-gateway" }
+async-trait.workspace = true
+axum.workspace = true
+axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
+base64.workspace = true
 chrono.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+nix = { workspace = true, features = ["user"] }
 parking_lot.workspace = true
+reqwest.workspace = true
+ring.workspace = true
 serde.workspace = true
+serde_jcs.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+sqlx.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+url.workspace = true
 uuid.workspace = true
+zeroize.workspace = true
 
 [lints]
 workspace = true

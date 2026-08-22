@@ -1,0 +1,139 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Incident Replay Release Authority
+  version: 1.0.0
+servers:
+  - url: https://agenttrust-incident-release
+paths:
+  /ready:
+    get:
+      operationId: incidentReleaseReadiness
+      responses:
+        '200':
+          description: Database, orchestrator, containment, replay, and signer are ready
+          content:
+            application/json:
+              schema:
+                $ref: ../incidents/incident-authority-readiness.schema.json
+        '503': {description: A mandatory dependency is unavailable}
+  /v1/incidents/detections:
+    post:
+      operationId: submitIncidentDetection
+      x-agenttrust-required-scope: incident:detect
+      description: Machine-only anomaly ingress; requires exact mTLS SAN, tenant and incident:detect token.
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/Idempotency'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: ../incidents/incident-command.schema.json}
+      responses:
+        '202': {$ref: '#/components/responses/Accepted'}
+        '401': {description: Identity, tenant or scope denied}
+  /v1/incidents/actions:
+    post:
+      operationId: submitIncidentGovernanceAction
+      x-agenttrust-required-scope: incident:mutate
+      description: Unified strong-human-auth ingress for triage, containment, replay, root cause, remediation, recertification, release gate, canary, rollback and close.
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/Idempotency'
+        - in: header
+          name: X-AgentTrust-Human-Assertion
+          required: true
+          schema: {type: string, maxLength: 87384}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: ../incidents/incident-command.schema.json}
+      responses:
+        '202': {$ref: '#/components/responses/Accepted'}
+        '401': {description: Strong human assertion, role, tenant or scope denied}
+        '409': {description: Idempotency, state, approval or evidence conflict}
+  /v1/incidents/executions:
+    post:
+      operationId: executeAuthorizedIncidentMutation
+      x-agenttrust-required-scope: incident:execute
+      description: Runtime-only executor. Requires exact action hash, ledger execution, fence, resource version, PEP decision and authorization evidence headers.
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/Idempotency'
+        - {in: header, name: X-AgentTrust-Action-Hash, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}$'}}
+        - {in: header, name: X-AgentTrust-Ledger-Execution-Id, required: true, schema: {type: string, format: uuid}}
+        - {in: header, name: X-AgentTrust-Ledger-Entry-Id, required: true, schema: {type: string, format: uuid}}
+        - {in: header, name: X-AgentTrust-Ledger-Entry-Digest, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}$'}}
+        - {in: header, name: X-AgentTrust-Fence-Digest, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}$'}}
+        - {in: header, name: X-AgentTrust-Resource-Version, required: true, schema: {type: integer, minimum: 0}}
+        - {in: header, name: X-AgentTrust-Trace-Id, required: true, schema: {type: string}}
+        - {in: header, name: X-AgentTrust-Policy-Decision-Id, required: true, schema: {type: string}}
+        - {in: header, name: X-AgentTrust-Policy-Decision-Digest, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}$'}}
+        - {in: header, name: X-AgentTrust-Authorization-Evidence-Ref, required: true, schema: {type: string}}
+        - {in: header, name: X-AgentTrust-Authorization-Evidence-Digest, required: true, schema: {type: string, pattern: '^[a-f0-9]{64}$'}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: ../incidents/incident-executor-request.schema.json}
+      responses:
+        '200':
+          description: Durable mutation result and evidence outbox reference
+          content:
+            application/json:
+              schema: {$ref: ../incidents/incident-mutation-result.schema.json}
+        '401': {description: Runtime identity or admitted action binding denied}
+        '503': {description: Outcome unknown or mandatory dependency unavailable}
+  /v1/authoritative/incidents:
+    get:
+      operationId: listAuthoritativeIncidents
+      x-agenttrust-required-scope: incident:query
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - {in: query, name: after_incident_id, schema: {type: string, format: uuid}}
+        - {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        '200':
+          description: Tenant-isolated authoritative incident timeline page
+          content:
+            application/json:
+              schema: {$ref: ../incidents/authoritative-incident-page.schema.json}
+  /v1/authoritative/incidents/{incident_id}:
+    get:
+      operationId: getAuthoritativeIncident
+      x-agenttrust-required-scope: incident:query
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - {in: path, name: incident_id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: One tenant-isolated incident with complete ordered timeline
+          content:
+            application/json:
+              schema: {$ref: ../incidents/authoritative-incident-page.schema.json#/$defs/incident}
+        '404': {description: Not found without cross-tenant disclosure}
+components:
+  securitySchemes:
+    mtls: {type: mutualTLS}
+    bearer: {type: http, scheme: bearer}
+  parameters:
+    Tenant:
+      in: header
+      name: X-AgentTrust-Tenant-Id
+      required: true
+      schema: {type: string, format: uuid}
+    Idempotency:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:/-]+$'}
+  responses:
+    Accepted:
+      description: Canonical Action admitted; execution remains pending
+      content:
+        application/json:
+          schema: {$ref: ../incidents/incident-action-receipt.schema.json}
+security:
+  - mtls: []
+    bearer: []

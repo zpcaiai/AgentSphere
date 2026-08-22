@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1.7
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/workspace/target,sharing=locked \
+    cargo build --locked --release --package agent-trust-domain-risk-packs \
+      --bin agenttrust-domain-runtime-authority && \
+    install -D -m 0555 /workspace/target/release/agenttrust-domain-runtime-authority \
+      /out/agenttrust-domain-runtime-authority
+
+FROM ${RUNTIME_BASE_IMAGE}
+COPY --from=build /out/agenttrust-domain-runtime-authority /usr/local/bin/agenttrust-domain-runtime-authority
+USER 65532:65532
+EXPOSE 8094 9104
+ENTRYPOINT ["/usr/local/bin/agenttrust-domain-runtime-authority"]

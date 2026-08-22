@@ -1,0 +1,51 @@
+{
+  "schema_version": "agenttrust.approval-principal-golden-vector.v1",
+  "description": "TEST ONLY cross-language Ed25519 and RFC 8785 JCS vector; private seed MUST NOT be used in production.",
+  "verification_time": "2030-01-02T03:06:00Z",
+  "private_seed_base64url_test_only": "W1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1tbW1s",
+  "public_key_base64url": "a3NKjv8kb-c0s41ARsFI7uXwT-h7OgpCOVWneVbeBms",
+  "request": {
+    "method": "POST",
+    "path": "/v1/approvals/cases/01900000-0000-7000-8000-000000000003/decisions",
+    "tenant_id": "01900000-0000-7000-8000-000000000001",
+    "client_identity": "URI:spiffe://agenttrust/approval-bff",
+    "service_subject": "approval-bff",
+    "scope": "approvals:decide",
+    "idempotency_key": "approval-decision-01900000-0000-7000-8000-000000000004",
+    "body": {
+      "schema_version": "agenttrust.approval-decision.v1",
+      "decision": "APPROVE",
+      "reason": "Reviewed against change ticket CHG-2030-0001"
+    }
+  },
+  "request_binding_jcs": "{\"body\":{\"decision\":\"APPROVE\",\"reason\":\"Reviewed against change ticket CHG-2030-0001\",\"schema_version\":\"agenttrust.approval-decision.v1\"},\"client_identity\":\"URI:spiffe://agenttrust/approval-bff\",\"idempotency_key\":\"approval-decision-01900000-0000-7000-8000-000000000004\",\"method\":\"POST\",\"path\":\"/v1/approvals/cases/01900000-0000-7000-8000-000000000003/decisions\",\"schema_version\":\"agenttrust.approval-principal-request-binding.v1\",\"scope\":\"approvals:decide\",\"service_subject\":\"approval-bff\",\"tenant_id\":\"01900000-0000-7000-8000-000000000001\"}",
+  "request_digest": "26a8592dc6b9c7f6167aac6020a8b796d0626ff1fdf641f19442b3572e7a03cc",
+  "assertion_signing_jcs": "{\"audience\":\"agenttrust-approval\",\"client_identity\":\"URI:spiffe://agenttrust/approval-bff\",\"expires_at\":\"2030-01-02T03:09:05Z\",\"issued_at\":\"2030-01-02T03:04:05Z\",\"issuer\":\"enterprise-idp\",\"jti\":\"01900000-0000-7000-8000-000000000005\",\"key_id\":\"idp-key-1\",\"owned_resources\":[\"urn:agenttrust:resource:payments-api\"],\"request_digest\":\"26a8592dc6b9c7f6167aac6020a8b796d0626ff1fdf641f19442b3572e7a03cc\",\"roles\":[\"change-manager\",\"production-approver\"],\"schema_version\":\"agenttrust.signed-approval-principal-assertion.v1\",\"scope\":\"approvals:decide\",\"signature\":\"\",\"strong_auth\":true,\"subject\":\"human-approver@example.test\",\"tenant_id\":\"01900000-0000-7000-8000-000000000001\"}",
+  "signature_base64url": "-s8kAyuVy84HiybC8Mutx932mG13DMdEo9slZL3zS0ekIfumRVFK0hJxsXuhrUx4uh-pIuINu1nYdfZ7iI3fBw",
+  "signed_assertion": {
+    "schema_version": "agenttrust.signed-approval-principal-assertion.v1",
+    "tenant_id": "01900000-0000-7000-8000-000000000001",
+    "subject": "human-approver@example.test",
+    "roles": [
+      "change-manager",
+      "production-approver"
+    ],
+    "owned_resources": [
+      "urn:agenttrust:resource:payments-api"
+    ],
+    "strong_auth": true,
+    "issuer": "enterprise-idp",
+    "audience": "agenttrust-approval",
+    "issued_at": "2030-01-02T03:04:05Z",
+    "expires_at": "2030-01-02T03:09:05Z",
+    "jti": "01900000-0000-7000-8000-000000000005",
+    "request_digest": "26a8592dc6b9c7f6167aac6020a8b796d0626ff1fdf641f19442b3572e7a03cc",
+    "client_identity": "URI:spiffe://agenttrust/approval-bff",
+    "scope": "approvals:decide",
+    "key_id": "idp-key-1",
+    "signature": "-s8kAyuVy84HiybC8Mutx932mG13DMdEo9slZL3zS0ekIfumRVFK0hJxsXuhrUx4uh-pIuINu1nYdfZ7iI3fBw"
+  },
+  "signed_assertion_jcs": "{\"audience\":\"agenttrust-approval\",\"client_identity\":\"URI:spiffe://agenttrust/approval-bff\",\"expires_at\":\"2030-01-02T03:09:05Z\",\"issued_at\":\"2030-01-02T03:04:05Z\",\"issuer\":\"enterprise-idp\",\"jti\":\"01900000-0000-7000-8000-000000000005\",\"key_id\":\"idp-key-1\",\"owned_resources\":[\"urn:agenttrust:resource:payments-api\"],\"request_digest\":\"26a8592dc6b9c7f6167aac6020a8b796d0626ff1fdf641f19442b3572e7a03cc\",\"roles\":[\"change-manager\",\"production-approver\"],\"schema_version\":\"agenttrust.signed-approval-principal-assertion.v1\",\"scope\":\"approvals:decide\",\"signature\":\"-s8kAyuVy84HiybC8Mutx932mG13DMdEo9slZL3zS0ekIfumRVFK0hJxsXuhrUx4uh-pIuINu1nYdfZ7iI3fBw\",\"strong_auth\":true,\"subject\":\"human-approver@example.test\",\"tenant_id\":\"01900000-0000-7000-8000-000000000001\"}",
+  "assertion_digest": "8f6e37253344b3b6eb1a5123316899b871234d06a07fc39a6c85f11e297047d5",
+  "header_value_base64url": "eyJzY2hlbWFfdmVyc2lvbiI6ImFnZW50dHJ1c3Quc2lnbmVkLWFwcHJvdmFsLXByaW5jaXBhbC1hc3NlcnRpb24udjEiLCJ0ZW5hbnRfaWQiOiIwMTkwMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDEiLCJzdWJqZWN0IjoiaHVtYW4tYXBwcm92ZXJAZXhhbXBsZS50ZXN0Iiwicm9sZXMiOlsiY2hhbmdlLW1hbmFnZXIiLCJwcm9kdWN0aW9uLWFwcHJvdmVyIl0sIm93bmVkX3Jlc291cmNlcyI6WyJ1cm46YWdlbnR0cnVzdDpyZXNvdXJjZTpwYXltZW50cy1hcGkiXSwic3Ryb25nX2F1dGgiOnRydWUsImlzc3VlciI6ImVudGVycHJpc2UtaWRwIiwiYXVkaWVuY2UiOiJhZ2VudHRydXN0LWFwcHJvdmFsIiwiaXNzdWVkX2F0IjoiMjAzMC0wMS0wMlQwMzowNDowNVoiLCJleHBpcmVzX2F0IjoiMjAzMC0wMS0wMlQwMzowOTowNVoiLCJqdGkiOiIwMTkwMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwMDUiLCJyZXF1ZXN0X2RpZ2VzdCI6IjI2YTg1OTJkYzZiOWM3ZjYxNjdhYWM2MDIwYThiNzk2ZDA2MjZmZjFmZGY2NDFmMTk0NDJiMzU3MmU3YTAzY2MiLCJjbGllbnRfaWRlbnRpdHkiOiJVUkk6c3BpZmZlOi8vYWdlbnR0cnVzdC9hcHByb3ZhbC1iZmYiLCJzY29wZSI6ImFwcHJvdmFsczpkZWNpZGUiLCJrZXlfaWQiOiJpZHAta2V5LTEiLCJzaWduYXR1cmUiOiItczhrQXl1Vnk4NEhpeWJDOE11dHg5MzJtRzEzRE1kRW85c2xaTDN6UzBla0lmdW1SVkZLMGhKeHNYdWhyVXg0dWgtcEl1SU51MW5ZZGZaN2lJM2ZCdyJ9"
+}

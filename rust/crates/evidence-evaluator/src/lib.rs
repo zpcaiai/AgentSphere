@@ -1,7 +1,21 @@
 //! Tamper-evident audit chains, offline evidence verification, and governed evaluation.
 
+pub mod artifact;
+pub mod postgres;
+pub mod server;
+
 use agent_trust_contracts::{
-    ArtifactRef, EvaluationResult, EvaluationStatus, SchemaVersion, TaskId, TenantId,
+    ActionHash, ArtifactRef, ContractError, EvaluationResult, EvaluationStatus, ExecutionId,
+    IdempotencyKey, SchemaVersion, StepId, TaskId, TenantId,
+};
+pub use agent_trust_contracts::{
+    AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
+    AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceControlBinding,
+    AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    EVIDENCE_EVENT_SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION, EVIDENCE_EXECUTION_RECEIPT_KEY_USAGE,
+    EXECUTION_EVIDENCE_RECEIPT_SCHEMA_VERSION, EXECUTION_EVIDENCE_REQUEST_SCHEMA_VERSION,
+    EvidenceEventDraft, EvidenceEventType, ExecutionEvidenceRequest,
+    SignedAuthorityEvidenceReceipt, SignedEvidenceEvent, SignedExecutionEvidenceReceipt,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -15,59 +29,49 @@ use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use thiserror::Error;
 use uuid::Uuid;
 
-pub const EVIDENCE_SCHEMA_VERSION: &str = "agenttrust.evidence.v1";
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-pub enum EvidenceEventType {
-    TaskCreated,
-    PlanGenerated,
-    PolicyEvaluated,
-    ApprovalDecision,
-    CredentialIssued,
-    ToolPrepared,
-    ToolExecuted,
-    Compensation,
-    Evaluation,
-    SecurityAlert,
-    StateTransition,
-}
+pub const EVIDENCE_PACKAGE_SCHEMA_VERSION: &str = "agenttrust.evidence-package.v1";
+pub const EVIDENCE_PACKAGE_REQUEST_SCHEMA_VERSION: &str = "agenttrust.evidence-package-request.v1";
+pub const EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION: &str = "agenttrust.evidence-event-request.v1";
+pub const EVALUATION_REQUEST_SCHEMA_VERSION: &str = "agenttrust.evaluation-request.v1";
+pub const EVALUATION_RUN_SCHEMA_VERSION: &str = "agenttrust.evaluation-run.v1";
+pub const EVALUATION_RUN_KEY_USAGE: &str = "EVIDENCE_EVALUATION_RUN";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-pub struct EvidenceEventDraft {
+pub struct ProductionEvidenceEventRequest {
+    pub schema_version: String,
     pub tenant_id: TenantId,
     pub task_id: TaskId,
-    pub event_type: EvidenceEventType,
-    pub actor_subject: String,
-    pub source_service: String,
-    pub trace_id: String,
-    pub span_id: String,
-    pub payload_hash: String,
-    pub safe_summary: String,
-    pub artifact_refs: Vec<ArtifactRef>,
-    pub occurred_at: DateTime<Utc>,
+    pub idempotency_key: IdempotencyKey,
+    pub expected_task_state_version: u64,
+    pub event: EvidenceEventDraft,
+    pub requested_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct SignedEvidenceEvent {
-    pub schema_version: String,
-    pub event_id: String,
-    pub sequence: u64,
-    pub previous_hash: String,
-    pub event_hash: String,
-    pub key_id: String,
-    pub signature: String,
-    pub draft: EvidenceEventDraft,
-}
-
-impl SignedEvidenceEvent {
-    fn unsigned_bytes(&self) -> Result<Vec<u8>, EvidenceError> {
-        let mut value = self.clone();
-        value.event_hash.clear();
-        value.signature.clear();
-        serde_jcs::to_vec(&value).map_err(|_| EvidenceError::Canonicalization)
+impl ProductionEvidenceEventRequest {
+    pub fn request_digest(&self) -> Result<String, EvidenceError> {
+        self.event
+            .validate()
+            .map_err(|_| EvidenceError::EventInvalid)?;
+        if self.schema_version != EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION
+            || self.event.tenant_id != self.tenant_id
+            || self.event.task_id != self.task_id
+            || self.idempotency_key.0.is_empty()
+            || self.idempotency_key.0.len() > 128
+            || self
+                .idempotency_key
+                .0
+                .bytes()
+                .any(|byte| !(byte.is_ascii_alphanumeric() || b"._:/-".contains(&byte)))
+            || self.requested_at > Utc::now() + chrono::Duration::minutes(1)
+            || self.event.occurred_at > self.requested_at + chrono::Duration::minutes(1)
+            || self.event.event_type == EvidenceEventType::ToolExecuted
+        {
+            return Err(EvidenceError::EventInvalid);
+        }
+        Ok(hex(Sha256::digest(
+            serde_jcs::to_vec(self).map_err(|_| EvidenceError::Canonicalization)?,
+        )))
     }
 }
 
@@ -140,7 +144,7 @@ impl AuditSink for InMemoryAuditChain {
             signature: String::new(),
             draft,
         };
-        event.event_hash = hex(Sha256::digest(event.unsigned_bytes()?));
+        event.event_hash = event.expected_hash()?;
         event.signature = URL_SAFE_NO_PAD.encode(
             self.signing_key
                 .sign(event.event_hash.as_bytes())
@@ -261,6 +265,99 @@ pub struct EvidencePackage {
     pub built_at: DateTime<Utc>,
 }
 
+/// Immutable, authority-signed wrapper used by production exports. The inner package remains
+/// self-contained so the existing offline chain verifier can validate it without the service.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SignedEvidencePackage {
+    pub schema_version: String,
+    pub package: EvidencePackage,
+    pub chain_head: String,
+    pub issuer: String,
+    pub key_id: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EvidencePackageRequest {
+    pub schema_version: String,
+    pub tenant_id: TenantId,
+    pub task_id: TaskId,
+    pub idempotency_key: IdempotencyKey,
+    pub expected_chain_head: String,
+    pub requested_at: DateTime<Utc>,
+}
+
+impl EvidencePackageRequest {
+    pub fn request_digest(&self) -> Result<String, EvidenceError> {
+        if self.schema_version != EVIDENCE_PACKAGE_REQUEST_SCHEMA_VERSION
+            || Uuid::parse_str(&self.tenant_id.0)
+                .ok()
+                .is_none_or(|value| value.to_string() != self.tenant_id.0)
+            || Uuid::parse_str(&self.task_id.0)
+                .ok()
+                .is_none_or(|value| value.to_string() != self.task_id.0)
+            || self.idempotency_key.0.is_empty()
+            || self.idempotency_key.0.len() > 128
+            || !lower_digest(&self.expected_chain_head)
+        {
+            return Err(EvidenceError::RequestInvalid);
+        }
+        Ok(hex(Sha256::digest(
+            serde_jcs::to_vec(self).map_err(|_| EvidenceError::Canonicalization)?,
+        )))
+    }
+}
+
+impl SignedEvidencePackage {
+    pub fn signing_bytes(&self) -> Result<Vec<u8>, EvidenceError> {
+        let mut unsigned = self.clone();
+        unsigned.signature.clear();
+        serde_jcs::to_vec(&unsigned).map_err(|_| EvidenceError::Canonicalization)
+    }
+
+    pub fn sign(&mut self, key: &SigningKey) -> Result<(), EvidenceError> {
+        self.signature = URL_SAFE_NO_PAD.encode(key.sign(&self.signing_bytes()?).to_bytes());
+        Ok(())
+    }
+
+    pub fn verify(
+        &self,
+        key: &VerifyingKey,
+        event_keys: BTreeMap<String, VerifyingKey>,
+    ) -> Result<EvidenceIntegrityReport, EvidenceError> {
+        if self.schema_version != EVIDENCE_PACKAGE_SCHEMA_VERSION
+            || self.chain_head
+                != self
+                    .package
+                    .events
+                    .last()
+                    .map(|event| event.event_hash.as_str())
+                    .ok_or(EvidenceError::ChainIncomplete)?
+            || self.issuer.is_empty()
+            || self.issuer.len() > 256
+            || self.key_id.is_empty()
+            || self.key_id.len() > 128
+        {
+            return Err(EvidenceError::IntegrityInvalid);
+        }
+        let signature = Signature::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(&self.signature)
+                .map_err(|_| EvidenceError::SignatureInvalid)?,
+        )
+        .map_err(|_| EvidenceError::SignatureInvalid)?;
+        key.verify(&self.signing_bytes()?, &signature)
+            .map_err(|_| EvidenceError::SignatureInvalid)?;
+        let report = EvidenceChainVerifier::new(event_keys).verify(&self.package);
+        if !report.valid {
+            return Err(EvidenceError::IntegrityInvalid);
+        }
+        Ok(report)
+    }
+}
+
 pub struct EvidenceBuilder<A: AuditSink> {
     audit: Arc<A>,
 }
@@ -347,7 +444,7 @@ impl EvidenceChainVerifier {
                 || event.previous_hash != previous
                 || event.draft.task_id != package.task_id
                 || event.draft.tenant_id != package.tenant_id
-                || event.event_hash != hex(Sha256::digest(event.unsigned_bytes()?))
+                || event.event_hash != event.expected_hash()?
             {
                 return Err(EvidenceError::IntegrityInvalid);
             }
@@ -389,6 +486,115 @@ pub struct EvaluationInput {
     pub unhandled_high_risk_alerts: u32,
     pub evidence_refs: Vec<ArtifactRef>,
     pub domain_input: Value,
+}
+
+/// Request to the deterministic production hard-gate evaluator. Callers select a bounded set of
+/// required event types, but cannot assert that the events or terminal ledger state exist.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ProductionEvaluationRequest {
+    pub schema_version: String,
+    pub tenant_id: TenantId,
+    pub task_id: TaskId,
+    pub idempotency_key: IdempotencyKey,
+    pub expected_chain_head: String,
+    pub required_event_types: Vec<EvidenceEventType>,
+    pub requested_at: DateTime<Utc>,
+}
+
+impl ProductionEvaluationRequest {
+    pub fn request_digest(&self) -> Result<String, EvidenceError> {
+        let mandatory = [
+            EvidenceEventType::TaskCreated,
+            EvidenceEventType::PlanGenerated,
+            EvidenceEventType::PolicyEvaluated,
+            EvidenceEventType::CredentialIssued,
+            EvidenceEventType::ToolPrepared,
+            EvidenceEventType::ToolExecuted,
+        ];
+        if self.schema_version != EVALUATION_REQUEST_SCHEMA_VERSION
+            || Uuid::parse_str(&self.tenant_id.0)
+                .ok()
+                .is_none_or(|value| value.to_string() != self.tenant_id.0)
+            || Uuid::parse_str(&self.task_id.0)
+                .ok()
+                .is_none_or(|value| value.to_string() != self.task_id.0)
+            || self.idempotency_key.0.is_empty()
+            || self.idempotency_key.0.len() > 128
+            || !lower_digest(&self.expected_chain_head)
+            || self.required_event_types.is_empty()
+            || self.required_event_types.len() > 32
+            || self
+                .required_event_types
+                .iter()
+                .enumerate()
+                .any(|(index, event)| self.required_event_types[index + 1..].contains(event))
+            || mandatory
+                .iter()
+                .any(|required| !self.required_event_types.contains(required))
+            || self.requested_at < Utc::now() - chrono::Duration::minutes(5)
+            || self.requested_at > Utc::now() + chrono::Duration::minutes(1)
+        {
+            return Err(EvidenceError::EvaluationInvalid);
+        }
+        Ok(hex(Sha256::digest(
+            serde_jcs::to_vec(self).map_err(|_| EvidenceError::Canonicalization)?,
+        )))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SignedEvaluationRun {
+    pub schema_version: String,
+    pub evaluation_id: String,
+    pub tenant_id: TenantId,
+    pub task_id: TaskId,
+    pub idempotency_key: IdempotencyKey,
+    pub request_digest: String,
+    pub chain_head: String,
+    pub result: EvaluationResult,
+    pub issuer: String,
+    pub key_id: String,
+    pub key_usage: String,
+    pub signature: String,
+}
+
+impl SignedEvaluationRun {
+    pub fn signing_bytes(&self) -> Result<Vec<u8>, EvidenceError> {
+        let mut unsigned = self.clone();
+        unsigned.signature.clear();
+        serde_jcs::to_vec(&unsigned).map_err(|_| EvidenceError::Canonicalization)
+    }
+
+    pub fn sign(&mut self, key: &SigningKey) -> Result<(), EvidenceError> {
+        self.signature = URL_SAFE_NO_PAD.encode(key.sign(&self.signing_bytes()?).to_bytes());
+        Ok(())
+    }
+
+    pub fn verify(&self, key: &VerifyingKey) -> Result<(), EvidenceError> {
+        if self.schema_version != EVALUATION_RUN_SCHEMA_VERSION
+            || self.key_usage != EVALUATION_RUN_KEY_USAGE
+            || Uuid::parse_str(&self.evaluation_id)
+                .ok()
+                .is_none_or(|value| value.to_string() != self.evaluation_id)
+            || !lower_digest(&self.request_digest)
+            || !lower_digest(&self.chain_head)
+            || self.result.schema_version.0 != "agenttrust.evaluation.v1"
+            || self.issuer.is_empty()
+            || self.key_id.is_empty()
+        {
+            return Err(EvidenceError::EvaluationInvalid);
+        }
+        let signature = Signature::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(&self.signature)
+                .map_err(|_| EvidenceError::SignatureInvalid)?,
+        )
+        .map_err(|_| EvidenceError::SignatureInvalid)?;
+        key.verify(&self.signing_bytes()?, &signature)
+            .map_err(|_| EvidenceError::SignatureInvalid)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -540,7 +746,7 @@ fn validate_manifest(manifest: &EvaluatorManifest) -> Result<(), EvidenceError> 
     Ok(())
 }
 
-fn package_hash(package: &EvidencePackage) -> Result<String, EvidenceError> {
+pub(crate) fn package_hash(package: &EvidencePackage) -> Result<String, EvidenceError> {
     let mut copy = package.clone();
     copy.package_hash.clear();
     Ok(hex(Sha256::digest(
@@ -566,6 +772,13 @@ fn hex(bytes: impl AsRef<[u8]>) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn lower_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -596,6 +809,34 @@ pub enum EvidenceError {
     EvaluatorTimeout,
     #[error("EVALUATION_INVALID")]
     EvaluationInvalid,
+    #[error("EVIDENCE_AUTHENTICATION_REQUIRED")]
+    AuthenticationRequired,
+    #[error("EVIDENCE_SCOPE_FORBIDDEN")]
+    ScopeForbidden,
+    #[error("EVIDENCE_REQUEST_INVALID")]
+    RequestInvalid,
+    #[error("EVIDENCE_IDEMPOTENCY_CONFLICT")]
+    IdempotencyConflict,
+    #[error("EVIDENCE_LEDGER_BINDING_INVALID")]
+    LedgerBindingInvalid,
+    #[error("EVIDENCE_AUTHORIZATION_BINDING_INVALID")]
+    AuthorizationBindingInvalid,
+    #[error("EVIDENCE_PERSISTENCE_UNAVAILABLE")]
+    PersistenceUnavailable,
+    #[error("EVIDENCE_DEPENDENCY_UNAVAILABLE")]
+    DependencyUnavailable,
+    #[error("EVIDENCE_NOT_FOUND")]
+    NotFound,
+}
+
+impl From<ContractError> for EvidenceError {
+    fn from(error: ContractError) -> Self {
+        match error {
+            ContractError::Canonicalization => Self::Canonicalization,
+            ContractError::SignatureInvalid => Self::SignatureInvalid,
+            _ => Self::IntegrityInvalid,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -608,6 +849,7 @@ mod tests {
         event_type: EvidenceEventType,
     ) -> EvidenceEventDraft {
         EvidenceEventDraft {
+            schema_version: EVIDENCE_SCHEMA_VERSION.into(),
             tenant_id,
             task_id,
             event_type,
@@ -665,6 +907,56 @@ mod tests {
         let mut reordered = package;
         reordered.events.reverse();
         assert!(!verifier.verify(&reordered).valid);
+    }
+
+    #[tokio::test]
+    async fn execution_receipt_signature_binds_authorization_fence_and_result() {
+        let key = SigningKey::from_bytes(&[32u8; 32]);
+        let audit = InMemoryAuditChain::new("evidence-key".into(), key.clone(), 10)
+            .unwrap_or_else(|_| panic!("audit"));
+        let tenant = TenantId::new();
+        let task = TaskId::new();
+        let execution = ExecutionId::new();
+        let mut event_draft = draft(
+            task.clone(),
+            tenant.clone(),
+            EvidenceEventType::ToolExecuted,
+        );
+        event_draft.span_id = execution.0.clone();
+        let event = audit
+            .append(event_draft)
+            .await
+            .unwrap_or_else(|_| panic!("event"));
+        let mut receipt = SignedExecutionEvidenceReceipt {
+            schema_version: EXECUTION_EVIDENCE_RECEIPT_SCHEMA_VERSION.into(),
+            tenant_id: tenant,
+            task_id: task,
+            step_id: StepId::new(),
+            execution_id: execution,
+            action_hash: ActionHash("b".repeat(64)),
+            authorization_id: Uuid::new_v4().to_string(),
+            authorization_digest: "c".repeat(64),
+            fence_digest: "d".repeat(64),
+            idempotency_key: IdempotencyKey("execution-1".into()),
+            request_digest: "e".repeat(64),
+            result_hash: event.draft.payload_hash.clone(),
+            chain_head: event.event_hash.clone(),
+            evidence_ref: String::new(),
+            event,
+            persisted_at: Utc::now(),
+            issuer: "evidence-service".into(),
+            key_id: "evidence-key".into(),
+            key_usage: EVIDENCE_EXECUTION_RECEIPT_KEY_USAGE.into(),
+            signature: String::new(),
+        };
+        receipt.evidence_ref = receipt.expected_evidence_ref();
+        receipt.sign(&key).unwrap_or_else(|_| panic!("sign"));
+        assert!(receipt.verify(&key.verifying_key(), Utc::now()).is_ok());
+        receipt.authorization_digest = "f".repeat(64);
+        assert_eq!(
+            receipt.verify(&key.verifying_key(), Utc::now()),
+            Err(ContractError::SignatureInvalid)
+        );
     }
 
     struct CodingEvaluator;

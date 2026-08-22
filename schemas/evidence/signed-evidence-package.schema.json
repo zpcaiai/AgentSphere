@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/signed-evidence-package.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "package", "chain_head", "issuer", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.evidence-package.v1"},
+    "package": {"$ref": "./evidence-package.schema.json"},
+    "chain_head": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

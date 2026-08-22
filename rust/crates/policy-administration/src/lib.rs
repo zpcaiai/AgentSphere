@@ -1,9 +1,15 @@
 //! Immutable policy lifecycle, simulation, promotion, rollback, and exception governance.
 
-use agent_trust_contracts::{Decision, RiskLevel, TenantId};
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+pub mod authority;
+pub mod principal;
+pub mod server;
+
+use agent_trust_contracts::{
+    Decision, RiskLevel, SIGNED_POLICY_BUNDLE_SCHEMA_VERSION, SignedPolicyBundle, SignedPolicyRule,
+    TenantId,
+};
 use chrono::{DateTime, Duration, Utc};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::SigningKey;
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -13,16 +19,7 @@ use uuid::Uuid;
 
 pub const POLICY_ADMIN_SCHEMA_VERSION: &str = "agenttrust.policy-admin.v1";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PolicyRule {
-    pub rule_id: String,
-    pub subject_pattern: String,
-    pub tool_pattern: String,
-    pub resource_pattern: String,
-    pub decision: Decision,
-    pub maximum_risk: RiskLevel,
-    pub reason_code: String,
-}
+pub type PolicyRule = SignedPolicyRule;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PolicySource {
@@ -119,44 +116,7 @@ impl StaticAnalyzer {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PolicyBundle {
-    pub schema_version: String,
-    pub bundle_id: String,
-    pub tenant_id: TenantId,
-    pub version: String,
-    pub source_digest: String,
-    pub bundle_digest: String,
-    pub rules: Vec<PolicyRule>,
-    pub default_decision: Decision,
-    pub review_ids: BTreeSet<String>,
-    pub key_id: String,
-    pub signature: String,
-    pub compiled_at: DateTime<Utc>,
-}
-
-impl PolicyBundle {
-    fn signing_bytes(&self) -> Result<Vec<u8>, PolicyAdminError> {
-        let mut copy = self.clone();
-        copy.bundle_digest.clear();
-        copy.signature.clear();
-        serde_jcs::to_vec(&copy).map_err(|_| PolicyAdminError::Canonicalization)
-    }
-
-    pub fn verify(&self, key: &VerifyingKey) -> Result<(), PolicyAdminError> {
-        let expected = hex(Sha256::digest(self.signing_bytes()?));
-        if self.bundle_digest != expected || self.review_ids.is_empty() {
-            return Err(PolicyAdminError::BundleInvalid);
-        }
-        let decoded = URL_SAFE_NO_PAD
-            .decode(&self.signature)
-            .map_err(|_| PolicyAdminError::BundleInvalid)?;
-        let signature =
-            Signature::from_slice(&decoded).map_err(|_| PolicyAdminError::BundleInvalid)?;
-        key.verify(self.bundle_digest.as_bytes(), &signature)
-            .map_err(|_| PolicyAdminError::BundleInvalid)
-    }
-}
+pub type PolicyBundle = SignedPolicyBundle;
 
 pub struct PolicyCompiler {
     key_id: String,
@@ -179,12 +139,22 @@ impl PolicyCompiler {
         source: &PolicySource,
         review_ids: BTreeSet<String>,
     ) -> Result<PolicyBundle, PolicyAdminError> {
+        self.compile_revision(source, 1, review_ids)
+    }
+
+    pub fn compile_revision(
+        &self,
+        source: &PolicySource,
+        source_revision: u64,
+        review_ids: BTreeSet<String>,
+    ) -> Result<PolicyBundle, PolicyAdminError> {
         if source.schema_version != POLICY_ADMIN_SCHEMA_VERSION
             || source.source_id.is_empty()
             || source.author.is_empty()
             || source.rules.is_empty()
             || source.source_digest != source.compute_digest()?
-            || review_ids.is_empty()
+            || source_revision == 0
+            || review_ids.len() < 2
             || StaticAnalyzer::analyze(source)
                 .iter()
                 .any(|finding| finding.blocking)
@@ -192,9 +162,11 @@ impl PolicyCompiler {
             return Err(PolicyAdminError::SourceDenied);
         }
         let mut bundle = PolicyBundle {
-            schema_version: POLICY_ADMIN_SCHEMA_VERSION.into(),
+            schema_version: SIGNED_POLICY_BUNDLE_SCHEMA_VERSION.into(),
             bundle_id: Uuid::new_v4().to_string(),
             tenant_id: source.tenant_id.clone(),
+            policy_id: source.source_id.clone(),
+            source_revision,
             version: source.version.clone(),
             source_digest: source.source_digest.clone(),
             bundle_digest: String::new(),
@@ -205,12 +177,9 @@ impl PolicyCompiler {
             signature: String::new(),
             compiled_at: Utc::now(),
         };
-        bundle.bundle_digest = hex(Sha256::digest(bundle.signing_bytes()?));
-        bundle.signature = URL_SAFE_NO_PAD.encode(
-            self.signing_key
-                .sign(bundle.bundle_digest.as_bytes())
-                .to_bytes(),
-        );
+        bundle
+            .sign(&self.signing_key)
+            .map_err(|_| PolicyAdminError::BundleInvalid)?;
         Ok(bundle)
     }
 }
@@ -317,6 +286,9 @@ pub struct ImpactReport {
     pub generated_at: DateTime<Utc>,
 }
 
+// The pre-v2 in-memory promotion/distribution model is retained only as a regression
+// fixture. Production activation is the durable, signed PEP/PDP protocol in `authority`.
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum PromotionEnvironment {
@@ -326,6 +298,7 @@ pub enum PromotionEnvironment {
     Production,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PromotionRecord {
     pub tenant_id: TenantId,
@@ -337,11 +310,13 @@ pub struct PromotionRecord {
     pub rolled_back: bool,
 }
 
+#[cfg(test)]
 #[derive(Default)]
 pub struct PromotionController {
     active: RwLock<BTreeMap<(TenantId, PromotionEnvironment), PromotionRecord>>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DistributionAcknowledgement {
     pub service: String,
@@ -352,6 +327,7 @@ pub struct DistributionAcknowledgement {
     pub acknowledged_at: DateTime<Utc>,
 }
 
+#[cfg(test)]
 pub trait PolicyDistributionPort: Send + Sync {
     fn publish(
         &self,
@@ -361,6 +337,7 @@ pub trait PolicyDistributionPort: Send + Sync {
     ) -> Result<DistributionAcknowledgement, PolicyAdminError>;
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PolicyPublication {
     pub schema_version: String,
@@ -372,10 +349,12 @@ pub struct PolicyPublication {
     pub evidence_digest: String,
 }
 
+#[cfg(test)]
 pub struct PolicyPublisher<P: PolicyDistributionPort> {
     targets: BTreeMap<String, P>,
 }
 
+#[cfg(test)]
 impl<P: PolicyDistributionPort> PolicyPublisher<P> {
     pub fn new(targets: BTreeMap<String, P>) -> Result<Self, PolicyAdminError> {
         if targets.is_empty() || targets.len() > 100 || targets.keys().any(String::is_empty) {
@@ -507,6 +486,7 @@ impl PolicyRepository {
     }
 }
 
+#[cfg(test)]
 impl PromotionController {
     pub fn promote(
         &self,
@@ -761,7 +741,7 @@ mod tests {
         let bundle = compiler
             .compile(
                 &source(&tenant, "1.0.0", Decision::Allow),
-                BTreeSet::from(["review:1".into()]),
+                BTreeSet::from(["review:1".into(), "review:2".into()]),
             )
             .unwrap_or_else(|error| panic!("compile: {error}"));
         let promotion = PromotionRecord {
@@ -828,13 +808,13 @@ mod tests {
         let old = compiler
             .compile(
                 &source(&tenant, "1.0.0", Decision::Deny),
-                BTreeSet::from(["review:1".into()]),
+                BTreeSet::from(["review:1".into(), "review:2".into()]),
             )
             .unwrap_or_else(|error| panic!("old: {error}"));
         let new = compiler
             .compile(
                 &source(&tenant, "1.1.0", Decision::Allow),
-                BTreeSet::from(["review:2".into()]),
+                BTreeSet::from(["review:3".into(), "review:4".into()]),
             )
             .unwrap_or_else(|error| panic!("new: {error}"));
         let impact = SimulationEngine::shadow_compare(&old, &new, &[action(&tenant)]);
@@ -851,13 +831,13 @@ mod tests {
         let old = compiler
             .compile(
                 &source(&tenant, "1.0.0", Decision::Deny),
-                BTreeSet::from(["review:1".into()]),
+                BTreeSet::from(["review:1".into(), "review:2".into()]),
             )
             .unwrap_or_else(|error| panic!("old: {error}"));
         let new = compiler
             .compile(
                 &source(&tenant, "1.1.0", Decision::Allow),
-                BTreeSet::from(["review:2".into()]),
+                BTreeSet::from(["review:3".into(), "review:4".into()]),
             )
             .unwrap_or_else(|error| panic!("new: {error}"));
         assert!(new.verify(&key.verifying_key()).is_ok());

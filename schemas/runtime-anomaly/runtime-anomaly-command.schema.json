@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/runtime-anomaly-command.schema.json",
+  "title": "Runtime Anomaly Authority Command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "tenant_id", "command_id", "task_id", "resource", "operation",
+    "expected_resource_version", "requested_at", "payload"
+  ],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly-command.v1" },
+    "tenant_id": { "$ref": "#/$defs/uuid" },
+    "command_id": { "$ref": "#/$defs/uuid" },
+    "task_id": { "$ref": "#/$defs/uuid" },
+    "resource": {
+      "type": "string", "minLength": 3, "maxLength": 1024,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]+$"
+    },
+    "operation": {
+      "enum": [
+        "REGISTER_SOURCE", "REVOKE_SOURCE", "START_TRAJECTORY", "UPDATE_BASELINE",
+        "RECORD_FEEDBACK", "ACKNOWLEDGE_CASE", "RECOVER_PAUSED_TASK",
+        "COMPLETE_TRAJECTORY"
+      ]
+    },
+    "expected_resource_version": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 },
+    "requested_at": { "type": "string", "format": "date-time" },
+    "payload": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "operation": { "const": "REGISTER_SOURCE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/registerSource" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "REVOKE_SOURCE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/revokeSource" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "START_TRAJECTORY" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/startTrajectory" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "UPDATE_BASELINE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/baseline" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "RECORD_FEEDBACK" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/feedback" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "enum": ["ACKNOWLEDGE_CASE", "RECOVER_PAUSED_TASK"] } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/caseTransition" } } }
+    },
+    {
+      "if": { "properties": { "operation": { "const": "COMPLETE_TRAJECTORY" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/completeTrajectory" } } }
+    }
+  ],
+  "$defs": {
+    "uuid": { "type": "string", "format": "uuid" },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "identifier": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "evidenceRef": {
+      "type": "string", "minLength": 12, "maxLength": 1024,
+      "pattern": "^evidence://[A-Za-z0-9._:/-]+$"
+    },
+    "registerSource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_id", "key_id", "ed25519_public_key_base64", "allowed_signal_kinds", "workload_identity"],
+      "properties": {
+        "source_id": { "$ref": "#/$defs/identifier" },
+        "key_id": { "$ref": "#/$defs/identifier" },
+        "ed25519_public_key_base64": { "type": "string", "minLength": 43, "maxLength": 44, "pattern": "^[A-Za-z0-9_-]+$" },
+        "allowed_signal_kinds": {
+          "type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true,
+          "items": { "enum": ["TOOL", "RESOURCE", "NETWORK", "FILE", "CREDENTIAL", "POLICY_DENY", "APPROVAL", "PROCESS", "TELEMETRY", "AUDIT_CONTROL"] }
+        },
+        "workload_identity": { "type": "string", "minLength": 5, "maxLength": 512, "pattern": "^(DNS:|URI:)[!-~]+$" }
+      }
+    },
+    "revokeSource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_id", "reason_digest", "replacement_source_id", "approval_id", "approval_evidence_ref"],
+      "properties": {
+        "source_id": { "$ref": "#/$defs/identifier" },
+        "reason_digest": { "$ref": "#/$defs/digest" },
+        "replacement_source_id": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/identifier" }] },
+        "approval_id": { "$ref": "#/$defs/uuid" },
+        "approval_evidence_ref": { "$ref": "#/$defs/evidenceRef" }
+      }
+    },
+    "startTrajectory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agent_instance_id", "agent_type", "domain", "goal_hash", "plan_hash", "allowed_resource_prefixes", "allowed_network_destinations", "authorization_lease_id", "revocation_epoch"],
+      "properties": {
+        "agent_instance_id": { "$ref": "#/$defs/uuid" },
+        "agent_type": { "$ref": "#/$defs/identifier" },
+        "domain": { "$ref": "#/$defs/identifier" },
+        "goal_hash": { "$ref": "#/$defs/digest" },
+        "plan_hash": { "$ref": "#/$defs/digest" },
+        "allowed_resource_prefixes": { "type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+        "allowed_network_destinations": { "type": "array", "maxItems": 1024, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 253 } },
+        "authorization_lease_id": { "$ref": "#/$defs/uuid" },
+        "revocation_epoch": { "type": "integer", "minimum": 0, "maximum": 9223372036854775807 }
+      }
+    },
+    "baseline": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseline_id", "agent_type", "domain", "maximum_calls_per_minute", "maximum_distinct_resources", "maximum_destination_fanout", "sample_count", "threshold_version", "approval_id", "approval_evidence_ref", "baseline_digest"],
+      "properties": {
+        "baseline_id": { "$ref": "#/$defs/uuid" },
+        "agent_type": { "$ref": "#/$defs/identifier" },
+        "domain": { "$ref": "#/$defs/identifier" },
+        "maximum_calls_per_minute": { "type": "integer", "minimum": 1 },
+        "maximum_distinct_resources": { "type": "integer", "minimum": 1 },
+        "maximum_destination_fanout": { "type": "integer", "minimum": 1 },
+        "sample_count": { "type": "integer", "minimum": 10 },
+        "threshold_version": { "$ref": "#/$defs/identifier" },
+        "approval_id": { "$ref": "#/$defs/uuid" },
+        "approval_evidence_ref": { "$ref": "#/$defs/evidenceRef" },
+        "baseline_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "feedback": {
+      "type": "object", "additionalProperties": false,
+      "required": ["feedback_id", "finding_id", "label", "annotation_digest", "reviewer_subject", "approval_id", "evidence_ref"],
+      "properties": {
+        "feedback_id": { "$ref": "#/$defs/uuid" },
+        "finding_id": { "$ref": "#/$defs/uuid" },
+        "label": { "enum": ["TRUE_POSITIVE", "FALSE_POSITIVE", "FALSE_NEGATIVE", "INCONCLUSIVE"] },
+        "annotation_digest": { "$ref": "#/$defs/digest" },
+        "reviewer_subject": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "approval_id": { "$ref": "#/$defs/uuid" },
+        "evidence_ref": { "$ref": "#/$defs/evidenceRef" }
+      }
+    },
+    "caseTransition": {
+      "type": "object", "additionalProperties": false,
+      "required": ["case_id", "approval_id", "approval_evidence_ref", "new_authorization_lease_id"],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/uuid" },
+        "approval_id": { "$ref": "#/$defs/uuid" },
+        "approval_evidence_ref": { "$ref": "#/$defs/evidenceRef" },
+        "new_authorization_lease_id": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/uuid" }] }
+      }
+    },
+    "completeTrajectory": {
+      "type": "object", "additionalProperties": false,
+      "required": ["completion_evidence_ref", "completion_evidence_digest"],
+      "properties": {
+        "completion_evidence_ref": { "$ref": "#/$defs/evidenceRef" },
+        "completion_evidence_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

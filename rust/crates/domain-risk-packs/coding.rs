@@ -2,6 +2,7 @@ use crate::{DOMAIN_PACKS_SCHEMA_VERSION, tool, unsigned_pack_manifest};
 use agent_trust_contracts::{EffectClass, EvaluationStatus, RiskLevel, TenantId};
 use agent_trust_pack_supply_chain::DomainPackManifest;
 use chrono::{DateTime, Utc};
+#[cfg(test)]
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,6 +42,37 @@ pub struct PatchPlan {
 pub struct CodingToolProvider {
     policy: BranchPolicy,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BuildExecutorProfile {
+    pub profile_id: String,
+    pub image_digest: String,
+    pub run_as_non_root: bool,
+    pub read_only_toolchain: bool,
+    pub temporary_workspace: bool,
+    pub network_default_deny: bool,
+    pub dependency_cache_read_only: bool,
+    pub command_templates: BTreeSet<String>,
+}
+
+impl BuildExecutorProfile {
+    pub fn validate(&self) -> Result<(), CodingError> {
+        if self.profile_id.is_empty()
+            || self.image_digest.len() != 64
+            || !self.run_as_non_root
+            || !self.read_only_toolchain
+            || !self.temporary_workspace
+            || !self.network_default_deny
+            || !self.dependency_cache_read_only
+            || self.command_templates.is_empty()
+        {
+            return Err(CodingError::PolicyInvalid);
+        }
+        Ok(())
+    }
+}
+
+pub struct CodingPolicyPack(pub CodingToolProvider);
 
 impl CodingToolProvider {
     pub fn new(policy: BranchPolicy) -> Result<Self, CodingError> {
@@ -222,13 +254,33 @@ impl CodingEvaluator {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct GitOperationReceipt {
+    pub operation: String,
+    pub idempotency_key: String,
+    pub baseline_sha: String,
+    pub result_ref: String,
+    pub result_digest: String,
+    pub evidence_ref: String,
+    pub evidence_digest: String,
+    pub external_effect_count: u32,
+}
+
+pub trait GitProxyAdapter: Send + Sync {
+    fn create_task_branch(&self, task_id: &str, baseline_sha: &str) -> Result<GitOperationReceipt, CodingError>;
+    fn create_pull_request(&self, task_id: &str, branch: &str, build_evidence_digest: &str) -> Result<GitOperationReceipt, CodingError>;
+    fn rollback(&self, task_id: &str, baseline_sha: &str) -> Result<GitOperationReceipt, CodingError>;
+}
+
+#[cfg(test)]
 #[derive(Default)]
-pub struct GitProxyAdapter {
+pub struct InMemoryGitProxyAdapter {
     branches: Mutex<BTreeMap<String, String>>,
     pull_requests: Mutex<BTreeMap<String, String>>,
 }
 
-impl GitProxyAdapter {
+#[cfg(test)]
+impl InMemoryGitProxyAdapter {
     pub fn create_task_branch(
         &self,
         task_id: &str,
@@ -416,7 +468,7 @@ mod tests {
             true,
         );
         assert_eq!(evaluation.status, EvaluationStatus::Fail);
-        let git = GitProxyAdapter::default();
+        let git = InMemoryGitProxyAdapter::default();
         let first = git
             .create_task_branch("task-1", "abcdef1")
             .unwrap_or_else(|error| panic!("branch: {error}"));

@@ -1,7 +1,49 @@
 {
-  "project": "agent-trust-control-plane", "batch": "15", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
-  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "python3 -m unittest discover -s python -p 'test_*.py'", "exit_code": 0}, {"command": "authenticated GET https://api.openai.com/v1/models with bounded response and credential redaction", "exit_code": 0}, {"command": "fixed bounded generation request to live provider", "exit_code": 2}],
-  "tests": [{"name": "policy-first route/fallback, two provider mappings and atomic budget", "status": "PASS", "evidence_ref": "rust/crates/model-gateway"}, {"name": "Python deterministic policy-subset router", "status": "PASS", "evidence_ref": "python/model_router/tests"}, {"name": "live provider authentication and 118-model catalog compatibility without sending prompts", "status": "PASS", "evidence_ref": "evidence/external-gates/model-provider-live-catalog.json"}, {"name": "bounded ordered streaming, response DLP, budget finalization and exact provider billing reconciliation", "status": "PASS", "evidence_ref": "rust/crates/model-gateway/src/lib.rs"}, {"name": "real generation plus SSE usage and DLP protocol gate with optional residency digest binding", "status": "PASS", "evidence_ref": "python/production_gates/external_services.py"}],
-  "evidence": ["schemas/models/provider-manifest.schema.json", "config/models/gateway.production.json", "docs/models/model-gateway-operations.md", "python/production_gates/external_services.py", "schemas/release/external-gate-report.schema.json", "evidence/external-gates/model-provider-live-catalog.json", "evidence/external-gates/model-generation-live-failed.json"],
-  "unresolved_risks": ["Live catalog/authentication passed and generation/stream/DLP/billing code paths are tested locally, but the live generation gate failed with HTTP 429; streaming, invoice reconciliation, data residency acceptance and production DLP corpus remain unverified."], "verified_at": "2026-08-06T05:01:53Z"
+  "project": "agent-trust-control-plane",
+  "batch": "15",
+  "status": "IN_PROGRESS",
+  "commit": "WORKTREE-NO-GIT",
+  "commands": [
+    {"command": "python3 -m unittest python.production_gates.tests.test_model_gateway_contract python.production_gates.tests.test_build_production_image", "exit_code": 0, "kind": "STATIC_CONTRACT", "result": "10 tests passed"},
+    {"command": "parse every schemas/model-gateway/*.json with Python json", "exit_code": 0, "kind": "STATIC_SCHEMA"},
+    {"command": "Ruby YAML.load_file schemas/openapi/model-gateway-v1.yaml with aliases enabled", "exit_code": 0, "kind": "STATIC_SCHEMA"},
+    {"command": "source delimiter scan for rust/crates/model-gateway/**/*.rs", "exit_code": 0, "kind": "STATIC_SOURCE"},
+    {"command": "git diff --check for Batch 15 owned paths", "exit_code": 0, "kind": "STATIC_SOURCE"},
+    {"command": "cargo test -p agent-trust-model-gateway --all-targets", "status": "NOT_RUN_RESOURCE_FREEZE"},
+    {"command": "docker build -f Dockerfile.model-gateway", "status": "NOT_RUN_RESOURCE_FREEZE"}
+  ],
+  "tests": [
+    {"name": "strict schemas, action bindings, RLS/UNKNOWN migration and fail-closed runtime source contract", "status": "PASS_STATIC", "evidence_ref": "python/production_gates/tests/test_model_gateway_contract.py"},
+    {"name": "authoritative BFF/UI list is tenant/scope bound, keyset paginated, digest bound and raw-payload free", "status": "PASS_STATIC", "evidence_ref": "schemas/model-gateway/authoritative-executions.schema.json"},
+    {"name": "Rust type checking and unit/integration suite", "status": "NOT_RUN_RESOURCE_FREEZE", "evidence_ref": "rust/crates/model-gateway"},
+    {"name": "migration, RLS/grants and UNKNOWN recovery against production-shaped PostgreSQL", "status": "NOT_RUN_EXTERNAL", "evidence_ref": "migrations/model-gateway/0036_01_14_production_model_gateway.sql"},
+    {"name": "real provider generation/SSE/embeddings/billing plus Batch 18 DLP/residency/Artifact/Evidence", "status": "NOT_RUN_EXTERNAL", "evidence_ref": "docs/models/model-gateway-operations.md"}
+  ],
+  "evidence": [
+    "rust/crates/model-gateway/src/authority.rs",
+    "rust/crates/model-gateway/src/adapters.rs",
+    "rust/crates/model-gateway/src/server.rs",
+    "rust/crates/model-gateway/src/bin/agenttrust-model-gateway-service.rs",
+    "migrations/model-gateway/0036_01_14_production_model_gateway.sql",
+    "schemas/model-gateway/authoritative-executions.schema.json",
+    "schemas/model-gateway/model-execution.schema.json",
+    "schemas/model-gateway/provider-manifest.schema.json",
+    "schemas/model-gateway/provider-revocation.schema.json",
+    "schemas/model-gateway/evidence-keyring.schema.json",
+    "schemas/openapi/model-gateway-v1.yaml",
+    "Dockerfile.model-gateway",
+    "scripts/build-production-image.py",
+    "docs/models/model-gateway-operations.md"
+  ],
+  "historical_external_evidence": [
+    {"evidence_ref": "evidence/external-gates/model-provider-live-catalog.json", "status": "HISTORICAL_NOT_CURRENT_RELEASE"},
+    {"evidence_ref": "evidence/external-gates/model-generation-live-failed.json", "status": "HISTORICAL_FAILED_HTTP_429"}
+  ],
+  "unresolved_risks": [
+    "The host resource freeze prohibited Cargo/rustc and Docker execution, so the new Rust production vertical is not currently compile-verified or image-verified.",
+    "No current release evidence applies the migration and least-privilege grants to production-shaped PostgreSQL or exercises RLS and lease recovery under faults.",
+    "Real provider and Batch 18 interoperability remain unverified for this worktree.",
+    "Multi-zone database/object-retention failure drills and sustained production load remain external gates."
+  ],
+  "verified_at": "2026-08-22T07:20:47Z"
 }

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-pack/supply-chain-payload.schema.json",
+  "title": "Typed Pack Supply Chain mutation payload",
+  "oneOf": [
+    {"$ref": "#/$defs/publish"}, {"$ref": "#/$defs/validate"}, {"$ref": "#/$defs/approve"},
+    {"$ref": "#/$defs/activate"}, {"$ref": "#/$defs/rollback"}, {"$ref": "#/$defs/revocation"},
+    {"$ref": "#/$defs/recover"}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "semver": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "permissionDiff": {
+      "type": "object", "additionalProperties": false,
+      "required": ["added_tools", "added_network_destinations", "added_data_classes", "added_secret_scopes", "added_executors", "added_approval_scopes"],
+      "properties": {
+        "added_tools": {"$ref": "#/$defs/stringSet"}, "added_network_destinations": {"$ref": "#/$defs/stringSet"},
+        "added_data_classes": {"$ref": "#/$defs/stringSet"}, "added_secret_scopes": {"$ref": "#/$defs/stringSet"},
+        "added_executors": {"$ref": "#/$defs/stringSet"}, "added_approval_scopes": {"$ref": "#/$defs/stringSet"}
+      }
+    },
+    "stringSet": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 512}},
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version", "digest", "immutable_reference"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 256}, "version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "digest": {"$ref": "#/$defs/digest"}, "immutable_reference": {"type": "string", "pattern": "^(?!.*[Ll][Aa][Tt][Ee][Ss][Tt]).*sha256:[a-f0-9]{64}$", "maxLength": 2048}
+      }
+    },
+    "publish": {
+      "type": "object", "additionalProperties": false,
+      "required": ["manifest", "artifact_id", "artifact_digest", "immutable_reference", "sbom_format", "sbom_digest", "component_count", "provenance_digest", "source_repository", "source_commit", "builder_identity", "build_definition_digest", "license_report_digest", "vulnerability_report_digest", "maximum_vulnerability", "dependency_lock"],
+      "properties": {
+        "manifest": {"$ref": "../marketplace/domain-pack-manifest.schema.json"}, "artifact_id": {"$ref": "#/$defs/uuid"}, "artifact_digest": {"$ref": "#/$defs/digest"},
+        "immutable_reference": {"type": "string", "pattern": "^(?!.*[Ll][Aa][Tt][Ee][Ss][Tt]).*sha256:[a-f0-9]{64}$", "maxLength": 2048},
+        "sbom_format": {"enum": ["SPDX_JSON", "CYCLONEDX_JSON"]}, "sbom_digest": {"$ref": "#/$defs/digest"}, "component_count": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "provenance_digest": {"$ref": "#/$defs/digest"}, "source_repository": {"type": "string", "format": "uri", "pattern": "^https://", "maxLength": 1024},
+        "source_commit": {"type": "string", "minLength": 7, "maxLength": 128}, "builder_identity": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "build_definition_digest": {"$ref": "#/$defs/digest"}, "license_report_digest": {"$ref": "#/$defs/digest"}, "vulnerability_report_digest": {"$ref": "#/$defs/digest"},
+        "maximum_vulnerability": {"enum": ["NONE", "LOW", "MEDIUM"]}, "dependency_lock": {"type": "array", "minItems": 1, "maxItems": 1024, "items": {"$ref": "#/$defs/dependency"}}
+      }
+    },
+    "validate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "pack_id", "version", "sandbox_profile_digest", "schema_report_digest", "dependency_report_digest", "vulnerability_report_digest", "license_report_digest", "behavior_report_digest", "threat_report_digest", "network_violation_count", "conclusion", "runner_identity"],
+      "properties": {
+        "run_id": {"$ref": "#/$defs/uuid"}, "pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "version": {"$ref": "#/$defs/semver"},
+        "sandbox_profile_digest": {"$ref": "#/$defs/digest"}, "schema_report_digest": {"$ref": "#/$defs/digest"}, "dependency_report_digest": {"$ref": "#/$defs/digest"},
+        "vulnerability_report_digest": {"$ref": "#/$defs/digest"}, "license_report_digest": {"$ref": "#/$defs/digest"}, "behavior_report_digest": {"$ref": "#/$defs/digest"}, "threat_report_digest": {"$ref": "#/$defs/digest"},
+        "network_violation_count": {"type": "integer", "minimum": 0, "maximum": 1000000}, "conclusion": {"enum": ["PASS", "FAIL", "INCONCLUSIVE"]}, "runner_identity": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "approve": {
+      "type": "object", "additionalProperties": false,
+      "required": ["approval_id", "pack_id", "version", "manifest_digest", "permission_diff", "permission_expansion_reviewed", "environment", "approver_role", "principal_assertion_digest", "evidence_ref", "evidence_digest", "expires_at"],
+      "properties": {
+        "approval_id": {"$ref": "#/$defs/uuid"}, "pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "version": {"$ref": "#/$defs/semver"}, "manifest_digest": {"$ref": "#/$defs/digest"}, "previous_manifest_digest": {"$ref": "#/$defs/digest"},
+        "permission_diff": {"$ref": "#/$defs/permissionDiff"}, "permission_expansion_reviewed": {"type": "boolean"}, "environment": {"const": "production"}, "approver_role": {"type": "string", "minLength": 1, "maxLength": 256},
+        "principal_assertion_digest": {"$ref": "#/$defs/digest"}, "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024}, "evidence_digest": {"$ref": "#/$defs/digest"}, "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "activate": {
+      "type": "object", "additionalProperties": false, "required": ["pack_id", "version", "environment", "manifest_digest", "approval_id"],
+      "properties": {"pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "version": {"$ref": "#/$defs/semver"}, "environment": {"const": "production"}, "manifest_digest": {"$ref": "#/$defs/digest"}, "approval_id": {"$ref": "#/$defs/uuid"}}
+    },
+    "rollback": {
+      "type": "object", "additionalProperties": false, "required": ["pack_id", "environment"],
+      "properties": {"pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "environment": {"const": "production"}}
+    },
+    "revocation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["revocation_id", "scope", "subject_id", "reason_code", "running_task_disposition", "impact_digest"],
+      "properties": {
+        "revocation_id": {"$ref": "#/$defs/uuid"}, "scope": {"enum": ["PUBLISHER", "KEY", "ARTIFACT", "PACK_RELEASE"]}, "subject_id": {"type": "string", "minLength": 1, "maxLength": 640}, "subject_digest": {"$ref": "#/$defs/digest"},
+        "reason_code": {"type": "string", "minLength": 1, "maxLength": 128}, "running_task_disposition": {"enum": ["PAUSE", "KILL", "ALLOW_TO_FINISH"]}, "impact_digest": {"$ref": "#/$defs/digest"},
+        "publisher_id": {"type": "string", "minLength": 1, "maxLength": 256}, "key_id": {"type": "string", "minLength": 1, "maxLength": 256}, "pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "version": {"$ref": "#/$defs/semver"}
+      }
+    },
+    "recover": {
+      "type": "object", "additionalProperties": false, "required": ["unknown_command_id"],
+      "properties": {"unknown_command_id": {"$ref": "#/$defs/uuid"}}
+    }
+  }
+}

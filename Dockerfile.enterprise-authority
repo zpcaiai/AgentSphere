@@ -1,0 +1,13 @@
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN cargo build --locked --release -p agent-trust-enterprise-control --bin agenttrust-enterprise-control-authority
+
+FROM ${RUNTIME_BASE_IMAGE}
+COPY --from=build /src/target/release/agenttrust-enterprise-control-authority /usr/local/bin/agenttrust-enterprise-control-authority
+USER nonroot:nonroot
+EXPOSE 8449 9100
+ENTRYPOINT ["/usr/local/bin/agenttrust-enterprise-control-authority"]

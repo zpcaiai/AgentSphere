@@ -1,0 +1,340 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Production PEP Authority API
+  version: 1.0.0
+  description: >-
+    Fail-closed pre-approval, execution, and human-governance authorization. The data listener
+    requires TLS 1.3, an allowlisted DNS/URI SAN, and a bearer token bound to the
+    exact SAN, tenant, scope, and token SHA-256. The data-listener /ready endpoint
+    is mTLS-only so the execution service can probe it without inventing a tenant.
+servers:
+  - url: https://agenttrust-pep
+paths:
+  /v1/authorize/pre-approval:
+    post:
+      operationId: authorizePreApproval
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: './execution-v1.yaml#/components/schemas/PreApprovalRequest'}
+      responses:
+        '200':
+          description: Signed policy decision and six-authority fact snapshot.
+          content:
+            application/json:
+              schema: {$ref: './execution-v1.yaml#/components/schemas/PreApprovalEnvelope'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/authorize/execution:
+    post:
+      operationId: authorizeExecution
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: X-AgentTrust-Fence-Digest
+          in: header
+          required: true
+          schema: {$ref: '#/components/schemas/Digest'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: './execution-v1.yaml#/components/schemas/FinalAuthorizationRequest'}
+      responses:
+        '200':
+          description: Single-use signed ExecutionAuthorization v2 and bound credential handle.
+          content:
+            application/json:
+              schema: {$ref: './execution-v1.yaml#/components/schemas/PreExecutionAuthorization'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/policies/activations:
+    post:
+      operationId: activateSignedPolicyBundle
+      x-required-scope: pep:policy-activate
+      description: >-
+        Persists the immutable signed bundle and activation intent before contacting the
+        authoritative PDP. Returns success only after an exact signed PDP acknowledgement and
+        the tenant/environment active mapping, evidence, and outbox record commit atomically.
+        A lost response is replayed under the same idempotency key; uncertain outcomes return 503.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../pep/policy-activation.schema.json#/$defs/request'}
+      responses:
+        '200':
+          description: Signed PEP acknowledgement for the exact active PDP snapshot.
+          content:
+            application/json:
+              schema: {$ref: '../pep/policy-activation.schema.json#/$defs/pepAcknowledgement'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/authorize/approval:
+    post:
+      operationId: authorizeHumanApproval
+      description: >-
+        Requires the route-fixed pep:approval token and an exact request-bound Ed25519
+        human-principal assertion. Strong authentication is mandatory. ALLOW and DENY are
+        both durable policy outcomes returned with immutable retrievable evidence.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HumanAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../pep/governance-authorization.schema.json#/$defs/approvalRequest'}
+      responses:
+        '200':
+          description: Durable ALLOW or DENY governance decision.
+          content:
+            application/json:
+              schema: {$ref: '../pep/governance-authorization.schema.json#/$defs/response'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/authorize/query:
+    post:
+      operationId: authorizeHumanQuery
+      description: >-
+        Requires the route-fixed pep:query token and an exact request-bound Ed25519 human
+        assertion. Strong authentication is controlled only by the production setting; a
+        non-MFA query still requires a trusted, fresh authentication context and signed scope.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HumanAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../pep/governance-authorization.schema.json#/$defs/queryRequest'}
+      responses:
+        '200':
+          description: Durable ALLOW or DENY governance decision.
+          content:
+            application/json:
+              schema: {$ref: '../pep/governance-authorization.schema.json#/$defs/response'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/evidence/governance/{evidence_id}:
+    get:
+      operationId: getGovernanceEvidence
+      description: Retrieves one immutable decision evidence envelope under tenant RLS.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - name: evidence_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Evidence whose seal matches the evidence_ref returned at authorization.
+          content:
+            application/json:
+              schema: {$ref: '../pep/governance-evidence.schema.json'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '403': {$ref: '#/components/responses/Failure'}
+        '404': {description: No evidence exists in the authenticated tenant.}
+        '503': {$ref: '#/components/responses/Failure'}
+  /ready:
+    get:
+      operationId: pepReadiness
+      security: [{mtls: []}]
+      description: >-
+        Requires PostgreSQL (including activation mapping/evidence/outbox), evaluation PDP,
+        activation PDP, an active policy-bundle verification key, a currently usable
+        human-principal keyring, six fact authorities, approval verification,
+        ledger verification, and credential issuance readiness. The separate
+        plaintext management listener exposes only this path on loopback or on the
+        pod network when an exact kubelet/node-CIDR NetworkPolicy isolates it.
+      responses:
+        '200':
+          description: All authoritative dependencies are ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+        '503':
+          description: At least one authoritative dependency is unavailable.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+components:
+  securitySchemes:
+    mtls: {type: mutualTLS}
+    bearer: {type: http, scheme: bearer}
+  parameters:
+    Tenant:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._:-]+$'
+    HumanAssertion:
+      name: X-AgentTrust-Human-Assertion
+      in: header
+      required: true
+      description: >-
+        Unpadded base64url of a duplicate-free agenttrust.signed-human-principal-assertion.v1
+        document. Its request_digest covers the exact method, path, tenant, SAN, service
+        subject, fixed route scope, idempotency key, and JCS request body.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 87382
+        pattern: '^[A-Za-z0-9_-]+$'
+  responses:
+    Failure:
+      description: Fail-closed PEP error.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Digest:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready]
+      properties:
+        schema_version: {const: agenttrust.pep-readiness.v1}
+        ready: {type: boolean}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: {const: agenttrust.pep-error.v1}
+        error: {type: string, minLength: 1, maxLength: 128}
+    PolicyInput:
+      type: object
+      additionalProperties: false
+      required: [subject, intent, tool, arguments, resource, environment, current_state_version, execution_plan_hash, data_classification, trajectory_risk, registry_snapshot_hash, runtime]
+      properties:
+        subject: {type: object}
+        intent: {type: object}
+        tool: {type: object}
+        arguments: {type: object}
+        resource: {type: object}
+        environment: {type: object}
+        current_state_version: {type: [string, 'null'], minLength: 1, maxLength: 256}
+        execution_plan_hash:
+          anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]
+        data_classification: {enum: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED, REGULATED]}
+        trajectory_risk: {type: object}
+        registry_snapshot_hash: {$ref: '#/components/schemas/Digest'}
+        runtime: {type: object}
+    AuthoritativeFactQuery:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, task_id, step_id, agent_instance_id, action_hash, tool, tool_snapshot_hash, resource, requested_resource_version, execution_plan_hash, deployment, region, simulation, requested_at]
+      properties:
+        schema_version: {const: agenttrust.authoritative-fact-query.v1}
+        tenant_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        step_id: {type: string, format: uuid}
+        agent_instance_id: {type: string, format: uuid}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        tool: {$ref: './execution-v1.yaml#/components/schemas/ToolRef'}
+        tool_snapshot_hash: {$ref: '#/components/schemas/Digest'}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        requested_resource_version: {type: string, minLength: 1, maxLength: 256}
+        execution_plan_hash:
+          anyOf: [{$ref: '#/components/schemas/Digest'}, {type: 'null'}]
+        deployment: {type: string, minLength: 1, maxLength: 128}
+        region: {type: string, minLength: 1, maxLength: 128}
+        simulation: {type: boolean}
+        requested_at: {type: string, format: date-time}
+    SignedAuthoritativeFactEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, kind, status, tenant_id, action_hash, authority_uri, version, payload, observed_at, valid_until, issuer, key_id, key_usage, digest, signature]
+      properties:
+        schema_version: {const: agenttrust.authoritative-fact-envelope.v1}
+        kind: {enum: [IDENTITY, RESOURCE_STATE, BUDGET, TRAJECTORY_RISK, REGISTRY, ENVIRONMENT]}
+        status: {enum: [VERIFIED, UNKNOWN, STALE, ERROR]}
+        tenant_id: {type: string, format: uuid}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        authority_uri: {type: string, format: uri, pattern: '^https://', maxLength: 2048}
+        version: {type: string, minLength: 1, maxLength: 256}
+        payload: {type: object}
+        observed_at: {type: string, format: date-time}
+        valid_until: {type: string, format: date-time}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 256}
+        key_usage: {const: AUTHORITATIVE_FACT}
+        digest: {$ref: '#/components/schemas/Digest'}
+        signature: {type: string, minLength: 1, maxLength: 256}
+    IdentityFactPayload:
+      type: object
+      additionalProperties: false
+      required: [subject, uses_dev_verifier, revocation_epoch]
+      properties:
+        subject: {type: string, minLength: 1, maxLength: 512}
+        uses_dev_verifier: {type: boolean}
+        revocation_epoch: {type: integer, minimum: 0}
+    WorkloadCredentialBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, idempotency_key, tenant_id, agent_instance_id, task_id, step_id, action_hash, policy_decision_id, tool_id, credential_profile, operation, resource, target_profile, audience, revocation_epoch, ttl_seconds, max_uses]
+      properties:
+        schema_version: {const: agenttrust.credential-binding-request.v1}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        tenant_id: {type: string, format: uuid}
+        agent_instance_id: {type: string, format: uuid}
+        task_id: {type: string, format: uuid}
+        step_id: {type: string, format: uuid}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        policy_decision_id: {type: string, minLength: 1, maxLength: 256}
+        tool_id: {type: string, minLength: 1, maxLength: 256}
+        credential_profile: {type: string, minLength: 1, maxLength: 256}
+        operation: {type: string, minLength: 1, maxLength: 256}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        target_profile: {type: string, minLength: 1, maxLength: 256}
+        audience: {const: tool-proxy}
+        revocation_epoch: {type: integer, minimum: 0}
+        ttl_seconds: {type: integer, minimum: 1, maximum: 300}
+        max_uses: {const: 1}
+    WorkloadCredentialClaims:
+      $ref: './execution-v1.yaml#/components/schemas/WorkloadCredentialClaims'
+    SignedWorkloadCredentialBindingReceipt:
+      $ref: './execution-v1.yaml#/components/schemas/SignedWorkloadCredentialBindingReceipt'
+    WorkloadCredentialIssuance:
+      $ref: './execution-v1.yaml#/components/schemas/WorkloadCredentialIssuance'
+    WorkloadCredentialConsumptionRequest:
+      $ref: './execution-v1.yaml#/components/schemas/WorkloadCredentialConsumptionRequest'
+    SignedWorkloadCredentialConsumptionReceipt:
+      $ref: './execution-v1.yaml#/components/schemas/SignedWorkloadCredentialConsumptionReceipt'

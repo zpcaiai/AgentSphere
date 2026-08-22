@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/context/context-token-bindings.schema.json",
+  "title": "Context Governance Token Bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.context-token-bindings.v1"},
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):[^\\s]+$", "maxLength": 512},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+          "scope": {"enum": ["context:mutate", "context:execute", "context:retrieve", "context:read"]},
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

@@ -2,16 +2,19 @@ use agent_trust_agent_registry_posture::LifecyclePropagationPort;
 use agent_trust_enterprise_approval::NotificationAdapter;
 use agent_trust_enterprise_control::{AuthoritativeServicePort, IntegrationPort};
 use agent_trust_gateway::{IdentityVerifierPort, OrchestratorSubmissionPort};
+use agent_trust_identity::FederatedTrustBundleProvider;
 use agent_trust_incident_release_gate::{ContainmentPort, RecertificationPort};
 use agent_trust_industrial_edge_gateway::IndustrialAdapter;
 use agent_trust_mcp_security_proxy::ControlledMcpTransport;
-use agent_trust_identity::FederatedTrustBundleProvider;
 use agent_trust_model_gateway::{ModelProviderAdapter, ProviderWireTransport};
 use agent_trust_platform_sre::BackupPort;
-use agent_trust_policy_administration::PolicyDistributionPort;
+use agent_trust_policy_administration::authority::{
+    HttpPepPolicyActivationClient, PolicyActivationPort,
+};
 use agent_trust_policy_pep::RuntimeControlPort;
 use agent_trust_production_closure::EvidenceSourcePort;
 use agent_trust_production_runtime::{
+    ProductionAdapterSet, ProductionOrchestratorBinding,
     adapters::{
         ControlledModelTransport, HttpIndustrialAdapter, HttpOrchestratorAdapter,
         ProductionIdentityVerifier, ProductionModelAdapter, RefreshingJwksProvider,
@@ -20,15 +23,18 @@ use agent_trust_production_runtime::{
     ops::{
         FilesystemEvidenceSource, HttpAuthoritativeService, HttpBackupPort, HttpContainmentPort,
         HttpEnterpriseIntegration, HttpLifecyclePropagationPort, HttpNotificationAdapter,
-        HttpPolicyDistributionPort, HttpRecertificationPort, HttpRuntimeControlPort,
+        HttpRecertificationPort, HttpRuntimeControlPort,
     },
     protocols::{A2aPeerClient, A2aSubmission, HttpMcpTransport},
-    ProductionAdapterSet, ProductionOrchestratorBinding,
 };
 use agent_trust_sandbox_runtime::CredentialLifecyclePort;
 use serde::Deserialize;
 use serde_json::Value;
-use std::{collections::BTreeSet, fs, path::{Path, PathBuf}};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
 
 const CONTRACT_JSON: &str = include_str!("adapter-contracts.json");
 
@@ -39,7 +45,7 @@ const EXPECTED_ADAPTERS: [&str; 17] = [
     "secret_broker",
     "industrial",
     "backup",
-    "policy_distribution",
+    "policy_activation",
     "containment",
     "recertification",
     "enterprise_integration",
@@ -147,14 +153,15 @@ struct RuntimeSymbols {
 }
 
 fn manifest() -> ContractManifest {
-    serde_json::from_str(CONTRACT_JSON).expect("adapter contract JSON must be valid")
+    serde_json::from_str(CONTRACT_JSON)
+        .unwrap_or_else(|error| panic!("adapter contract JSON must be valid: {error}"))
 }
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
-        .expect("crate must remain under rust/crates")
+        .unwrap_or_else(|| panic!("crate must remain under rust/crates"))
         .to_path_buf()
 }
 
@@ -178,7 +185,9 @@ fn implementation_scope<'a>(source: &'a str, anchor: &str) -> &'a str {
         match byte {
             b'{' => depth += 1,
             b'}' => {
-                depth = depth.checked_sub(1).expect("unbalanced implementation braces");
+                depth = depth
+                    .checked_sub(1)
+                    .unwrap_or_else(|| panic!("unbalanced implementation braces"));
                 if depth == 0 {
                     return &source[anchor_offset..=open_offset + relative];
                 }
@@ -191,7 +200,10 @@ fn implementation_scope<'a>(source: &'a str, anchor: &str) -> &'a str {
 
 fn assert_test_declaration(source: &str, test: &str) {
     if source.contains(&format!("def {test}(")) {
-        assert!(test.starts_with("test_"), "Python probe must use test_ naming: {test}");
+        assert!(
+            test.starts_with("test_"),
+            "Python probe must use test_ naming: {test}"
+        );
         return;
     }
     let declaration = format!("fn {test}(");
@@ -209,14 +221,16 @@ fn assert_endpoint(value: &Value, binding: &ConfigBinding) {
     let base_url = value
         .get("base_url")
         .and_then(Value::as_str)
-        .expect("endpoint base_url must be a string");
+        .unwrap_or_else(|| panic!("endpoint base_url must be a string"));
     assert!(base_url.starts_with("https://"), "endpoint must use HTTPS");
     let health = value
         .get("health_path")
         .and_then(Value::as_str)
-        .expect("endpoint health_path must be a string");
+        .unwrap_or_else(|| panic!("endpoint health_path must be a string"));
     assert!(health.starts_with('/') && !health.starts_with("//") && !health.contains(".."));
-    let tls = value.get("tls").expect("endpoint TLS configuration is required");
+    let tls = value
+        .get("tls")
+        .unwrap_or_else(|| panic!("endpoint TLS configuration is required"));
     assert_absolute(tls.get("ca_bundle"), "CA bundle");
     if binding.client_identity_required {
         assert_absolute(tls.get("client_identity_pem"), "client identity");
@@ -227,7 +241,7 @@ fn assert_endpoint(value: &Value, binding: &ConfigBinding) {
     let timeout = tls
         .get("timeout_ms")
         .and_then(Value::as_u64)
-        .expect("bounded endpoint timeout is required");
+        .unwrap_or_else(|| panic!("bounded endpoint timeout is required"));
     assert!((1..=120_000).contains(&timeout));
 }
 
@@ -248,7 +262,7 @@ fn compiled_adapter_traits_are_complete() {
     fn secret_broker<T: CredentialLifecyclePort>() {}
     fn industrial<T: IndustrialAdapter>() {}
     fn backup<T: BackupPort>() {}
-    fn policy_distribution<T: PolicyDistributionPort>() {}
+    fn policy_activation<T: PolicyActivationPort>() {}
     fn containment<T: ContainmentPort>() {}
     fn recertification<T: RecertificationPort>() {}
     fn enterprise_integration<T: IntegrationPort>() {}
@@ -269,7 +283,7 @@ fn compiled_adapter_traits_are_complete() {
     secret_broker::<SecretBrokerCredentialLifecycle>();
     industrial::<HttpIndustrialAdapter>();
     backup::<HttpBackupPort>();
-    policy_distribution::<HttpPolicyDistributionPort>();
+    policy_activation::<HttpPepPolicyActivationClient>();
     containment::<HttpContainmentPort>();
     recertification::<HttpRecertificationPort>();
     enterprise_integration::<HttpEnterpriseIntegration>();
@@ -301,7 +315,7 @@ fn compiled_adapter_traits_are_complete() {
         "SecretBrokerCredentialLifecycle:CredentialLifecyclePort",
         "HttpIndustrialAdapter:IndustrialAdapter",
         "HttpBackupPort:BackupPort",
-        "HttpPolicyDistributionPort:PolicyDistributionPort",
+        "HttpPepPolicyActivationClient:PolicyActivationPort",
         "HttpContainmentPort:ContainmentPort",
         "HttpRecertificationPort:RecertificationPort",
         "HttpEnterpriseIntegration:IntegrationPort",
@@ -339,8 +353,11 @@ fn compiled_adapter_traits_are_complete() {
         .adapters
         .iter()
         .find(|adapter| adapter.family_id == "a2a")
-        .expect("A2A contract is required");
-    assert_eq!(set(&a2a.inherent_methods), set(["agent_card", "submit", "stream_snapshot"]));
+        .unwrap_or_else(|| panic!("A2A contract is required"));
+    assert_eq!(
+        set(&a2a.inherent_methods),
+        set(["agent_card", "submit", "stream_snapshot"])
+    );
 }
 
 #[test]
@@ -348,10 +365,15 @@ fn endpoint_method_and_source_contracts_are_bound() {
     let root = workspace_root();
     let contracts = manifest();
     for adapter in &contracts.adapters {
-        assert!(!adapter.operations.is_empty(), "{} has no operation contract", adapter.family_id);
+        assert!(
+            !adapter.operations.is_empty(),
+            "{} has no operation contract",
+            adapter.family_id
+        );
         let path = root.join(&adapter.source);
         assert!(path.starts_with(&root) && path.is_file());
-        let source = fs::read_to_string(path).expect("adapter source must be readable");
+        let source = fs::read_to_string(path)
+            .unwrap_or_else(|error| panic!("adapter source must be readable: {error}"));
         for operation in &adapter.operations {
             let scope = implementation_scope(&source, &operation.scope);
             assert!(
@@ -370,7 +392,10 @@ fn endpoint_method_and_source_contracts_are_bound() {
             );
             match operation.method.as_str() {
                 "GET" => assert!(operation.transport_call.contains("get_bytes")),
-                "POST" => assert!(operation.transport_call.contains("post_json")),
+                "POST" => assert!(
+                    operation.transport_call.contains("post_json")
+                        || operation.transport_call == ".post("
+                ),
                 "FILE_READ" => assert_eq!(operation.transport_call, "read_json("),
                 other => panic!("unsupported machine-checked method: {other}"),
             }
@@ -382,22 +407,28 @@ fn endpoint_method_and_source_contracts_are_bound() {
 fn example_configuration_binds_every_adapter_fail_closed() {
     let root = workspace_root();
     let contracts = manifest();
-    assert_eq!(contracts.schema_version, "agenttrust.production-adapter-contracts.v1");
+    assert_eq!(
+        contracts.schema_version,
+        "agenttrust.production-adapter-contracts.v1"
+    );
     assert!(contracts.external_evidence_required);
     let config: Value = serde_json::from_slice(
         &fs::read(root.join("config/production-runtime.example.json"))
-            .expect("production runtime example must be readable"),
+            .unwrap_or_else(|error| panic!("production runtime example must be readable: {error}")),
     )
-    .expect("production runtime example must be JSON");
+    .unwrap_or_else(|error| panic!("production runtime example must be JSON: {error}"));
     assert_eq!(
         config.get("schema_version").and_then(Value::as_str),
         Some("agenttrust.production-runtime-config.v1"),
     );
-    assert_eq!(config.get("fail_closed").and_then(Value::as_bool), Some(true));
+    assert_eq!(
+        config.get("fail_closed").and_then(Value::as_bool),
+        Some(true)
+    );
     let endpoints = config
         .get("endpoints")
         .and_then(Value::as_object)
-        .expect("endpoint map is required");
+        .unwrap_or_else(|| panic!("endpoint map is required"));
     for adapter in &contracts.adapters {
         let binding = &adapter.config_binding;
         match binding.kind.as_str() {
@@ -412,29 +443,54 @@ fn example_configuration_binds_every_adapter_fail_closed() {
                     .iter()
                     .filter(|(name, _)| name.starts_with(&binding.selector))
                     .collect();
-                assert!(!matches.is_empty(), "missing endpoint prefix {}", binding.selector);
+                assert!(
+                    !matches.is_empty(),
+                    "missing endpoint prefix {}",
+                    binding.selector
+                );
                 for (_, endpoint) in matches {
                     assert_endpoint(endpoint, binding);
                 }
             }
             "identity_jwks" => {
-                let identity = config.get("identity").expect("identity configuration is required");
+                let identity = config
+                    .get("identity")
+                    .unwrap_or_else(|| panic!("identity configuration is required"));
                 let endpoint = identity
                     .get("jwks_endpoint")
                     .and_then(Value::as_str)
-                    .expect("JWKS endpoint is required");
+                    .unwrap_or_else(|| panic!("JWKS endpoint is required"));
                 assert!(endpoint.starts_with("https://"));
-                assert_eq!(identity.get("require_mtls_peer").and_then(Value::as_bool), Some(true));
+                assert_eq!(
+                    identity.get("require_mtls_peer").and_then(Value::as_bool),
+                    Some(true)
+                );
                 assert_absolute(identity.pointer("/jwks_tls/ca_bundle"), "JWKS CA bundle");
             }
             "evidence_files" => {
                 let files = config
                     .get("evidence_files")
                     .and_then(Value::as_object)
-                    .expect("evidence file configuration is required");
+                    .unwrap_or_else(|| panic!("evidence file configuration is required"));
                 assert_eq!(files.len(), 4);
                 for value in files.values() {
                     assert_absolute(Some(value), "evidence file");
+                }
+            }
+            "authority_env" => {
+                let template = fs::read_to_string(
+                    root.join("deploy/kubernetes/production-stack.yaml.tmpl"),
+                )
+                .unwrap_or_else(|error| panic!("production stack template: {error}"));
+                for required in [
+                    binding.selector.as_str(),
+                    "AGENT_TRUST_POLICY_PEP_ACTIVATION_TOKEN_FILE",
+                    "AGENT_TRUST_POLICY_OUTBOUND_CA_FILE",
+                    "AGENT_TRUST_POLICY_OUTBOUND_CERTIFICATE_FILE",
+                    "AGENT_TRUST_POLICY_OUTBOUND_PRIVATE_KEY_FILE",
+                    "AGENT_TRUST_POLICY_PEP_ACTIVATION_VERIFYING_KEY_FILE",
+                ] {
+                    assert!(template.contains(required), "missing authority binding {required}");
                 }
             }
             other => panic!("unsupported configuration binding: {other}"),
@@ -448,34 +504,39 @@ fn every_external_condition_has_a_declared_local_probe_but_remains_external() {
     let contracts = manifest();
     assert!(contracts.external_evidence_required);
     assert_eq!(
-        set(contracts.condition_tests.iter().map(|row| &row.condition_id)),
+        set(contracts
+            .condition_tests
+            .iter()
+            .map(|row| &row.condition_id)),
         set(EXPECTED_CONDITIONS),
     );
     let condition_manifest: Value = serde_json::from_slice(
         &fs::read(root.join("config/production-runtime/conditions.json"))
-            .expect("condition manifest must be readable"),
+            .unwrap_or_else(|error| panic!("condition manifest must be readable: {error}")),
     )
-    .expect("condition manifest must be JSON");
+    .unwrap_or_else(|error| panic!("condition manifest must be JSON: {error}"));
     let rows = condition_manifest
         .get("conditions")
         .and_then(Value::as_array)
-        .expect("condition rows are required");
+        .unwrap_or_else(|| panic!("condition rows are required"));
     for contract in &contracts.condition_tests {
         let row = rows
             .iter()
-            .find(|row| row.get("condition_id").and_then(Value::as_str) == Some(&contract.condition_id))
+            .find(|row| {
+                row.get("condition_id").and_then(Value::as_str) == Some(&contract.condition_id)
+            })
             .unwrap_or_else(|| panic!("missing condition {}", contract.condition_id));
         assert_eq!(
-            row.get("external_evidence_required").and_then(Value::as_bool),
+            row.get("external_evidence_required")
+                .and_then(Value::as_bool),
             Some(true),
         );
-        let declared_tests = set(
-            row.get("test_paths")
-                .and_then(Value::as_array)
-                .expect("condition test paths are required")
-                .iter()
-                .filter_map(Value::as_str),
-        );
+        let declared_tests = set(row
+            .get("test_paths")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("condition test paths are required"))
+            .iter()
+            .filter_map(Value::as_str));
         assert!(!contract.probes.is_empty());
         for probe in &contract.probes {
             assert!(declared_tests.contains(&probe.path));
@@ -483,13 +544,12 @@ fn every_external_condition_has_a_declared_local_probe_but_remains_external() {
                 .unwrap_or_else(|_| panic!("probe source is unreadable: {}", probe.path));
             assert_test_declaration(&source, &probe.test);
         }
-        let declared_runtime = set(
-            row.get("runtime_paths")
-                .and_then(Value::as_array)
-                .expect("condition runtime paths are required")
-                .iter()
-                .filter_map(Value::as_str),
-        );
+        let declared_runtime = set(row
+            .get("runtime_paths")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("condition runtime paths are required"))
+            .iter()
+            .filter_map(Value::as_str));
         for binding in &contract.runtime_symbols {
             assert!(declared_runtime.contains(&binding.path));
             assert!(!binding.symbols.is_empty());

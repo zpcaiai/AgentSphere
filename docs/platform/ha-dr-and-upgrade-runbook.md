@@ -2,6 +2,11 @@
 
 Security dependencies fail closed for writes and credential issuance. Read-only degradation requires a valid signed snapshot. Emergency stop may execute locally when central services are unavailable, but must enter a tamper-evident local journal for reconciliation.
 
+The production mutation authority, strict runtime configuration, recovery state machine and exact
+database privilege contract are documented in
+`docs/platform/platform-sre-authority-runbook.md`. Its signed engine report is integrity evidence
+only (`engine_report_only=true`, `production_certification=false`).
+
 Queues, pools, workflow admission, webhooks, exports, and campaign runs are bounded. Reject overload with a safe code; never accumulate unbounded work. Capacity evidence records the exact build, topology, workload mix, duration, saturation point, and percentile latency.
 
 Backups bind database LSN, object manifest, ledger head, configuration, keys, and scope digest. A restore passes only in an isolated environment with exact record counts, object integrity, ledger reconciliation, and measured RTO/RPO. Upgrade requires schema/API/policy/pack compatibility, canary observation, and a tested rollback digest.

@@ -1,5 +1,8 @@
 //! Signed supply-chain artifacts and the shared Domain Pack SDK.
 
+pub mod production;
+pub mod server;
+
 use agent_trust_contracts::EffectClass;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
@@ -13,6 +16,7 @@ use thiserror::Error;
 pub const PACK_SCHEMA_VERSION: &str = "agenttrust.domain-pack.v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SbomRef {
     pub format: String,
     pub digest: String,
@@ -20,6 +24,7 @@ pub struct SbomRef {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct BuildProvenance {
     pub source_repository: String,
     pub source_commit: String,
@@ -29,6 +34,7 @@ pub struct BuildProvenance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct SignatureEnvelope {
     pub key_id: String,
     pub publisher_identity: String,
@@ -38,6 +44,7 @@ pub struct SignatureEnvelope {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ArtifactManifest {
     pub schema_version: String,
     pub artifact_id: String,
@@ -53,6 +60,7 @@ pub struct ArtifactManifest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PackPermissionDeclaration {
     pub tools: BTreeSet<String>,
     pub network_destinations: BTreeSet<String>,
@@ -63,6 +71,7 @@ pub struct PackPermissionDeclaration {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct PackToolDefinition {
     pub tool_id: String,
     pub effect_class: EffectClass,
@@ -73,6 +82,7 @@ pub struct PackToolDefinition {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct DomainPackManifest {
     pub schema_version: String,
     pub pack_id: String,
@@ -121,23 +131,47 @@ pub struct PackSdk;
 
 impl PackSdk {
     pub fn validate(manifest: &DomainPackManifest) -> Result<(), PackError> {
+        let declared_tools=manifest.tools.iter().map(|tool|tool.tool_id.clone()).collect::<BTreeSet<_>>();
+        let approval_tools=manifest.tools.iter().filter(|tool|tool.approval_required).map(|tool|tool.tool_id.clone()).collect::<BTreeSet<_>>();
+        let compensation_refs=manifest.tools.iter().filter_map(|tool|tool.compensation_ref.clone()).collect::<BTreeSet<_>>();
         if manifest.schema_version != PACK_SCHEMA_VERSION
-            || manifest.pack_id.is_empty()
+            || !bounded_identifier(&manifest.pack_id,256)
             || !valid_semver(&manifest.version)
-            || manifest.description.is_empty()
-            || manifest.policy_bundle_ref.is_empty()
-            || manifest.evaluator_ref.is_empty()
+            || !bounded_text(&manifest.description,4096)
+            || !immutable_reference(&manifest.policy_bundle_ref,"policy")
+            || !immutable_reference(&manifest.evaluator_ref,"evaluator")
             || manifest.threat_scenario_refs.is_empty()
             || manifest.artifact_refs.is_empty()
             || manifest.compatibility.is_empty()
             || manifest.tools.is_empty()
-            || manifest.digest.len() != 64
+            || manifest.tools.len()>1024
+            || manifest.artifact_refs.len()>256
+            || manifest.threat_scenario_refs.len()>256
+            || manifest.compatibility.len()>256
+            || manifest.compensation_refs.len()>1024
+            || !lower_digest(&manifest.digest)
+            || !bounded_identifier(&manifest.publisher_identity,256)
+            || manifest.permissions.tools!=declared_tools
+            || manifest.permissions.approval_scopes!=approval_tools
+            || manifest.compensation_refs!=compensation_refs
+            || manifest.artifact_refs.iter().any(|value|!immutable_reference(value,"artifact"))
+            || manifest.threat_scenario_refs.iter().any(|value|!bounded_identifier(value,512))
+            || manifest.compatibility.iter().any(|value|!bounded_identifier(value,256))
+            || manifest.permissions.network_destinations.len()>256
+            || manifest.permissions.data_classes.len()>256
+            || manifest.permissions.secret_scopes.len()>256
+            || manifest.permissions.executors.len()>256
+            || manifest.permissions.approval_scopes.len()>1024
+            || manifest.permissions.network_destinations.iter().any(|value|!bounded_identifier(value,512))
+            || manifest.permissions.data_classes.iter().any(|value|!bounded_identifier(value,256))
+            || manifest.permissions.secret_scopes.iter().any(|value|!bounded_identifier(value,256))
+            || manifest.permissions.executors.iter().any(|value|!bounded_identifier(value,256))
         {
             return Err(PackError::ManifestInvalid);
         }
         for tool in &manifest.tools {
-            if tool.tool_id.is_empty()
-                || tool.executor_template.is_empty()
+            if !bounded_identifier(&tool.tool_id,256)
+                || !bounded_identifier(&tool.executor_template,256)
                 || tool.executor_template.contains("/bin/sh")
                 || tool.executor_template.contains("bash -c")
                 || !manifest.permissions.tools.contains(&tool.tool_id)
@@ -145,19 +179,22 @@ impl PackSdk {
                 return Err(PackError::ToolInvalid);
             }
             match tool.effect_class {
-                EffectClass::Pure | EffectClass::Idempotent => {}
+                EffectClass::Pure | EffectClass::Idempotent => {
+                    if tool.compensation_ref.is_some()||tool.irreversible_reason.is_some(){return Err(PackError::ToolInvalid);}
+                }
                 EffectClass::Compensatable => {
                     let compensation = tool
                         .compensation_ref
                         .as_ref()
                         .ok_or(PackError::CompensationMissing)?;
                     if !manifest.compensation_refs.contains(compensation) || !tool.approval_required
+                        ||!bounded_identifier(compensation,512)||tool.irreversible_reason.is_some()
                     {
                         return Err(PackError::CompensationMissing);
                     }
                 }
                 EffectClass::Irreversible => {
-                    if !tool.approval_required
+                    if !tool.approval_required||tool.compensation_ref.is_some()
                         || tool
                             .irreversible_reason
                             .as_deref()
@@ -220,10 +257,14 @@ impl ArtifactVerifier {
 
     pub fn verify_artifact(&self, artifact: &ArtifactManifest) -> Result<(), PackError> {
         if artifact.schema_version != PACK_SCHEMA_VERSION
-            || artifact.digest.len() != 64
-            || artifact.sbom.digest.len() != 64
+            || !lower_digest(&artifact.digest)
+            || !lower_digest(&artifact.sbom.digest)
             || artifact.provenance.source_commit.len() < 7
-            || artifact.immutable_reference.ends_with(":latest")
+            || artifact.immutable_reference.to_ascii_lowercase().contains(":latest")
+            || !artifact.immutable_reference.contains(&format!("sha256:{}",artifact.digest))
+            || !matches!(artifact.sbom.format.as_str(),"SPDX_JSON"|"CYCLONEDX_JSON")
+            || artifact.sbom.component_count==0
+            || !matches!(artifact.vulnerability_severity.as_deref(),None|Some("NONE"|"LOW"|"MEDIUM"|"HIGH"|"CRITICAL"))
             || artifact.signature.subject_digest != artifact.digest
             || self.revoked_digests.read().contains(&artifact.digest)
             || matches!(
@@ -247,6 +288,7 @@ impl ArtifactVerifier {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct PermissionDiff {
     pub added_tools: BTreeSet<String>,
     pub added_network_destinations: BTreeSet<String>,
@@ -314,17 +356,20 @@ pub struct PackRelease {
     pub running_task_response: Option<String>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RegistrySnapshot {
     schema_version: String,
     releases: Vec<PackRelease>,
 }
 
+#[cfg(test)]
 pub struct PackRegistry {
     verifier: ArtifactVerifier,
     releases: RwLock<BTreeMap<(String, String), PackRelease>>,
 }
 
+#[cfg(test)]
 impl PackRegistry {
     pub fn new(verifier: ArtifactVerifier) -> Self {
         Self {
@@ -531,6 +576,22 @@ fn valid_semver(version: &str) -> bool {
             .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
+fn lower_digest(value:&str)->bool{
+    value.len()==64&&value.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))
+}
+
+fn immutable_reference(value:&str,kind:&str)->bool{
+    value.strip_prefix(&format!("{kind}:sha256:")).is_some_and(lower_digest)
+}
+
+fn bounded_identifier(value:&str,maximum:usize)->bool{
+    !value.is_empty()&&value.len()<=maximum&&value.bytes().all(|byte|byte.is_ascii_graphic())
+}
+
+fn bounded_text(value:&str,maximum:usize)->bool{
+    !value.trim().is_empty()&&value.len()<=maximum&&!value.chars().any(char::is_control)
+}
+
 fn hex(bytes: impl AsRef<[u8]>) -> String {
     bytes
         .as_ref()
@@ -600,11 +661,11 @@ mod tests {
                 irreversible_reason: None,
                 executor_template: "repo-read-v1".into(),
             }],
-            policy_bundle_ref: "policy:sha256:one".into(),
-            evaluator_ref: "evaluator:sha256:one".into(),
+            policy_bundle_ref: format!("policy:sha256:{}","1".repeat(64)),
+            evaluator_ref: format!("evaluator:sha256:{}","2".repeat(64)),
             compensation_refs: BTreeSet::new(),
             threat_scenario_refs: BTreeSet::from(["threat:path-traversal".into()]),
-            artifact_refs: BTreeSet::from(["artifact:sha256:one".into()]),
+            artifact_refs: BTreeSet::from([format!("artifact:sha256:{}","3".repeat(64))]),
             compatibility: BTreeSet::from(["agenttrust.contracts.v1".into()]),
             signature: SignatureEnvelope {
                 key_id: String::new(),

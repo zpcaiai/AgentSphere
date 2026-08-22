@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.example/schemas/orchestrator/token-bindings.schema.json",
+  "title": "Orchestrator scoped service token bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.orchestrator-token-bindings.v1"},
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):[!-~]{1,508}$", "maxLength": 512},
+          "tenant_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
+          "subject": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$"},
+          "scope": {"enum": ["orchestrator:runtime", "orchestrator:read", "orchestrator:command", "orchestrator:transitions"]},
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,159 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Production Tool Proxy
+  version: 1.0.0
+  description: >-
+    Fail-closed PEP-authorized target execution. EXECUTING and UNKNOWN invocations are
+    never replayed; successful replay returns only the persisted sanitized result. Every
+    EXECUTING row has an instance-owner fence and bounded lease; only an expired lease can
+    be crash-recovered to UNKNOWN. Fixed HTTPS connectors overwrite target request headers
+    with the verified tenant, canonical Action hash, ledger execution UUID, fence digest,
+    resource version, trace id and idempotency key; target executors must bind all of them.
+x-agenttrust-target-binding-headers:
+  - X-AgentTrust-Tenant-Id
+  - X-AgentTrust-Action-Hash
+  - X-AgentTrust-Authorization-Id
+  - X-AgentTrust-Authorization-Digest
+  - X-AgentTrust-Policy-Decision-Id
+  - X-AgentTrust-Policy-Decision-Digest
+  - X-AgentTrust-Authorization-Evidence-Ref
+  - X-AgentTrust-Authorization-Evidence-Digest
+  - X-AgentTrust-Ledger-Execution-Id
+  - X-AgentTrust-Ledger-Entry-Id
+  - X-AgentTrust-Ledger-Entry-Digest
+  - X-AgentTrust-Fence-Digest
+  - X-AgentTrust-Resource-Version
+  - X-AgentTrust-Trace-Id
+  - Idempotency-Key
+servers:
+  - url: https://tool-proxy.invalid
+paths:
+  /ready:
+    get:
+      operationId: toolProxyDataReadiness
+      security: [{mutualTLS: []}]
+      responses:
+        '200':
+          description: All durable stores, signature keyrings and mandatory dependencies are ready.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Readiness'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+  /v1/tools/execute:
+    post:
+      operationId: executeAuthorizedTool
+      security: [{mutualTLS: [], bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TenantId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AuthorizedToolRequest'}
+      responses:
+        '200':
+          description: Newly completed or exactly replayed sanitized result.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SanitizedToolResult'}
+        '400': {$ref: '#/components/responses/Rejected'}
+        '403': {$ref: '#/components/responses/Rejected'}
+        '409':
+          description: Idempotency conflict or fail-closed UNKNOWN execution; no target replay occurred.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '422': {$ref: '#/components/responses/Rejected'}
+        '413': {$ref: '#/components/responses/Rejected'}
+        '503': {$ref: '#/components/responses/Unavailable'}
+components:
+  securitySchemes:
+    mutualTLS: {type: mutualTLS}
+    bearerAuth: {type: http, scheme: bearer, bearerFormat: opaque-service-token}
+  parameters:
+    TenantId:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {$ref: '#/components/schemas/IdempotencyKey'}
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    Digest:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    IdempotencyKey:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:/-]+$'
+    AuthorizedToolRequest:
+      type: object
+      additionalProperties: false
+      required: [authorization, tool, tenant_id, ledger_execution_id, ledger_event_id, ledger_event_digest, fence_digest, idempotency_key, workload_credential, credential_binding_receipt, operation, resource, resource_version, target_profile, environment, arguments, trace_id]
+      properties:
+        authorization: {$ref: './execution-v1.yaml#/components/schemas/ExecutionAuthorization'}
+        tool: {$ref: './registry-v1.yaml#/components/schemas/ResolvedToolSnapshot'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_execution_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_id: {$ref: '#/components/schemas/Uuid'}
+        ledger_event_digest: {$ref: '#/components/schemas/Digest'}
+        fence_digest: {$ref: '#/components/schemas/Digest'}
+        idempotency_key: {$ref: '#/components/schemas/IdempotencyKey'}
+        workload_credential: {type: string, pattern: '^wca_[A-Za-z0-9_-]{43}$'}
+        credential_binding_receipt: {$ref: '../identity/workload-credential.schema.json#/$defs/bindingReceipt'}
+        operation: {type: string, minLength: 1, maxLength: 256}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        resource_version: {type: string, minLength: 1, maxLength: 256}
+        target_profile: {type: string, minLength: 1, maxLength: 128}
+        environment: {type: string, minLength: 1, maxLength: 128}
+        arguments: {type: object, maxProperties: 1024}
+        trace_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9._:/-]+$'}
+    SanitizedToolResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, value, artifact_ref, redacted_paths, untrusted_content, result_hash, credential_consumption_receipt]
+      properties:
+        schema_version: {const: agenttrust.proxy.v1}
+        value: {}
+        artifact_ref:
+          type: [string, 'null']
+          maxLength: 82
+          pattern: '^artifact://sha256/[a-f0-9]{64}$'
+        redacted_paths: {type: array, maxItems: 4096, items: {type: string, maxLength: 2048}}
+        untrusted_content: {type: boolean}
+        result_hash: {$ref: '#/components/schemas/Digest'}
+        credential_consumption_receipt: {$ref: '../identity/workload-credential.schema.json#/$defs/consumptionReceipt'}
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [schema_version, ready]
+      properties:
+        schema_version: {const: agenttrust.tool-proxy-readiness.v1}
+        ready: {type: boolean}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: {const: agenttrust.proxy.v1}
+        error: {type: string, pattern: '^PROXY_[A-Z0-9_]+$'}
+  responses:
+    Rejected:
+      description: Fail-closed deterministic rejection.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Unavailable:
+      description: Mandatory production dependency or durable store unavailable.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}

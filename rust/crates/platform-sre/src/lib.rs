@@ -1,5 +1,8 @@
 //! Fail-closed dependency semantics, bounded capacity, recovery, and upgrade gates.
 
+pub mod authority;
+pub mod server;
+
 use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

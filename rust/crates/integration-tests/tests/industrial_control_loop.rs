@@ -7,9 +7,9 @@ use agent_trust_identity::{
     CredentialRequest, CredentialService, IDENTITY_SCHEMA_VERSION, RevocationService,
 };
 use agent_trust_policy_pep::{
-    EnforcementOutcome, EnforcementRequest, EnforcementStage, MinimalApprovalKernel,
-    POLICY_SCHEMA_VERSION, PolicyDecisionPointPort, PolicyEnforcementPoint, PolicyError,
-    policy_input_hash,
+    EnforcementOutcome, EnforcementRequest, EnforcementStage, ExecutionAuthorizationContext,
+    MinimalApprovalKernel, POLICY_SCHEMA_VERSION, PolicyDecisionPointPort, PolicyEnforcementPoint,
+    PolicyError, policy_input_hash,
 };
 use agent_trust_registry::*;
 use agent_trust_tool_proxy::*;
@@ -19,6 +19,7 @@ use chrono::Utc;
 use ed25519_dalek::SigningKey;
 use parking_lot::RwLock;
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -182,7 +183,7 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
         },
         intent: Intent {
             goal_hash: "a".repeat(64),
-            operation: "write".into(),
+            operation: "commit_setpoint".into(),
             justification_code: "OPERATOR_REQUEST".into(),
             safe_summary: None,
         },
@@ -225,10 +226,10 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
         credential_refs: vec![agent_trust_action_ir::CredentialRef {
             profile: "simulator-setpoint".into(),
             resource_prefix: "plant/asset-1".into(),
-            operations: vec!["write".into()],
+            operations: vec!["commit_setpoint".into()],
         }],
         requested_at: Utc::now(),
-        extensions: BTreeMap::new(),
+        extensions: BTreeMap::from([("x-plan-hash".into(), Value::String("b".repeat(64)))]),
     };
     let action =
         normalize(draft, &NormalizationContext::default()).unwrap_or_else(|_| panic!("normalize"));
@@ -277,29 +278,8 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
         "pep".into(),
         "pep-key".into(),
         pep_key,
-        BTreeSet::from(["e".repeat(64)]),
+        "e".repeat(64),
     );
-    let authorization = match pep
-        .enforce(EnforcementRequest {
-            stage: EnforcementStage::PreExecution,
-            action: action.clone(),
-            action_hash: action_hash.clone(),
-            tool: snapshot.clone(),
-            policy_input,
-            approval: Some(grant),
-            idempotency_key: Some("industrial:operation-1".into()),
-            identity_uses_dev_verifier: false,
-            resource_state_fresh: true,
-            now: Utc::now(),
-        })
-        .await
-        .unwrap_or_else(|_| panic!("pep"))
-    {
-        EnforcementOutcome::ExecutionAuthorized { authorization, .. } => authorization,
-        _ => panic!("authorization required"),
-    };
-    let authorization = *authorization;
-
     let ledger = InMemoryExecutionLedger::default();
     let compensation = CompensationPlan {
         plan_id: Uuid::new_v4().to_string(),
@@ -330,18 +310,18 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
         })
         .await
         .unwrap_or_else(|_| panic!("reserve"));
-    ledger
-        .mark_started(&reservation.fence, Some("simulator:operation-1".into()))
+    let reserved_ledger_event = ledger
+        .status_event_fact(&tenant, &reservation.execution_id)
         .await
-        .unwrap_or_else(|_| panic!("start"));
-
-    let credentials = Arc::new(CredentialService::new(RevocationService::default()));
-    let credential = credentials
+        .unwrap_or_else(|_| panic!("reserved ledger event"));
+    let credential_issuer = Arc::new(CredentialService::new(RevocationService::default()));
+    let credential_issued_at = Utc::now();
+    let credential = credential_issuer
         .issue(
             CredentialRequest {
                 schema_version: SchemaVersion(IDENTITY_SCHEMA_VERSION.into()),
                 tenant_id: tenant.clone(),
-                agent_instance_id: agent_id,
+                agent_instance_id: agent_id.clone(),
                 task_id: action.task_id.clone(),
                 step_id: action.step_id.clone(),
                 action_hash: action_hash.clone(),
@@ -352,9 +332,92 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
                 ttl_seconds: 60,
                 max_uses: 1,
             },
-            Utc::now(),
+            credential_issued_at,
         )
         .unwrap_or_else(|_| panic!("credential"));
+    let binding_claims = WorkloadCredentialClaims {
+        schema_version: WORKLOAD_CREDENTIAL_CLAIMS_SCHEMA_VERSION.into(),
+        idempotency_key: IdempotencyKey("pep-credential:industrial-operation-1".into()),
+        credential_id: credential.0.clone(),
+        tenant_id: tenant.clone(),
+        agent_instance_id: agent_id,
+        task_id: action.task_id.clone(),
+        step_id: action.step_id.clone(),
+        action_hash: action_hash.clone(),
+        policy_decision_id: "industrial-allow".into(),
+        tool_id: action.tool.tool_id.clone(),
+        credential_profile: "simulator-setpoint".into(),
+        operation: "commit_setpoint".into(),
+        resource: "plant/asset-1/setpoint".into(),
+        target_profile: "simulator-1".into(),
+        audience: "tool-proxy".into(),
+        revocation_epoch: 0,
+        issued_at: credential_issued_at,
+        expires_at: credential_issued_at + chrono::Duration::seconds(60),
+        max_uses: 1,
+    };
+    let mut credential_binding_receipt = SignedWorkloadCredentialBindingReceipt {
+        schema_version: WORKLOAD_CREDENTIAL_BINDING_RECEIPT_SCHEMA_VERSION.into(),
+        credential_handle_sha256: Sha256::digest(credential.0.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+        claims: binding_claims,
+        claims_digest: String::new(),
+        issuer: "credential-authority".into(),
+        key_id: "credential-key".into(),
+        key_usage: WORKLOAD_CREDENTIAL_BINDING_KEY_USAGE.into(),
+        signature: String::new(),
+    };
+    credential_binding_receipt
+        .sign(&SigningKey::from_bytes(&[23u8; 32]))
+        .unwrap_or_else(|_| panic!("credential receipt"));
+    let credentials = Arc::new(
+        InMemoryWorkloadCredentialConsumptionPort::new(
+            SigningKey::from_bytes(&[23u8; 32]),
+            "credential-authority".into(),
+            "credential-key".into(),
+        )
+        .unwrap_or_else(|_| panic!("credential consumer")),
+    );
+    let execution_fence_digest =
+        canonical_hash(&reservation.fence).unwrap_or_else(|_| panic!("fence digest"));
+    let authorization = match pep
+        .enforce(EnforcementRequest {
+            stage: EnforcementStage::PreExecution,
+            action: action.clone(),
+            action_hash: action_hash.clone(),
+            tool: snapshot.clone(),
+            policy_input,
+            approval: Some(grant),
+            idempotency_key: Some("industrial:operation-1".into()),
+            execution_context: Some(ExecutionAuthorizationContext {
+                ledger_execution_id: reservation.execution_id.clone(),
+                ledger_event_id: reserved_ledger_event.event_id.clone(),
+                ledger_event_digest: reserved_ledger_event.event_digest.clone(),
+                fence_digest: execution_fence_digest.clone(),
+                target_profile: "simulator-1".into(),
+                preapproval_digest: "a".repeat(64),
+                approval_consumption_ref: Some("approval://industrial/consume-1".into()),
+                approval_receipt_digest: Some("b".repeat(64)),
+                workload_credential_id: credential.0.clone(),
+                workload_credential_claims_digest: credential_binding_receipt.claims_digest.clone(),
+                workload_credential_audience: credential_binding_receipt.claims.audience.clone(),
+                workload_credential_revocation_epoch: credential_binding_receipt
+                    .claims
+                    .revocation_epoch,
+            }),
+            identity_uses_dev_verifier: false,
+            resource_state_fresh: true,
+            now: Utc::now(),
+        })
+        .await
+        .unwrap_or_else(|_| panic!("pep"))
+    {
+        EnforcementOutcome::ExecutionAuthorized { authorization, .. } => authorization,
+        _ => panic!("authorization required"),
+    };
+    let authorization = *authorization;
     let secrets = Arc::new(InMemoryTargetSecretProvider::default());
     secrets.insert(
         tenant.clone(),
@@ -383,15 +446,27 @@ async fn industrial_prepare_authorize_proxy_execute_and_ledger_finalize() {
         audit.clone(),
     )
     .unwrap_or_else(|_| panic!("proxy"));
+    ledger
+        .mark_started(&reservation.fence, Some("simulator:operation-1".into()))
+        .await
+        .unwrap_or_else(|_| panic!("start"));
     let result = proxy
         .execute(AuthorizedToolRequest {
             authorization,
             tool: snapshot,
             tenant_id: tenant.clone(),
+            ledger_execution_id: reservation.execution_id.clone(),
+            ledger_event_id: reserved_ledger_event.event_id,
+            ledger_event_digest: reserved_ledger_event.event_digest,
+            fence_digest: execution_fence_digest,
+            idempotency_key: IdempotencyKey("industrial:operation-1".into()),
             workload_credential: credential,
+            credential_binding_receipt,
             operation: "commit_setpoint".into(),
             resource: "plant/asset-1/setpoint".into(),
+            resource_version: ResourceVersion("v1".into()),
             target_profile: "simulator-1".into(),
+            environment: "development".into(),
             arguments,
             trace_id: "trace-1".into(),
         })

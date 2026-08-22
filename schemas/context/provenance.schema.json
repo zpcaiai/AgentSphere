@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/context/provenance.schema.json",
+  "title": "Context Provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_type",
+    "source_id",
+    "source_version",
+    "source_digest",
+    "imported_by",
+    "imported_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.provenance.v1"},
+    "source_type": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "source_id": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "source_version": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "source_digest": {"$ref": "#/$defs/digest"},
+    "imported_by": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/@-]+$"},
+    "imported_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

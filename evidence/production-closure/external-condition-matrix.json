@@ -140,7 +140,7 @@
       "external_status": "NOT_RUN_CONFIGURATION",
       "blocking": true,
       "code_paths": ["python/production_gates/git_provenance.py"],
-      "required_external_inputs": ["real Git repository", "approved immutable remote", "clean committed worktree", "verified commit signature and optionally signed release tag"]
+      "required_external_inputs": ["exact candidate commit", "approved immutable remote", "clean committed worktree", "verified commit signature and optionally signed release tag", "evidence bundle rebound to the candidate release identifier"]
     }
   ],
   "summary": {
@@ -149,5 +149,5 @@
     "external_verified": 0
   },
   "production_closure_certificate": "NOT_ISSUED",
-  "matrix_digest": "667b71722d3b4769d5a20c786d787a641ec52c55e238686f8e4ea5f415519849"
+  "matrix_digest": "4e3cfcf6f23ddb6589a241380a8a48a1925cc88496322aab14eff54c44404da5"
 }

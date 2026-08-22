@@ -23,6 +23,30 @@ class BuildProductionImageTests(unittest.TestCase):
         self.assertIn("--pull=false", command)
         self.assertIn("RUST_BUILDER_IMAGE=rust@sha256:" + "a" * 64, command)
 
+    def test_model_gateway_uses_dedicated_digest_pinned_dockerfile(self) -> None:
+        command = _MODULE.command_for(
+            "model-gateway",
+            "agenttrust/model-gateway:release-1",
+            ["rust@sha256:" + "a" * 64, "distroless@sha256:" + "b" * 64],
+            _ROOT,
+        )
+        self.assertIn(str(_ROOT / "Dockerfile.model-gateway"), command)
+        self.assertIn("RUST_BUILDER_IMAGE=rust@sha256:" + "a" * 64, command)
+        self.assertIn("RUNTIME_BASE_IMAGE=distroless@sha256:" + "b" * 64, command)
+        self.assertIn("--pull=false", command)
+
+    def test_data_governance_uses_dedicated_digest_pinned_dockerfile(self) -> None:
+        command = _MODULE.command_for(
+            "data-governance",
+            "agenttrust/data-governance:release-1",
+            ["rust@sha256:" + "a" * 64, "distroless@sha256:" + "b" * 64],
+            _ROOT,
+        )
+        self.assertIn(str(_ROOT / "Dockerfile.data-governance"), command)
+        self.assertIn("RUST_BUILDER_IMAGE=rust@sha256:" + "a" * 64, command)
+        self.assertIn("RUNTIME_BASE_IMAGE=distroless@sha256:" + "b" * 64, command)
+        self.assertIn("--pull=false", command)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,257 @@
+openapi: 3.1.0
+info:
+  title: Agent Trust Runtime Anomaly Authority
+  version: 1.0.0
+  description: >-
+    Signed trajectory signals, governed Continuous Authorization actions, exact Tool Proxy
+    execution bindings and authoritative tenant-scoped reads. Signal admission is an event path;
+    every administrative or external response action follows Canonical Action IR, PEP, ledger,
+    fence and Evidence closure.
+servers:
+  - url: https://runtime-anomaly.internal:8094
+security:
+  - mutualTLS: []
+    bearerAuth: []
+paths:
+  /ready:
+    get:
+      operationId: runtimeAnomalyDataReady
+      security:
+        - mutualTLS: []
+      responses:
+        '200':
+          description: All mandatory deterministic and response dependencies are ready.
+          content:
+            application/json:
+              schema:
+                $ref: ../runtime-anomaly/readiness.schema.json
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /v1/runtime-anomaly/signals:
+    post:
+      operationId: consumeSignedRuntimeRiskSignal
+      description: >-
+        Verifies the exact mTLS workload, tenant/source token binding and Ed25519 source signature;
+        atomically persists signal, findings, aggregate, local lease epoch and Evidence outbox.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../runtime-anomaly/signed-risk-signal.schema.json
+      responses:
+        '200':
+          description: Idempotent signal and Continuous Authorization receipt.
+          content:
+            application/json:
+              schema:
+                $ref: ../runtime-anomaly/signal-ingest-receipt.schema.json
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Denied' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /v1/runtime-anomaly/actions:
+    post:
+      operationId: submitRuntimeAnomalyAction
+      description: Normalizes and admits a human authority mutation; this route never writes domain state.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/RequestDigest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../runtime-anomaly/runtime-anomaly-command.schema.json
+      responses:
+        '202':
+          description: Durable orchestrator admission; process execution is still pending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionReceipt'
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Denied' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /v1/runtime-anomaly/executions:
+    post:
+      operationId: executeRuntimeAnomalyAction
+      description: Tool Proxy-only executor with exact action, PEP, ledger, fence and authorization Evidence binding.
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/BindingSchema'
+        - $ref: '#/components/parameters/ActionHash'
+        - $ref: '#/components/parameters/LedgerExecutionId'
+        - $ref: '#/components/parameters/LedgerEventId'
+        - $ref: '#/components/parameters/LedgerEventDigest'
+        - $ref: '#/components/parameters/FenceDigest'
+        - $ref: '#/components/parameters/ResourceVersion'
+        - $ref: '#/components/parameters/TraceId'
+        - $ref: '#/components/parameters/PolicyDecisionId'
+        - $ref: '#/components/parameters/PolicyDecisionDigest'
+        - $ref: '#/components/parameters/AuthorizationEvidenceRef'
+        - $ref: '#/components/parameters/AuthorizationEvidenceDigest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../runtime-anomaly/executor-request.schema.json
+      responses:
+        '200':
+          description: Authority action completed with Evidence acknowledgement; process outcome is separate.
+          content:
+            application/json:
+              schema:
+                $ref: ../runtime-anomaly/mutation-result.schema.json
+        '400': { $ref: '#/components/responses/Invalid' }
+        '401': { $ref: '#/components/responses/Denied' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+  /v1/authoritative/runtime-anomaly/trajectories:
+    get:
+      operationId: listAuthoritativeRuntimeAnomalyTrajectories
+      parameters:
+        - $ref: '#/components/parameters/TenantHeader'
+        - name: after
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: Tenant-RLS authoritative trajectory page.
+          content:
+            application/json:
+              schema:
+                $ref: ../runtime-anomaly/authoritative-trajectory-page.schema.json
+        '401': { $ref: '#/components/responses/Denied' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+components:
+  securitySchemes:
+    mutualTLS:
+      type: mutualTLS
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    TenantHeader:
+      name: x-agenttrust-tenant-id
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: idempotency-key
+      in: header
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 256 }
+    RequestDigest:
+      name: x-agenttrust-request-digest
+      in: header
+      required: true
+      schema: { $ref: '#/components/schemas/Digest' }
+    BindingSchema:
+      name: x-agenttrust-binding-schema
+      in: header
+      required: true
+      schema: { const: agenttrust.runtime-anomaly-execution-binding.v1 }
+    ActionHash: { $ref: '#/components/parameters/DigestActionHash' }
+    DigestActionHash:
+      name: x-agenttrust-action-hash
+      in: header
+      required: true
+      schema: { $ref: '#/components/schemas/Digest' }
+    LedgerExecutionId:
+      name: x-agenttrust-ledger-execution-id
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+    LedgerEventId:
+      name: x-agenttrust-ledger-event-id
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+    LedgerEventDigest:
+      name: x-agenttrust-ledger-event-digest
+      in: header
+      required: true
+      schema: { $ref: '#/components/schemas/Digest' }
+    FenceDigest:
+      name: x-agenttrust-fence-digest
+      in: header
+      required: true
+      schema: { $ref: '#/components/schemas/Digest' }
+    ResourceVersion:
+      name: x-agenttrust-resource-version
+      in: header
+      required: true
+      schema: { type: integer, minimum: 0 }
+    TraceId:
+      name: x-agenttrust-trace-id
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 128 }
+    PolicyDecisionId:
+      name: x-agenttrust-policy-decision-id
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 256 }
+    PolicyDecisionDigest:
+      name: x-agenttrust-policy-decision-digest
+      in: header
+      required: true
+      schema: { $ref: '#/components/schemas/Digest' }
+    AuthorizationEvidenceRef:
+      name: x-agenttrust-authorization-evidence-ref
+      in: header
+      required: true
+      schema: { type: string, pattern: '^evidence://' }
+    AuthorizationEvidenceDigest:
+      name: x-agenttrust-authorization-evidence-digest
+      in: header
+      required: true
+      schema: { $ref: '#/components/schemas/Digest' }
+  schemas:
+    Digest: { type: string, pattern: '^[0-9a-f]{64}$' }
+    ActionReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, action_id, task_id, accepted, execution_pending, ingress_digest, ledger_evidence_ref, ledger_evidence_digest]
+      properties:
+        schema_version: { const: agenttrust.runtime-anomaly-action-receipt.v1 }
+        action_id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        accepted: { const: true }
+        execution_pending: { const: true }
+        ingress_digest: { $ref: '#/components/schemas/Digest' }
+        ledger_evidence_ref: { type: string, pattern: '^evidence://' }
+        ledger_evidence_digest: { $ref: '#/components/schemas/Digest' }
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error, trace_id, safe_summary]
+      properties:
+        schema_version: { const: agenttrust.runtime-anomaly-authority-error.v1 }
+        error: { type: string }
+        trace_id: { type: string, format: uuid }
+        safe_summary: { type: string }
+  responses:
+    Invalid:
+      description: Invalid or non-canonical request.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Denied:
+      description: mTLS, token, tenant, source or execution principal denied.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Conflict:
+      description: Idempotency, version, lease or state conflict.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unavailable:
+      description: Dependency unavailable or mutation outcome unknown; callers must reconcile.
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

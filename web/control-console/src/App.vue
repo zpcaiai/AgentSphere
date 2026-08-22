@@ -8,12 +8,21 @@ import { approvalIdempotencyKey, buildAdminIntent, extractTaskAuthorityStatuses,
   type EnterpriseDashboard, type TaskAuthorityStatus } from "./control-state";
 import type {
   AgentInventoryItem,
-  ApiKeyIssueResponse,
   AuthorityPage,
+  EnterpriseActionReceipt,
   GovernedWriteCommand,
-  PolicySimulationRequest,
-  PolicySimulationResult,
-  QuotaUsage,
+  Incident,
+  IncidentActionReceipt,
+  IncidentCommand,
+  IncidentPage,
+  MarketplaceActionReceipt,
+  MarketplaceCommand,
+  PackPage,
+  PolicyActionReceipt,
+  PolicyArtifactPage,
+  PolicyArtifactType,
+  PolicyCommand,
+  PolicyPage,
 } from "./enterprise-api-types";
 
 interface BootContext {
@@ -21,6 +30,7 @@ interface BootContext {
   requestedBy: string;
   projectId: string | null;
   approvalIds: string[];
+  approvalStrongAuth: boolean;
   csrfToken: string;
 }
 
@@ -31,9 +41,15 @@ const tasks = ref<TaskAuthorityStatus[]>([]);
 const events = ref<AgUiEventEnvelope[]>([]);
 const eventTaskId = ref("");
 const agentPage = ref<AuthorityPage<AgentInventoryItem> | null>(null);
-const policySimulation = ref<PolicySimulationResult | null>(null);
-const issuedApiKey = ref<ApiKeyIssueResponse | null>(null);
-const quotaUsage = ref<QuotaUsage | null>(null);
+const policyPage = ref<PolicyPage | null>(null);
+const policyArtifactPage = ref<PolicyArtifactPage | null>(null);
+const policyReceipt = ref<PolicyActionReceipt | null>(null);
+const incidentPage = ref<IncidentPage | null>(null);
+const incidentDetail = ref<Incident | null>(null);
+const incidentReceipt = ref<IncidentActionReceipt | null>(null);
+const packPage = ref<PackPage | null>(null);
+const packReceipt = ref<MarketplaceActionReceipt | null>(null);
+const actionReceipt = ref<EnterpriseActionReceipt | null>(null);
 const fatalError = ref("");
 const moduleError = ref("");
 const streamError = ref("");
@@ -56,6 +72,7 @@ onMounted(async () => {
       // A multi-project session does not imply a safe default project scope.
       projectId: session.project_ids.length === 1 ? session.project_ids[0] ?? null : null,
       approvalIds: [...new Set(session.approval_ids)].sort(),
+      approvalStrongAuth: session.strong_auth,
       csrfToken: session.csrf_token,
     };
     await loadDashboard();
@@ -65,7 +82,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  issuedApiKey.value = null;
+  actionReceipt.value = null;
   events.value = [];
   agUiClient?.clear();
 });
@@ -98,19 +115,14 @@ async function submitGoverned(command: GovernedWriteCommand): Promise<void> {
       payload: command.payload,
     });
     switch (command.kind) {
-      case "CREATE_TENANT": await client.value!.createTenant(command.payload, governed); break;
-      case "CREATE_ORGANIZATION": await client.value!.createOrganization(command.payload, governed); break;
-      case "CREATE_PROJECT": await client.value!.createProject(command.payload, governed); break;
-      case "CREATE_INTEGRATION": await client.value!.createIntegration(command.payload, governed); break;
-      case "CONSUME_QUOTA": quotaUsage.value = await client.value!.consumeQuota(command.payload, governed); break;
-      case "RECORD_COST": await client.value!.recordCost(command.payload, governed); break;
-      case "ISSUE_API_KEY":
-        issuedApiKey.value = await client.value!.issueApiKey(command.payload, governed);
-        break;
-      case "REVOKE_API_KEY": await client.value!.revokeApiKey(command.payload, governed); break;
-      case "PROMOTE_POLICY":
-        await client.value!.promotePolicy(command.resource.slice("policy:".length), command.payload, governed);
-        break;
+      case "CREATE_TENANT": actionReceipt.value = await client.value!.createTenant(command.payload, governed); break;
+      case "CREATE_ORGANIZATION": actionReceipt.value = await client.value!.createOrganization(command.payload, governed); break;
+      case "CREATE_PROJECT": actionReceipt.value = await client.value!.createProject(command.payload, governed); break;
+      case "CREATE_INTEGRATION": actionReceipt.value = await client.value!.createIntegration(command.payload, governed); break;
+      case "CONSUME_QUOTA": actionReceipt.value = await client.value!.consumeQuota(command.payload, governed); break;
+      case "RECORD_COST": actionReceipt.value = await client.value!.recordCost(command.payload, governed); break;
+      case "ISSUE_API_KEY": actionReceipt.value = await client.value!.issueApiKey(command.payload, governed); break;
+      case "REVOKE_API_KEY": actionReceipt.value = await client.value!.revokeApiKey(command.payload, governed); break;
       default:
         if (command.kind.startsWith("TASK_")) {
           await client.value!.submitTaskCommand(command.resource.slice("task:".length), command.payload, governed);
@@ -147,11 +159,85 @@ async function loadAgents(cursor: string | null): Promise<void> {
   }, (code) => { moduleError.value = code; });
 }
 
-async function simulatePolicy(bundleId: string, request: PolicySimulationRequest): Promise<void> {
+async function loadPolicies(afterPolicyId: string | null): Promise<void> {
   if (!client.value || !context.value) return;
   await run(async () => {
-    policySimulation.value = await client.value!.simulatePolicy(context.value!.tenantId, bundleId, request,
-      context.value!.csrfToken);
+    policyPage.value = await client.value!.listPolicies(context.value!.tenantId, afterPolicyId, 50);
+  }, (code) => { moduleError.value = code; });
+}
+
+async function loadPolicyArtifacts(policyId: string, artifactType: PolicyArtifactType): Promise<void> {
+  if (!client.value || !context.value) return;
+  await run(async () => {
+    policyArtifactPage.value = await client.value!.listPolicyArtifacts(
+      context.value!.tenantId, policyId, artifactType, 50);
+  }, (code) => { moduleError.value = code; });
+}
+
+async function submitPolicy(command: PolicyCommand): Promise<void> {
+  if (!client.value || !context.value) return;
+  await run(async () => {
+    policyReceipt.value = await client.value!.submitPolicyAction(command, context.value!.csrfToken);
+    operationMessage.value = locale.value === "en-US"
+      ? "Policy workflow admitted; execution and authoritative lifecycle state are still pending."
+      : "Policy 工作流已持久接收；执行与权威生命周期状态仍在等待中。";
+  }, (code) => { moduleError.value = code; });
+}
+
+async function loadIncidents(afterIncidentId: string | null): Promise<void> {
+  if (!client.value || !context.value) return;
+  moduleError.value = "";
+  incidentPage.value = null;
+  incidentDetail.value = null;
+  await run(async () => {
+    incidentPage.value = await client.value!.listIncidents(
+      context.value!.tenantId, afterIncidentId, 50);
+  }, (code) => { moduleError.value = code; });
+}
+
+async function loadIncidentDetail(incidentId: string): Promise<void> {
+  if (!client.value || !context.value) return;
+  moduleError.value = "";
+  incidentDetail.value = null;
+  await run(async () => {
+    incidentDetail.value = await client.value!.getIncident(context.value!.tenantId, incidentId);
+  }, (code) => { moduleError.value = code; });
+}
+
+async function submitIncident(command: IncidentCommand): Promise<void> {
+  if (!client.value || !context.value) return;
+  moduleError.value = "";
+  operationMessage.value = "";
+  incidentReceipt.value = null;
+  await run(async () => {
+    incidentReceipt.value = await client.value!.submitIncidentAction(
+      command, context.value!.csrfToken);
+    operationMessage.value = locale.value === "en-US"
+      ? "Incident action admitted; execution and authoritative incident or release state remain pending."
+      : "事件动作已持久接收；执行及权威事件或发布状态仍在等待中。";
+  }, (code) => { moduleError.value = code; });
+}
+
+async function loadPacks(search: string, afterPackId: string | null): Promise<void> {
+  if (!client.value || !context.value) return;
+  moduleError.value = "";
+  packPage.value = null;
+  await run(async () => {
+    packPage.value = await client.value!.listPacks(
+      context.value!.tenantId, search, afterPackId, 50);
+  }, (code) => { moduleError.value = code; });
+}
+
+async function submitPack(command: MarketplaceCommand): Promise<void> {
+  if (!client.value || !context.value) return;
+  moduleError.value = "";
+  operationMessage.value = "";
+  packReceipt.value = null;
+  await run(async () => {
+    packReceipt.value = await client.value!.submitPackAction(command, context.value!.csrfToken);
+    operationMessage.value = locale.value === "en-US"
+      ? "Pack action admitted; lifecycle execution and per-task authorization remain pending."
+      : "Pack 动作已持久接收；生命周期执行与逐任务授权仍在等待中。";
   }, (code) => { moduleError.value = code; });
 }
 
@@ -180,7 +266,15 @@ async function signOut(): Promise<void> {
     dashboard.value = null;
     tasks.value = [];
     events.value = [];
-    issuedApiKey.value = null;
+    actionReceipt.value = null;
+    policyPage.value = null;
+    policyArtifactPage.value = null;
+    policyReceipt.value = null;
+    incidentPage.value = null;
+    incidentDetail.value = null;
+    incidentReceipt.value = null;
+    packPage.value = null;
+    packReceipt.value = null;
     fatalError.value = "CONTROL_SIGNED_OUT";
   }, (code) => { moduleError.value = code; });
 }
@@ -215,10 +309,18 @@ function safeCode(error: unknown, fallback: string): string {
   </div>
   <p v-else-if="!dashboard || !context" class="loading" role="status">{{ locale === 'en-US' ? 'Loading authoritative state…' : '正在加载权威状态…' }}</p>
   <ControlConsole v-else :dashboard="dashboard" :tasks="tasks" :events="events" :agent-page="agentPage"
-    :policy-simulation="policySimulation" :issued-api-key="issuedApiKey" :quota-usage="quotaUsage"
+    :policy-page="policyPage" :policy-artifact-page="policyArtifactPage"
+    :policy-receipt="policyReceipt" :action-receipt="actionReceipt"
+    :incident-page="incidentPage" :incident-detail="incidentDetail"
+    :incident-receipt="incidentReceipt" :pack-page="packPage" :pack-receipt="packReceipt"
+    :tenant-id="context.tenantId" :requested-by="context.requestedBy" :approval-ids="context.approvalIds"
     :project-id="context.projectId" :busy="busy" :operation-message="operationMessage"
+    :approval-strong-auth="context.approvalStrongAuth"
     :stream-error="streamError" :module-error="moduleError" :locale="locale"
     @refresh="loadDashboard" @governed-write="submitGoverned" @approval-intent="submitApproval"
-    @resume-task="resumeTask" @load-agents="loadAgents" @simulate-policy="simulatePolicy"
-    @clear-api-key="issuedApiKey = null" @sign-out="signOut" @set-locale="locale = $event" />
+    @resume-task="resumeTask" @load-agents="loadAgents" @load-policies="loadPolicies"
+    @load-policy-artifacts="loadPolicyArtifacts" @submit-policy="submitPolicy"
+    @load-incidents="loadIncidents" @load-incident-detail="loadIncidentDetail"
+    @submit-incident="submitIncident" @load-packs="loadPacks" @submit-pack="submitPack"
+    @clear-receipt="actionReceipt = null" @sign-out="signOut" @set-locale="locale = $event" />
 </template>

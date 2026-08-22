@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/agent-registry/token-bindings.schema.json",
+  "title": "Agent Registry exact route token bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.agent-registry-token-bindings.v1"},
+    "bindings": {
+      "type": "array", "minItems": 1, "maxItems": 10000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "token_sha256"],
+        "properties": {
+          "client_identity": {"type": "string", "pattern": "^(DNS|URI):[!-~]{1,508}$"},
+          "tenant_id": {"type": "string", "format": "uuid"},
+          "subject": {"type": "string", "pattern": "^[^\\s\\x00-\\x1f]{1,512}$"},
+          "scope": {"enum": ["agents:read", "agents:register", "agents:discover", "agents:ownership:assign", "agents:ownership:confirm", "agents:bom", "agents:relationships:write", "agents:relationships:read", "agents:posture:evaluate", "agents:posture:read", "agents:lifecycle"]},
+          "token_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  }
+}

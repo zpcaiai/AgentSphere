@@ -1,0 +1,179 @@
+openapi: 3.1.0
+info:
+  title: AgentTrust Production Pack Marketplace Authority API
+  version: 1.0.0
+  description: >-
+    Tenant-isolated authority for publisher trust, signed release review, installation approval,
+    environment activation, canary upgrade, rollback, deactivation, and revocation. Installation
+    does not imply activation; activation does not grant a production credential or bypass PEP.
+servers:
+  - url: https://agenttrust-pack-marketplace
+paths:
+  /v1/packs/actions:
+    post:
+      operationId: submitPackMarketplaceAction
+      description: >-
+        Converts one strictly typed human command to Canonical Action IR and submits it to the
+        durable orchestrator. No marketplace business table is mutated on this route.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/HumanAssertion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '../marketplace/command.schema.json'}
+      responses:
+        '202':
+          description: Canonical action accepted; execution remains pending.
+          content:
+            application/json:
+              schema: {$ref: '../marketplace/api.schema.json#/$defs/actionReceipt'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/packs/executions:
+    post:
+      operationId: executePackMarketplaceMutation
+      description: >-
+        Runtime-only endpoint. Requires action hash, PEP decision, ledger entry, execution ID,
+        resource-version fence and immutable authorization-evidence bindings. It is not exposed
+        to the console or public ingress.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ActionHash'
+        - $ref: '#/components/parameters/PolicyDecisionId'
+        - $ref: '#/components/parameters/PolicyDecisionDigest'
+        - $ref: '#/components/parameters/LedgerEntryId'
+        - $ref: '#/components/parameters/LedgerEntryDigest'
+        - $ref: '#/components/parameters/LedgerExecutionId'
+        - $ref: '#/components/parameters/FenceDigest'
+        - $ref: '#/components/parameters/ResourceVersion'
+        - $ref: '#/components/parameters/AuthorizationEvidenceRef'
+        - $ref: '#/components/parameters/AuthorizationEvidenceDigest'
+        - $ref: '#/components/parameters/TraceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExecutorRequest'}
+      responses:
+        '200':
+          description: Durable mutation and Evidence outbox committed atomically.
+          content:
+            application/json:
+              schema: {$ref: '../marketplace/api.schema.json#/$defs/mutationResult'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '409': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /v1/authoritative/packs:
+    get:
+      operationId: getAuthoritativePackCatalog
+      description: >-
+        Returns only the authenticated tenant catalog and lifecycle state under FORCE RLS.
+        Revoked releases remain visible as governance facts but cannot resolve for new work.
+      security: [{mtls: [], bearer: []}]
+      parameters:
+        - $ref: '#/components/parameters/Tenant'
+        - name: query
+          in: query
+          schema: {type: string, maxLength: 128}
+        - name: after_pack_id
+          in: query
+          schema: {type: string, maxLength: 128}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 200, default: 100}
+      responses:
+        '200':
+          description: Authoritative tenant Pack catalog and installation state.
+          content:
+            application/json:
+              schema: {$ref: '../marketplace/api.schema.json#/$defs/authoritativePage'}
+        '400': {$ref: '#/components/responses/Failure'}
+        '401': {$ref: '#/components/responses/Failure'}
+        '503': {$ref: '#/components/responses/Failure'}
+  /ready:
+    get:
+      operationId: packMarketplaceReadiness
+      security: [{mtls: []}]
+      description: >-
+        Data listener is mTLS-only; the separate plaintext management listener exposes this path
+        only for kubelet/node health checks isolated by NetworkPolicy.
+      responses:
+        '200':
+          description: PostgreSQL and release-gate verification keyring are ready.
+          content:
+            application/json:
+              schema: {$ref: '../marketplace/readiness.schema.json'}
+        '503': {$ref: '#/components/responses/Failure'}
+components:
+  securitySchemes:
+    mtls: {type: mutualTLS}
+    bearer: {type: http, scheme: bearer}
+  parameters:
+    Tenant:
+      name: X-AgentTrust-Tenant-Id
+      in: header
+      required: true
+      schema: {type: string, format: uuid}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128, pattern: '^[A-Za-z0-9._:/-]+$'}
+    HumanAssertion:
+      name: X-AgentTrust-Human-Assertion
+      in: header
+      required: true
+      description: >-
+        Unpadded base64url signed assertion bound to POST, /v1/packs/actions, tenant, exact SAN,
+        service subject, packs:mutate, idempotency key and JCS request digest.
+      schema: {type: string, minLength: 1, maxLength: 87384, pattern: '^[A-Za-z0-9_-]+$'}
+    ActionHash: {name: X-AgentTrust-Action-Hash, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+    PolicyDecisionId: {name: X-AgentTrust-Policy-Decision-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Identifier'}}
+    PolicyDecisionDigest: {name: X-AgentTrust-Policy-Decision-Digest, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+    LedgerEntryId: {name: X-AgentTrust-Ledger-Entry-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Identifier'}}
+    LedgerEntryDigest: {name: X-AgentTrust-Ledger-Entry-Digest, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+    LedgerExecutionId: {name: X-AgentTrust-Ledger-Execution-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    FenceDigest: {name: X-AgentTrust-Fence-Digest, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+    ResourceVersion: {name: X-AgentTrust-Resource-Version, in: header, required: true, schema: {type: integer, minimum: 0}}
+    AuthorizationEvidenceRef: {name: X-AgentTrust-Authorization-Evidence-Ref, in: header, required: true, schema: {type: string, pattern: '^urn:agenttrust:', maxLength: 2048}}
+    AuthorizationEvidenceDigest: {name: X-AgentTrust-Authorization-Evidence-Digest, in: header, required: true, schema: {$ref: '#/components/schemas/Digest'}}
+    TraceId: {name: X-AgentTrust-Trace-Id, in: header, required: true, schema: {$ref: '#/components/schemas/Identifier'}}
+  responses:
+    Failure:
+      description: Stable fail-closed error without secret or cross-tenant detail.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Digest: {type: string, pattern: '^[a-f0-9]{64}$'}
+    Identifier: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+    ExecutorRequest:
+      type: object
+      additionalProperties: false
+      required: [schema_version, command, principal_subject, principal_assertion_digest, approval_ids]
+      properties:
+        schema_version: {const: agenttrust.marketplace-executor-request.v1}
+        command: {$ref: '../marketplace/command.schema.json'}
+        principal_subject: {$ref: '#/components/schemas/Identifier'}
+        principal_assertion_digest: {$ref: '#/components/schemas/Digest'}
+        approval_ids:
+          type: array
+          maxItems: 256
+          uniqueItems: true
+          items: {type: string, minLength: 1, maxLength: 256}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [schema_version, error]
+      properties:
+        schema_version: {const: agenttrust.pack-marketplace-error.v1}
+        error: {type: string, pattern: '^MARKETPLACE_[A-Z_]+$', maxLength: 128}

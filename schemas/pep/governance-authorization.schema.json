@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/governance-authorization.schema.json",
+  "title": "Human governance authorization requests and response",
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "principal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject", "tenant_id", "roles", "project_ids", "approval_ids",
+        "owned_resources", "strong_auth", "authentication_time", "authentication_context"
+      ],
+      "properties": {
+        "subject": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9_.:/@-]+$"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "roles": {"type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "project_ids": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "approval_ids": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+        "owned_resources": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 2048}},
+        "strong_auth": {"type": "boolean"},
+        "authentication_time": {"type": "string", "format": "date-time"},
+        "authentication_context": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "approvalAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "case_id", "decision", "reason", "observed_action_hash", "observed_resource_version"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.approval-intent.v1"},
+        "case_id": {"type": "string", "format": "uuid"},
+        "decision": {"enum": ["APPROVE", "REJECT"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "observed_action_hash": {"$ref": "#/$defs/digest"},
+        "observed_resource_version": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "queryAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "operation", "resource"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.query-authorization.v1"},
+        "operation": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"},
+        "resource": {"type": "string", "minLength": 1, "maxLength": 2048}
+      }
+    },
+    "approvalRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "principal", "action"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authorization-request.v1"},
+        "principal": {"$ref": "#/$defs/principal"},
+        "action": {"$ref": "#/$defs/approvalAction"}
+      }
+    },
+    "queryRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "principal", "action"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.authorization-request.v1"},
+        "principal": {"$ref": "#/$defs/principal"},
+        "action": {"$ref": "#/$defs/queryAction"}
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "policy_digest", "evidence_ref", "reason_codes"],
+      "properties": {
+        "decision": {"enum": ["ALLOW", "DENY"]},
+        "policy_digest": {"$ref": "#/$defs/digest"},
+        "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^urn:agenttrust:pep-governance-evidence:"},
+        "reason_codes": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"type": "string", "minLength": 1, "maxLength": 256}}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/approvalRequest"},
+    {"$ref": "#/$defs/queryRequest"},
+    {"$ref": "#/$defs/response"}
+  ]
+}

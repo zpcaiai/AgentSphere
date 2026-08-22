@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-packs/authoritative-domain-state.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "authoritative", "data_digest", "items", "next_cursor"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.domain-runtime-authoritative-state.v1"}, "tenant_id": {"type": "string", "format": "uuid"},
+    "authoritative": {"const": true}, "data_digest": {"$ref": "#/$defs/digest", "description": "JCS SHA-256 of this response object after removing only data_digest"}, "next_cursor": {"type": ["string", "null"], "minLength": 1, "maxLength": 512, "pattern": "^[A-Za-z0-9_-]+$"},
+    "items": {"type": "array", "maxItems": 200, "items": {"type": "object", "additionalProperties": false,
+      "required": ["execution_id", "command_id", "domain", "pack_id", "pack_version", "pack_manifest_digest", "tool_id", "operation", "resource_key", "resource_version", "state", "effect_receipt_digest", "evaluator_result_digest", "evaluator_conclusion", "evidence_ref", "evidence_digest", "stable_error", "created_at", "updated_at"],
+      "properties": {
+        "execution_id": {"type": "string", "format": "uuid"}, "command_id": {"type": "string", "format": "uuid"}, "domain": {"enum": ["CODING", "INDUSTRIAL", "ENERGY", "MEDICAL", "SENSITIVE"]},
+        "pack_id": {"type": "string", "minLength": 1, "maxLength": 256}, "pack_version": {"type": "string", "minLength": 1, "maxLength": 128}, "pack_manifest_digest": {"$ref": "#/$defs/digest"},
+        "tool_id": {"type": "string", "minLength": 1, "maxLength": 256}, "operation": {"type": "string", "minLength": 1, "maxLength": 128}, "resource_key": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "resource_version": {"type": "integer", "minimum": 1}, "state": {"enum": ["PREPARED", "EXECUTING", "VERIFYING", "SUCCEEDED", "FAILED", "NEEDS_HUMAN", "MANUAL_RECOVERY", "UNKNOWN"]},
+        "effect_receipt_digest": {"$ref": "#/$defs/nullableDigest"}, "evaluator_result_digest": {"$ref": "#/$defs/nullableDigest"}, "evaluator_conclusion": {"type": ["string", "null"]},
+        "evidence_ref": {"type": ["string", "null"], "maxLength": 1024}, "evidence_digest": {"$ref": "#/$defs/nullableDigest"}, "stable_error": {"type": ["string", "null"], "maxLength": 128},
+        "created_at": {"type": "string", "format": "date-time"}, "updated_at": {"type": "string", "format": "date-time"}
+      }
+    }}
+  }, "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "nullableDigest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}}
+}

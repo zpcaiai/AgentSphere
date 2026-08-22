@@ -7,7 +7,7 @@
     "agent":{"$ref":"identity.schema.json"},
     "intent":{"type":"object","additionalProperties":false,"required":["goal_hash","operation","justification_code"],"properties":{"goal_hash":{"$ref":"common.schema.json#/$defs/hash"},"operation":{"type":"string","minLength":1,"maxLength":64},"justification_code":{"type":"string","minLength":1,"maxLength":64},"safe_summary":{"type":["string","null"],"maxLength":512}}},
     "tool":{"$ref":"common.schema.json#/$defs/tool_ref"},
-    "payload":{"type":"object","additionalProperties":false,"required":["type_id","schema_version","data"],"properties":{"type_id":{"enum":["coding.patch.v1","coding.command.v1","industrial.read.v1","industrial.setpoint.v1"]},"schema_version":{"const":"1"},"data":{"type":"object","maxProperties":256}}},
+    "payload":{"type":"object","additionalProperties":false,"required":["type_id","schema_version","data"],"properties":{"type_id":{"enum":["coding.patch.v1","coding.command.v1","industrial.read.v1","industrial.setpoint.v1","enterprise.control.mutation.v1"]},"schema_version":{"const":"1"},"data":{"type":"object","maxProperties":256}}},
     "resource":{"type":"object","additionalProperties":false,"required":["scheme","tenant_id","locator"],"properties":{"scheme":{"enum":["repo","file","database","opcua","mqtt","http"]},"tenant_id":{"$ref":"common.schema.json#/$defs/uuid"},"locator":{"type":"string","minLength":1,"maxLength":2048},"version":{"type":["string","null"],"maxLength":128}}},
     "environment":{"type":"object","additionalProperties":false,"required":["tenant_id","deployment","region","simulation"],"properties":{"tenant_id":{"$ref":"common.schema.json#/$defs/uuid"},"deployment":{"enum":["development","staging","production"]},"region":{"type":"string","minLength":1,"maxLength":64},"zone":{"type":["string","null"],"maxLength":64},"simulation":{"type":"boolean"}}},
     "current_state_version":{"type":["string","null"],"maxLength":128},
@@ -16,6 +16,9 @@
     "expected_outcome":{"type":"object","additionalProperties":false,"required":["metric","operator","target"],"properties":{"metric":{"type":"string","minLength":1,"maxLength":128},"operator":{"enum":["eq","ne","gt","gte","lt","lte","contains"]},"target":{}}},
     "credential_refs":{"type":"array","maxItems":16,"items":{"type":"object","additionalProperties":false,"required":["profile","resource_prefix","operations"],"properties":{"profile":{"type":"string","minLength":1,"maxLength":128},"resource_prefix":{"type":"string","minLength":1,"maxLength":512},"operations":{"type":"array","minItems":1,"maxItems":32,"items":{"type":"string","maxLength":64}}}}},
     "requested_at":{"$ref":"common.schema.json#/$defs/timestamp"},"extensions":{"type":"object","propertyNames":{"pattern":"^x-"},"maxProperties":32}
-  }
+  },
+  "allOf":[{
+    "if":{"required":["intent"],"properties":{"intent":{"required":["operation"],"properties":{"operation":{"not":{"enum":["read","get","list","search","inspect"]}}}}}},
+    "then":{"required":["current_state_version"],"properties":{"current_state_version":{"type":"string","minLength":1,"maxLength":128},"extensions":{"required":["x-plan-hash"],"properties":{"x-plan-hash":{"$ref":"common.schema.json#/$defs/hash"}}}}}
+  }]
 }
-

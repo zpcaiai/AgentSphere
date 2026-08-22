@@ -7,6 +7,9 @@ import "google/protobuf/struct.proto";
 enum RiskLevel { RISK_LEVEL_UNSPECIFIED = 0; RISK_LEVEL_LOW = 1; RISK_LEVEL_MEDIUM = 2; RISK_LEVEL_HIGH = 3; RISK_LEVEL_CRITICAL = 4; }
 enum EffectClass { EFFECT_CLASS_UNSPECIFIED = 0; EFFECT_CLASS_PURE = 1; EFFECT_CLASS_IDEMPOTENT = 2; EFFECT_CLASS_COMPENSATABLE = 3; EFFECT_CLASS_IRREVERSIBLE = 4; }
 enum Decision { DECISION_UNSPECIFIED = 0; DECISION_ALLOW = 1; DECISION_DENY = 2; DECISION_REQUIRE_APPROVAL = 3; DECISION_PAUSE = 4; DECISION_KILL = 5; }
+enum EnforcementStage { ENFORCEMENT_STAGE_UNSPECIFIED = 0; ENFORCEMENT_STAGE_PRE_APPROVAL = 1; ENFORCEMENT_STAGE_PRE_EXECUTION = 2; ENFORCEMENT_STAGE_CONTINUOUS = 3; }
+enum AuthoritativeFactKind { AUTHORITATIVE_FACT_KIND_UNSPECIFIED = 0; AUTHORITATIVE_FACT_KIND_IDENTITY = 1; AUTHORITATIVE_FACT_KIND_RESOURCE_STATE = 2; AUTHORITATIVE_FACT_KIND_BUDGET = 3; AUTHORITATIVE_FACT_KIND_TRAJECTORY_RISK = 4; AUTHORITATIVE_FACT_KIND_REGISTRY = 5; AUTHORITATIVE_FACT_KIND_ENVIRONMENT = 6; }
+enum AuthoritativeFactStatus { AUTHORITATIVE_FACT_STATUS_UNSPECIFIED = 0; AUTHORITATIVE_FACT_STATUS_VERIFIED = 1; AUTHORITATIVE_FACT_STATUS_UNKNOWN = 2; AUTHORITATIVE_FACT_STATUS_STALE = 3; AUTHORITATIVE_FACT_STATUS_ERROR = 4; }
 enum ExecutionStatus { EXECUTION_STATUS_UNSPECIFIED = 0; EXECUTION_STATUS_PREPARED = 1; EXECUTION_STATUS_RUNNING = 2; EXECUTION_STATUS_SUCCEEDED = 3; EXECUTION_STATUS_FAILED = 4; EXECUTION_STATUS_TIMED_OUT = 5; EXECUTION_STATUS_CANCELLED = 6; EXECUTION_STATUS_KILLED = 7; EXECUTION_STATUS_COMPENSATING = 8; EXECUTION_STATUS_COMPENSATED = 9; EXECUTION_STATUS_COMPENSATION_FAILED = 10; EXECUTION_STATUS_UNKNOWN = 11; }
 
 message ToolRef { string tool_id = 1; string tool_version = 2; }
@@ -18,5 +21,312 @@ message AuthorizationLease { string schema_version = 1; string lease_id = 2; str
 message AgentIdentity { string schema_version = 1; string agent_type = 2; string agent_instance_id = 3; string organization_id = 4; string tenant_id = 5; string owner_subject = 6; string model_provider = 7; string model_id = 8; string agent_version = 9; string deployment_environment = 10; string trust_level = 11; string auth_context_ref = 12; google.protobuf.Timestamp issued_at = 13; google.protobuf.Timestamp expires_at = 14; }
 message CanonicalAction { string schema_version = 1; string action_id = 2; string task_id = 3; string step_id = 4; AgentIdentity agent = 5; ToolRef tool = 6; google.protobuf.Struct payload = 7; string action_hash = 8; }
 message PolicyDecision { string schema_version = 1; string decision_id = 2; Decision decision = 3; repeated string reason_codes = 4; string policy_version = 5; string policy_bundle_hash = 6; string input_hash = 7; google.protobuf.Timestamp evaluated_at = 8; google.protobuf.Timestamp expires_at = 9; }
-message ExecutionAuthorization { string schema_version = 1; string authorization_id = 2; string action_hash = 3; string tool_snapshot_hash = 4; string policy_decision_id = 5; string resource_version = 6; string sandbox_profile = 7; string network_profile = 8; string credential_profile = 9; uint64 max_execution_ms = 10; uint64 max_result_bytes = 11; google.protobuf.Timestamp expires_at = 12; bool single_use = 13; string issuer = 14; string key_id = 15; bytes signature = 16; }
-
+message AuthoritativeFactRef { AuthoritativeFactKind kind = 1; AuthoritativeFactStatus status = 2; string uri = 3; string digest = 4; string version = 5; google.protobuf.Timestamp observed_at = 6; google.protobuf.Timestamp valid_until = 7; }
+message SignedAuthoritativeFactEnvelope {
+  string schema_version = 1;
+  AuthoritativeFactKind kind = 2;
+  AuthoritativeFactStatus status = 3;
+  string tenant_id = 4;
+  string action_hash = 5;
+  string authority_uri = 6;
+  string version = 7;
+  google.protobuf.Struct payload = 8;
+  google.protobuf.Timestamp observed_at = 9;
+  google.protobuf.Timestamp valid_until = 10;
+  string issuer = 11;
+  string key_id = 12;
+  string key_usage = 13;
+  string digest = 14;
+  bytes signature = 15;
+}
+message AuthoritativeFactSnapshot {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string action_hash = 3;
+  optional string identity_subject = 4;
+  optional bool identity_uses_dev_verifier = 5;
+  optional string resource_state_version = 6;
+  optional bool resource_state_fresh = 7;
+  optional uint64 budget_remaining_microunits = 8;
+  optional string trajectory_risk_version = 9;
+  repeated string accumulated_resources = 10;
+  optional uint32 anomaly_score_millionths = 11;
+  repeated AuthoritativeFactRef fact_refs = 12;
+  google.protobuf.Timestamp captured_at = 13;
+  google.protobuf.Timestamp expires_at = 14;
+  string snapshot_digest = 15;
+  optional uint64 identity_revocation_epoch = 16;
+}
+message SignedPreApprovalOutcome {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string task_id = 3;
+  string step_id = 4;
+  string action_hash = 5;
+  string tool_id = 6;
+  string tool_version = 7;
+  string tool_snapshot_hash = 8;
+  EnforcementStage stage = 9;
+  string idempotency_key = 10;
+  string request_digest = 11;
+  AuthoritativeFactSnapshot fact_snapshot = 12;
+  string fact_snapshot_digest = 13;
+  optional string execution_plan_digest = 14;
+  bool approval_required = 15;
+  PolicyDecision decision = 16;
+  google.protobuf.Timestamp issued_at = 17;
+  google.protobuf.Timestamp expires_at = 18;
+  string issuer = 19;
+  string key_id = 20;
+  string key_usage = 21;
+  bytes signature = 22;
+}
+message ExecutionAuthorization {
+  // Fields 1-16 retain their v1 wire numbers for protobuf compatibility.
+  string schema_version = 1;
+  string authorization_id = 2;
+  string action_hash = 3;
+  string tool_snapshot_hash = 4;
+  string policy_decision_id = 5;
+  string resource_version = 6;
+  string sandbox_profile = 7;
+  string network_profile = 8;
+  string credential_profile = 9;
+  uint64 max_execution_ms = 10;
+  uint64 max_result_bytes = 11;
+  google.protobuf.Timestamp expires_at = 12;
+  bool single_use = 13;
+  string issuer = 14;
+  string key_id = 15;
+  bytes signature = 16;
+  string tenant_id = 17;
+  string task_id = 18;
+  string step_id = 19;
+  string agent_instance_id = 20;
+  string tool_id = 21;
+  string tool_version = 22;
+  string implementation_digest = 23;
+  string executor_profile = 24;
+  string operation = 25;
+  string resource = 26;
+  string canonical_arguments_hash = 27;
+  string target_profile = 28;
+  string environment = 29;
+  string idempotency_key = 30;
+  string ledger_execution_id = 31;
+  string fence_digest = 32;
+  string policy_version = 33;
+  string policy_bundle_hash = 34;
+  string policy_input_hash = 35;
+  string preapproval_digest = 36;
+  repeated string approval_ids = 37;
+  optional string approval_consumption_ref = 38;
+  optional string approval_receipt_digest = 39;
+  string workload_credential_id = 40;
+  string workload_credential_claims_digest = 41;
+  google.protobuf.Timestamp issued_at = 42;
+  string key_usage = 43;
+  string workload_credential_audience = 44;
+  uint64 workload_credential_revocation_epoch = 45;
+  string ledger_event_id = 46;
+  string ledger_event_digest = 47;
+  string policy_decision_digest = 48;
+  string authorization_evidence_ref = 49;
+  string authorization_evidence_digest = 50;
+}
+message PepPreApprovalRequest {
+  string schema_version = 1;
+  google.protobuf.Struct action = 2;
+  string action_hash = 3;
+  google.protobuf.Struct tool = 4;
+  string idempotency_key = 5;
+  google.protobuf.Timestamp requested_at = 6;
+}
+message PepPreApprovalEnvelope {
+  SignedPreApprovalOutcome signed_outcome = 1;
+  optional google.protobuf.Struct compensation_plan = 2;
+  string schema_version = 3;
+}
+message EnterpriseApprovalGrant {
+  string schema_version = 1;
+  string grant_id = 2;
+  string case_id = 3;
+  string tenant_id = 4;
+  string task_id = 5;
+  string step_id = 6;
+  string action_hash = 7;
+  string plan_hash = 8;
+  string parameter_hash = 9;
+  string resource = 10;
+  string resource_version = 11;
+  string policy_version = 12;
+  string environment = 13;
+  RiskLevel maximum_risk = 14;
+  repeated string approver_subjects = 15;
+  google.protobuf.Timestamp issued_at = 16;
+  google.protobuf.Timestamp expires_at = 17;
+  uint32 maximum_uses = 18;
+  bool break_glass = 19;
+  string issuer = 20;
+  string key_id = 21;
+  bytes signature = 22;
+}
+message ApprovalConsumptionRequest {
+  string schema_version = 1;
+  string tenant_id = 2;
+  string task_id = 3;
+  string step_id = 4;
+  string action_hash = 5;
+  string plan_hash = 6;
+  string parameter_hash = 7;
+  string resource = 8;
+  string resource_version = 9;
+  string policy_version = 10;
+  string environment = 11;
+  RiskLevel maximum_risk = 12;
+}
+message ApprovalGrantReceipt {
+  string schema_version = 1;
+  EnterpriseApprovalGrant grant = 2;
+  google.protobuf.Timestamp consumed_at = 3;
+  uint32 remaining_uses = 4;
+  string consumption_ref = 5;
+}
+message SignedApprovalConsumptionReceipt {
+  string schema_version = 1;
+  string receipt_id = 2;
+  string tenant_id = 3;
+  string grant_id = 4;
+  string case_id = 5;
+  ApprovalConsumptionRequest request = 6;
+  EnterpriseApprovalGrant grant = 7;
+  string request_digest = 8;
+  string grant_digest = 9;
+  string idempotency_key_digest = 10;
+  string consumed_by = 11;
+  string client_identity = 12;
+  google.protobuf.Timestamp consumed_at = 13;
+  uint32 remaining_uses = 14;
+  string issuer = 15;
+  string key_id = 16;
+  bytes signature = 17;
+}
+message PepFinalAuthorizationRequest {
+  string schema_version = 1;
+  EnforcementStage stage = 2;
+  google.protobuf.Struct action = 3;
+  string action_hash = 4;
+  google.protobuf.Struct tool = 5;
+  google.protobuf.Struct policy_input = 6;
+  SignedPreApprovalOutcome preapproval = 7;
+  optional google.protobuf.Struct approval = 8;
+  optional string approval_consumption_ref = 9;
+  optional string approval_receipt_digest = 10;
+  string ledger_execution_id = 11;
+  string fence_digest = 12;
+  string idempotency_key = 13;
+  google.protobuf.Timestamp requested_at = 14;
+  string ledger_event_id = 15;
+  string ledger_event_digest = 16;
+}
+message WorkloadCredentialBindingRequest {
+  string schema_version = 1;
+  string idempotency_key = 2;
+  string tenant_id = 3;
+  string agent_instance_id = 4;
+  string task_id = 5;
+  string step_id = 6;
+  string action_hash = 7;
+  string policy_decision_id = 8;
+  string tool_id = 9;
+  string credential_profile = 10;
+  string operation = 11;
+  string resource = 12;
+  string target_profile = 13;
+  string audience = 14;
+  uint64 revocation_epoch = 15;
+  uint64 ttl_seconds = 16;
+  uint32 max_uses = 17;
+}
+message WorkloadCredentialClaims {
+  string schema_version = 1;
+  string idempotency_key = 2;
+  string credential_id = 3;
+  string tenant_id = 4;
+  string agent_instance_id = 5;
+  string task_id = 6;
+  string step_id = 7;
+  string action_hash = 8;
+  string policy_decision_id = 9;
+  string tool_id = 10;
+  string credential_profile = 11;
+  string operation = 12;
+  string resource = 13;
+  string target_profile = 14;
+  string audience = 15;
+  uint64 revocation_epoch = 16;
+  google.protobuf.Timestamp issued_at = 17;
+  google.protobuf.Timestamp expires_at = 18;
+  uint32 max_uses = 19;
+}
+message SignedWorkloadCredentialBindingReceipt {
+  string schema_version = 1;
+  string credential_handle_sha256 = 2;
+  WorkloadCredentialClaims claims = 3;
+  string claims_digest = 4;
+  string issuer = 5;
+  string key_id = 6;
+  string key_usage = 7;
+  bytes signature = 8;
+}
+message WorkloadCredentialIssuance {
+  string workload_credential = 1;
+  SignedWorkloadCredentialBindingReceipt binding_receipt = 2;
+}
+message WorkloadCredentialConsumptionRequest {
+  string schema_version = 1;
+  string idempotency_key = 2;
+  string credential_handle = 3;
+  SignedWorkloadCredentialBindingReceipt binding_receipt = 4;
+  string tenant_id = 5;
+  string agent_instance_id = 6;
+  string task_id = 7;
+  string step_id = 8;
+  string action_hash = 9;
+  string policy_decision_id = 10;
+  string tool_id = 11;
+  string credential_profile = 12;
+  string operation = 13;
+  string resource = 14;
+  string target_profile = 15;
+  string audience = 16;
+  uint64 revocation_epoch = 17;
+  string claims_digest = 18;
+}
+message SignedWorkloadCredentialConsumptionReceipt {
+  string schema_version = 1;
+  string idempotency_key = 2;
+  string consumption_id = 3;
+  string credential_id = 4;
+  string tenant_id = 5;
+  string action_hash = 6;
+  string audience = 7;
+  uint64 revocation_epoch = 8;
+  string claims_digest = 9;
+  string scope_digest = 10;
+  google.protobuf.Timestamp consumed_at = 11;
+  uint32 remaining_uses = 12;
+  string issuer = 13;
+  string key_id = 14;
+  string key_usage = 15;
+  bytes signature = 16;
+}
+message PepPreExecutionAuthorization {
+  string schema_version = 1;
+  ExecutionAuthorization authorization = 2;
+  google.protobuf.Struct tool = 3;
+  string workload_credential = 4;
+  string target_profile = 5;
+  optional google.protobuf.Struct approval = 6;
+  SignedWorkloadCredentialBindingReceipt credential_binding_receipt = 7;
+}

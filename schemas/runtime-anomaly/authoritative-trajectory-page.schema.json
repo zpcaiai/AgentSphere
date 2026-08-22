@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/authoritative-trajectory-page.schema.json",
+  "title": "Authoritative Runtime Anomaly Trajectory Page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "authoritative", "items", "next_after", "data_digest"],
+  "properties": {
+    "schema_version": { "const": "agenttrust.authoritative-runtime-anomaly-page.v1" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "authoritative": { "const": true },
+    "items": {
+      "type": "array", "maxItems": 200,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["task_id", "agent_instance_id", "agent_type", "domain", "status", "event_count", "revocation_epoch", "resource_version", "last_seen_at", "latest_severity", "open_case_count"],
+        "properties": {
+          "task_id": { "type": "string", "format": "uuid" },
+          "agent_instance_id": { "type": "string", "format": "uuid" },
+          "agent_type": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "domain": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "status": { "enum": ["ACTIVE", "APPROVAL_REQUIRED", "PAUSED", "KILLED", "COMPLETED"] },
+          "event_count": { "type": "integer", "minimum": 0 },
+          "revocation_epoch": { "type": "integer", "minimum": 0 },
+          "resource_version": { "type": "integer", "minimum": 1 },
+          "last_seen_at": { "type": "string", "format": "date-time" },
+          "latest_severity": { "oneOf": [{ "type": "null" }, { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] }] },
+          "open_case_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "next_after": { "oneOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+    "data_digest": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

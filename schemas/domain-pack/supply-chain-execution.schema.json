@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/domain-pack/supply-chain-execution.schema.json",
+  "title": "Supply Chain production executor request",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "actor_subject", "canonical_action", "command", "binding"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.supply-chain-execution.v1"},
+    "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+    "canonical_action": {"type": "object"},
+    "command": {"$ref": "#/$defs/command"},
+    "binding": {"$ref": "#/$defs/binding"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "uuid": {"type": "string", "format": "uuid"},
+    "command": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "command_id", "task_id", "operation", "resource_key", "expected_resource_version", "requested_at", "safe_payload"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.supply-chain-command.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "command_id": {"$ref": "#/$defs/uuid"}, "task_id": {"$ref": "#/$defs/uuid"},
+        "operation": {"enum": ["PUBLISH", "VALIDATE", "APPROVE", "ACTIVATE", "ROLLBACK", "REVOKE", "QUARANTINE", "RECOVER"]},
+        "resource_key": {"type": "string", "minLength": 1, "maxLength": 768, "pattern": "^(pack-release:|pack-installation:|supply-revocation:|supply-command:).+$"},
+        "expected_resource_version": {"type": "integer", "minimum": 0},
+        "requested_at": {"type": "string", "format": "date-time"},
+        "safe_payload": {"$ref": "supply-chain-payload.schema.json"}
+      },
+      "allOf": [
+        {"if": {"properties": {"operation": {"const": "PUBLISH"}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/publish"}}}},
+        {"if": {"properties": {"operation": {"const": "VALIDATE"}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/validate"}}}},
+        {"if": {"properties": {"operation": {"const": "APPROVE"}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/approve"}}}},
+        {"if": {"properties": {"operation": {"const": "ACTIVATE"}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/activate"}}}},
+        {"if": {"properties": {"operation": {"const": "ROLLBACK"}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/rollback"}}}},
+        {"if": {"properties": {"operation": {"enum": ["REVOKE", "QUARANTINE"]}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/revocation"}}}},
+        {"if": {"properties": {"operation": {"const": "RECOVER"}}}, "then": {"properties": {"safe_payload": {"$ref": "supply-chain-payload.schema.json#/$defs/recover"}}}}
+      ]
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "authorization_id", "authorization_digest", "policy_decision_id", "policy_decision_digest", "authorization_evidence_ref", "authorization_evidence_digest", "ledger_execution_id", "ledger_event_id", "ledger_event_digest", "fence_digest", "resource_version", "idempotency_key", "trace_id"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.supply-chain-execution-binding.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"}, "authorization_id": {"$ref": "#/$defs/uuid"},
+        "authorization_digest": {"$ref": "#/$defs/digest"}, "policy_decision_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "policy_decision_digest": {"$ref": "#/$defs/digest"}, "authorization_evidence_ref": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "authorization_evidence_digest": {"$ref": "#/$defs/digest"}, "ledger_execution_id": {"$ref": "#/$defs/uuid"}, "ledger_event_id": {"$ref": "#/$defs/uuid"},
+        "ledger_event_digest": {"$ref": "#/$defs/digest"}, "fence_digest": {"$ref": "#/$defs/digest"},
+        "resource_version": {"type": "integer", "minimum": 1}, "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{15,255}$"},
+        "trace_id": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    }
+  }
+}

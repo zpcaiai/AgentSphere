@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/incidents/incident-authority-readiness.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ready", "database_ready", "orchestrator_ready", "containment_replay_ready", "release_signer_ready"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.incident-release-readiness.v1"},
+    "ready": {"const": true},
+    "database_ready": {"const": true},
+    "orchestrator_ready": {"const": true},
+    "containment_replay_ready": {"const": true},
+    "release_signer_ready": {"const": true}
+  }
+}

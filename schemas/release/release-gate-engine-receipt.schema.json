@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/release-gate-engine-receipt.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "certificate_id", "tenant_id", "release_digest", "gate_id", "gate_version", "definition_digest", "evidence_digests", "rollback_artifact_digest", "canary_plan_digest", "valid_from", "valid_until", "engine_certificate_only", "production_closure", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.release-gate-engine-receipt.v1"},
+    "certificate_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "release_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "gate_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "gate_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "definition_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "evidence_digests": {"type": "object", "minProperties": 10, "maxProperties": 128, "additionalProperties": {"type": "string", "pattern": "^[a-f0-9]{64}$"}},
+    "rollback_artifact_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "canary_plan_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "valid_from": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "engine_certificate_only": {"const": true},
+    "production_closure": {"const": false},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "signature": {"type": "string", "minLength": 80, "maxLength": 128}
+  }
+}

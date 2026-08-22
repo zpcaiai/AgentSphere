@@ -1,5 +1,8 @@
 //! Enterprise Agent inventory, discovery provenance, BOM, lifecycle, and posture facts.
 
+pub mod production;
+pub mod server;
+
 use agent_trust_contracts::{RiskLevel, TenantId};
 use chrono::{DateTime, Duration, Utc};
 use parking_lot::RwLock;
@@ -163,6 +166,17 @@ impl DiscoveryCollector {
     }
 
     pub fn collect(&self, signal: DiscoverySignal) -> Result<DiscoveryObservation, RegistryError> {
+        self.collect_as(ObservationSource::ProtocolDiscovery, signal)
+    }
+
+    /// Collector SDK entrypoint for network, log and governed import adapters.  The returned
+    /// object is always an observation fact; callers cannot obtain registration or trust state
+    /// from any discovery source.
+    pub fn collect_as(
+        &self,
+        source: ObservationSource,
+        signal: DiscoverySignal,
+    ) -> Result<DiscoveryObservation, RegistryError> {
         let endpoint_scheme_allowed = ["mcp://", "a2a://", "agui://", "https://"]
             .iter()
             .any(|prefix| signal.endpoint.starts_with(prefix));
@@ -181,7 +195,7 @@ impl DiscoveryCollector {
             schema_version: AGENT_REGISTRY_SCHEMA_VERSION.into(),
             observation_id: Uuid::new_v4().to_string(),
             tenant_id: signal.tenant_id,
-            source: ObservationSource::ProtocolDiscovery,
+            source,
             collector_id: self.collector_id.clone(),
             endpoint: signal.endpoint,
             claimed_agent_id: signal.claimed_agent_id,
@@ -848,6 +862,20 @@ pub enum RegistryError {
     RelationshipInvalid,
     #[error("AGENT_REGISTRY_PROPAGATION_FAILED")]
     PropagationFailed,
+    #[error("AGENT_REGISTRY_STORE_FAILURE")]
+    StoreFailure,
+    #[error("AGENT_REGISTRY_PRODUCTION_TRUST_NOT_CONFIGURED")]
+    ProductionTrustNotConfigured,
+    #[error("AGENT_REGISTRY_TENANT_MISMATCH")]
+    TenantMismatch,
+    #[error("AGENT_REGISTRY_IDEMPOTENCY_INVALID")]
+    IdempotencyInvalid,
+    #[error("AGENT_REGISTRY_IDEMPOTENCY_CONFLICT")]
+    IdempotencyConflict,
+    #[error("AGENT_REGISTRY_CURSOR_INVALID")]
+    CursorInvalid,
+    #[error("AGENT_REGISTRY_MANAGEMENT_FORBIDDEN")]
+    ManagementForbidden,
 }
 
 #[cfg(test)]
@@ -1065,6 +1093,21 @@ mod tests {
             })
             .unwrap_or_else(|error| panic!("collect: {error}"));
         assert_eq!(observation.payload_digest.len(), 64);
+        let network = collector
+            .collect_as(
+                ObservationSource::NetworkObservation,
+                DiscoverySignal {
+                    tenant_id: tenant.clone(),
+                    endpoint: "https://network-observed.invalid".into(),
+                    claimed_agent_id: None,
+                    protocol: "A2A".into(),
+                    component_digests: BTreeMap::new(),
+                    canonical_payload: "network-observation".into(),
+                    observed_at: Utc::now(),
+                },
+            )
+            .unwrap_or_else(|error| panic!("network observation: {error}"));
+        assert_eq!(network.source, ObservationSource::NetworkObservation);
 
         let graph = RelationshipGraph::new(10).unwrap_or_else(|error| panic!("graph: {error}"));
         graph

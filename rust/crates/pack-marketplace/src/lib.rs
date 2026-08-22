@@ -1,5 +1,9 @@
 //! Tenant-isolated Domain Pack marketplace and activation lifecycle.
 
+pub mod authority;
+pub mod principal;
+pub mod server;
+
 use agent_trust_contracts::TenantId;
 use agent_trust_pack_supply_chain::{DomainPackManifest, PermissionDiff};
 use chrono::{DateTime, Utc};

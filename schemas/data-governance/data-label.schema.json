@@ -1,13 +1,67 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/data-label.schema.json",
-  "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "classification", "domain_tags", "jurisdictions", "contains_secret", "contains_personal_data", "export_restricted", "retention_label", "confidence", "lineage"],
+  "$id": "https://agentsphere.local/schemas/data-governance/data-label.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "classification", "domain_tags", "jurisdictions", "contains_secret",
+    "contains_personal_data", "export_restricted", "retention_label", "confidence", "lineage"
+  ],
   "properties": {
-    "schema_version": {"const": "agenttrust.data-governance.v1"}, "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
-    "domain_tags": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}, "jurisdictions": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
-    "contains_secret": {"type": "boolean"}, "contains_personal_data": {"type": "boolean"}, "export_restricted": {"type": "boolean"},
-    "retention_label": {"type": "string", "minLength": 1}, "confidence": {"enum": ["UNKNOWN", "INFERRED", "DETERMINISTIC", "HUMAN_VERIFIED"]},
-    "lineage": {"type": "object", "additionalProperties": false, "required": ["source_id", "source_hash", "transformation_hashes"], "properties": {"source_id": {"type": "string"}, "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "transformation_hashes": {"type": "array", "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}}
-  }
+    "schema_version": {"const": "agenttrust.data-governance.v1"},
+    "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},
+    "domain_tags": {
+      "type": "array", "uniqueItems": true, "maxItems": 64,
+      "items": {"type": "string", "pattern": "^[^\\s]{1,256}$"}
+    },
+    "jurisdictions": {
+      "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"}
+    },
+    "contains_secret": {"type": "boolean"},
+    "contains_personal_data": {"type": "boolean"},
+    "export_restricted": {"type": "boolean"},
+    "retention_label": {"type": "string", "pattern": "^[^\\s]{1,128}$"},
+    "confidence": {"enum": ["UNKNOWN", "INFERRED", "DETERMINISTIC", "HUMAN_VERIFIED"]},
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_hash", "transformation_hashes"],
+      "properties": {
+        "source_id": {"type": "string", "pattern": "^[^\\s]{1,512}$"},
+        "source_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "transformation_hashes": {
+          "type": "array", "maxItems": 1024, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"confidence": {"const": "UNKNOWN"}}, "required": ["confidence"]},
+      "then": {"properties": {"classification": {"enum": ["RESTRICTED", "REGULATED"]}}}
+    },
+    {
+      "if": {"properties": {"contains_secret": {"const": true}}, "required": ["contains_secret"]},
+      "then": {
+        "properties": {
+          "classification": {"enum": ["RESTRICTED", "REGULATED"]},
+          "export_restricted": {"const": true}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"contains_personal_data": {"const": true}},
+        "required": ["contains_personal_data"]
+      },
+      "then": {
+        "properties": {
+          "classification": {"const": "REGULATED"},
+          "export_restricted": {"const": true}
+        }
+      }
+    }
+  ]
 }

@@ -1,0 +1,54 @@
+{
+  "schema_version": "agenttrust.context-failure-injection-matrix.v1",
+  "scenarios": [
+    {
+      "id": "VECTOR_PARTIAL_WRITE",
+      "inject_after": "OBJECT_PROMOTION",
+      "expected_execution_state": "SIDE_EFFECTS_PENDING",
+      "retry_invariant": "SAME_IDEMPOTENCY_KEY_AND_REQUEST_DIGEST",
+      "success_invariant": "ONE_RESOURCE_VERSION_ADVANCE"
+    },
+    {
+      "id": "OBJECT_INDEX_INCONSISTENCY",
+      "inject_after": "VECTOR_UPSERT",
+      "expected_execution_state": "SIDE_EFFECTS_PENDING",
+      "retry_invariant": "ADAPTER_RECEIPTS_REPLAY_EXACTLY",
+      "success_invariant": "OBJECT_AND_INDEX_DIGESTS_MATCH"
+    },
+    {
+      "id": "DELETION_EVENT_LOSS",
+      "inject_after": "POSTGRES_MUTATION_AND_OUTBOX_COMMIT",
+      "expected_execution_state": "MUTATED_PENDING_EVIDENCE",
+      "retry_invariant": "SAME_OUTBOX_EVENT_ID_AND_PAYLOAD_DIGEST",
+      "success_invariant": "EVIDENCE_DELIVERED_WITHOUT_CONTENT_RECREATION"
+    },
+    {
+      "id": "POISONING_DETECTOR_UNAVAILABLE",
+      "inject_after": "BEFORE_POISON_SCAN_RESPONSE",
+      "expected_execution_state": "SIDE_EFFECTS_PENDING",
+      "retry_invariant": "NO_OBJECT_PROMOTION_OR_VECTOR_UPSERT",
+      "success_invariant": "FAIL_CLOSED_UNTIL_DETECTOR_READY"
+    },
+    {
+      "id": "PROMPT_REGISTRY_ROLLBACK_CRASH",
+      "inject_after": "BEFORE_DATABASE_COMMIT",
+      "expected_execution_state": "SIDE_EFFECTS_PENDING",
+      "retry_invariant": "TARGET_VERSION_AND_FENCE_UNCHANGED",
+      "success_invariant": "ONE_ACTIVE_PROMPT_VERSION"
+    },
+    {
+      "id": "EVIDENCE_RECEIPT_SIGNATURE_MISMATCH",
+      "inject_after": "EVIDENCE_AUTHORITY_RESPONSE",
+      "expected_execution_state": "MUTATED_PENDING_EVIDENCE",
+      "retry_invariant": "REJECT_UNKNOWN_KEY_OR_INVALID_OUTER_OR_CHAIN_SIGNATURE",
+      "success_invariant": "NO_LOCAL_SUCCESS_WITH_UNVERIFIED_EVIDENCE"
+    },
+    {
+      "id": "DELAYED_EVIDENCE_REPLAY",
+      "inject_after": "POSTGRES_MUTATION_AND_OUTBOX_COMMIT",
+      "expected_execution_state": "MUTATED_PENDING_EVIDENCE",
+      "retry_invariant": "REPLAY_ORIGINAL_EVENT_TIME_AND_REQUEST_DIGEST",
+      "success_invariant": "ONE_AUTHORITY_EVENT_FOR_STABLE_IDEMPOTENCY_AND_PAYLOAD_DIGEST"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/readiness.schema.json",
+  "title": "Runtime Anomaly Readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "ready", "database_ready", "orchestrator_ready",
+    "response_dependencies_ready", "evidence_authority_ready", "deterministic_rules_ready",
+    "semantic_detector_required", "production_certification"
+  ],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly-readiness.v1" },
+    "ready": { "const": true },
+    "database_ready": { "const": true },
+    "orchestrator_ready": { "const": true },
+    "response_dependencies_ready": { "const": true },
+    "evidence_authority_ready": { "const": true },
+    "deterministic_rules_ready": { "const": true },
+    "semantic_detector_required": { "const": false },
+    "production_certification": { "const": false }
+  }
+}

@@ -1,7 +1,84 @@
 {
-  "project": "agent-trust-control-plane", "batch": "18", "status": "IN_PROGRESS", "commit": "WORKTREE-NO-GIT",
-  "commands": [{"command": "cargo test --workspace --all-targets --quiet", "exit_code": 0}, {"command": "python3 scripts/validate-runtime-assets.py && python3 -m unittest discover -s python -p 'test_*.py'", "exit_code": 0}],
-  "tests": [{"name": "DLP encoded/compressed evasions, offline policy, labels and cross-domain single use", "status": "PASS", "evidence_ref": "rust/crates/data-governance"}, {"name": "deterministic unknown-data fail-closed classifier", "status": "PASS", "evidence_ref": "python/data_classifiers/tests"}],
-  "evidence": ["schemas/data-governance/data-label.schema.json", "config/data-governance/offline.production.json", "dlp/test-corpus/cases.json", "docs/data-governance/data-flow-and-retention.md"],
-  "unresolved_risks": ["Real offline network egress proof and object-store deletion/legal-hold behavior are NOT_RUN."], "verified_at": "2026-08-05T11:49:35Z"
+  "project": "agent-trust-control-plane",
+  "batch": "18",
+  "status": "IN_PROGRESS",
+  "commit": "WORKTREE-NO-GIT",
+  "commands": [
+    {
+      "command": "python3 JSON parse for schemas/data-governance/*.json and tests/data-governance/failure-injection-matrix.json",
+      "exit_code": 0,
+      "result": "seven JSON documents parsed"
+    },
+    {
+      "command": "ruby YAML.safe_load schemas/openapi/data-governance-v1.yaml",
+      "exit_code": 0,
+      "result": "OpenAPI 3.1 document parsed with nine paths"
+    },
+    {
+      "command": "git diff --check -- Batch 18 scoped files",
+      "exit_code": 0
+    },
+    {
+      "command": "python3 scripts/validate-production-migrations.py",
+      "exit_code": 0,
+      "result": "validated 65 ordered production migrations and tenant RLS closure"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Batch 18 Rust unit, concurrency, and production contract tests",
+      "status": "NOT_RUN_RESOURCE_FREEZE",
+      "evidence_ref": "rust/crates/data-governance/tests/production_contract.rs"
+    },
+    {
+      "name": "managed PostgreSQL FORCE-RLS, exact grants, cross-domain race, and restart recovery",
+      "status": "NOT_RUN_EXTERNAL",
+      "evidence_ref": "migrations/data-governance/0036_01_15_production_data_governance.sql"
+    },
+    {
+      "name": "real Enterprise DLP, object/WORM, legal-hold, and Evidence HTTPS adapters",
+      "status": "NOT_RUN_EXTERNAL",
+      "evidence_ref": "rust/crates/data-governance/src/adapters.rs"
+    },
+    {
+      "name": "TLS 1.3 enterprise CA exact SAN and scoped token binding",
+      "status": "NOT_RUN_EXTERNAL",
+      "evidence_ref": "rust/crates/data-governance/src/server.rs"
+    },
+    {
+      "name": "offline egress, multi-zone recovery, sustained load, and Docker non-root smoke",
+      "status": "NOT_RUN_EXTERNAL",
+      "evidence_ref": "tests/data-governance/failure-injection-matrix.json"
+    }
+  ],
+  "evidence": [
+    "rust/crates/data-governance/src/lib.rs",
+    "rust/crates/data-governance/src/authority.rs",
+    "rust/crates/data-governance/src/service.rs",
+    "rust/crates/data-governance/src/adapters.rs",
+    "rust/crates/data-governance/src/server.rs",
+    "rust/crates/data-governance/src/bin/agenttrust-data-governance-service.rs",
+    "rust/crates/data-governance/tests/production_contract.rs",
+    "migrations/data-governance/0036_01_15_production_data_governance.sql",
+    "schemas/data-governance/data-label.schema.json",
+    "schemas/data-governance/data-command.schema.json",
+    "schemas/data-governance/inspection.schema.json",
+    "schemas/data-governance/deployment-profiles.schema.json",
+    "schemas/data-governance/profile-keyring.schema.json",
+    "schemas/data-governance/token-bindings.schema.json",
+    "schemas/openapi/data-governance-v1.yaml",
+    "Dockerfile.data-governance",
+    "docs/data-governance/data-flow-and-retention.md",
+    "docs/data-governance/production-runbook.md",
+    "tests/data-governance/failure-injection-matrix.json",
+    "scripts/build-production-image.py",
+    "python/production_gates/tests/test_build_production_image.py"
+  ],
+  "unresolved_risks": [
+    "Compilation and Rust test execution are NOT_RUN under the shared-host resource freeze.",
+    "Enterprise CA/IdP, managed PostgreSQL grants and FORCE-RLS, Enterprise DLP, locked object/WORM retention, legal-hold, and shared authority-event Evidence endpoints remain NOT_RUN.",
+    "Real offline network egress, encoded/compressed corpus, multi-zone recovery, continuous load, customer acceptance, and independent certification remain NOT_RUN.",
+    "No production certificate is issued; code and static contract closure are not production evidence."
+  ],
+  "verified_at": null
 }

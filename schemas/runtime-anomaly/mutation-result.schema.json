@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/mutation-result.schema.json",
+  "title": "Runtime Anomaly Mutation Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "command_id", "operation", "resource", "resource_version", "task_execution_succeeded", "process_outcome", "result_digest", "evidence_outbox_ref", "evidence_ref"],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly-mutation-result.v1" },
+    "command_id": { "type": "string", "format": "uuid" },
+    "operation": {
+      "enum": [
+        "REGISTER_SOURCE", "REVOKE_SOURCE", "START_TRAJECTORY", "UPDATE_BASELINE",
+        "RECORD_FEEDBACK", "ACKNOWLEDGE_CASE", "RECOVER_PAUSED_TASK",
+        "COMPLETE_TRAJECTORY", "APPLY_CONTINUOUS_AUTHORIZATION"
+      ]
+    },
+    "resource": { "type": "string", "minLength": 3, "maxLength": 1024 },
+    "resource_version": { "type": "integer", "minimum": 0 },
+    "task_execution_succeeded": { "type": "boolean" },
+    "process_outcome": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "result_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidence_outbox_ref": { "type": "string", "pattern": "^outbox://runtime-anomaly/[0-9a-f-]{36}$" },
+    "evidence_ref": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^evidence://", "maxLength": 1024 }] }
+  }
+}

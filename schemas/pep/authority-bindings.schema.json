@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.example/schemas/pep/authority-bindings.schema.json",
+  "title": "PEP outbound mTLS authority bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "identity", "resource_state", "budget", "trajectory_risk", "registry", "environment", "pdp", "pdp_activation", "approval", "ledger", "credential"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.pep-authority-bindings.v1"},
+    "identity": {"$ref": "#/$defs/signedEndpoint"},
+    "resource_state": {"$ref": "#/$defs/signedEndpoint"},
+    "budget": {"$ref": "#/$defs/signedEndpoint"},
+    "trajectory_risk": {"$ref": "#/$defs/signedEndpoint"},
+    "registry": {"$ref": "#/$defs/signedEndpoint"},
+    "environment": {"$ref": "#/$defs/signedEndpoint"},
+    "pdp": {"$ref": "#/$defs/unsignedEndpoint"},
+    "pdp_activation": {
+      "allOf": [
+        {"$ref": "#/$defs/signedEndpoint"},
+        {"properties": {
+          "endpoint": {"type": "string", "format": "uri", "pattern": "^https://.*/v1/policies/activations$"},
+          "scope": {"const": "pdp:policy-activate"},
+          "key_usage": {"const": "PDP_POLICY_ACTIVATION_ACK"}
+        }}
+      ]
+    },
+    "approval": {"$ref": "#/$defs/signedEndpoint"},
+    "ledger": {"$ref": "#/$defs/signedEndpoint"},
+    "credential": {
+      "allOf": [
+        {"$ref": "#/$defs/signedEndpoint"},
+        {
+          "properties": {
+            "endpoint": {"type": "string", "format": "uri", "pattern": "^https://.*/v1/credentials/issue$"},
+            "scope": {"const": "credentials:issue"}
+          }
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "base": {
+      "type": "object",
+      "properties": {
+        "endpoint": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "readiness_endpoint": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "scope": {"type": "string", "minLength": 1, "maxLength": 256},
+        "token_file": {"type": "string", "pattern": "^/"},
+        "ca_file": {"type": "string", "pattern": "^/"},
+        "client_certificate_file": {"type": "string", "pattern": "^/"},
+        "client_private_key_file": {"type": "string", "pattern": "^/"},
+        "timeout_ms": {"type": "integer", "minimum": 1, "maximum": 30000},
+        "maximum_response_bytes": {"type": "integer", "minimum": 1, "maximum": 1048576}
+      }
+    },
+    "unsignedEndpoint": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "additionalProperties": false,
+          "required": ["endpoint", "readiness_endpoint", "scope", "token_file", "ca_file", "client_certificate_file", "client_private_key_file", "timeout_ms", "maximum_response_bytes"],
+          "properties": {
+            "endpoint": true, "readiness_endpoint": true, "scope": true, "token_file": true,
+            "ca_file": true, "client_certificate_file": true, "client_private_key_file": true,
+            "timeout_ms": true, "maximum_response_bytes": true,
+            "issuer": {"type": "null"}, "key_id": {"type": "null"},
+            "key_usage": {"type": "null"}, "verifying_key_file": {"type": "null"}
+          }
+        }
+      ]
+    },
+    "signedEndpoint": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "additionalProperties": false,
+          "required": ["endpoint", "readiness_endpoint", "scope", "token_file", "ca_file", "client_certificate_file", "client_private_key_file", "issuer", "key_id", "key_usage", "verifying_key_file", "timeout_ms", "maximum_response_bytes"],
+          "properties": {
+            "endpoint": true, "readiness_endpoint": true, "scope": true, "token_file": true,
+            "ca_file": true, "client_certificate_file": true, "client_private_key_file": true,
+            "timeout_ms": true, "maximum_response_bytes": true,
+            "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+            "key_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "key_usage": {"type": "string", "minLength": 1, "maxLength": 256},
+            "verifying_key_file": {"type": "string", "pattern": "^/"}
+          }
+        }
+      ]
+    }
+  }
+}

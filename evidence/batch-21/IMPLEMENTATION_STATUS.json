@@ -1,1 +1,59 @@
-{"project":"agent-trust-control-plane","batch":"21","status":"IN_PROGRESS","commit":"WORKTREE-NO-GIT","commands":[{"command":"cargo test --workspace --all-targets --quiet","exit_code":0},{"command":"python3 -m unittest discover -s python -p 'test_*.py'","exit_code":0}],"tests":[{"name":"deterministic trajectory rules and continuous authorization","status":"PASS","evidence_ref":"rust/crates/runtime-anomaly"},{"name":"bounded semantic and statistical supplemental detector","status":"PASS","evidence_ref":"python/runtime_anomaly/tests"}],"evidence":["schemas/risk-signal/risk-signal.schema.json","migrations/runtime-anomaly/0021_runtime_anomaly.sql","config/runtime-anomaly/detector.production.json"],"unresolved_risks":["Production false-positive baseline, measured latency, and live response integration are NOT_RUN."],"verified_at":"2026-08-05T12:00:00Z"}
+{
+  "project": "agent-trust-control-plane",
+  "batch": "21",
+  "status": "IN_PROGRESS",
+  "commit": "WORKTREE-NO-GIT",
+  "production_eligible": false,
+  "current_validation": [
+    {
+      "command": "python3 -m py_compile python/runtime_anomaly/detector.py python/runtime_anomaly/tests/test_detector.py",
+      "status": "PASS"
+    },
+    {
+      "command": "python3 -m unittest python.runtime_anomaly.tests.test_detector",
+      "status": "PASS",
+      "tests": 4
+    },
+    {
+      "command": "python3 scripts/validate-production-migrations.py",
+      "status": "PASS",
+      "migrations": 63
+    },
+    {
+      "command": "cargo test/clippy/build for agent-trust-runtime-anomaly",
+      "status": "NOT_RUN_RESOURCE_FREEZE"
+    }
+  ],
+  "implemented": [
+    "signed source registration, revocation and bounded signal ingestion",
+    "deterministic trajectory findings and continuous authorization aggregation",
+    "Canonical Action IR, PEP, ledger, fence, idempotency, execution lease and UNKNOWN recovery",
+    "local fail-closed pause, kill, lease and credential revocation state",
+    "digest-bound Supervisor, credential, incident and Evidence receipts",
+    "PostgreSQL FORCE RLS authority and Evidence outboxes",
+    "TLS 1.3 mTLS API with exact SAN, tenant, source and scope token bindings",
+    "separate bounded management probes and strict secret-file posture"
+  ],
+  "evidence": [
+    "migrations/runtime-anomaly/0036_01_17_production_runtime_anomaly.sql",
+    "rust/crates/runtime-anomaly/src/authority.rs",
+    "rust/crates/runtime-anomaly/src/server.rs",
+    "rust/crates/runtime-anomaly/src/production.rs",
+    "schemas/runtime-anomaly",
+    "schemas/openapi/runtime-anomaly-v1.yaml",
+    "config/runtime-anomaly/service.production.json",
+    "threat-scenarios/runtime/runtime-anomaly-v1.json",
+    "reports/runtime-anomaly-engine-evaluation.json",
+    "docs/runtime-anomaly/operations-runbook.md",
+    "Dockerfile.runtime-anomaly"
+  ],
+  "unresolved_gates": [
+    "real PostgreSQL role and RLS matrix",
+    "real mTLS SAN and route-token negative matrix",
+    "live Supervisor, credential and Incident endpoint ambiguity drills",
+    "measured production false-positive and block-latency evaluation",
+    "multi-zone HA/DR and sustained production load",
+    "customer acceptance and independent certification"
+  ],
+  "verified_at": "2026-08-22T05:52:18Z"
+}

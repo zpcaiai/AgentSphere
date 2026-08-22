@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/marketplace/readiness.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ready", "database_ready", "release_gate_keyring_ready"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.pack-marketplace-readiness.v1"},
+    "ready": {"type": "boolean"},
+    "database_ready": {"type": "boolean"},
+    "release_gate_keyring_ready": {"type": "boolean"}
+  }
+}

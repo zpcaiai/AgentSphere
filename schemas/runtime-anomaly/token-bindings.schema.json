@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/runtime-anomaly/token-bindings.schema.json",
+  "title": "Runtime Anomaly Route Token Bindings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bindings"],
+  "properties": {
+    "schema_version": { "const": "agenttrust.runtime-anomaly-token-bindings.v1" },
+    "bindings": {
+      "type": "array", "minItems": 1, "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_identity", "tenant_id", "subject", "scope", "source_id", "token_sha256"],
+        "properties": {
+          "client_identity": {
+            "type": "string", "minLength": 5, "maxLength": 512,
+            "pattern": "^(DNS:|URI:)[!-~]+$"
+          },
+          "tenant_id": { "type": "string", "format": "uuid" },
+          "subject": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "scope": {
+            "enum": [
+              "runtime-anomaly:signal", "runtime-anomaly:mutate",
+              "runtime-anomaly:execute", "runtime-anomaly:query"
+            ]
+          },
+          "source_id": {
+            "type": ["string", "null"], "minLength": 1, "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+          },
+          "token_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "scope": { "const": "runtime-anomaly:signal" } } },
+            "then": { "properties": { "source_id": { "type": "string" } } },
+            "else": { "properties": { "source_id": { "type": "null" } } }
+          }
+        ]
+      }
+    }
+  }
+}

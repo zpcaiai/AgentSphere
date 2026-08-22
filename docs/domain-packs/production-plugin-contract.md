@@ -1,0 +1,32 @@
+# Domain Pack production plugin contract
+
+The five risk packs are signed Batch 20 plugins, not independent execution authorities. Their shared `ProductionDomainPackContract` accepts one canonical execution envelope and returns authorization only after all common bindings agree. Actual work continues through the platform ToolProxy/executor and its signed receipt; task completion is decided separately by the typed evaluator and Evidence pipeline.
+
+Required common order is:
+
+1. Resolve an `ACTIVE`, non-revoked exact pack version and verify publisher signature, compatibility and immutable policy/evaluator/artifact references.
+2. Validate Canonical Action IR and the exact tenant, operation, tool version, active manifest digest, before/target digests, current resource version, PEP decision/evidence, ledger entry, fence and safe command digest.
+3. Reserve the tenant/idempotency/resource lease in `domain_pack_executions` under forced RLS.
+4. Apply the domain policy. For Industrial or Energy limited write, lock and consume the exact one-time supervision row and verify two distinct same-set experts plus a distinct supervisor in the same database transaction.
+5. Dispatch only through the configured ToolProxy/executor. Never expose raw Git, shell, clinical-write or physical-protocol credentials to the plugin.
+6. Verify the signed runtime receipt plus its exact `agenttrust.domain-effect-receipt.v1` binding and the domain-specific five-check `agenttrust.domain-evaluator-result.v1`; then commit the terminal result and Evidence outbox atomically. A `PASS` is impossible unless every required domain check passes. Ambiguity or an expired lease becomes `UNKNOWN`/manual reconciliation, never automatic replay.
+
+The domain runtime role needs `SELECT/INSERT/UPDATE` on `domain_pack_executions` and `domain_pack_evidence_outbox`, `SELECT` on active supply-chain releases and domain resource/policy rows, and narrowly controlled `INSERT` on the relevant case/outcome tables. Only the approval authority may insert `domain_expert_approvals`; only the supervised-operation authority may issue `domain_physical_supervision`. Do not grant `DELETE`, schema ownership, RLS bypass, or direct mutation of immutable evidence/outcome rows.
+
+The shared deployment stages are `SIMULATOR`, `DIGITAL_TWIN`, `READ_ONLY`, `SHADOW`, and `LIMITED_WRITE`. Approval and supervision timestamps must be UTC instants representable at PostgreSQL microsecond precision so the wire and locked database rows can be compared exactly. `LIMITED_WRITE` is code-enabled but production-disabled until the real endpoint, interlock, emergency stop, qualified reviewers, on-site supervisor and signed observation evidence are present. The current repository does not claim any external physical or clinical acceptance.
+
+## Runtime deployment
+
+Run `agenttrust-domain-runtime-authority` as uid/gid `65532:65532` from `Dockerfile.domain-runtime`. The tenant mTLS data plane is fixed at `8094`; the local/monitor-only management plane is fixed at `9104`. Ingress bearer bindings have exact scopes `domain-runtime:execute`, `domain-runtime:read`, and `domain-runtime:recover`. `POST /v1/domain-runtime/executions` is the sole mutation entry. `GET /v1/authoritative/domain-runtime/executions` is the canonical BFF/UI state source; it returns a tenant-keyset page with `authoritative=true`, process state, evaluator conclusion, result digests and the external Evidence receipt reference when delivered. Its `data_digest` is the lowercase SHA-256 of the JCS serialization of the final response after removing only `data_digest`, so it covers `schema_version`, `tenant_id`, `authoritative`, `items`, and `next_cursor`. `/v1/domain-runtime/recoveries/{tenant_id}` only marks expired leases `UNKNOWN`.
+
+Required environment has no production bypass:
+
+- Database: `AGENT_TRUST_DOMAIN_DATABASE_URL_FILE`, `AGENT_TRUST_DOMAIN_DATABASE_PASSWORD_FILE`, `AGENT_TRUST_DOMAIN_DATABASE_EXPECTED_ROLE`, `AGENT_TRUST_DOMAIN_DATABASE_CA_FILE`.
+- Inbound TLS/listeners: `AGENT_TRUST_DOMAIN_TLS_CA_FILE`, `AGENT_TRUST_DOMAIN_TLS_CERTIFICATE_FILE`, `AGENT_TRUST_DOMAIN_TLS_PRIVATE_KEY_FILE`, `AGENT_TRUST_DOMAIN_CLIENT_IDENTITIES`, `AGENT_TRUST_DOMAIN_LISTEN_ADDRESS`, `AGENT_TRUST_DOMAIN_PORT=8094`, `AGENT_TRUST_DOMAIN_MANAGEMENT_LISTEN_ADDRESS`, `AGENT_TRUST_DOMAIN_MANAGEMENT_PORT=9104`.
+- Durable/runtime verification: `AGENT_TRUST_DOMAIN_INSTANCE_ID`, `AGENT_TRUST_DOMAIN_EXECUTION_LEASE_SECONDS`, `AGENT_TRUST_DOMAIN_TOKEN_BINDINGS_FILE`, `AGENT_TRUST_DOMAIN_RECEIPT_KEYRING_FILE`, `AGENT_TRUST_DOMAIN_EVIDENCE_KEYRING_FILE`, `AGENT_TRUST_DOMAIN_EVIDENCE_CLIENT_IDENTITY`.
+- Outbound TLS: `AGENT_TRUST_DOMAIN_OUTBOUND_CA_FILE`, `AGENT_TRUST_DOMAIN_OUTBOUND_CERTIFICATE_FILE`, `AGENT_TRUST_DOMAIN_OUTBOUND_PRIVATE_KEY_FILE`.
+- Typed dependencies: for `EXECUTOR` and `EVIDENCE`, set `AGENT_TRUST_DOMAIN_<NAME>_ENDPOINT`, `AGENT_TRUST_DOMAIN_<NAME>_TOKEN_FILE`, and `AGENT_TRUST_DOMAIN_<NAME>_READINESS_SCHEMA`. Endpoints must be distinct HTTPS origin roots and tokens must be physically distinct. The Evidence token scope is `evidence:authority-event`, bound to the exact outbound client SAN.
+
+The database login must be non-owner, non-superuser, non-inheriting and without `BYPASSRLS`, schema `CREATE`, database `TEMP`, role/database creation or replication. It uses `sslmode=verify-full`, `row_security=on`, and `search_path=pg_catalog, public`. Grant `SELECT/INSERT/UPDATE` only on `domain_pack_executions` and `domain_pack_evidence_outbox`; grant `SELECT` on active supply release/artifact/publisher/key tables, expert approvals, physical-supervision rows and typed domain resources/policies; grant `UPDATE` on supervision only for the atomic one-time consume operation; and grant narrowly bounded `INSERT`/`SELECT` on the applicable domain case/outcome tables. Never grant `DELETE`, table ownership or direct write access to expert approval, publisher key, immutable outcome/evidence or certification records.
+
+Domain Evidence delivery also uses the shared `/v1/evidence/authority-events` wire. Durable timestamps make retries digest-identical, and delivery is complete only after the Evidence keyring validates the signed authority receipt plus its embedded signed event and every tenant/task/event/idempotency/source/payload/PEP/ledger/fence binding. Domain `resource_version` is not an orchestrator `task_state_version` and is never represented as one.
