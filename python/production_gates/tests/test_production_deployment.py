@@ -1720,7 +1720,7 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertIn("Enable verify-full TLS on the PostgreSQL service", workflow)
         self.assertIn("POSTGRES_HOST_AUTH_METHOD: scram-sha-256", workflow)
         self.assertIn("ssl_min_protocol_version='TLSv1.3'", workflow)
-        self.assertIn('test "$tls_verified" = t:TLSv1.3', workflow)
+        self.assertIn('test "$tls_verified" = true:TLSv1.3', workflow)
         self.assertIn("sslmode=verify-full&sslrootcert=%s", workflow)
         self.assertIn("Bootstrap least-privilege migration and application roles", workflow)
         self.assertIn("Prove migration body and history rollback together", workflow)

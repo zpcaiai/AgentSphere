@@ -197,11 +197,7 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      schema:
-        type: string
-        minLength: 1
-        maxLength: 128
-        pattern: '^[A-Za-z0-9._:-]+$'
+      schema: {$ref: '#/components/schemas/IdempotencyKey'}
     HumanAssertion:
       name: X-AgentTrust-Human-Assertion
       in: header
@@ -225,6 +221,11 @@ components:
     Digest:
       type: string
       pattern: '^[0-9a-f]{64}$'
+    IdempotencyKey:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:-]+$'
     Readiness:
       type: object
       additionalProperties: false

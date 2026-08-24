@@ -153,7 +153,7 @@ jobs:
             PGGSSENCMODE=disable \
             psql -h localhost -U postgres -d agenttrust -Atc \
             "SELECT ssl::text || ':' || version FROM pg_stat_ssl WHERE pid=pg_backend_pid()")
-          test "$tls_verified" = t:TLSv1.3
+          test "$tls_verified" = true:TLSv1.3
           printf 'AGENT_TRUST_CI_DATABASE_CA_FILE=%s\n' "$ca_file" >> "$GITHUB_ENV"
       - name: Bootstrap least-privilege migration and application roles
         run: |
