@@ -11,7 +11,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.oauth2.client.endpoint.RestClientAuthorizationCodeTokenResponseClient;
 import org.springframework.security.oauth2.client.oidc.userinfo.OidcUserService;
 import org.springframework.web.cors.CorsConfiguration;
@@ -48,7 +48,7 @@ public class SecurityConfiguration {
                 .anyRequest().authenticated())
             .exceptionHandling(errors -> errors.defaultAuthenticationEntryPointFor(
                 new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
-                new AntPathRequestMatcher("/v1/**")))
+                PathPatternRequestMatcher.withDefaults().matcher("/v1/**")))
             .oauth2Login(oauth -> oauth
                 .tokenEndpoint(token -> token.accessTokenResponseClient(tokenClient))
                 .userInfoEndpoint(user -> user.oidcUserService(oidcUserService))

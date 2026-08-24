@@ -3091,148 +3091,81 @@ BEGIN
     RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_EXCESS_TABLE_GRANT';
   END IF;
   IF EXISTS (
+    WITH public_sequences AS MATERIALIZED (
+      SELECT catalog_sequence.oid, catalog_sequence.relname
+        FROM pg_catalog.pg_class AS catalog_sequence
+        JOIN pg_catalog.pg_namespace AS catalog_namespace
+          ON catalog_namespace.oid = catalog_sequence.relnamespace
+       WHERE catalog_namespace.nspname = 'public'
+         AND catalog_sequence.relkind = 'S'
+    )
     SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$enterprise_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$enterprise_authority_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND (
-         sequence.relname <> 'orchestrator_stream_events_sequence_seq'
-         OR has_sequence_privilege('$orchestrator_application_role', sequence.oid, 'SELECT,UPDATE')
-       )
-       AND has_sequence_privilege(
-         '$orchestrator_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$agent_registry_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$policy_admin_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$incident_release_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$pack_marketplace_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND (
-         sequence.relname <> 'execution_fence_seq'
-         OR has_sequence_privilege('$execution_application_role', sequence.oid, 'SELECT,UPDATE')
-       )
-       AND has_sequence_privilege(
-       '$execution_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$registry_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$approval_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$pep_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$identity_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$tool_proxy_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$evidence_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
-  ) OR EXISTS (
-    SELECT 1
-      FROM pg_class AS sequence
-      JOIN pg_namespace AS namespace ON namespace.oid = sequence.relnamespace
-     WHERE namespace.nspname = 'public'
-       AND sequence.relkind = 'S'
-       AND has_sequence_privilege(
-         '$audit_application_role', sequence.oid, 'USAGE,SELECT,UPDATE'
-       )
+      FROM public_sequences AS public_sequence
+     WHERE has_sequence_privilege(
+       '$enterprise_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+     )
+        OR has_sequence_privilege(
+          '$enterprise_authority_application_role',
+          public_sequence.oid,
+          'USAGE,SELECT,UPDATE'
+        )
+        OR (
+          (
+            public_sequence.relname <> 'orchestrator_stream_events_sequence_seq'
+            OR has_sequence_privilege(
+              '$orchestrator_application_role', public_sequence.oid, 'SELECT,UPDATE'
+            )
+          )
+          AND has_sequence_privilege(
+            '$orchestrator_application_role',
+            public_sequence.oid,
+            'USAGE,SELECT,UPDATE'
+          )
+        )
+        OR has_sequence_privilege(
+          '$agent_registry_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$policy_admin_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$incident_release_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$pack_marketplace_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR (
+          (
+            public_sequence.relname <> 'execution_fence_seq'
+            OR has_sequence_privilege(
+              '$execution_application_role', public_sequence.oid, 'SELECT,UPDATE'
+            )
+          )
+          AND has_sequence_privilege(
+            '$execution_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+          )
+        )
+        OR has_sequence_privilege(
+          '$registry_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$approval_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$pep_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$identity_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$tool_proxy_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$evidence_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
+        OR has_sequence_privilege(
+          '$audit_application_role', public_sequence.oid, 'USAGE,SELECT,UPDATE'
+        )
   ) THEN
     RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_EXCESS_SEQUENCE_GRANT';
   END IF;

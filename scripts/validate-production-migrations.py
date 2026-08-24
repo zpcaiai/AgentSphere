@@ -91,6 +91,83 @@ def validate_application_grant_catalog_queries(runner: str) -> None:
             if re.search(rf"(?<![A-Za-z0-9_.]){identifier}\b", query):
                 fail(f"MIGRATION_RUNNER_CATALOG_COLUMN_AMBIGUOUS:{identifier}")
 
+    sequence_cte = "WITH public_sequences AS MATERIALIZED ("
+    sequence_start = "RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_EXCESS_TABLE_GRANT';"
+    sequence_error = "RAISE EXCEPTION 'MIGRATION_APPLICATION_ROLE_EXCESS_SEQUENCE_GRANT';"
+    if (
+        application_grants.count(sequence_start) != 1
+        or application_grants.count(sequence_cte) != 1
+        or application_grants.count(sequence_error) != 1
+    ):
+        fail("MIGRATION_RUNNER_SEQUENCE_CATALOG_AUDIT_INVALID")
+    sequence_section = application_grants.split(sequence_start, 1)[1].split(sequence_error, 1)[0]
+    if sequence_section.count("EXISTS (") != 1:
+        fail("MIGRATION_RUNNER_SEQUENCE_CATALOG_AUDIT_NOT_COLLAPSED")
+    sequence_audit = sequence_section.split(sequence_cte, 1)[1]
+    for required in (
+        "FROM pg_catalog.pg_class AS catalog_sequence",
+        "JOIN pg_catalog.pg_namespace AS catalog_namespace",
+        "catalog_namespace.oid = catalog_sequence.relnamespace",
+        "catalog_namespace.nspname = 'public'",
+        "catalog_sequence.relkind = 'S'",
+        "FROM public_sequences AS public_sequence",
+        "public_sequence.relname <> 'orchestrator_stream_events_sequence_seq'",
+        "public_sequence.relname <> 'execution_fence_seq'",
+    ):
+        if required not in sequence_audit:
+            fail(f"MIGRATION_RUNNER_SEQUENCE_CATALOG_AUDIT_INVALID:{required}")
+    if sequence_audit.count("has_sequence_privilege(") != 17:
+        fail("MIGRATION_RUNNER_SEQUENCE_PRIVILEGE_CHECK_SET_INVALID")
+    if sequence_audit.count("public_sequence.oid") != 17:
+        fail("MIGRATION_RUNNER_SEQUENCE_PRIVILEGE_OID_UNFENCED")
+    expected_role_checks = (
+        "$enterprise_application_role",
+        "$enterprise_authority_application_role",
+        "$orchestrator_application_role",
+        "$agent_registry_application_role",
+        "$policy_admin_application_role",
+        "$incident_release_application_role",
+        "$pack_marketplace_application_role",
+        "$execution_application_role",
+        "$registry_application_role",
+        "$approval_application_role",
+        "$pep_application_role",
+        "$identity_application_role",
+        "$tool_proxy_application_role",
+        "$evidence_application_role",
+        "$audit_application_role",
+    )
+
+    def privilege_call(role: str, privileges: str) -> str:
+        return (
+            r"has_sequence_privilege\(\s*'"
+            + re.escape(role)
+            + r"'\s*,\s*public_sequence\.oid\s*,\s*'"
+            + re.escape(privileges)
+            + r"'\s*\)"
+        )
+
+    for role in expected_role_checks:
+        if len(re.findall(privilege_call(role, "USAGE,SELECT,UPDATE"), sequence_audit)) != 1:
+            fail(f"MIGRATION_RUNNER_SEQUENCE_ROLE_CHECK_INVALID:{role}")
+    for role in ("$orchestrator_application_role", "$execution_application_role"):
+        if len(re.findall(privilege_call(role, "SELECT,UPDATE"), sequence_audit)) != 1:
+            fail(f"MIGRATION_RUNNER_SEQUENCE_EXCEPTION_CHECK_INVALID:{role}")
+    for role, allowed_sequence in (
+        ("$orchestrator_application_role", "orchestrator_stream_events_sequence_seq"),
+        ("$execution_application_role", "execution_fence_seq"),
+    ):
+        exception_semantics = (
+            r"public_sequence\.relname\s*<>\s*'"
+            + re.escape(allowed_sequence)
+            + r"'\s*OR\s*"
+            + privilege_call(role, "SELECT,UPDATE")
+            + r"\s*\)\s*AND\s*"
+            + privilege_call(role, "USAGE,SELECT,UPDATE")
+        )
+        if re.search(exception_semantics, sequence_audit) is None:
+            fail(f"MIGRATION_RUNNER_SEQUENCE_EXCEPTION_SEMANTICS_INVALID:{role}")
+
 
 def migration_version(value: str) -> tuple[int, ...]:
     match = VERSION.match(Path(value).name)

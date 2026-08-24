@@ -148,6 +148,53 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
         ):
             VALIDATOR.validate_application_grant_catalog_queries(ambiguous)
 
+    def test_sequence_privilege_catalog_audit_rejects_planner_unsafe_faults(self) -> None:
+        runner = (ROOT / "scripts/run-production-migrations.sh").read_text(encoding="utf-8")
+        VALIDATOR.validate_application_grant_catalog_queries(runner)
+        faults = (
+            (
+                runner.replace(
+                    "WITH public_sequences AS MATERIALIZED (",
+                    "WITH public_sequences AS NOT MATERIALIZED (",
+                    1,
+                ),
+                "MIGRATION_RUNNER_SEQUENCE_CATALOG_AUDIT_INVALID",
+            ),
+            (
+                runner.replace("public_sequence.oid", "catalog_sequence.oid", 1),
+                "MIGRATION_RUNNER_SEQUENCE_PRIVILEGE_OID_UNFENCED",
+            ),
+            (
+                runner.replace(
+                    "public_sequence.relname <> 'orchestrator_stream_events_sequence_seq'",
+                    "public_sequence.relname <> 'unsafe_sequence'",
+                    1,
+                ),
+                "MIGRATION_RUNNER_SEQUENCE_CATALOG_AUDIT_INVALID",
+            ),
+            (
+                runner.replace(
+                    "  IF EXISTS (\n    WITH public_sequences AS MATERIALIZED (",
+                    "  IF EXISTS (SELECT 1) OR EXISTS (\n"
+                    "    WITH public_sequences AS MATERIALIZED (",
+                    1,
+                ),
+                "MIGRATION_RUNNER_SEQUENCE_CATALOG_AUDIT_NOT_COLLAPSED",
+            ),
+            (
+                runner.replace(
+                    "'$orchestrator_application_role', public_sequence.oid, 'SELECT,UPDATE'",
+                    "'$orchestrator_application_role', public_sequence.oid, 'USAGE'",
+                    1,
+                ),
+                "MIGRATION_RUNNER_SEQUENCE_EXCEPTION_CHECK_INVALID",
+            ),
+        )
+        for unsafe_runner, expected_error in faults:
+            with self.subTest(expected_error=expected_error):
+                with self.assertRaisesRegex(RuntimeError, expected_error):
+                    VALIDATOR.validate_application_grant_catalog_queries(unsafe_runner)
+
     def test_runner_renders_each_migration_and_history_row_in_one_transaction(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory).resolve()
