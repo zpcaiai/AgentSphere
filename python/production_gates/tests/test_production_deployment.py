@@ -1683,6 +1683,9 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertIn("Prove migration body and history rollback together", workflow)
         self.assertIn("CI_FORCED_HISTORY_FAILURE", workflow)
         self.assertIn("to_regclass('public.trust_bundles') IS NULL", workflow)
+        self.assertIn("agenttrust-atomic-manifest.txt", workflow)
+        self.assertIn("runner failed before the forced history fault was observed", workflow)
+        self.assertIn("GRANT EXECUTE ON FUNCTION public.reject_first_migration_history()", workflow)
         standalone_replay = workflow.split(
             "- name: Replay every standalone migration after the runner",
             maxsplit=1,

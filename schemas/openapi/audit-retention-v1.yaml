@@ -97,7 +97,7 @@ paths:
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/Idempotency'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/exportRequest'}}}}
       responses:
-        '200': {description: Signed offline-verifiable package, WORM receipt and signed mutation receipt, content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/exportResponse'}}}}
+        '200': {description: 'Signed offline-verifiable package, WORM receipt and signed mutation receipt', content: {application/json: {schema: {$ref: '../audit-retention/api.schema.json#/$defs/exportResponse'}}}}
         default: {$ref: '#/components/responses/Failure'}
   /v1/audit/deletions:
     post:

@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-24T08:15:37Z",
+  "generated_at": "2026-08-24T08:32:30Z",
   "artifacts": [
     {
       "path": "evidence/verification-summary.json",
@@ -361,7 +361,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "569cbf7750c60b22dda19377bd4c03af447ab862ccf63da9c4d3e5ffc11ab239"
+      "sha256": "0224cacedceaec31f52e9ea1af64bd6ad683b1a657d91e41c74f6b6d05a9f064"
     },
     {
       "path": "python/production_gates/tests/test_evidence_bundle_verifier.py",
@@ -745,11 +745,11 @@
     },
     {
       "path": "python/production_gates/tests/test_migration_idempotency.py",
-      "sha256": "fbdd844d5ef031e0628710f1159257a893d51b14524419c2d26de2e09c3bec35"
+      "sha256": "9f6d6b25f21b76f424ad26c7d838c71ebb64b23e1d9d999f5f8be119c05e15ab"
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "a457093a491de932b00ee9d9bc59551029090eb59117429e6b2d8bbd4f603d7e"
+      "sha256": "16288b2445228c52e7e5a753800ad16105ce3421c1042961ba496a32369bc73b"
     }
   ],
   "offline_verification_required": true,

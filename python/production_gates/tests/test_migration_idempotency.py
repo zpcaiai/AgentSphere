@@ -18,6 +18,32 @@ assert SPEC is not None and SPEC.loader is not None
 VALIDATOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(VALIDATOR)
 
+ROLE_VARIABLES = (
+    "ENTERPRISE_APPLICATION_ROLE",
+    "ENTERPRISE_AUTHORITY_APPLICATION_ROLE",
+    "ORCHESTRATOR_APPLICATION_ROLE",
+    "EXECUTION_APPLICATION_ROLE",
+    "REGISTRY_APPLICATION_ROLE",
+    "AGENT_REGISTRY_APPLICATION_ROLE",
+    "POLICY_ADMIN_APPLICATION_ROLE",
+    "INCIDENT_RELEASE_APPLICATION_ROLE",
+    "PACK_MARKETPLACE_APPLICATION_ROLE",
+    "APPROVAL_APPLICATION_ROLE",
+    "PEP_APPLICATION_ROLE",
+    "IDENTITY_APPLICATION_ROLE",
+    "TOOL_PROXY_APPLICATION_ROLE",
+    "EVIDENCE_APPLICATION_ROLE",
+    "AUDIT_APPLICATION_ROLE",
+    "MODEL_GATEWAY_APPLICATION_ROLE",
+    "DATA_GOVERNANCE_APPLICATION_ROLE",
+    "CONTEXT_GOVERNANCE_APPLICATION_ROLE",
+    "RUNTIME_ANOMALY_APPLICATION_ROLE",
+    "SECURITY_EVALUATION_APPLICATION_ROLE",
+    "PACK_SUPPLY_CHAIN_APPLICATION_ROLE",
+    "DOMAIN_RUNTIME_APPLICATION_ROLE",
+    "PLATFORM_SRE_APPLICATION_ROLE",
+)
+
 
 class MigrationIdempotencyValidatorTest(unittest.TestCase):
     def assert_rejected(self, sql: str, code: str) -> None:
@@ -109,31 +135,6 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                     VALIDATOR.validate_transaction_boundary("fixture.sql", sql)
 
     def test_runner_renders_each_migration_and_history_row_in_one_transaction(self) -> None:
-        role_variables = (
-            "ENTERPRISE_APPLICATION_ROLE",
-            "ENTERPRISE_AUTHORITY_APPLICATION_ROLE",
-            "ORCHESTRATOR_APPLICATION_ROLE",
-            "EXECUTION_APPLICATION_ROLE",
-            "REGISTRY_APPLICATION_ROLE",
-            "AGENT_REGISTRY_APPLICATION_ROLE",
-            "POLICY_ADMIN_APPLICATION_ROLE",
-            "INCIDENT_RELEASE_APPLICATION_ROLE",
-            "PACK_MARKETPLACE_APPLICATION_ROLE",
-            "APPROVAL_APPLICATION_ROLE",
-            "PEP_APPLICATION_ROLE",
-            "IDENTITY_APPLICATION_ROLE",
-            "TOOL_PROXY_APPLICATION_ROLE",
-            "EVIDENCE_APPLICATION_ROLE",
-            "AUDIT_APPLICATION_ROLE",
-            "MODEL_GATEWAY_APPLICATION_ROLE",
-            "DATA_GOVERNANCE_APPLICATION_ROLE",
-            "CONTEXT_GOVERNANCE_APPLICATION_ROLE",
-            "RUNTIME_ANOMALY_APPLICATION_ROLE",
-            "SECURITY_EVALUATION_APPLICATION_ROLE",
-            "PACK_SUPPLY_CHAIN_APPLICATION_ROLE",
-            "DOMAIN_RUNTIME_APPLICATION_ROLE",
-            "PLATFORM_SRE_APPLICATION_ROLE",
-        )
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory).resolve()
             migration_root = temporary / "migrations"
@@ -185,7 +186,7 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             })
             environment.update({
                 f"AGENT_TRUST_{variable}": f"agenttrust_test_role_{index}"
-                for index, variable in enumerate(role_variables, start=1)
+                for index, variable in enumerate(ROLE_VARIABLES, start=1)
             })
             completed = subprocess.run(
                 ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
@@ -295,6 +296,74 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             stdout, stderr = runner.communicate(timeout=5)
             self.assertEqual(143, runner.returncode, f"{stdout}\n{stderr}")
             self.assertTrue(child_terminated.exists(), "TERM was not forwarded to psql")
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-migration*")))
+
+    def test_runner_renders_complete_production_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary = Path(temporary_directory).resolve()
+            certificate = temporary / "database-ca.pem"
+            certificate.write_text("test-only-certificate\n", encoding="ascii")
+            database_url = temporary / "database-url"
+            database_url.write_text(
+                "postgresql://migration.test/db?sslmode=verify-full"
+                f"&sslrootcert={certificate}\n",
+                encoding="ascii",
+            )
+            capture = temporary / "rendered.sql"
+            runner_tmp = temporary / "tmp"
+            runner_tmp.mkdir()
+            fake_bin = temporary / "bin"
+            fake_bin.mkdir()
+            fake_psql = fake_bin / "psql"
+            fake_psql.write_text(
+                "#!/bin/sh\n"
+                "set -eu\n"
+                "[ \"$1\" = --no-psqlrc ]\n"
+                "[ \"$2\" = --file ]\n"
+                "cp \"$3\" \"$AGENT_TRUST_CAPTURE_SQL\"\n",
+                encoding="utf-8",
+            )
+            fake_psql.chmod(0o700)
+
+            migration_root = ROOT / "migrations"
+            manifest = migration_root / "manifest.txt"
+            environment = os.environ.copy()
+            environment.update({
+                "PATH": f"{fake_bin}:{environment['PATH']}",
+                "AGENT_TRUST_MIGRATIONS_ROOT": str(migration_root),
+                "AGENT_TRUST_MIGRATION_MANIFEST": str(manifest),
+                "AGENT_TRUST_DATABASE_URL_FILE": str(database_url),
+                "AGENT_TRUST_DATABASE_CA_FILE": str(certificate),
+                "AGENT_TRUST_RELEASE_ID": "git:sha1:" + "2" * 40,
+                "AGENT_TRUST_CAPTURE_SQL": str(capture),
+                "TMPDIR": str(runner_tmp),
+            })
+            environment.update({
+                f"AGENT_TRUST_{variable}": f"agenttrust_manifest_role_{index}"
+                for index, variable in enumerate(ROLE_VARIABLES, start=1)
+            })
+
+            completed = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+
+            expected_paths = [
+                line
+                for line in manifest.read_text(encoding="utf-8").splitlines()
+                if line and not line.startswith("#")
+            ]
+            rendered = capture.read_text(encoding="utf-8")
+            self.assertEqual(len(expected_paths), rendered.count("VALUES ('"))
+            for relative in expected_paths:
+                self.assertEqual(
+                    1,
+                    rendered.count(f"VALUES ('{relative}',"),
+                    f"history row missing or duplicated for {relative}",
+                )
             self.assertEqual([], list(runner_tmp.glob("agenttrust-migration*")))
 
 

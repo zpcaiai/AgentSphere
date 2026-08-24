@@ -31,7 +31,7 @@ paths:
             schema: {$ref: ../incidents/incident-command.schema.json}
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
-        '401': {description: Identity, tenant or scope denied}
+        '401': {description: 'Identity, tenant or scope denied'}
   /v1/incidents/actions:
     post:
       operationId: submitIncidentGovernanceAction
@@ -51,8 +51,8 @@ paths:
             schema: {$ref: ../incidents/incident-command.schema.json}
       responses:
         '202': {$ref: '#/components/responses/Accepted'}
-        '401': {description: Strong human assertion, role, tenant or scope denied}
-        '409': {description: Idempotency, state, approval or evidence conflict}
+        '401': {description: 'Strong human assertion, role, tenant or scope denied'}
+        '409': {description: 'Idempotency, state, approval or evidence conflict'}
   /v1/incidents/executions:
     post:
       operationId: executeAuthorizedIncidentMutation

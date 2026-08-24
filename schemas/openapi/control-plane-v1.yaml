@@ -49,7 +49,7 @@ paths:
         '202':
           description: Canonical action durably accepted; execution and task completion are pending
           content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
-        '403': {description: Tenant, role, CSRF, action binding, or separation-of-duties denial}
+        '403': {description: 'Tenant, role, CSRF, action binding, or separation-of-duties denial'}
   /tenants/{tenantId}/organizations:
     post:
       operationId: createOrganization
@@ -218,7 +218,7 @@ paths:
             completed idempotent replays return the same status without redispatch.
         '409': {description: State version conflict or duplicate content mismatch}
         '429': {description: Bounded queue full}
-        '503': {description: Acceptance is unverified, still in progress, or outcome remains UNKNOWN}
+        '503': {description: 'Acceptance is unverified, still in progress, or outcome remains UNKNOWN'}
   /tenants/{tenantId}/agents:
     get:
       operationId: listAgentInventory
@@ -309,7 +309,7 @@ paths:
         '202':
           description: Canonical Policy workflow durably accepted; execution remains pending
           content: {application/json: {schema: {$ref: '#/components/schemas/PolicyActionReceipt'}}}
-        '403': {description: Tenant, role, strong-auth, request binding, or SoD denial}
+        '403': {description: 'Tenant, role, strong-auth, request binding, or SoD denial'}
         '409': {description: Idempotency or resource-version conflict}
         '503': {description: Admission outcome is not verifiable; retry only the exact same request and key}
   /tenants/{tenantId}/incidents:
@@ -359,8 +359,8 @@ paths:
         '202':
           description: Canonical incident/release workflow admitted; execution remains pending
           content: {application/json: {schema: {$ref: '#/components/schemas/IncidentActionReceipt'}}}
-        '403': {description: Tenant, strong-auth, role, approval, replay boundary or binding denied}
-        '409': {description: Idempotency, resource-version, state, approval or evidence conflict}
+        '403': {description: 'Tenant, strong-auth, role, approval, replay boundary or binding denied'}
+        '409': {description: 'Idempotency, resource-version, state, approval or evidence conflict'}
         '503': {description: Admission outcome is not verifiable; retry the exact request and key}
   /tenants/{tenantId}/packs:
     get:
@@ -398,8 +398,8 @@ paths:
         '202':
           description: Canonical Pack workflow admitted; execution and lifecycle state remain pending
           content: {application/json: {schema: {$ref: '#/components/schemas/MarketplaceActionReceipt'}}}
-        '403': {description: Tenant, strong-auth, role, publisher, approval or binding denied}
-        '409': {description: Idempotency, resource-version, state, trust or compatibility conflict}
+        '403': {description: 'Tenant, strong-auth, role, publisher, approval or binding denied'}
+        '409': {description: 'Idempotency, resource-version, state, trust or compatibility conflict'}
         '503': {description: Admission outcome is not verifiable; retry the exact request and key}
   /tenants/{tenantId}/approvals/{caseId}/intents:
     post:
@@ -422,7 +422,7 @@ paths:
           description: >-
             Intent accepted only after an independently verified immutable Evidence authority
             receipt. A mutable ApprovalCase decision response alone never produces this status.
-        '403': {description: Approver authorization, binding, or SoD denial}
+        '403': {description: 'Approver authorization, binding, or SoD denial'}
         '503':
           description: >-
             Approval outcome remains UNKNOWN and the same Idempotency-Key is safe to retry. This
@@ -456,7 +456,7 @@ paths:
         '200':
           description: Signed tenant/task-bound safe snapshot and resume cursor
           content: {application/json: {schema: {$ref: '#/components/schemas/AguiSafeSnapshot'}}}
-        '403': {description: Tenant, task ownership, or query authorization denied}
+        '403': {description: 'Tenant, task ownership, or query authorization denied'}
   /tenants/{tenantId}/dashboard:
     get:
       operationId: getEnterpriseDashboard
@@ -495,7 +495,7 @@ paths:
         '202':
           description: Canonical action durably accepted; this is not execution success or completion
           content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
-        '403': {description: Tenant, RBAC/ABAC, CSRF, or separation-of-duties denial}
+        '403': {description: 'Tenant, RBAC/ABAC, CSRF, or separation-of-duties denial'}
 components:
   x-policy-artifact-responses:
     '200':

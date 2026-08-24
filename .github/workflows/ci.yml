@@ -213,22 +213,36 @@ jobs:
           CREATE TRIGGER reject_first_migration_history
             BEFORE INSERT ON public.agenttrust_schema_migrations
             FOR EACH ROW EXECUTE FUNCTION public.reject_first_migration_history();
+          REVOKE ALL ON FUNCTION public.reject_first_migration_history() FROM PUBLIC;
+          GRANT EXECUTE ON FUNCTION public.reject_first_migration_history() TO agenttrust_migration_ci;
           SQL
           export AGENT_TRUST_MIGRATIONS_ROOT="$GITHUB_WORKSPACE/migrations"
-          export AGENT_TRUST_MIGRATION_MANIFEST="$GITHUB_WORKSPACE/migrations/manifest.txt"
+          atomic_manifest="$RUNNER_TEMP/agenttrust-atomic-manifest.txt"
+          printf '%s\n' 'identity/0001_identity.sql' > "$atomic_manifest"
+          chmod 0600 "$atomic_manifest"
+          export AGENT_TRUST_MIGRATION_MANIFEST="$atomic_manifest"
           export AGENT_TRUST_DATABASE_URL_FILE="$database_url_file"
           export AGENT_TRUST_DATABASE_CA_FILE="$AGENT_TRUST_CI_DATABASE_CA_FILE"
           export AGENT_TRUST_RELEASE_ID="git:sha1:$GITHUB_SHA"
+          atomic_log="$RUNNER_TEMP/agenttrust-atomic-rollback.log"
           if sh scripts/run-production-migrations.sh --apply \
-            >"$RUNNER_TEMP/agenttrust-atomic-rollback.log" 2>&1; then
+            >"$atomic_log" 2>&1; then
             echo 'forced history failure unexpectedly succeeded' >&2
             exit 1
           fi
-          grep -q 'CI_FORCED_HISTORY_FAILURE' "$RUNNER_TEMP/agenttrust-atomic-rollback.log"
+          if ! grep -q 'CI_FORCED_HISTORY_FAILURE' "$atomic_log"; then
+            echo 'runner failed before the forced history fault was observed' >&2
+            sed -n '1,240p' "$atomic_log" >&2
+            exit 1
+          fi
           rollback_ok=$(PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -At \
             -h 127.0.0.1 -U postgres -d agenttrust -c \
             "SELECT to_regclass('public.trust_bundles') IS NULL AND NOT EXISTS (SELECT 1 FROM public.agenttrust_schema_migrations)")
-          test "$rollback_ok" = t
+          if [ "$rollback_ok" != t ]; then
+            echo "migration body/history rollback assertion failed: $rollback_ok" >&2
+            sed -n '1,240p' "$atomic_log" >&2
+            exit 1
+          fi
           PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d agenttrust <<'SQL'
           DROP TRIGGER reject_first_migration_history ON public.agenttrust_schema_migrations;
           DROP FUNCTION public.reject_first_migration_history();
