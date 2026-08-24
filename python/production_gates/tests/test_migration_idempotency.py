@@ -153,24 +153,53 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             certificate.write_text("test-only-certificate\n", encoding="ascii")
             database_url = temporary / "database-url"
             database_url.write_text(
-                "postgresql://migration.test/db?sslmode=verify-full"
+                "postgresql://migration_test@database.test/db?sslmode=verify-full"
                 f"&sslrootcert={certificate}\n",
                 encoding="ascii",
             )
+            database_password = temporary / "database-password"
+            database_password.write_text("test:password\\material\n", encoding="ascii")
             capture = temporary / "rendered.sql"
+            captured_pgpass = temporary / "captured.pgpass"
             runner_tmp = temporary / "tmp"
             runner_tmp.mkdir()
             fake_bin = temporary / "bin"
             fake_bin.mkdir()
             fake_psql = fake_bin / "psql"
-            fake_psql.write_text(
+            valid_fake_psql = (
                 "#!/bin/sh\n"
                 "set -eu\n"
+                "[ \"${PGPASSWORD+x}\" != x ]\n"
+                "if [ \"${1:-}\" = --version ]; then\n"
+                "  printf '%s\\n' 'psql (PostgreSQL) 17.5'\n"
+                "  exit 0\n"
+                "fi\n"
+                "[ \"$#\" -eq 3 ]\n"
                 "[ \"$1\" = --no-psqlrc ]\n"
                 "[ \"$2\" = --file ]\n"
-                "cp \"$3\" \"$AGENT_TRUST_CAPTURE_SQL\"\n",
-                encoding="utf-8",
+                "[ \"$PGHOST\" = database.test ]\n"
+                "[ \"$PGPORT\" = 5432 ]\n"
+                "[ \"$PGUSER\" = migration_test ]\n"
+                "[ \"$PGDATABASE\" = db ]\n"
+                "[ \"$PGSSLMODE\" = verify-full ]\n"
+                "[ \"$PGSSLROOTCERT\" = \"$AGENT_TRUST_DATABASE_CA_FILE\" ]\n"
+                "[ \"$PGSSLMINPROTOCOLVERSION\" = TLSv1.3 ]\n"
+                "[ \"$PGCHANNELBINDING\" = require ]\n"
+                "[ \"$PGGSSENCMODE\" = disable ]\n"
+                "[ \"$PGCLIENTENCODING\" = UTF8 ]\n"
+                "[ \"${PGPASSWORD+x}\" != x ]\n"
+                "[ \"${PGHOSTADDR+x}\" != x ]\n"
+                "[ \"${PGSERVICE+x}\" != x ]\n"
+                "[ \"${PGOPTIONS+x}\" != x ]\n"
+                "[ -f \"$PGPASSFILE\" ]\n"
+                "pgpass_mode=$(stat -c %a \"$PGPASSFILE\" 2>/dev/null || stat -f %Lp \"$PGPASSFILE\")\n"
+                "[ \"$pgpass_mode\" = 600 ]\n"
+                "if env | grep -F 'postgresql://' >/dev/null; then exit 1; fi\n"
+                "if env | grep -F 'test:password' >/dev/null; then exit 1; fi\n"
+                "cp \"$3\" \"$AGENT_TRUST_CAPTURE_SQL\"\n"
+                "cp \"$PGPASSFILE\" \"$AGENT_TRUST_CAPTURE_PGPASS\"\n"
             )
+            fake_psql.write_text(valid_fake_psql, encoding="utf-8")
             fake_psql.chmod(0o700)
 
             environment = os.environ.copy()
@@ -179,10 +208,16 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                 "AGENT_TRUST_MIGRATIONS_ROOT": str(migration_root),
                 "AGENT_TRUST_MIGRATION_MANIFEST": str(manifest),
                 "AGENT_TRUST_DATABASE_URL_FILE": str(database_url),
+                "AGENT_TRUST_DATABASE_PASSWORD_FILE": str(database_password),
                 "AGENT_TRUST_DATABASE_CA_FILE": str(certificate),
                 "AGENT_TRUST_RELEASE_ID": "git:sha1:" + "1" * 40,
                 "AGENT_TRUST_CAPTURE_SQL": str(capture),
+                "AGENT_TRUST_CAPTURE_PGPASS": str(captured_pgpass),
                 "TMPDIR": str(runner_tmp),
+                "PGPASSWORD": "untrusted-inherited-password",
+                "PGHOSTADDR": "203.0.113.20",
+                "PGSERVICE": "untrusted-service",
+                "PGOPTIONS": "-c search_path=untrusted",
             })
             environment.update({
                 f"AGENT_TRUST_{variable}": f"agenttrust_test_role_{index}"
@@ -195,8 +230,11 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
 
             rendered = capture.read_text(encoding="utf-8")
+            self.assertIn("FROM pg_catalog.pg_stat_ssl AS transport", rendered)
+            self.assertIn("MIGRATION_TLS_VERSION_INVALID", rendered)
             self.assertIn(
                 "\\else\nBEGIN;\n"
                 "CREATE TABLE IF NOT EXISTS first_record(id bigint);\n"
@@ -218,6 +256,136 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                 "SELECT pg_advisory_unlock",
                 rendered,
             )
+            self.assertEqual(
+                "database.test:5432:db:migration_test:test\\:password\\\\material\n",
+                captured_pgpass.read_text(encoding="ascii"),
+            )
+
+            valid_database_url = database_url.read_text(encoding="ascii")
+            for unsafe_database_url, expected_error in (
+                (
+                    valid_database_url.replace("migration_test@", "migration_test:embedded@"),
+                    "MIGRATION_DATABASE_USER_INVALID",
+                ),
+                (
+                    valid_database_url.rstrip("\n") + "&application_name=unsafe\n",
+                    "MIGRATION_DATABASE_PARAMETERS_INVALID",
+                ),
+                (
+                    valid_database_url.replace("database.test", "database.test:70000"),
+                    "MIGRATION_DATABASE_PORT_INVALID",
+                ),
+                (
+                    valid_database_url.replace("database.test", "-invalid.database.test"),
+                    "MIGRATION_DATABASE_HOST_INVALID",
+                ),
+                (
+                    valid_database_url.rstrip("\n") + "\n\n",
+                    "MIGRATION_DATABASE_URL_FILE_INVALID",
+                ),
+            ):
+                with self.subTest(expected_error=expected_error):
+                    database_url.write_text(unsafe_database_url, encoding="ascii")
+                    rejected_database = subprocess.run(
+                        ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(78, rejected_database.returncode, rejected_database.stderr)
+                    self.assertIn(expected_error, rejected_database.stderr)
+            database_url.write_text(valid_database_url, encoding="ascii")
+
+            for variable, source, link_name in (
+                ("AGENT_TRUST_DATABASE_URL_FILE", database_url, "database-url-link"),
+                (
+                    "AGENT_TRUST_DATABASE_PASSWORD_FILE",
+                    database_password,
+                    "database-password-link",
+                ),
+                ("AGENT_TRUST_DATABASE_CA_FILE", certificate, "database-ca-link"),
+            ):
+                with self.subTest(symlink_input=variable):
+                    link = temporary / link_name
+                    link.symlink_to(source)
+                    original_path = environment[variable]
+                    environment[variable] = str(link)
+                    rejected_symlink = subprocess.run(
+                        ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                        env=environment,
+                        capture_output=True,
+                        text=True,
+                    )
+                    environment[variable] = original_path
+                    self.assertEqual(
+                        78,
+                        rejected_symlink.returncode,
+                        rejected_symlink.stderr,
+                    )
+                    self.assertIn("MIGRATION_INPUT_MISSING", rejected_symlink.stderr)
+                    self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
+
+            fake_psql.write_text(
+                "#!/bin/sh\n"
+                "set -eu\n"
+                "[ \"${PGPASSWORD+x}\" != x ]\n"
+                "if [ \"${1:-}\" = --version ]; then\n"
+                "  printf '%s\\n' 'psql (PostgreSQL) 12.22'\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 99\n",
+                encoding="utf-8",
+            )
+            unsupported_client = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(78, unsupported_client.returncode, unsupported_client.stderr)
+            self.assertIn("MIGRATION_PSQL_CLIENT_UNSUPPORTED", unsupported_client.stderr)
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
+            fake_psql.write_text(valid_fake_psql, encoding="utf-8")
+            fake_psql.chmod(0o700)
+
+            database_password.write_text("first-line\nsecond-line\n", encoding="ascii")
+            rejected_password = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(78, rejected_password.returncode, rejected_password.stderr)
+            self.assertIn("MIGRATION_DATABASE_PASSWORD_FILE_INVALID", rejected_password.stderr)
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
+            database_password.write_text("control\x7fbyte\n", encoding="ascii")
+            rejected_control_password = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(
+                78, rejected_control_password.returncode, rejected_control_password.stderr
+            )
+            self.assertIn(
+                "MIGRATION_DATABASE_PASSWORD_FILE_INVALID",
+                rejected_control_password.stderr,
+            )
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
+            database_password.write_text("test:password\\material\n", encoding="ascii")
+
+            environment["AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS"] = "0"
+            rejected_timeout = subprocess.run(
+                ["sh", str(ROOT / "scripts/run-production-migrations.sh"), "--apply"],
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(78, rejected_timeout.returncode, rejected_timeout.stderr)
+            self.assertIn("MIGRATION_DATABASE_CONNECT_TIMEOUT_INVALID", rejected_timeout.stderr)
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
+            environment.pop("AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS")
 
             unsafe_transactions = (
                 "BEGIN TRANSACTION;\nSELECT 1;\nCOMMIT WORK;\n",
@@ -263,6 +431,7 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             )
             self.assertEqual(65, digest_failure.returncode, digest_failure.stderr)
             self.assertIn("MIGRATION_DIGEST_INVALID:0001_first.sql", digest_failure.stderr)
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
 
             fake_digest.unlink()
             child_started = temporary / "psql-started"
@@ -270,6 +439,11 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             fake_psql.write_text(
                 "#!/bin/sh\n"
                 "set -eu\n"
+                "[ \"${PGPASSWORD+x}\" != x ]\n"
+                "if [ \"${1:-}\" = --version ]; then\n"
+                "  printf '%s\\n' 'psql (PostgreSQL) 17.5'\n"
+                "  exit 0\n"
+                "fi\n"
                 "trap 'printf terminated > \"$AGENT_TRUST_PSQL_TERMINATED\"; exit 143' TERM\n"
                 "printf '%s' \"$$\" > \"$AGENT_TRUST_PSQL_STARTED\"\n"
                 "while :; do sleep 1; done\n",
@@ -296,7 +470,7 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             stdout, stderr = runner.communicate(timeout=5)
             self.assertEqual(143, runner.returncode, f"{stdout}\n{stderr}")
             self.assertTrue(child_terminated.exists(), "TERM was not forwarded to psql")
-            self.assertEqual([], list(runner_tmp.glob("agenttrust-migration*")))
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
 
     def test_runner_renders_complete_production_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -305,10 +479,12 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             certificate.write_text("test-only-certificate\n", encoding="ascii")
             database_url = temporary / "database-url"
             database_url.write_text(
-                "postgresql://migration.test/db?sslmode=verify-full"
+                "postgresql://migration_manifest@database.test/db?sslmode=verify-full"
                 f"&sslrootcert={certificate}\n",
                 encoding="ascii",
             )
+            database_password = temporary / "database-password"
+            database_password.write_text("manifest-password\n", encoding="ascii")
             capture = temporary / "rendered.sql"
             runner_tmp = temporary / "tmp"
             runner_tmp.mkdir()
@@ -318,6 +494,11 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
             fake_psql.write_text(
                 "#!/bin/sh\n"
                 "set -eu\n"
+                "[ \"${PGPASSWORD+x}\" != x ]\n"
+                "if [ \"${1:-}\" = --version ]; then\n"
+                "  printf '%s\\n' 'psql (PostgreSQL) 17.5'\n"
+                "  exit 0\n"
+                "fi\n"
                 "[ \"$1\" = --no-psqlrc ]\n"
                 "[ \"$2\" = --file ]\n"
                 "cp \"$3\" \"$AGENT_TRUST_CAPTURE_SQL\"\n",
@@ -333,6 +514,7 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                 "AGENT_TRUST_MIGRATIONS_ROOT": str(migration_root),
                 "AGENT_TRUST_MIGRATION_MANIFEST": str(manifest),
                 "AGENT_TRUST_DATABASE_URL_FILE": str(database_url),
+                "AGENT_TRUST_DATABASE_PASSWORD_FILE": str(database_password),
                 "AGENT_TRUST_DATABASE_CA_FILE": str(certificate),
                 "AGENT_TRUST_RELEASE_ID": "git:sha1:" + "2" * 40,
                 "AGENT_TRUST_CAPTURE_SQL": str(capture),
@@ -364,7 +546,7 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                     rendered.count(f"VALUES ('{relative}',"),
                     f"history row missing or duplicated for {relative}",
                 )
-            self.assertEqual([], list(runner_tmp.glob("agenttrust-migration*")))
+            self.assertEqual([], list(runner_tmp.glob("agenttrust-*")))
 
 
 if __name__ == "__main__":

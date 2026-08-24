@@ -650,6 +650,31 @@ class ProductionDeploymentTests(unittest.TestCase):
             result,
         )
         self.assertIn(
+            "AGENT_TRUST_DATABASE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/database-password",
+            result,
+        )
+        migration_spc = result.split(
+            "kind: SecretProviderClass\nmetadata:\n  name: agenttrust-migrations",
+            maxsplit=1,
+        )[1].split("---", maxsplit=1)[0]
+        self.assertEqual(
+            ["database-url", "database-password", "database-ca.pem"],
+            re.findall(r'objectName: "([^"]+)"', migration_spc),
+        )
+        self.assertEqual(
+            migration_spc.count('secretPath: "kv/data/agenttrust/migration"'), 3
+        )
+        migration_job = result.split("kind: Job\n", maxsplit=1)[1].split(
+            "---", maxsplit=1
+        )[0]
+        for migration_input in (
+            "AGENT_TRUST_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/database-url",
+            "AGENT_TRUST_DATABASE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/database-password",
+            "AGENT_TRUST_DATABASE_CA_FILE, value: /var/run/agenttrust/secrets/database-ca.pem",
+            "secretProviderClass: agenttrust-migrations",
+        ):
+            self.assertIn(migration_input, migration_job)
+        self.assertIn(
             'iam-jwks-endpoint: "https://idp.prod.test/.well-known/jwks.json"', result
         )
         self.assertIn("AGENT_TRUST_IAM_JWKS_ENDPOINT", result)
@@ -1597,13 +1622,28 @@ class ProductionDeploymentTests(unittest.TestCase):
 
     def test_migration_runner_pins_search_path_and_hides_uri_from_argv(self) -> None:
         runner = (ROOT / "scripts/run-production-migrations.sh").read_text()
+        self.assertLess(runner.index("unset PGPASSWORD"), runner.index('mode="${1:---apply}"'))
         self.assertIn("SET search_path = public", runner)
         self.assertIn("current_schemas(true)", runner)
+        self.assertIn("FROM pg_catalog.pg_stat_ssl AS transport", runner)
+        self.assertIn("MIGRATION_TLS_VERSION_INVALID", runner)
+        self.assertIn("MIGRATION_PSQL_CLIENT_UNSUPPORTED", runner)
         self.assertIn('sslmode_summary', runner)
         self.assertIn('sslrootcert_summary', runner)
         self.assertIn('AGENT_TRUST_DATABASE_CA_FILE', runner)
+        self.assertIn('AGENT_TRUST_DATABASE_PASSWORD_FILE', runner)
         self.assertIn('MIGRATION_DATABASE_TLS_ROOT_CERT_REQUIRED', runner)
-        self.assertIn('PGDATABASE="$database_url" psql', runner)
+        self.assertIn('export PGHOST="$database_host"', runner)
+        self.assertIn('export PGPORT="$database_port"', runner)
+        self.assertIn('export PGUSER="$database_user"', runner)
+        self.assertIn('export PGDATABASE="$database_name"', runner)
+        self.assertIn('export PGPASSFILE="$pgpass_file"', runner)
+        self.assertIn('export PGSSLMINPROTOCOLVERSION=TLSv1.3', runner)
+        self.assertIn('export PGCHANNELBINDING=require', runner)
+        self.assertIn('export PGGSSENCMODE=disable', runner)
+        self.assertIn('export PGCLIENTENCODING=UTF8', runner)
+        self.assertIn('unset PGPASSWORD', runner)
+        self.assertNotIn('PGDATABASE="$database_url"', runner)
         self.assertNotIn('psql "$database_url"', runner)
         self.assertIn("ENTERPRISE_APPLICATION_ROLE", runner)
         self.assertIn("ENTERPRISE_AUTHORITY_APPLICATION_ROLE", runner)
@@ -1678,6 +1718,9 @@ class ProductionDeploymentTests(unittest.TestCase):
     def test_ci_executes_tls_runner_replay_and_atomic_failure_probe(self) -> None:
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("Enable verify-full TLS on the PostgreSQL service", workflow)
+        self.assertIn("POSTGRES_HOST_AUTH_METHOD: scram-sha-256", workflow)
+        self.assertIn("ssl_min_protocol_version='TLSv1.3'", workflow)
+        self.assertIn('test "$tls_verified" = t:TLSv1.3', workflow)
         self.assertIn("sslmode=verify-full&sslrootcert=%s", workflow)
         self.assertIn("Bootstrap least-privilege migration and application roles", workflow)
         self.assertIn("Prove migration body and history rollback together", workflow)
@@ -1693,9 +1736,21 @@ class ProductionDeploymentTests(unittest.TestCase):
             "- name: Recheck production migration history after standalone replay",
             maxsplit=1,
         )[0]
-        self.assertIn("PGDATABASE=\"$database_url\" psql --no-psqlrc", standalone_replay)
-        self.assertIn("PGPASSWORD: agenttrust-ci-migration-password", standalone_replay)
+        self.assertIn(
+            "PGHOST=localhost PGPORT=5432 PGUSER=agenttrust_migration_ci",
+            standalone_replay,
+        )
+        self.assertIn("PGDATABASE=agenttrust PGSSLMODE=verify-full", standalone_replay)
+        self.assertIn(
+            "PGSSLMINPROTOCOLVERSION=TLSv1.3 PGCHANNELBINDING=require",
+            standalone_replay,
+        )
+        self.assertIn("PGGSSENCMODE=disable PGCLIENTENCODING=UTF8", standalone_replay)
+        self.assertIn("PGPASSWORD=agenttrust-ci-migration-password", standalone_replay)
+        self.assertNotIn("\n        env:", standalone_replay)
         self.assertNotIn("-U postgres", standalone_replay)
+        self.assertNotIn('PGDATABASE="$database_url"', standalone_replay)
+        self.assertIn("AGENT_TRUST_DATABASE_PASSWORD_FILE", workflow)
         self.assertGreaterEqual(
             workflow.count("run-production-migrations.sh --apply"),
             3,

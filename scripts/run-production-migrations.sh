@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 
+# Authentication is file-only. Clear any inherited process credential before
+# invoking even validation helpers so it cannot leak to unrelated children.
+unset PGPASSWORD
+
 mode="${1:---apply}"
 case "$mode" in
   --apply|--check) ;;
@@ -10,6 +14,7 @@ esac
 migration_root="${AGENT_TRUST_MIGRATIONS_ROOT:-/opt/agenttrust/migrations}"
 manifest="${AGENT_TRUST_MIGRATION_MANIFEST:-$migration_root/manifest.txt}"
 database_url_file="${AGENT_TRUST_DATABASE_URL_FILE:-}"
+database_password_file="${AGENT_TRUST_DATABASE_PASSWORD_FILE:-}"
 database_ca_file="${AGENT_TRUST_DATABASE_CA_FILE:-}"
 case "$migration_root:$manifest" in
   *[!A-Za-z0-9._/:+-]*|*..* ) echo "MIGRATION_PATH_INVALID" >&2; exit 78 ;;
@@ -22,6 +27,10 @@ case "$database_url_file" in
   /*) ;;
   *) echo "MIGRATION_DATABASE_URL_FILE_INVALID" >&2; exit 78 ;;
 esac
+case "$database_password_file" in
+  /*) ;;
+  *) echo "MIGRATION_DATABASE_PASSWORD_FILE_INVALID" >&2; exit 78 ;;
+esac
 case "$database_ca_file" in
   /*) ;;
   *) echo "MIGRATION_DATABASE_CA_FILE_INVALID" >&2; exit 78 ;;
@@ -30,7 +39,12 @@ case "$database_ca_file" in
   *..*|*[!A-Za-z0-9._/+-]* ) echo "MIGRATION_DATABASE_CA_FILE_INVALID" >&2; exit 78 ;;
 esac
 if [ ! -r "$database_url_file" ] || [ ! -r "$database_ca_file" ] \
-  || [ -L "$database_ca_file" ] || [ ! -f "$database_ca_file" ] || [ ! -f "$manifest" ]; then
+  || [ ! -r "$database_password_file" ] \
+  || [ -L "$database_url_file" ] || [ -L "$database_ca_file" ] \
+  || [ -L "$database_password_file" ] \
+  || [ ! -f "$database_url_file" ] || [ ! -f "$database_ca_file" ] \
+  || [ ! -f "$database_password_file" ] \
+  || [ ! -f "$manifest" ]; then
   echo "MIGRATION_INPUT_MISSING" >&2
   exit 78
 fi
@@ -104,8 +118,20 @@ if [ "$(printf '%s\n' "$application_roles" | sort -u | wc -l | tr -d ' ')" -ne 2
   exit 78
 fi
 
-database_url=$(sed -n '1p' "$database_url_file")
-if [ -n "$(sed -n '2,$p' "$database_url_file")" ]; then
+if ! database_url=$(LC_ALL=C awk '
+  {
+    if (NR != 1 || length($0) < 1 || length($0) > 4096 || $0 ~ /[^ -~]/) {
+      invalid = 1
+    }
+    value = $0
+  }
+  END {
+    if (NR != 1 || invalid) {
+      exit 1
+    }
+    printf "%s", value
+  }
+' "$database_url_file"); then
   echo "MIGRATION_DATABASE_URL_FILE_INVALID" >&2
   exit 78
 fi
@@ -154,6 +180,83 @@ if [ "$sslrootcert_summary" != "1:$database_ca_file" ]; then
   echo "MIGRATION_DATABASE_TLS_ROOT_CERT_REQUIRED" >&2
   exit 78
 fi
+
+# PGDATABASE is a database-name variable, not a portable URI transport: psql
+# ignores URI structure placed there and falls back to a local socket. Parse a
+# deliberately narrow passwordless URI into libpq's individual environment
+# variables so neither connection metadata nor credentials enter process argv.
+case "$database_url" in
+  postgresql://*) database_endpoint=${database_url#postgresql://} ;;
+  postgres://*) database_endpoint=${database_url#postgres://} ;;
+  *) echo "MIGRATION_DATABASE_URL_INVALID" >&2; exit 78 ;;
+esac
+case "$database_endpoint" in
+  *@*/*\?*) ;;
+  *) echo "MIGRATION_DATABASE_URL_INVALID" >&2; exit 78 ;;
+esac
+database_authority=${database_endpoint%%/*}
+database_path_query=${database_endpoint#*/}
+database_user=${database_authority%%@*}
+database_host_port=${database_authority#*@}
+case "$database_host_port" in
+  *@*) echo "MIGRATION_DATABASE_URL_INVALID" >&2; exit 78 ;;
+esac
+if ! validate_role_name "$database_user"; then
+  echo "MIGRATION_DATABASE_USER_INVALID" >&2
+  exit 78
+fi
+case "$database_host_port" in
+  *:*)
+    database_host=${database_host_port%:*}
+    database_port=${database_host_port##*:}
+    case "$database_host" in
+      *:*) echo "MIGRATION_DATABASE_HOST_INVALID" >&2; exit 78 ;;
+    esac
+    ;;
+  *)
+    database_host=$database_host_port
+    database_port=5432
+    ;;
+esac
+case "$database_host" in
+  ''|*[!A-Za-z0-9.-]*)
+    echo "MIGRATION_DATABASE_HOST_INVALID" >&2; exit 78 ;;
+esac
+if ! printf '%s\n' "$database_host" | LC_ALL=C awk '
+  length($0) > 253 { exit 1 }
+  {
+    label_count = split($0, labels, ".")
+    for (label_number = 1; label_number <= label_count; label_number++) {
+      label = labels[label_number]
+      invalid_length = length(label) < 1 || length(label) > 63
+      invalid_syntax = label !~ /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/
+      if (invalid_length || invalid_syntax) {
+        exit 1
+      }
+    }
+  }
+'; then
+  echo "MIGRATION_DATABASE_HOST_INVALID" >&2
+  exit 78
+fi
+case "$database_port" in
+  ''|*[!0-9]*) echo "MIGRATION_DATABASE_PORT_INVALID" >&2; exit 78 ;;
+esac
+if [ "${#database_port}" -gt 5 ] || [ "$database_port" -lt 1 ] || [ "$database_port" -gt 65535 ]; then
+  echo "MIGRATION_DATABASE_PORT_INVALID" >&2
+  exit 78
+fi
+database_name=${database_path_query%%\?*}
+database_query=${database_path_query#*\?}
+if ! validate_role_name "$database_name"; then
+  echo "MIGRATION_DATABASE_NAME_INVALID" >&2
+  exit 78
+fi
+case "$database_query" in
+  "sslmode=verify-full&sslrootcert=$database_ca_file"|\
+  "sslrootcert=$database_ca_file&sslmode=verify-full") ;;
+  *) echo "MIGRATION_DATABASE_PARAMETERS_INVALID" >&2; exit 78 ;;
+esac
 
 digest_file() {
   digest_path=$1
@@ -367,6 +470,8 @@ append_atomic_migration_body() {
 
 sql_file=$(mktemp "${TMPDIR:-/tmp}/agenttrust-migrations.XXXXXX")
 migration_snapshot=
+password_snapshot=
+pgpass_file=
 psql_pid=
 # Invoked indirectly through the EXIT trap.
 # shellcheck disable=SC2329
@@ -374,6 +479,12 @@ cleanup_migration_files() {
   rm -f "$sql_file"
   if [ -n "$migration_snapshot" ]; then
     rm -f "$migration_snapshot"
+  fi
+  if [ -n "$password_snapshot" ]; then
+    rm -f "$password_snapshot"
+  fi
+  if [ -n "$pgpass_file" ]; then
+    rm -f "$pgpass_file"
   fi
 }
 # Invoked indirectly through the signal traps.
@@ -393,6 +504,45 @@ trap 'terminate_migration_runner HUP 129' HUP
 trap 'terminate_migration_runner INT 130' INT
 trap 'terminate_migration_runner TERM 143' TERM
 chmod 0600 "$sql_file"
+password_snapshot=$(mktemp "${TMPDIR:-/tmp}/agenttrust-password-snapshot.XXXXXX")
+chmod 0600 "$password_snapshot"
+if ! cp "$database_password_file" "$password_snapshot"; then
+  echo "MIGRATION_DATABASE_PASSWORD_SNAPSHOT_FAILED" >&2
+  exit 74
+fi
+chmod 0400 "$password_snapshot"
+pgpass_file=$(mktemp "${TMPDIR:-/tmp}/agenttrust-pgpass.XXXXXX")
+chmod 0600 "$pgpass_file"
+if ! escaped_database_password=$(LC_ALL=C awk '
+  {
+    if (NR != 1 || length($0) < 1 || length($0) > 1024 || $0 ~ /[^ -~]/) {
+      invalid = 1
+    }
+    value = $0
+  }
+  END {
+    if (NR != 1 || invalid) {
+      exit 1
+    }
+    for (position = 1; position <= length(value); position++) {
+      character = substr(value, position, 1)
+      if (character == "\\" || character == ":") {
+        printf "\\"
+      }
+      printf "%s", character
+    }
+    printf "\n"
+  }
+' "$password_snapshot"); then
+  echo "MIGRATION_DATABASE_PASSWORD_FILE_INVALID" >&2
+  exit 78
+fi
+printf '%s:%s:%s:%s:%s\n' \
+  "$database_host" "$database_port" "$database_name" "$database_user" \
+  "$escaped_database_password" >"$pgpass_file"
+unset escaped_database_password
+rm -f "$password_snapshot"
+password_snapshot=
 
 cat >"$sql_file" <<'SQL'
 \set ON_ERROR_STOP on
@@ -413,6 +563,20 @@ BEGIN
   END IF;
 END
 $search_path$;
+DO $transport_security$
+DECLARE negotiated_tls_version text;
+BEGIN
+  SELECT transport.version
+    INTO negotiated_tls_version
+    FROM pg_catalog.pg_stat_ssl AS transport
+   WHERE transport.pid = pg_backend_pid()
+     AND transport.ssl;
+  IF negotiated_tls_version IS DISTINCT FROM 'TLSv1.3' THEN
+    RAISE EXCEPTION 'MIGRATION_TLS_VERSION_INVALID:%',
+      COALESCE(negotiated_tls_version, 'NONE');
+  END IF;
+END
+$transport_security$;
 DO $posture$
 DECLARE
   role_is_superuser boolean;
@@ -3099,11 +3263,64 @@ cat >>"$sql_file" <<'SQL'
 SELECT pg_advisory_unlock(hashtextextended('agenttrust-production-migrations', 0));
 SQL
 
-export PGCONNECT_TIMEOUT="${AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+database_connect_timeout="${AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
+case "$database_connect_timeout" in
+  ''|*[!0-9]*) echo "MIGRATION_DATABASE_CONNECT_TIMEOUT_INVALID" >&2; exit 78 ;;
+esac
+if [ "${#database_connect_timeout}" -gt 2 ] \
+  || [ "$database_connect_timeout" -lt 1 ] || [ "$database_connect_timeout" -gt 60 ]; then
+  echo "MIGRATION_DATABASE_CONNECT_TIMEOUT_INVALID" >&2
+  exit 78
+fi
+# PostgreSQL 13 introduced libpq's channel_binding control. Older clients can
+# silently ignore an unknown environment variable, so reject them before a
+# connection is attempted. The SQL transport assertion below independently
+# proves the negotiated TLS version rather than trusting client configuration.
+if ! psql_version_output=$(LC_ALL=C psql --version 2>/dev/null); then
+  echo "MIGRATION_PSQL_CLIENT_UNSUPPORTED" >&2
+  exit 78
+fi
+case "$psql_version_output" in
+  *'
+'*) echo "MIGRATION_PSQL_CLIENT_UNSUPPORTED" >&2; exit 78 ;;
+  "psql (PostgreSQL) "*) ;;
+  *) echo "MIGRATION_PSQL_CLIENT_UNSUPPORTED" >&2; exit 78 ;;
+esac
+psql_version_prefix='psql (PostgreSQL) '
+psql_version=${psql_version_output#"$psql_version_prefix"}
+psql_version=${psql_version%% *}
+psql_major=${psql_version%%.*}
+case "$psql_major" in
+  ''|*[!0-9]*) echo "MIGRATION_PSQL_CLIENT_UNSUPPORTED" >&2; exit 78 ;;
+esac
+if [ "${#psql_major}" -gt 3 ] || [ "$psql_major" -lt 13 ]; then
+  echo "MIGRATION_PSQL_CLIENT_UNSUPPORTED" >&2
+  exit 78
+fi
+unset psql_version_output psql_version_prefix psql_version psql_major
+# Eliminate inherited libpq routing/authentication overrides before setting the
+# exact production connection contract below.
+unset PGHOSTADDR PGSERVICE PGSERVICEFILE PGOPTIONS PGTARGETSESSIONATTRS
+unset PGLOADBALANCEHOSTS PGREQUIREPEER PGKRBSRVNAME PGGSSLIB
+unset PGSSLCRL PGSSLCRLDIR PGSSLCERT PGSSLKEY PGSSLCERTMODE PGSSLSNI
+unset PGSSLMAXPROTOCOLVERSION PGREQUIRESSL PGREQUIREAUTH
+unset PGOAUTHCLIENTID PGOAUTHCLIENTSECRET PGOAUTHISSUER
+export PGCONNECT_TIMEOUT="$database_connect_timeout"
 export PGAPPNAME="agenttrust-production-migrations"
-# libpq accepts a connection URI through PGDATABASE. Keep credentials out of
-# process arguments and out of the generated SQL file.
-PGDATABASE="$database_url" psql --no-psqlrc --file "$sql_file" &
+export PGHOST="$database_host"
+export PGPORT="$database_port"
+export PGUSER="$database_user"
+export PGDATABASE="$database_name"
+export PGSSLMODE=verify-full
+export PGSSLROOTCERT="$database_ca_file"
+export PGSSLMINPROTOCOLVERSION=TLSv1.3
+export PGCHANNELBINDING=require
+export PGGSSENCMODE=disable
+export PGCLIENTENCODING=UTF8
+export PGPASSFILE="$pgpass_file"
+# Connection metadata is split across libpq variables and the password is held
+# only in the 0600 temporary passfile; neither secret nor URI enters argv.
+psql --no-psqlrc --file "$sql_file" &
 psql_pid=$!
 if wait "$psql_pid"; then
   psql_status=0

@@ -75,7 +75,10 @@ jobs:
     services:
       postgres:
         image: postgres:17.5
-        env: {POSTGRES_PASSWORD: postgres, POSTGRES_DB: agenttrust}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: agenttrust
+          POSTGRES_HOST_AUTH_METHOD: scram-sha-256
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres -d agenttrust"
@@ -133,7 +136,7 @@ jobs:
           docker exec --user root "$postgres_container" \
             chmod 0600 /var/lib/postgresql/server.key
           docker exec --user root "$postgres_container" sh -c \
-            "printf '%s\\n' \"ssl=on\" \"ssl_cert_file='/var/lib/postgresql/server.crt'\" \"ssl_key_file='/var/lib/postgresql/server.key'\" >> /var/lib/postgresql/data/postgresql.conf"
+            "printf '%s\\n' \"ssl=on\" \"ssl_min_protocol_version='TLSv1.3'\" \"ssl_cert_file='/var/lib/postgresql/server.crt'\" \"ssl_key_file='/var/lib/postgresql/server.key'\" >> /var/lib/postgresql/data/postgresql.conf"
           docker restart "$postgres_container" >/dev/null
           attempt=0
           until pg_isready -h 127.0.0.1 -U postgres -d agenttrust >/dev/null 2>&1; do
@@ -146,9 +149,11 @@ jobs:
           done
           pg_isready -h 127.0.0.1 -U postgres -d agenttrust
           tls_verified=$(PGPASSWORD=postgres PGSSLMODE=verify-full PGSSLROOTCERT="$ca_file" \
+            PGSSLMINPROTOCOLVERSION=TLSv1.3 PGCHANNELBINDING=require \
+            PGGSSENCMODE=disable \
             psql -h localhost -U postgres -d agenttrust -Atc \
-            "SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()")
-          test "$tls_verified" = t
+            "SELECT ssl::text || ':' || version FROM pg_stat_ssl WHERE pid=pg_backend_pid()")
+          test "$tls_verified" = t:TLSv1.3
           printf 'AGENT_TRUST_CI_DATABASE_CA_FILE=%s\n' "$ca_file" >> "$GITHUB_ENV"
       - name: Bootstrap least-privilege migration and application roles
         run: |
@@ -185,13 +190,14 @@ jobs:
           $application_roles$;
           SQL
       - name: Prove migration body and history rollback together
-        env:
-          PGPASSWORD: agenttrust-ci-migration-password
         run: |
           database_url_file="$RUNNER_TEMP/agenttrust-ci-database-url"
           printf 'postgresql://agenttrust_migration_ci@localhost:5432/agenttrust?sslmode=verify-full&sslrootcert=%s\n' \
             "$AGENT_TRUST_CI_DATABASE_CA_FILE" > "$database_url_file"
           chmod 0600 "$database_url_file"
+          database_password_file="$RUNNER_TEMP/agenttrust-ci-database-password"
+          printf '%s\n' 'agenttrust-ci-migration-password' > "$database_password_file"
+          chmod 0600 "$database_password_file"
           PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -U postgres -d agenttrust <<'SQL'
           CREATE TABLE public.agenttrust_schema_migrations (
             migration_path text PRIMARY KEY,
@@ -222,6 +228,7 @@ jobs:
           chmod 0600 "$atomic_manifest"
           export AGENT_TRUST_MIGRATION_MANIFEST="$atomic_manifest"
           export AGENT_TRUST_DATABASE_URL_FILE="$database_url_file"
+          export AGENT_TRUST_DATABASE_PASSWORD_FILE="$database_password_file"
           export AGENT_TRUST_DATABASE_CA_FILE="$AGENT_TRUST_CI_DATABASE_CA_FILE"
           export AGENT_TRUST_RELEASE_ID="git:sha1:$GITHUB_SHA"
           atomic_log="$RUNNER_TEMP/agenttrust-atomic-rollback.log"
@@ -248,39 +255,38 @@ jobs:
           DROP FUNCTION public.reject_first_migration_history();
           SQL
       - name: Apply and verify the production migration runner twice
-        env:
-          PGPASSWORD: agenttrust-ci-migration-password
         run: |
           database_url_file="$RUNNER_TEMP/agenttrust-ci-database-url"
           export AGENT_TRUST_MIGRATIONS_ROOT="$GITHUB_WORKSPACE/migrations"
           export AGENT_TRUST_MIGRATION_MANIFEST="$GITHUB_WORKSPACE/migrations/manifest.txt"
           export AGENT_TRUST_DATABASE_URL_FILE="$database_url_file"
+          export AGENT_TRUST_DATABASE_PASSWORD_FILE="$RUNNER_TEMP/agenttrust-ci-database-password"
           export AGENT_TRUST_DATABASE_CA_FILE="$AGENT_TRUST_CI_DATABASE_CA_FILE"
           export AGENT_TRUST_RELEASE_ID="git:sha1:$GITHUB_SHA"
           sh scripts/run-production-migrations.sh --apply
           sh scripts/run-production-migrations.sh --apply
           sh scripts/run-production-migrations.sh --check
       - name: Replay every standalone migration after the runner
-        env:
-          PGPASSWORD: agenttrust-ci-migration-password
         run: |
-          database_url=$(sed -n '1p' "$RUNNER_TEMP/agenttrust-ci-database-url")
-          test -n "$database_url"
           sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' migrations/manifest.txt |
             while IFS= read -r migration; do
               case "$migration" in
                 (*[!A-Za-z0-9._/-]*|*..*) echo "unsafe migration path: $migration" >&2; exit 1 ;;
               esac
-              PGDATABASE="$database_url" psql --no-psqlrc -v ON_ERROR_STOP=1 \
-                -f "migrations/$migration"
+              PGPASSWORD=agenttrust-ci-migration-password \
+                PGHOST=localhost PGPORT=5432 PGUSER=agenttrust_migration_ci \
+                PGDATABASE=agenttrust PGSSLMODE=verify-full \
+                PGSSLROOTCERT="$AGENT_TRUST_CI_DATABASE_CA_FILE" \
+                PGSSLMINPROTOCOLVERSION=TLSv1.3 PGCHANNELBINDING=require \
+                PGGSSENCMODE=disable PGCLIENTENCODING=UTF8 \
+                psql --no-psqlrc -v ON_ERROR_STOP=1 -f "migrations/$migration"
             done
       - name: Recheck production migration history after standalone replay
-        env:
-          PGPASSWORD: agenttrust-ci-migration-password
         run: |
           export AGENT_TRUST_MIGRATIONS_ROOT="$GITHUB_WORKSPACE/migrations"
           export AGENT_TRUST_MIGRATION_MANIFEST="$GITHUB_WORKSPACE/migrations/manifest.txt"
           export AGENT_TRUST_DATABASE_URL_FILE="$RUNNER_TEMP/agenttrust-ci-database-url"
+          export AGENT_TRUST_DATABASE_PASSWORD_FILE="$RUNNER_TEMP/agenttrust-ci-database-password"
           export AGENT_TRUST_DATABASE_CA_FILE="$AGENT_TRUST_CI_DATABASE_CA_FILE"
           export AGENT_TRUST_RELEASE_ID="git:sha1:$GITHUB_SHA"
           sh scripts/run-production-migrations.sh --check

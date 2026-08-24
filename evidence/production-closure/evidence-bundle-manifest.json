@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-24T08:32:30Z",
+  "generated_at": "2026-08-24T09:08:43Z",
   "artifacts": [
     {
       "path": "evidence/verification-summary.json",
@@ -345,7 +345,7 @@
     },
     {
       "path": "deploy/kubernetes/production-stack.yaml.tmpl",
-      "sha256": "2f22cc2bcb27273141ac8f1751c31963907f9bca63be4481268d3e30fdee72b3"
+      "sha256": "8fb55eae1b78dd1f8c2f19cf886c3fe1bd8832f164613d151c550d88a09ea655"
     },
     {
       "path": "python/production_gates/tests/test_git_provenance.py",
@@ -361,7 +361,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "0224cacedceaec31f52e9ea1af64bd6ad683b1a657d91e41c74f6b6d05a9f064"
+      "sha256": "a6131d22e4cb2974759ad7c412b651683e252b0ceda39639bd30fb8d47357793"
     },
     {
       "path": "python/production_gates/tests/test_evidence_bundle_verifier.py",
@@ -737,19 +737,19 @@
     },
     {
       "path": "scripts/run-production-migrations.sh",
-      "sha256": "669f987feb9fef04734c75c57c7299a8473036109c10c336602543e98fea156f"
+      "sha256": "668c4f298497ee0d1f7621360f61c859ec6b5a8c2c932ba83512420dc0bd1c13"
     },
     {
       "path": "scripts/validate-production-migrations.py",
-      "sha256": "864ce054de8bb69635531c6564e075b9a9c217364094547cf6a2ca990a591423"
+      "sha256": "d3b9815d0bd049e1b2cca8623ab4ac2493b158f5260e8952f1fe0aa3617bc04b"
     },
     {
       "path": "python/production_gates/tests/test_migration_idempotency.py",
-      "sha256": "9f6d6b25f21b76f424ad26c7d838c71ebb64b23e1d9d999f5f8be119c05e15ab"
+      "sha256": "cc77072499f8da1be7d546698d25d2353811cdd0c71463cf0f595175b92fb7a9"
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "16288b2445228c52e7e5a753800ad16105ce3421c1042961ba496a32369bc73b"
+      "sha256": "973bc875e407338b61b4f3fa119fdcd550075fa0a6a323311256072d46609d22"
     }
   ],
   "offline_verification_required": true,

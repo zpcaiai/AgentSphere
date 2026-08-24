@@ -144,7 +144,16 @@ are mounted separately, including `AGENT_TRUST_ORCHESTRATOR_DATABASE_PASSWORD_FI
 the execution, registry, policy, incident/release, pack marketplace, approval, PEP,
 identity, tool-proxy, evidence and audit equivalents.
 The enterprise BFF uses config-tree JDBC URL/user/password files and equivalent role/TLS
-checks. The migration URI uses `verify-full` and its mounted CA and is never put in argv.
+checks. The migration URI is passwordless, uses `verify-full` and its mounted CA, and is
+parsed into individual libpq variables so it is never put in argv. Mount the migration
+password independently as `AGENT_TRUST_DATABASE_PASSWORD_FILE`; the runner converts it to
+a mode `0600` temporary `PGPASSFILE` on the memory-backed `/tmp` volume and removes it on
+normal exit, validation failure, or termination.
+The database endpoint must support TLS 1.3 and SCRAM-SHA-256-PLUS channel binding; the
+migration runner disables inherited GSS encryption and rejects any connection contract that
+would fall back to a weaker or differently routed session. The migration image must provide
+PostgreSQL `psql`/libpq 13 or newer; the runner rejects older or unidentifiable clients and
+asserts the negotiated `TLSv1.3` version from `pg_stat_ssl` inside the migration transaction.
 
 ## Vault and secret material
 

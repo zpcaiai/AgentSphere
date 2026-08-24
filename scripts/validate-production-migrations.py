@@ -399,6 +399,19 @@ def main() -> int:
         "MIGRATION_TRANSACTION_BOUNDARY_INVALID",
         "MIGRATION_SNAPSHOT_FAILED",
         "MIGRATION_DIGEST_INVALID",
+        "AGENT_TRUST_DATABASE_PASSWORD_FILE",
+        "MIGRATION_DATABASE_PASSWORD_SNAPSHOT_FAILED",
+        'export PGHOST="$database_host"',
+        'export PGDATABASE="$database_name"',
+        'export PGPASSFILE="$pgpass_file"',
+        "PGSSLMINPROTOCOLVERSION=TLSv1.3",
+        "PGCHANNELBINDING=require",
+        "PGGSSENCMODE=disable",
+        "PGCLIENTENCODING=UTF8",
+        "unset PGPASSWORD",
+        "MIGRATION_PSQL_CLIENT_UNSUPPORTED",
+        "FROM pg_catalog.pg_stat_ssl AS transport",
+        "MIGRATION_TLS_VERSION_INVALID",
         'chmod 0400 "$migration_snapshot"',
     ):
         if required not in runner:
@@ -407,6 +420,8 @@ def main() -> int:
         fail("MIGRATION_RUNNER_NON_ATOMIC_HISTORY_WRITE")
     if 'digest_file "$migration"' in runner:
         fail("MIGRATION_RUNNER_SOURCE_DIGEST_TOCTOU")
+    if runner.index("unset PGPASSWORD") > runner.index('mode="${1:---apply}"'):
+        fail("MIGRATION_RUNNER_INHERITED_PASSWORD_EXPOSURE")
     print(f"validated {len(entries)} ordered production migrations and tenant RLS closure")
     return 0
 

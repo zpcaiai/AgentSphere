@@ -7,6 +7,10 @@ servers:
     description: Placeholder only; deployment supplies an approved endpoint.
 security:
   - workloadIdentity: []
+x-policy-artifact-responses: &policyArtifactResponses
+  '200':
+    description: Bounded tenant and Policy-bound authoritative lifecycle artifacts
+    content: {application/json: {schema: {$ref: '#/components/schemas/PolicyArtifactPage'}}}
 paths:
   /session:
     get:
@@ -252,43 +256,43 @@ paths:
       operationId: listPolicySources
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/{policyId}/analyses:
     get:
       operationId: listPolicyAnalyses
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/{policyId}/reviews:
     get:
       operationId: listPolicyReviews
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/{policyId}/simulations:
     get:
       operationId: listPolicySimulations
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/{policyId}/impact-reports:
     get:
       operationId: listPolicyImpactReports
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/{policyId}/promotions:
     get:
       operationId: listPolicyPromotions
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/{policyId}/exceptions:
     get:
       operationId: listPolicyExceptions
       security: [{enterpriseJwt: []}, {oidcSession: []}]
       parameters: [{$ref: '#/components/parameters/TenantId'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/PolicyArtifactLimit'}]
-      responses: {$ref: '#/components/x-policy-artifact-responses'}
+      responses: *policyArtifactResponses
   /tenants/{tenantId}/policies/actions:
     post:
       operationId: submitPolicyAction
@@ -497,10 +501,6 @@ paths:
           content: {application/json: {schema: {$ref: '#/components/schemas/EnterpriseActionReceipt'}}}
         '403': {description: 'Tenant, RBAC/ABAC, CSRF, or separation-of-duties denial'}
 components:
-  x-policy-artifact-responses:
-    '200':
-      description: Bounded tenant and Policy-bound authoritative lifecycle artifacts
-      content: {application/json: {schema: {$ref: '#/components/schemas/PolicyArtifactPage'}}}
   securitySchemes:
     workloadIdentity:
       type: mutualTLS

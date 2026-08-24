@@ -14,6 +14,15 @@ servers:
 security:
   - policyMtls: []
     routeBearer: []
+x-artifact-responses: &artifactResponses
+  '200':
+    description: Bounded tenant-scoped authoritative lifecycle artifacts
+    content:
+      application/json:
+        schema: {$ref: '#/components/schemas/AuthoritativePolicyArtifactPage'}
+  '400': {$ref: '#/components/responses/Error'}
+  '401': {$ref: '#/components/responses/Error'}
+  '503': {$ref: '#/components/responses/Error'}
 paths:
   /ready:
     get:
@@ -106,53 +115,44 @@ paths:
       operationId: listAuthoritativePolicySources
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
   /v1/authoritative/policies/{policy_id}/analyses:
     get:
       operationId: listAuthoritativePolicyAnalyses
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
   /v1/authoritative/policies/{policy_id}/reviews:
     get:
       operationId: listAuthoritativePolicyReviews
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
   /v1/authoritative/policies/{policy_id}/simulations:
     get:
       operationId: listAuthoritativePolicySimulationsAndShadowEvaluations
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
   /v1/authoritative/policies/{policy_id}/impact-reports:
     get:
       operationId: listAuthoritativePolicyImpactReports
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
   /v1/authoritative/policies/{policy_id}/promotions:
     get:
       operationId: listAuthoritativePolicyPromotionsAndRollbacks
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
   /v1/authoritative/policies/{policy_id}/exceptions:
     get:
       operationId: listAuthoritativePolicyExceptions
       x-required-scope: policy:query
       parameters: [{$ref: '#/components/parameters/Tenant'}, {$ref: '#/components/parameters/PolicyId'}, {$ref: '#/components/parameters/ArtifactLimit'}]
-      responses: {$ref: '#/components/x-artifact-responses'}
+      responses: *artifactResponses
 components:
-  x-artifact-responses:
-    '200':
-      description: Bounded tenant-scoped authoritative lifecycle artifacts
-      content:
-        application/json:
-          schema: {$ref: '#/components/schemas/AuthoritativePolicyArtifactPage'}
-    '400': {$ref: '#/components/responses/Error'}
-    '401': {$ref: '#/components/responses/Error'}
-    '503': {$ref: '#/components/responses/Error'}
   securitySchemes:
     policyMtls:
       type: mutualTLS

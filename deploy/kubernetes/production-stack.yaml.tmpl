@@ -706,6 +706,7 @@ spec:
     roleName: "@@VAULT_MIGRATION_ROLE@@"
     objects: |
       - {objectName: "database-url", secretPath: "@@VAULT_MIGRATION_PATH@@", secretKey: "database_url", filePermission: 0o440}
+      - {objectName: "database-password", secretPath: "@@VAULT_MIGRATION_PATH@@", secretKey: "database_password", filePermission: 0o440}
       - {objectName: "database-ca.pem", secretPath: "@@VAULT_MIGRATION_PATH@@", secretKey: "database_ca", filePermission: 0o440}
 ---
 apiVersion: v1
@@ -2377,6 +2378,7 @@ spec:
           args: ["--apply"]
           env:
             - {name: AGENT_TRUST_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/database-url}
+            - {name: AGENT_TRUST_DATABASE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/database-password}
             - {name: AGENT_TRUST_DATABASE_CA_FILE, value: /var/run/agenttrust/secrets/database-ca.pem}
             - {name: AGENT_TRUST_RELEASE_ID, value: "@@RELEASE_ID@@"}
             - {name: AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS, value: "10"}
