@@ -51,11 +51,10 @@ class PolicyAuthorityGatewayTest {
         assertThrows(ControlUnavailableException.class,
             () -> PolicyAuthorityGateway.requirePolicyPage(page, TENANT, null, 50));
 
-        page = policyPage();
-        page.put("safe_success", true);
-        ObjectNode finalPage = page;
+        ObjectNode unknownFieldPage = policyPage();
+        unknownFieldPage.put("safe_success", true);
         assertThrows(ControlUnavailableException.class,
-            () -> PolicyAuthorityGateway.requirePolicyPage(finalPage, TENANT, null, 50));
+            () -> PolicyAuthorityGateway.requirePolicyPage(unknownFieldPage, TENANT, null, 50));
     }
 
     @Test

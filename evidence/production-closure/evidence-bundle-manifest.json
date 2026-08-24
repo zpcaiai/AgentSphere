@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-24T09:34:55Z",
+  "generated_at": "2026-08-24T09:46:04Z",
   "artifacts": [
     {
       "path": "evidence/verification-summary.json",
@@ -249,7 +249,7 @@
     },
     {
       "path": "Cargo.lock",
-      "sha256": "cd706d3da1925a17ba5a501b4b07a6f22b5a31ececbbe63b9bac2bead3f70534"
+      "sha256": "69eb4b73a122ba23b1e9a7e4cbd3f81cec22f36cf8ca0dbf855b0b27c2194009"
     },
     {
       "path": "rust/crates/identity/Cargo.toml",

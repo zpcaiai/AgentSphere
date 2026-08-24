@@ -454,7 +454,7 @@ dependencies = [
  "http",
  "nix",
  "parking_lot",
- "rand",
+ "rand 0.8.7",
  "reqwest",
  "ring",
  "rustls",
