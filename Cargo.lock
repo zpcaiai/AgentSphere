@@ -43,6 +43,7 @@ dependencies = [
 name = "agent-trust-agent-registry-posture"
 version = "0.1.0"
 dependencies = [
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-pack-supply-chain",
  "async-trait",
@@ -75,7 +76,9 @@ dependencies = [
 name = "agent-trust-audit-retention"
 version = "0.1.0"
 dependencies = [
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
+ "agent-trust-evidence-evaluator",
  "async-trait",
  "axum",
  "axum-server",
@@ -102,6 +105,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent-trust-bounded-http"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "agent-trust-cn-standard-adapter"
 version = "0.1.0"
 dependencies = [
@@ -123,6 +135,7 @@ version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
  "agent-trust-audit-retention",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "agent-trust-pack-supply-chain",
@@ -177,6 +190,7 @@ name = "agent-trust-data-governance"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "async-trait",
@@ -212,6 +226,7 @@ name = "agent-trust-domain-risk-packs"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-industrial-edge-gateway",
  "agent-trust-pack-supply-chain",
@@ -298,6 +313,7 @@ name = "agent-trust-enterprise-control"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "async-trait",
@@ -334,6 +350,7 @@ dependencies = [
 name = "agent-trust-evidence-evaluator"
 version = "0.1.0"
 dependencies = [
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-tool-proxy",
  "agent-trust-transaction-ledger",
@@ -422,6 +439,7 @@ version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
  "agent-trust-audit-retention",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "agent-trust-runtime-anomaly",
@@ -482,6 +500,7 @@ dependencies = [
  "agent-trust-audit-retention",
  "agent-trust-contracts",
  "agent-trust-data-governance",
+ "agent-trust-evidence-evaluator",
  "agent-trust-gateway",
  "agent-trust-identity",
  "agent-trust-model-gateway",
@@ -531,6 +550,7 @@ name = "agent-trust-model-gateway"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "async-trait",
  "axum",
@@ -567,6 +587,7 @@ name = "agent-trust-pack-marketplace"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "agent-trust-incident-release-gate",
@@ -603,6 +624,7 @@ name = "agent-trust-pack-supply-chain"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "async-trait",
  "axum",
@@ -637,6 +659,7 @@ name = "agent-trust-platform-sre"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "async-trait",
@@ -674,6 +697,7 @@ version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
  "agent-trust-agent-registry-posture",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "agent-trust-runtime-anomaly",
@@ -709,6 +733,7 @@ name = "agent-trust-policy-pep"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-identity",
  "agent-trust-registry",
@@ -868,6 +893,7 @@ name = "agent-trust-runtime-anomaly"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "async-trait",
@@ -926,6 +952,7 @@ name = "agent-trust-security-evaluation-lab"
 version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-gateway",
  "agent-trust-incident-release-gate",

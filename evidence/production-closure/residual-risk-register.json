@@ -41,15 +41,15 @@
       "risk_id": "R-006",
       "severity": "P2",
       "owner": "UNASSIGNED",
-      "status": "CLOSED",
-      "description": "OPA 1.19.0 ran from a digest-pinned official container with network disabled and passed all 25 Rego tests."
+      "status": "OPEN",
+      "description": "OPA 1.19.0 previously ran from a digest-pinned official container with network disabled and passed 25 Rego tests, but that historical baseline is not evidence for the current WORKTREE-NO-GIT candidate; the current Rego gate remains NOT_RUN_RESOURCE_FREEZE."
     },
     {
       "risk_id": "R-007",
       "severity": "P2",
       "owner": "UNASSIGNED",
-      "status": "CLOSED",
-      "description": "Local capacity recovered; the full 164-test Rust workspace, warnings-denied Clippy, 53 Python tests, 33 migrations applied twice, and the real PostgreSQL adapter test passed on the current worktree."
+      "status": "OPEN",
+      "description": "The 164-test Rust workspace, warnings-denied Clippy, 53 Python tests, 33-migration double application and PostgreSQL adapter result are historical 2026-08-06 baselines, not evidence for the current WORKTREE-NO-GIT candidate. The current expanded 66-migration workspace has only lightweight static gates in this evidence refresh; full Cargo, Java, Vue and database validation remains NOT_RUN_RESOURCE_FREEZE."
     },
     {
       "risk_id": "R-008",

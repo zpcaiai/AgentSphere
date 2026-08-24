@@ -215,6 +215,6 @@
     {"condition_id": "NETWORK_STORAGE_CONTROL_PLANE_FAULTS", "probes": [{"path": "python/platform_sre/tests/test_chaos_runner.py", "test": "test_production_context_is_denied"}]},
     {"condition_id": "SUSTAINED_PRODUCTION_LOAD", "probes": [{"path": "python/platform_sre/tests/test_http_load_gate.py", "test": "test_real_local_http_concurrency_is_measured"}]},
     {"condition_id": "CUSTOMER_EXPERT_INDEPENDENT_ACCEPTANCE", "probes": [{"path": "rust/crates/production-closure/src/lib.rs", "test": "customer_and_independent_reviewer_sign_enterprise_acceptance"}, {"path": "rust/crates/production-closure/src/lib.rs", "test": "external_assurance_rejects_same_organization_wrong_role_and_tampering"}]},
-    {"condition_id": "IMMUTABLE_GIT_RELEASE_PROVENANCE", "probes": [{"path": "python/production_gates/tests/test_git_provenance.py", "test": "test_real_git_objects_cleanliness_and_remote_are_verified"}, {"path": "python/production_gates/tests/test_render_production_runtime.py", "test": "test_rejects_worktree_release"}]}
+    {"condition_id": "IMMUTABLE_GIT_RELEASE_PROVENANCE", "probes": [{"path": "python/production_gates/tests/test_git_provenance.py", "test": "test_real_git_objects_cleanliness_and_remote_are_verified"}, {"path": "python/production_gates/tests/test_production_deployment.py", "test": "test_full_stack_rejects_worktree_release"}]}
   ]
 }

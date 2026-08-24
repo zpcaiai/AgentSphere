@@ -1,26 +1,26 @@
 {
   "schema_version": "agenttrust.production-readiness-report.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "evaluated_at": "2026-08-06T05:01:53Z",
+  "evaluated_at": "2026-08-24T06:53:49Z",
   "eligible": false,
   "batch_status_summary": {"IN_PROGRESS": 36, "EVIDENCE_VERIFIED": 0},
   "local_code_gates": {
-    "rust_changed_crates": "PASS_78",
-    "rust_workspace_current_run": "PASS_164",
-    "rust_clippy_current_run": "PASS_DENY_WARNINGS",
-    "rustfmt": "PASS",
-    "python": "PASS_53",
-    "spring_boot_java21": "PASS_6",
-    "vue_production_build": "PASS",
-    "contracts": "PASS",
-    "enterprise_openapi_parity": "PASS",
-    "json_schemas": "PASS_59",
-    "runtime_json_assets": "PASS_94",
-    "postgresql_migrations_twice": "PASS_33",
-    "enterprise_non_bypass_rls": "PASS_LOCAL",
-    "global_tenant_table_rls": "PASS_84_ENABLE_FORCE",
-    "postgresql_rust_persistence": "PASS_LOCAL",
-    "current_rego_run": "PASS_25_OPA_1_19_0_PINNED"
+    "rust_changed_crates": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_78_NOT_CURRENT_RELEASE",
+    "rust_workspace_current_run": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_164_NOT_CURRENT_RELEASE",
+    "rust_clippy_current_run": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_NOT_CURRENT_RELEASE",
+    "rustfmt": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_NOT_CURRENT_RELEASE",
+    "python_full_suite": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_53_NOT_CURRENT_RELEASE",
+    "spring_boot_java21": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_6_NOT_CURRENT_RELEASE",
+    "vue_production_build": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_NOT_CURRENT_RELEASE",
+    "contracts_full_conformance": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_NOT_CURRENT_RELEASE",
+    "enterprise_openapi_parity": "PASS_STATIC_CURRENT_WORKTREE_31",
+    "json_schemas": "PASS_PARSE_ONLY_CURRENT_WORKTREE_187_META_SCHEMA_NOT_RUN_DEPENDENCY_UNAVAILABLE",
+    "runtime_json_assets": "PASS_STATIC_CURRENT_WORKTREE_225",
+    "postgresql_migrations": "PASS_STATIC_MANIFEST_66_DATABASE_APPLY_NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_33_NOT_CURRENT_RELEASE",
+    "enterprise_non_bypass_rls": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_NOT_CURRENT_RELEASE",
+    "global_tenant_table_rls": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_84_NOT_CURRENT_RELEASE",
+    "postgresql_rust_persistence": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_NOT_CURRENT_RELEASE",
+    "current_rego_run": "NOT_RUN_RESOURCE_FREEZE_HISTORICAL_PASS_25_OPA_1_19_0_NOT_CURRENT_RELEASE"
   },
   "non_production_protocol_baselines": {
     "linux_oci_runc": "PASS_PRODUCTION_EVIDENCE_FALSE",
@@ -56,7 +56,8 @@
     "REAL_MULTI_ZONE_HA_DR_RESTORE_NOT_RUN",
     "REPRESENTATIVE_PRODUCTION_LOAD_NOT_RUN",
     "REAL_ENTERPRISE_ACCEPTANCE_NOT_RUN",
-    "IMMUTABLE_GIT_PROVENANCE_NOT_CONFIGURED"
+    "IMMUTABLE_GIT_PROVENANCE_NOT_CONFIGURED",
+    "CURRENT_RELEASE_HEAVY_VALIDATION_NOT_RUN_RESOURCE_FREEZE"
   ],
   "production_closure_certificate": "NOT_ISSUED"
 }

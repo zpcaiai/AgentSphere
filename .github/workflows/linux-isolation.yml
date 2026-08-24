@@ -13,7 +13,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {toolchain: "1.89.0"}
       - run: test "$(uname -s)" = Linux && test -x "$(command -v runsc)" && test -f /sys/fs/cgroup/cgroup.controllers
-      - run: cargo test -p agent-trust-sandbox-runtime --all-targets
+      - run: cargo test --locked -p agent-trust-sandbox-runtime --all-targets
       - run: ./scripts/run-linux-isolation-gate.sh
       - uses: actions/upload-artifact@v4
         if: always()

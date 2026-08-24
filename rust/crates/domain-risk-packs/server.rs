@@ -6,7 +6,15 @@ use crate::authority::{
     DomainRuntimeAuthority,DomainRuntimePort,DomainRuntimeReceipt,
 };
 use crate::production::DomainExecutionEnvelope;
-use agent_trust_contracts::{ActionHash,ExecutionId,IdempotencyKey,TaskId,TenantId,AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,AuthorityEvidenceControlBinding,AuthorityEvidenceEventRequest,AuthorityEvidenceSourceKind,EVIDENCE_EVENT_SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,EvidenceEventDraft,EvidenceEventType,SignedAuthorityEvidenceReceipt};
+use agent_trust_bounded_http::read_bounded_body;
+use agent_trust_contracts::{
+    APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION, ActionHash, ApprovalReviewEvidence,
+    ApprovalReviewEvidenceIssueRequest, AuthorityEvidenceControlBinding,
+    AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION as EVIDENCE_SCHEMA_VERSION,
+    EvidenceEventDraft, EvidenceEventType, ExecutionId, IdempotencyKey,
+    SignedAuthorityEvidenceReceipt, TaskId, TenantId,
+    AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,
+};
 use agent_trust_pack_supply_chain::server::{EvidenceEventKeyring,ExactPeerIdentity,ExactPeerIdentityAcceptor,SupplyDependency};
 use agent_trust_pack_supply_chain::production::AuthorityEvidenceDelivery;
 use async_trait::async_trait;
@@ -30,6 +38,7 @@ pub const DOMAIN_READINESS_SCHEMA:&str="agenttrust.domain-runtime-readiness.v1";
 pub const DOMAIN_EXECUTE_SCOPE:&str="domain-runtime:execute";
 pub const DOMAIN_READ_SCOPE:&str="domain-runtime:read";
 pub const DOMAIN_RECOVER_SCOPE:&str="domain-runtime:recover";
+pub const DOMAIN_APPROVAL_REVIEW_EVIDENCE_SCOPE:&str="domain-runtime:approval-review-evidence";
 
 #[derive(Debug,Clone)]
 pub struct DomainServerConfig{
@@ -38,7 +47,7 @@ pub struct DomainServerConfig{
     pub allowed_client_identities:BTreeSet<String>,
 }
 
-#[derive(Clone)]struct ApiState{authority:DomainRuntimeAuthority,tokens:Arc<DomainTokenAuthorizer>}
+#[derive(Clone)]struct ApiState{authority:DomainRuntimeAuthority,tokens:Arc<DomainTokenAuthorizer>,review_producer:Arc<HttpDomainRuntimePort>}
 #[derive(Clone)]struct ReadyState{authority:DomainRuntimeAuthority}
 
 #[derive(Debug,Deserialize)]#[serde(deny_unknown_fields)]
@@ -55,7 +64,7 @@ impl DomainTokenAuthorizer{
         if document.schema_version!="agenttrust.domain-runtime-token-bindings.v1"||document.bindings.is_empty()||document.bindings.len()>10_000{return Err(DomainAuthorityError::ConfigurationInvalid);}
         let mut bindings=BTreeSet::new();let mut physical=BTreeSet::new();
         for binding in document.bindings{
-            if !allowed.contains(&binding.client_identity)||!matches!(binding.scope.as_str(),DOMAIN_EXECUTE_SCOPE|DOMAIN_READ_SCOPE|DOMAIN_RECOVER_SCOPE)
+            if !allowed.contains(&binding.client_identity)||!matches!(binding.scope.as_str(),DOMAIN_EXECUTE_SCOPE|DOMAIN_READ_SCOPE|DOMAIN_RECOVER_SCOPE|DOMAIN_APPROVAL_REVIEW_EVIDENCE_SCOPE)
                 ||!canonical_uuid(&binding.tenant_id)||!identifier(&binding.subject,512)||!digest(&binding.token_sha256)
                 ||!physical.insert(binding.token_sha256.clone())||!bindings.insert(TokenAuthorization{client_identity:binding.client_identity,tenant_id:binding.tenant_id,subject:binding.subject,scope:binding.scope,token_sha256:binding.token_sha256}){return Err(DomainAuthorityError::ConfigurationInvalid);}
         }
@@ -79,8 +88,38 @@ impl HttpDomainRuntimePort{
             ||!valid_https_root(&coordinator.endpoint)||!valid_https_root(&evidence.endpoint)
             ||coordinator.token_file==evidence.token_file||read_token(&coordinator.token_file)?==read_token(&evidence.token_file)?
             ||!identifier(&coordinator.readiness_schema,128)||!identifier(&evidence.readiness_schema,128)
-            ||!(evidence_client_identity.starts_with("DNS:")||evidence_client_identity.starts_with("URI:"))||!identifier(&evidence_client_identity,256){return Err(DomainAuthorityError::ConfigurationInvalid);}
+            ||!evidence_client_identity.strip_prefix("DNS:").or_else(||evidence_client_identity.strip_prefix("URI:")).is_some_and(|identity|!identity.is_empty())
+            ||!identifier(&evidence_client_identity,256){return Err(DomainAuthorityError::ConfigurationInvalid);}
         Ok(Self{client,coordinator,evidence,evidence_keyring,evidence_client_identity})
+    }
+
+    pub async fn issue_approval_review_evidence(
+        &self,
+        issue: &ApprovalReviewEvidenceIssueRequest,
+    )->Result<ApprovalReviewEvidence,DomainAuthorityError>{
+        let request=issue.to_authority_event(&self.evidence_client_identity,chrono::Utc::now())
+            .map_err(|_|DomainAuthorityError::RequestInvalid)?;
+        let payload_digest=request.event.payload_hash.clone();
+        let response=self.client.post(self.evidence.endpoint.join("v1/evidence/authority-events").map_err(|_|DomainAuthorityError::ConfigurationInvalid)?)
+            .bearer_auth(read_token(&self.evidence.token_file)?)
+            .header("X-AgentTrust-Tenant-Id",&issue.material.tenant_id)
+            .header("Idempotency-Key",&issue.idempotency_key)
+            .header("X-AgentTrust-Authority-Event-Id",&issue.request_id)
+            .header("X-AgentTrust-Payload-Digest",&payload_digest)
+            .json(&request).send().await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
+        if response.status()==StatusCode::CONFLICT{return Err(DomainAuthorityError::IdempotencyConflict);}
+        if !response.status().is_success()||response.content_length().is_some_and(|length|length>262_144){return Err(DomainAuthorityError::DependencyUnavailable);}
+        let bytes=read_bounded_body(response,262_144).await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
+        if bytes.is_empty(){return Err(DomainAuthorityError::DependencyUnavailable);}
+        let receipt:SignedAuthorityEvidenceReceipt=serde_json::from_slice(&bytes).map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
+        self.evidence_keyring.verify_for_source_kind(
+            &receipt,&request,&payload_digest,&self.evidence_client_identity,
+            AuthorityEvidenceSourceKind::AuthenticatedEvent,
+        ).map_err(|_|DomainAuthorityError::ReceiptInvalid)?;
+        Ok(ApprovalReviewEvidence{
+            schema_version:APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION.into(),
+            material:issue.material.clone(),authority_request:request,receipt,
+        })
     }
 }
 #[derive(Debug,Deserialize)]#[serde(deny_unknown_fields)]struct DependencyReadiness{schema_version:String,ready:bool}
@@ -98,7 +137,7 @@ impl DomainRuntimePort for HttpDomainRuntimePort{
             .header("X-AgentTrust-Fence-Digest",&envelope.binding.fence_digest).header("X-AgentTrust-Request-Digest",request_digest)
             .json(envelope).send().await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
         if !response.status().is_success()||response.content_length().is_some_and(|length|length>1_048_576){return Err(DomainAuthorityError::DependencyUnavailable);}
-        let bytes=response.bytes().await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;if bytes.is_empty()||bytes.len()>1_048_576{return Err(DomainAuthorityError::DependencyUnavailable);}
+        let bytes=read_bounded_body(response,1_048_576).await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;if bytes.is_empty(){return Err(DomainAuthorityError::DependencyUnavailable);}
         serde_json::from_slice(&bytes).map_err(|_|DomainAuthorityError::DependencyUnavailable)
     }
     async fn deliver_evidence(&self,tenant_id:Uuid,idempotency_key:&str,payload:&serde_json::Value,payload_digest:&str)->Result<AuthorityEvidenceDelivery,DomainAuthorityError>{
@@ -121,26 +160,42 @@ impl DomainRuntimePort for HttpDomainRuntimePort{
         let response=self.client.post(self.evidence.endpoint.join("v1/evidence/authority-events").map_err(|_|DomainAuthorityError::ConfigurationInvalid)?)
             .bearer_auth(read_token(&self.evidence.token_file)?).header("X-AgentTrust-Tenant-Id",tenant_id.to_string()).header("Idempotency-Key",idempotency_key)
             .header("X-AgentTrust-Authority-Event-Id",event_id.to_string()).header("X-AgentTrust-Payload-Digest",payload_digest).json(&request).send().await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
-        if !response.status().is_success()||response.content_length().is_some_and(|length|length>262_144){return Err(DomainAuthorityError::DependencyUnavailable);}let bytes=response.bytes().await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
+        if !response.status().is_success()||response.content_length().is_some_and(|length|length>262_144){return Err(DomainAuthorityError::DependencyUnavailable);}let bytes=read_bounded_body(response,262_144).await.map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty()||bytes.len()>262_144{return Err(DomainAuthorityError::DependencyUnavailable);}let receipt:SignedAuthorityEvidenceReceipt=serde_json::from_slice(&bytes).map_err(|_|DomainAuthorityError::DependencyUnavailable)?;
         self.evidence_keyring.verify(&receipt,&request,payload_digest,&self.evidence_client_identity).map_err(|_|DomainAuthorityError::ReceiptInvalid)
     }
     async fn ready(&self)->bool{dependency_ready(&self.client,&self.coordinator).await&&dependency_ready(&self.client,&self.evidence).await}
 }
 
-async fn dependency_ready(client:&reqwest::Client,dependency:&SupplyDependency)->bool{let Ok(token)=read_token(&dependency.token_file)else{return false;};let Ok(url)=dependency.endpoint.join("ready")else{return false;};let Ok(response)=client.get(url).bearer_auth(token).send().await else{return false;};if !response.status().is_success()||response.content_length().is_some_and(|value|value>4096){return false;}let Ok(bytes)=response.bytes().await else{return false;};!bytes.is_empty()&&bytes.len()<=4096&&serde_json::from_slice::<DependencyReadiness>(&bytes).is_ok_and(|value|value.ready&&value.schema_version==dependency.readiness_schema)}
+async fn dependency_ready(client:&reqwest::Client,dependency:&SupplyDependency)->bool{let Ok(token)=read_token(&dependency.token_file)else{return false;};let Ok(url)=dependency.endpoint.join("ready")else{return false;};let Ok(response)=client.get(url).bearer_auth(token).send().await else{return false;};if !response.status().is_success()||response.content_length().is_some_and(|value|value>4096){return false;}let Ok(bytes)=read_bounded_body(response,4_096).await else{return false;};!bytes.is_empty()&&serde_json::from_slice::<DependencyReadiness>(&bytes).is_ok_and(|value|value.ready&&value.schema_version==dependency.readiness_schema)}
 
-pub fn router(authority:DomainRuntimeAuthority,tokens:Arc<DomainTokenAuthorizer>)->Router{
+pub fn router(authority:DomainRuntimeAuthority,tokens:Arc<DomainTokenAuthorizer>,review_producer:Arc<HttpDomainRuntimePort>)->Router{
     Router::new().route("/ready",get(data_ready))
         .route("/v1/domain-runtime/executions",post(execute))
+        .route("/v1/domain-runtime/approval-review-evidence",post(issue_approval_review_evidence))
         .route("/v1/authoritative/domain-runtime/executions",get(authoritative_state))
         .route("/v1/domain-runtime/recoveries/{tenant_id}",post(recover))
-        .layer(DefaultBodyLimit::max(1_048_576)).layer(TimeoutLayer::new(Duration::from_secs(60))).with_state(ApiState{authority,tokens})
+        .layer(DefaultBodyLimit::max(1_048_576)).layer(TimeoutLayer::new(Duration::from_secs(60))).with_state(ApiState{authority,tokens,review_producer})
 }
 async fn data_ready(State(state):State<ApiState>)->Result<Json<serde_json::Value>,ApiError>{ready(&state.authority).await}
 async fn execute(State(state):State<ApiState>,Extension(ExactPeerIdentity(peer)):Extension<ExactPeerIdentity>,headers:HeaderMap,Json(body):Json<DomainExecutionEnvelope>)->Result<Json<DomainExecutionResult>,ApiError>{
     exact_headers(&headers,&body)?;let subject=state.tokens.authorize(&peer,body.binding.tenant_id,DOMAIN_EXECUTE_SCOPE,&headers)?;
     if subject!=body.actor_subject{return Err(DomainAuthorityError::PrincipalDenied.into());}Ok(Json(state.authority.execute(body).await?))
+}
+async fn issue_approval_review_evidence(State(state):State<ApiState>,Extension(ExactPeerIdentity(peer)):Extension<ExactPeerIdentity>,headers:HeaderMap,Json(body):Json<ApprovalReviewEvidenceIssueRequest>)->Result<Json<ApprovalReviewEvidence>,ApiError>{
+    body.material.validate().map_err(|_|DomainAuthorityError::RequestInvalid)?;
+    let tenant=Uuid::parse_str(&body.material.tenant_id).map_err(|_|DomainAuthorityError::RequestInvalid)?;
+    let payload_digest=body.material.payload_digest().map_err(|_|DomainAuthorityError::RequestInvalid)?;
+    if tenant.to_string()!=body.material.tenant_id
+        ||single_header(&headers,"x-agenttrust-tenant-id")!=Some(body.material.tenant_id.as_str())
+        ||single_header(&headers,"idempotency-key")!=Some(body.idempotency_key.as_str())
+        ||single_header(&headers,"x-agenttrust-authority-event-id")!=Some(body.request_id.as_str())
+        ||single_header(&headers,"x-agenttrust-payload-digest")!=Some(payload_digest.as_str()){
+        return Err(DomainAuthorityError::RequestInvalid.into());
+    }
+    let subject=state.tokens.authorize(&peer,tenant,DOMAIN_APPROVAL_REVIEW_EVIDENCE_SCOPE,&headers)?;
+    if subject!=body.actor_subject{return Err(DomainAuthorityError::PrincipalDenied.into());}
+    Ok(Json(state.review_producer.issue_approval_review_evidence(&body).await?))
 }
 #[derive(Debug,Deserialize)]#[serde(deny_unknown_fields)]struct StateQuery{tenant_id:Uuid,limit:Option<u16>,cursor:Option<String>}
 async fn authoritative_state(State(state):State<ApiState>,Extension(ExactPeerIdentity(peer)):Extension<ExactPeerIdentity>,headers:HeaderMap,Query(query):Query<StateQuery>)->Result<Json<AuthoritativeDomainExecutionPage>,ApiError>{
@@ -159,10 +214,11 @@ pub async fn serve(config:DomainServerConfig,application:Router,authority:Domain
     if !(config.management_address.ip().is_loopback()||config.management_address.ip().is_unspecified())||config.data_address==config.management_address{return Err(DomainAuthorityError::ConfigurationInvalid);}
     let acceptor=ExactPeerIdentityAcceptor::new(&config.tls_ca_file,&config.tls_certificate_file,&config.tls_private_key_file,config.allowed_client_identities).map_err(|_|DomainAuthorityError::ConfigurationInvalid)?;
     let listener=tokio::net::TcpListener::bind(config.management_address).await.map_err(|_|DomainAuthorityError::ConfigurationInvalid)?;
-    let management=Router::new().route("/ready",get(management_ready)).with_state(ReadyState{authority:authority.clone()});
+    let management=Router::new().route("/live",get(management_live)).route("/ready",get(management_ready)).with_state(ReadyState{authority:authority.clone()});
     let data=async move{axum_server::bind(config.data_address).acceptor(acceptor).serve(application.into_make_service()).await.map_err(|_|DomainAuthorityError::DependencyUnavailable)};
     let management=async move{axum::serve(listener,management).await.map_err(|_|DomainAuthorityError::DependencyUnavailable)};tokio::try_join!(data,management)?;Ok(())
 }
+async fn management_live()->Json<serde_json::Value>{Json(serde_json::json!({"schema_version":DOMAIN_READINESS_SCHEMA,"live":true}))}
 async fn management_ready(State(state):State<ReadyState>)->Result<Json<serde_json::Value>,ApiError>{ready(&state.authority).await}
 async fn ready(authority:&DomainRuntimeAuthority)->Result<Json<serde_json::Value>,ApiError>{if !authority.ready().await{return Err(DomainAuthorityError::DependencyUnavailable.into());}Ok(Json(serde_json::json!({"schema_version":DOMAIN_READINESS_SCHEMA,"ready":true,"database_ready":true,"executor_ready":true,"evidence_ready":true})))}
 struct ApiError(DomainAuthorityError);impl From<DomainAuthorityError> for ApiError{fn from(value:DomainAuthorityError)->Self{Self(value)}}

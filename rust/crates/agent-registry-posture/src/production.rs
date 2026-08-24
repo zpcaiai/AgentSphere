@@ -6,6 +6,7 @@
 //! chain and outbox in the same database transaction.
 
 use crate::{LifecycleState, ObservationSource, PostureKind, RegistryError, RelationshipKind};
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::TenantId;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -495,11 +496,10 @@ impl HttpLifecyclePropagationPort {
         if !response.status().is_success() {
             return Err(RegistryError::PropagationFailed);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| RegistryError::PropagationFailed)?;
-        if bytes.is_empty() || bytes.len() > 65_536 {
+        if bytes.is_empty() {
             return Err(RegistryError::PropagationFailed);
         }
         let receipt: ExternalEvidenceReceipt =

@@ -1,6 +1,7 @@
 //! TLS 1.3/mTLS production boundary for the security-evaluation authority.
 
 use crate::authority::*;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
     AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
@@ -471,8 +472,7 @@ impl SecurityEvalOrchestratorPort for HttpSecurityEvalOrchestrator {
         {
             return Err(SecurityEvalAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 65_536 {
@@ -708,8 +708,7 @@ impl SecurityEvalEvidencePort for HttpSecurityEvalEvidence {
         {
             return Err(SecurityEvalAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 65_536 {
@@ -890,8 +889,7 @@ impl IsolatedRunnerPort for HttpIsolatedRunner {
         {
             return Err(SecurityEvalAuthorityError::OutcomeUnknown);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 262_144)
             .await
             .map_err(|_| SecurityEvalAuthorityError::OutcomeUnknown)?;
         if bytes.is_empty() || bytes.len() > 262_144 {
@@ -965,7 +963,7 @@ async fn dependency_ready(
     {
         return false;
     }
-    let Ok(bytes) = response.bytes().await else {
+    let Ok(bytes) = read_bounded_body(response, 4_096).await else {
         return false;
     };
     if bytes.is_empty() || bytes.len() > 4_096 {

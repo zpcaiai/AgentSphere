@@ -31,12 +31,21 @@ development Gateway remains a separate explicitly gated binary.
 ```bash
 cargo build --locked --release -p agent-trust-production-runtime
 python3 scripts/audit-production-runtime.py
-python3 scripts/render-production-runtime.py \
-  --template deploy/kubernetes/production-runtime.yaml.tmpl \
-  --runtime-image agenttrust/production-runtime@sha256:<digest> \
-  --envoy-image envoyproxy/envoy@sha256:<digest> \
-  --release-id <immutable-release-id> --output /absolute/new/manifest.yaml
+python3 scripts/render-production-stack.py \
+  --template deploy/kubernetes/production-stack.yaml.tmpl \
+  --values /protected/release/production-stack-values.json \
+  --runtime-config /protected/release/production-runtime.json \
+  --git-provenance /protected/release/signed-git-provenance.json \
+  --git-provenance-keyring /protected/release/git-provenance-keyring.json \
+  --release-binding /protected/release/signed-release-binding.json \
+  --release-binding-keyring /protected/release/release-binding-keyring.json \
+  --output /absolute/new/manifest.yaml
 ```
+
+The full-stack template is the only production deployment unit. The historical
+`production-runtime.yaml.tmpl` and `render-production-runtime.py` pair may be used only for
+component-level compatibility checks; it omits the authority, migration, identity, secret and
+network-policy inventory required by a production release.
 
 The example configuration is `config/production-runtime.example.json`. It contains no usable
 credentials and must be rendered with deployment-owned endpoints, CA material, workload identity,

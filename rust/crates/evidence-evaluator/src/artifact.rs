@@ -1,6 +1,7 @@
 //! Content-addressed production adapter for an HTTPS WORM/object-lock gateway.
 
 use crate::{EvidenceError, StoredArtifact};
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{ArtifactRef, IdempotencyKey, TaskId, TenantId};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -259,16 +260,16 @@ impl WormArtifactPort for HttpWormArtifactStore {
             .send()
             .await
             .map_err(|_| EvidenceError::DependencyUnavailable)?;
-        if !response.status().is_success() || response.content_length().unwrap_or(65_537) > 65_536 {
+        if !response.status().is_success()
+            || response
+                .content_length()
+                .is_some_and(|length| length > 65_536)
+        {
             return Err(EvidenceError::DependencyUnavailable);
         }
-        let body = response
-            .bytes()
+        let body = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| EvidenceError::DependencyUnavailable)?;
-        if body.len() > 65_536 {
-            return Err(EvidenceError::DependencyUnavailable);
-        }
         let receipt: WormObjectReceipt =
             serde_json::from_slice(&body).map_err(|_| EvidenceError::DependencyUnavailable)?;
         receipt.verify(&request.tenant_id, &digest, request.retention_until)?;
@@ -293,10 +294,10 @@ impl WormArtifactPort for HttpWormArtifactStore {
         if !response.status().is_success() || response.content_length().unwrap_or(4_097) > 4_096 {
             return false;
         }
-        response
-            .json::<serde_json::Value>()
+        read_bounded_body(response, 4_096)
             .await
             .ok()
+            .and_then(|body| serde_json::from_slice::<serde_json::Value>(&body).ok())
             .is_some_and(|value| {
                 value.get("schema_version").and_then(|value| value.as_str())
                     == Some(WORM_READINESS_SCHEMA_VERSION)

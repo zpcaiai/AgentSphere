@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/release/signed-git-provenance.schema.json",
+  "title": "Signed immutable Git provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "report", "report_digest", "issuer", "key_id", "key_usage",
+    "algorithm", "signed_at", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-git-provenance.v1"},
+    "report": {"$ref": "#/$defs/report"},
+    "report_digest": {"$ref": "#/$defs/digest"},
+    "issuer": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "key_usage": {"const": "GIT_PROVENANCE_ATTESTATION"},
+    "algorithm": {"const": "Ed25519"},
+    "signed_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "objectId": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      ]
+    },
+    "report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "gate", "status", "environment_reference", "checks",
+        "production_evidence", "measured_at", "evidence_digest"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.external-gate-report.v1"},
+        "gate": {"const": "GIT_IMMUTABLE_PROVENANCE"},
+        "status": {"const": "PASS_REAL_PROTOCOL"},
+        "environment_reference": {
+          "type": "string",
+          "pattern": "^git://[A-Za-z0-9.-]{1,253}/(?:[0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "checks": {"$ref": "#/$defs/checks"},
+        "production_evidence": {"const": true},
+        "measured_at": {"type": "string", "format": "date-time", "maxLength": 64},
+        "evidence_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "release_id", "object_format", "commit_object_id", "tree_object_id",
+        "commit_content_digest", "clean_worktree_required", "clean_worktree",
+        "submodules_pinned", "remote_count", "remote_hosts", "remote_hosts_by_name",
+        "remote_url_digests", "remote_set_digest", "commit_signature_required",
+        "commit_signature_verified", "release_tag_required", "release_tag",
+        "release_tag_object_id", "release_tag_target", "release_tag_signature_verified",
+        "remote_release_tag_verified", "remote_release_tag_ref", "remote_tag_object_ids",
+        "remote_tag_peeled_commit_ids", "remote_membership_digest",
+        "signature_trust_format", "git_allowed_signers_digest"
+      ],
+      "properties": {
+        "release_id": {
+          "type": "string",
+          "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"
+        },
+        "object_format": {"enum": ["sha1", "sha256"]},
+        "commit_object_id": {"$ref": "#/$defs/objectId"},
+        "tree_object_id": {"$ref": "#/$defs/objectId"},
+        "commit_content_digest": {"$ref": "#/$defs/digest"},
+        "clean_worktree_required": {"const": true},
+        "clean_worktree": {"const": true},
+        "submodules_pinned": {"const": true},
+        "remote_count": {"type": "integer", "minimum": 1, "maximum": 64},
+        "remote_hosts": {
+          "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[A-Za-z0-9.-]{1,253}$"}
+        },
+        "remote_hosts_by_name": {
+          "type": "object", "minProperties": 1, "maxProperties": 64,
+          "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+          "additionalProperties": {"type": "string", "pattern": "^[A-Za-z0-9.-]{1,253}$"}
+        },
+        "remote_url_digests": {
+          "type": "object", "minProperties": 1, "maxProperties": 64,
+          "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+          "additionalProperties": {"$ref": "#/$defs/digest"}
+        },
+        "remote_set_digest": {"$ref": "#/$defs/digest"},
+        "commit_signature_required": {"const": true},
+        "commit_signature_verified": {"const": true},
+        "release_tag_required": {"const": true},
+        "release_tag": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"},
+        "release_tag_object_id": {"$ref": "#/$defs/objectId"},
+        "release_tag_target": {"$ref": "#/$defs/objectId"},
+        "release_tag_signature_verified": {"const": true},
+        "remote_release_tag_verified": {"const": true},
+        "remote_release_tag_ref": {
+          "type": "string", "pattern": "^refs/tags/[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"
+        },
+        "remote_tag_object_ids": {
+          "type": "object", "minProperties": 1, "maxProperties": 64,
+          "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+          "additionalProperties": {"$ref": "#/$defs/objectId"}
+        },
+        "remote_tag_peeled_commit_ids": {
+          "type": "object", "minProperties": 1, "maxProperties": 64,
+          "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+          "additionalProperties": {"$ref": "#/$defs/objectId"}
+        },
+        "remote_membership_digest": {"$ref": "#/$defs/digest"},
+        "signature_trust_format": {"const": "SSH_ALLOWED_SIGNERS"},
+        "git_allowed_signers_digest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

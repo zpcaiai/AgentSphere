@@ -1,27 +1,41 @@
 import { buildApprovalIntent, type ApprovalIntent } from "../../shared/agui-client";
 
-export interface ApprovalCaseView {
+interface ApprovalCaseBase {
   schema_version: "agenttrust.approval-case-view.v1";
   case_id: string;
-  domain: "CODING" | "INDUSTRIAL";
   safe_summary: string;
   action_hash: string;
   resource: string;
   resource_version: string;
   policy_version: string;
   risk: string;
-  diff_artifact_ref?: string;
-  rollback_summary?: string;
-  current_value?: string;
-  target_value?: string;
-  interlock_summary?: string;
   evidence_refs: string[];
   status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "REVOKED";
 }
 
+export interface CodingApprovalReviewDetails {
+  diff_artifact_ref: string;
+  command_summary: string;
+  network_scope: string;
+  rollback_summary: string;
+}
+
+export interface IndustrialApprovalReviewDetails {
+  current_value: string;
+  target_value: string;
+  allowed_range: string;
+  interlock_summary: string;
+  physical_impact: string;
+}
+
+export type ApprovalCaseView = ApprovalCaseBase & (
+  | { domain: "CODING"; coding_details: CodingApprovalReviewDetails }
+  | { domain: "INDUSTRIAL"; industrial_details: IndustrialApprovalReviewDetails }
+);
+
 const DIGEST = /^[a-f0-9]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const CASE_FIELDS = ["schema_version", "case_id", "domain", "safe_summary", "action_hash",
+const CASE_BASE_FIELDS = ["schema_version", "case_id", "domain", "safe_summary", "action_hash",
   "resource", "resource_version", "policy_version", "risk", "evidence_refs", "status"];
 const PAGE_FIELDS = ["schema_version", "authoritative", "tenant_id", "resource", "items",
   "next_cursor", "data_digest"];
@@ -52,20 +66,27 @@ export function parseApprovalCases(value: unknown, expectedTenant?: string): App
 }
 
 export function parseApprovalCase(value: unknown): ApprovalCaseView {
-  if (!isRecord(value) || !exactFields(value, CASE_FIELDS)
+  if (!isRecord(value) || (value.domain !== "CODING" && value.domain !== "INDUSTRIAL")
+    || !exactFields(value, [...CASE_BASE_FIELDS,
+      value.domain === "CODING" ? "coding_details" : "industrial_details"])
     || value.schema_version !== "agenttrust.approval-case-view.v1"
     || typeof value.case_id !== "string"
     || !UUID.test(value.case_id)
-    || (value.domain !== "CODING" && value.domain !== "INDUSTRIAL")
-    || !boundedText(value.safe_summary, 2_000)
+    || !safeReviewText(value.safe_summary, 2_000)
     || typeof value.action_hash !== "string" || !DIGEST.test(value.action_hash)
     || !boundedText(value.resource, 2_048) || !boundedText(value.resource_version, 2_048)
     || !boundedText(value.policy_version, 2_048)
     || !["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(String(value.risk))
-    || !Array.isArray(value.evidence_refs) || value.evidence_refs.length > 100
-    || !value.evidence_refs.every((item) => boundedText(item, 2_048))
+    || !Array.isArray(value.evidence_refs) || value.evidence_refs.length !== 3
+    || !value.evidence_refs.every(evidenceReference)
     || new Set(value.evidence_refs).size !== value.evidence_refs.length
     || !["PENDING", "APPROVED", "REJECTED", "EXPIRED", "REVOKED"].includes(String(value.status))) {
+    throw new Error("APPROVAL_CASE_INVALID");
+  }
+  if (value.domain === "CODING" && !codingDetails(value.coding_details)) {
+    throw new Error("APPROVAL_CASE_INVALID");
+  }
+  if (value.domain === "INDUSTRIAL" && !industrialDetails(value.industrial_details)) {
     throw new Error("APPROVAL_CASE_INVALID");
   }
   return value as unknown as ApprovalCaseView;
@@ -102,7 +123,48 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function boundedText(value: unknown, maximum: number): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maximum
-    && !/[\0\r\n]/.test(value);
+    && !/[\u0000-\u001F\u007F-\u009F]/.test(value);
+}
+
+function safeReviewText(value: unknown, maximum: number): value is string {
+  if (!boundedText(value, maximum)) return false;
+  const normalized = value.toLocaleLowerCase();
+  if (["authorization:", "bearer ", "password", "passwd", "client_secret", "api_key",
+    "api-key", "apikey", "x-api-key", "private key", "-----begin", "cookie:",
+    "set-cookie", "credential://", "vault-kv://", "secret://", "token=", "token:"]
+    .some((marker) => normalized.includes(marker))) return false;
+  return !value.split(/[^A-Za-z0-9_-]+/).some((fragment) => fragment.length >= 32
+    && /[A-Za-z]/.test(fragment) && /[0-9]/.test(fragment));
+}
+
+function codingDetails(value: unknown): value is CodingApprovalReviewDetails {
+  return isRecord(value)
+    && exactFields(value, ["diff_artifact_ref", "command_summary", "network_scope", "rollback_summary"])
+    && typeof value.diff_artifact_ref === "string"
+    && /^artifact:\/\/sha256\/[a-f0-9]{64}$/.test(value.diff_artifact_ref)
+    && safeReviewText(value.command_summary, 2_048)
+    && safeReviewText(value.network_scope, 1_024)
+    && safeReviewText(value.rollback_summary, 2_048);
+}
+
+function industrialDetails(value: unknown): value is IndustrialApprovalReviewDetails {
+  return isRecord(value)
+    && exactFields(value, ["current_value", "target_value", "allowed_range", "interlock_summary",
+      "physical_impact"])
+    && safeReviewText(value.current_value, 512)
+    && safeReviewText(value.target_value, 512)
+    && safeReviewText(value.allowed_range, 512)
+    && safeReviewText(value.interlock_summary, 2_048)
+    && safeReviewText(value.physical_impact, 2_048);
+}
+
+function evidenceReference(value: unknown): value is string {
+  return boundedText(value, 2_048)
+    && /^(evidence:\/\/|urn:agenttrust:(evidence|ledger-evidence):)[^\s?#]+$/.test(value)
+    && !["authorization:", "bearer ", "password", "passwd", "client_secret", "api_key",
+      "api-key", "apikey", "x-api-key", "private key", "-----begin", "cookie:",
+      "set-cookie", "credential://", "vault-kv://", "secret://", "token=", "token:"]
+      .some((marker) => value.toLocaleLowerCase().includes(marker));
 }
 
 function exactFields(value: Record<string, unknown>, expected: string[]): boolean {

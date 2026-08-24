@@ -1889,6 +1889,7 @@ pub enum EvidenceEventType {
     PlanGenerated,
     PolicyEvaluated,
     ApprovalDecision,
+    ApprovalReviewPrepared,
     CredentialIssued,
     ToolPrepared,
     ToolExecuted,
@@ -2162,6 +2163,335 @@ impl SignedAuthorityEvidenceReceipt {
         key.verify(self.evidence_digest.as_bytes(), &signature)
             .map_err(|_| ContractError::SignatureInvalid)
     }
+}
+
+pub const APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION: &str =
+    "agenttrust.approval-review-evidence-binding.v1";
+pub const APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION: &str =
+    "agenttrust.approval-review-material.v1";
+pub const APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION: &str =
+    "agenttrust.approval-review-evidence-issue.v2";
+pub const APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS: i64 = 900;
+pub const APPROVAL_REVIEW_MAX_CLOCK_SKEW_SECONDS: i64 = 30;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CodingApprovalReviewDetails {
+    pub diff_artifact_ref: String,
+    pub command_summary: String,
+    pub network_scope: String,
+    pub rollback_summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct IndustrialApprovalReviewDetails {
+    pub current_value: String,
+    pub target_value: String,
+    pub allowed_range: String,
+    pub interlock_summary: String,
+    pub physical_impact: String,
+}
+
+/// Safe, domain-discriminated facts prepared independently of the approval service.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(
+    tag = "domain",
+    content = "details",
+    rename_all = "SCREAMING_SNAKE_CASE",
+    deny_unknown_fields
+)]
+pub enum ApprovalReviewContext {
+    Coding(CodingApprovalReviewDetails),
+    Industrial(IndustrialApprovalReviewDetails),
+}
+
+impl ApprovalReviewContext {
+    pub fn valid(&self) -> bool {
+        match self {
+            Self::Coding(details) => {
+                approval_review_artifact_ref(&details.diff_artifact_ref)
+                    && approval_review_text(&details.command_summary, 2_048)
+                    && approval_review_text(&details.network_scope, 1_024)
+                    && approval_review_text(&details.rollback_summary, 2_048)
+            }
+            Self::Industrial(details) => {
+                approval_review_text(&details.current_value, 512)
+                    && approval_review_text(&details.target_value, 512)
+                    && approval_review_text(&details.allowed_range, 512)
+                    && approval_review_text(&details.interlock_summary, 2_048)
+                    && approval_review_text(&details.physical_impact, 2_048)
+            }
+        }
+    }
+
+    pub fn industrial(&self) -> bool {
+        matches!(self, Self::Industrial(_))
+    }
+}
+
+/// Complete immutable review package bound by the Evidence Authority payload digest.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalReviewMaterial {
+    pub schema_version: String,
+    pub tenant_id: String,
+    pub task_id: String,
+    pub canonical_action_hash: String,
+    pub resource: String,
+    pub resource_version: String,
+    pub policy_version: String,
+    pub environment: String,
+    pub risk: RiskLevel,
+    pub review_context: ApprovalReviewContext,
+    pub risk_package_ref: String,
+    pub risk_package_digest: String,
+    pub state_snapshot_ref: String,
+    pub state_snapshot_digest: String,
+}
+
+impl ApprovalReviewMaterial {
+    pub fn validate(&self) -> Result<(), ContractError> {
+        let industrial_resource = approval_review_resource_is_industrial(
+            &self.resource,
+            &self.environment,
+        );
+        if self.schema_version != APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION
+            || !canonical_uuid(&self.tenant_id)
+            || !canonical_uuid(&self.task_id)
+            || !is_lower_hex_digest(&self.canonical_action_hash)
+            || !approval_review_bounded(&self.resource, 2_048)
+            || !approval_review_bounded(&self.resource_version, 2_048)
+            || !approval_review_bounded(&self.policy_version, 2_048)
+            || !approval_review_bounded(&self.environment, 2_048)
+            || !self.review_context.valid()
+            || industrial_resource != self.review_context.industrial()
+            || !approval_review_evidence_ref(&self.risk_package_ref)
+            || !is_lower_hex_digest(&self.risk_package_digest)
+            || !approval_review_evidence_ref(&self.state_snapshot_ref)
+            || !is_lower_hex_digest(&self.state_snapshot_digest)
+            || self.risk_package_ref == self.state_snapshot_ref
+        {
+            return Err(ContractError::ScopeExceeded);
+        }
+        Ok(())
+    }
+
+    pub fn payload_digest(&self) -> Result<String, ContractError> {
+        self.validate()?;
+        canonical_hash(self)
+    }
+
+    pub fn artifact_refs(&self) -> Vec<ArtifactRef> {
+        match &self.review_context {
+            ApprovalReviewContext::Coding(details) => vec![
+                ArtifactRef(details.diff_artifact_ref.clone()),
+                ArtifactRef(self.risk_package_ref.clone()),
+                ArtifactRef(self.state_snapshot_ref.clone()),
+            ],
+            ApprovalReviewContext::Industrial(_) => vec![
+                ArtifactRef(self.risk_package_ref.clone()),
+                ArtifactRef(self.state_snapshot_ref.clone()),
+            ],
+        }
+    }
+
+    pub fn safe_summary(&self) -> &'static str {
+        match &self.review_context {
+            ApprovalReviewContext::Coding(_) => "Approval coding review facts prepared",
+            ApprovalReviewContext::Industrial(_) => "Approval industrial review facts prepared",
+        }
+    }
+}
+
+/// Producer input for an independent risk/snapshot authority. No signing material is accepted.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalReviewEvidenceIssueRequest {
+    pub schema_version: String,
+    pub request_id: String,
+    pub idempotency_key: String,
+    pub actor_subject: String,
+    pub source_service: String,
+    pub trace_id: String,
+    pub material: ApprovalReviewMaterial,
+    pub requested_at: DateTime<Utc>,
+}
+
+impl ApprovalReviewEvidenceIssueRequest {
+    pub fn to_authority_event(
+        &self,
+        expected_source_service: &str,
+        now: DateTime<Utc>,
+    ) -> Result<AuthorityEvidenceEventRequest, ContractError> {
+        if self.schema_version != APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION
+            || !canonical_uuid(&self.request_id)
+            || !valid_idempotency_key(&self.idempotency_key)
+            || !approval_review_identifier(&self.actor_subject, 512)
+            || !approval_review_source_identity(&self.source_service)
+            || self.source_service != expected_source_service
+            || !approval_review_identifier(&self.trace_id, 256)
+            || approval_review_secret_marker(&self.actor_subject)
+            || approval_review_secret_marker(&self.source_service)
+            || approval_review_secret_marker(&self.trace_id)
+            || self.requested_at
+                > now + chrono::Duration::seconds(APPROVAL_REVIEW_MAX_CLOCK_SKEW_SECONDS)
+            || self.requested_at
+                < now - chrono::Duration::seconds(APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS)
+        {
+            return Err(ContractError::ScopeExceeded);
+        }
+        let payload_hash = self.material.payload_digest()?;
+        let request = AuthorityEvidenceEventRequest {
+            schema_version: AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION.into(),
+            tenant_id: TenantId(self.material.tenant_id.clone()),
+            task_id: TaskId(self.material.task_id.clone()),
+            authority_event_id: self.request_id.clone(),
+            idempotency_key: IdempotencyKey(self.idempotency_key.clone()),
+            source_kind: AuthorityEvidenceSourceKind::AuthenticatedEvent,
+            control_binding: None,
+            event: EvidenceEventDraft {
+                schema_version: EVIDENCE_EVENT_SCHEMA_VERSION.into(),
+                tenant_id: TenantId(self.material.tenant_id.clone()),
+                task_id: TaskId(self.material.task_id.clone()),
+                event_type: EvidenceEventType::ApprovalReviewPrepared,
+                actor_subject: self.actor_subject.clone(),
+                source_service: self.source_service.clone(),
+                trace_id: self.trace_id.clone(),
+                span_id: self.request_id.clone(),
+                payload_hash,
+                safe_summary: self.material.safe_summary().into(),
+                artifact_refs: self.material.artifact_refs(),
+                occurred_at: self.requested_at,
+            },
+            requested_at: self.requested_at,
+        };
+        request.request_digest()?;
+        Ok(request)
+    }
+}
+
+/// Complete producer result persisted by Approval so request_digest can always be recomputed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalReviewEvidence {
+    pub schema_version: String,
+    pub material: ApprovalReviewMaterial,
+    pub authority_request: AuthorityEvidenceEventRequest,
+    pub receipt: SignedAuthorityEvidenceReceipt,
+}
+
+impl ApprovalReviewEvidence {
+    pub fn evidence_refs(&self) -> Vec<String> {
+        vec![
+            self.material.risk_package_ref.clone(),
+            self.material.state_snapshot_ref.clone(),
+            self.receipt.evidence_ref.clone(),
+        ]
+    }
+}
+
+fn approval_review_resource_is_industrial(resource: &str, environment: &str) -> bool {
+    let resource = resource.to_ascii_lowercase();
+    [
+        "opcua:",
+        "opc.tcp:",
+        "mqtt:",
+        "modbus:",
+        "plc:",
+        "scada:",
+        "plant/",
+        "urn:agenttrust:industrial:",
+    ]
+    .iter()
+    .any(|prefix| resource.starts_with(prefix))
+        || matches!(environment, "industrial" | "physical-production")
+}
+
+fn approval_review_evidence_ref(value: &str) -> bool {
+    let suffix = value
+        .strip_prefix("evidence://")
+        .or_else(|| value.strip_prefix("urn:agenttrust:evidence:"))
+        .or_else(|| value.strip_prefix("urn:agenttrust:ledger-evidence:"));
+    suffix.is_some_and(|suffix| {
+        !suffix.is_empty()
+            && value.len() <= 2_048
+            && !approval_review_secret_marker(value)
+            && !value
+                .chars()
+                .any(|character| character.is_whitespace() || character.is_control())
+            && !value.contains(['?', '#'])
+    })
+}
+
+fn approval_review_artifact_ref(value: &str) -> bool {
+    value
+        .strip_prefix("artifact://sha256/")
+        .is_some_and(is_lower_hex_digest)
+}
+
+fn approval_review_source_identity(value: &str) -> bool {
+    value
+        .strip_prefix("DNS:")
+        .or_else(|| value.strip_prefix("URI:"))
+        .is_some_and(|identity| {
+            !identity.is_empty() && approval_review_identifier(value, 256)
+        })
+}
+
+fn approval_review_identifier(value: &str, maximum: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= maximum
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
+        })
+}
+
+fn approval_review_bounded(value: &str, maximum: usize) -> bool {
+    !value.trim().is_empty()
+        && value.len() <= maximum
+        && !value.chars().any(char::is_control)
+        && !approval_review_secret_marker(value)
+}
+
+fn approval_review_text(value: &str, maximum: usize) -> bool {
+    approval_review_bounded(value, maximum)
+        && !value
+            .split(|character: char| {
+                !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+            })
+            .any(|fragment| {
+                fragment.len() >= 32
+                    && fragment.bytes().any(|byte| byte.is_ascii_alphabetic())
+                    && fragment.bytes().any(|byte| byte.is_ascii_digit())
+            })
+}
+
+fn approval_review_secret_marker(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        "authorization:",
+        "bearer ",
+        "password",
+        "passwd",
+        "client_secret",
+        "api_key",
+        "api-key",
+        "apikey",
+        "x-api-key",
+        "private key",
+        "-----begin",
+        "cookie:",
+        "set-cookie",
+        "credential://",
+        "vault-kv://",
+        "secret://",
+        "token=",
+        "token:",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -3309,6 +3639,20 @@ mod tests {
         assert_eq!(
             outcome.fact_snapshot.require_verified(),
             Err(ContractError::FactUnavailable)
+        );
+    }
+
+    #[test]
+    fn approval_review_prepared_event_token_is_cross_contract_stable() {
+        assert_eq!(
+            serde_json::to_string(&EvidenceEventType::ApprovalReviewPrepared)
+                .unwrap_or_else(|_| panic!("event token")),
+            "\"APPROVAL_REVIEW_PREPARED\""
+        );
+        assert_eq!(
+            serde_json::from_str::<EvidenceEventType>("\"APPROVAL_REVIEW_PREPARED\"")
+                .unwrap_or_else(|_| panic!("event token")),
+            EvidenceEventType::ApprovalReviewPrepared
         );
     }
 

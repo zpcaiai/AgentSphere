@@ -238,6 +238,10 @@ impl ApprovalApiState {
                 .tenants
                 .iter()
                 .any(|tenant| !principal_keyring.covers_tenant_at(tenant, Utc::now()))
+            || authorizer
+                .tenants
+                .iter()
+                .any(|tenant| !store.review_evidence_covers(tenant, Utc::now()))
         {
             return Err(ApprovalError::ConfigurationInvalid);
         }
@@ -335,13 +339,19 @@ async fn data_ready(State(state): State<ApprovalApiState>) -> Response {
             &state.principal_keyring,
             &state.authorizer.tenants,
             Utc::now(),
+        )
+        && review_evidence_keys_ready(
+            &state.store,
+            &state.authorizer.tenants,
+            Utc::now(),
         );
     readiness_response(available)
 }
 
 async fn ready(State(state): State<ManagementState>) -> Response {
     let available = state.store.ready().await
-        && principal_keys_ready(&state.principal_keyring, &state.tenants, Utc::now());
+        && principal_keys_ready(&state.principal_keyring, &state.tenants, Utc::now())
+        && review_evidence_keys_ready(&state.store, &state.tenants, Utc::now());
     readiness_response(available)
 }
 
@@ -354,6 +364,17 @@ fn principal_keys_ready(
         && tenants
             .iter()
             .all(|tenant| keyring.covers_tenant_at(tenant, now))
+}
+
+fn review_evidence_keys_ready(
+    store: &PostgresApprovalStore,
+    tenants: &BTreeSet<TenantId>,
+    now: DateTime<Utc>,
+) -> bool {
+    !tenants.is_empty()
+        && tenants
+            .iter()
+            .all(|tenant| store.review_evidence_covers(tenant, now))
 }
 
 fn readiness_response(available: bool) -> Response {

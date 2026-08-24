@@ -10,6 +10,7 @@ path = "lib.rs"
 
 [dependencies]
 agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-bounded-http = { path = "../bounded-http" }
 agent-trust-contracts = { path = "../contracts" }
 agent-trust-pack-supply-chain = { path = "../pack-supply-chain" }
 agent-trust-industrial-edge-gateway = { path = "../industrial-edge-gateway" }

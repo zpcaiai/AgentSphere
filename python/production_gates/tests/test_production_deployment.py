@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+import base64
+import copy
+from datetime import datetime, timezone
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import re
 import tempfile
 import unittest
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from python.production_gates.git_provenance import (
+    GateResult,
+    canonical_json,
+    sign_git_provenance,
+    signed_git_provenance_digest,
+)
+from python.production_gates.release_binding import (
+    build_release_binding,
+    sign_release_binding,
+)
 
 
 ROOT = Path(__file__).parents[3]
@@ -20,6 +38,171 @@ BUILD_SPEC = importlib.util.spec_from_file_location(
 assert BUILD_SPEC is not None and BUILD_SPEC.loader is not None
 BUILD = importlib.util.module_from_spec(BUILD_SPEC)
 BUILD_SPEC.loader.exec_module(BUILD)
+
+_RELEASE_COMMIT = "1" * 40
+_RELEASE_ID = f"git:sha1:{_RELEASE_COMMIT}"
+_PROVENANCE_DIRECTORY = tempfile.TemporaryDirectory()
+_PROVENANCE_PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(1, 33)))
+_PROVENANCE_KEY_FILE = Path(_PROVENANCE_DIRECTORY.name).resolve() / "git-provenance.key"
+_PROVENANCE_KEY_FILE.write_text(
+    base64.urlsafe_b64encode(
+        _PROVENANCE_PRIVATE.private_bytes(
+            serialization.Encoding.Raw,
+            serialization.PrivateFormat.Raw,
+            serialization.NoEncryption(),
+        )
+    ).decode("ascii").rstrip("="),
+    encoding="ascii",
+)
+_PROVENANCE_KEY_FILE.chmod(0o600)
+_PROVENANCE_PUBLIC = base64.urlsafe_b64encode(
+    _PROVENANCE_PRIVATE.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+).decode("ascii").rstrip("=")
+_PROVENANCE_KEYRING = {
+    "schema_version": "agenttrust.git-provenance-keyring.v1",
+    "keys": [{
+        "issuer": "test-release-authority",
+        "key_id": "test-git-2026-01",
+        "key_usage": "GIT_PROVENANCE_ATTESTATION",
+        "algorithm": "Ed25519",
+        "public_key": _PROVENANCE_PUBLIC,
+        "status": "ACTIVE",
+        "not_before": "2020-01-01T00:00:00+00:00",
+        "not_after": "2100-01-01T00:00:00+00:00",
+    }],
+}
+_RELEASE_BINDING_PRIVATE = Ed25519PrivateKey.from_private_bytes(bytes(range(33, 65)))
+_RELEASE_BINDING_KEY_FILE = (
+    Path(_PROVENANCE_DIRECTORY.name).resolve() / "release-binding.key"
+)
+_RELEASE_BINDING_KEY_FILE.write_text(
+    base64.urlsafe_b64encode(
+        _RELEASE_BINDING_PRIVATE.private_bytes(
+            serialization.Encoding.Raw,
+            serialization.PrivateFormat.Raw,
+            serialization.NoEncryption(),
+        )
+    ).decode("ascii").rstrip("="),
+    encoding="ascii",
+)
+_RELEASE_BINDING_KEY_FILE.chmod(0o600)
+_RELEASE_BINDING_PUBLIC = base64.urlsafe_b64encode(
+    _RELEASE_BINDING_PRIVATE.public_key().public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+).decode("ascii").rstrip("=")
+_RELEASE_BINDING_KEYRING = {
+    "schema_version": "agenttrust.release-binding-keyring.v1",
+    "keys": [{
+        "issuer": "test-release-authority",
+        "key_id": "test-release-binding-2026-01",
+        "key_usage": "PRODUCTION_RELEASE_BINDING",
+        "algorithm": "Ed25519",
+        "public_key": _RELEASE_BINDING_PUBLIC,
+        "status": "ACTIVE",
+        "not_before": "2020-01-01T00:00:00+00:00",
+        "not_after": "2100-01-01T00:00:00+00:00",
+    }],
+}
+_RAW_RENDER = RENDER.render
+
+
+def _signed_provenance() -> dict[str, object]:
+    host_by_name = {"origin": "git.example.test"}
+    url_digests = {"origin": "2" * 64}
+    remote_set_digest = hashlib.sha256(canonical_json({
+        "origin": {"host": host_by_name["origin"], "url_digest": url_digests["origin"]}
+    })).hexdigest()
+    membership_digest = hashlib.sha256(canonical_json({
+        "origin": {
+            "host": host_by_name["origin"],
+            "url_digest": url_digests["origin"],
+            "tag_ref": "refs/tags/v1.2.3",
+            "tag_object_id": "3" * 40,
+            "peeled_commit_id": _RELEASE_COMMIT,
+        }
+    })).hexdigest()
+    report = GateResult(
+        gate="GIT_IMMUTABLE_PROVENANCE",
+        status="PASS_REAL_PROTOCOL",
+        environment_reference=f"git://git.example.test/{_RELEASE_COMMIT}",
+        checks={
+            "release_id": _RELEASE_ID,
+            "object_format": "sha1",
+            "commit_object_id": _RELEASE_COMMIT,
+            "tree_object_id": "4" * 40,
+            "commit_content_digest": "5" * 64,
+            "clean_worktree_required": True,
+            "clean_worktree": True,
+            "submodules_pinned": True,
+            "remote_count": 1,
+            "remote_hosts": ["git.example.test"],
+            "remote_hosts_by_name": host_by_name,
+            "remote_url_digests": url_digests,
+            "remote_set_digest": remote_set_digest,
+            "commit_signature_required": True,
+            "commit_signature_verified": True,
+            "release_tag_required": True,
+            "release_tag": "v1.2.3",
+            "release_tag_object_id": "3" * 40,
+            "release_tag_target": _RELEASE_COMMIT,
+            "release_tag_signature_verified": True,
+            "remote_release_tag_verified": True,
+            "remote_release_tag_ref": "refs/tags/v1.2.3",
+            "remote_tag_object_ids": {"origin": "3" * 40},
+            "remote_tag_peeled_commit_ids": {"origin": _RELEASE_COMMIT},
+            "remote_membership_digest": membership_digest,
+            "signature_trust_format": "SSH_ALLOWED_SIGNERS",
+            "git_allowed_signers_digest": "6" * 64,
+        },
+        production_evidence=True,
+    ).as_dict()
+    return sign_git_provenance(
+        report,
+        _PROVENANCE_KEY_FILE,
+        issuer="test-release-authority",
+        key_id="test-git-2026-01",
+        signed_at=datetime.now(timezone.utc),
+    )
+
+
+def _render_with_signed_provenance(
+    template: str, candidate_values: dict[str, object], configuration: object
+) -> str:
+    bound_values = copy.deepcopy(candidate_values)
+    provenance = _signed_provenance()
+    signed_binding: object = {}
+    if (
+        "release_digest" in bound_values
+        and isinstance(bound_values.get("release_id"), str)
+        and RENDER.GIT_RELEASE_ID.fullmatch(str(bound_values["release_id"]))
+    ):
+        binding = build_release_binding(
+            template, bound_values, configuration,
+            provenance_digest=signed_git_provenance_digest(provenance),
+            template_blob_object_id="7" * 40,
+        )
+        bound_values["release_digest"] = binding["release_digest"]
+        signed_binding = sign_release_binding(
+            binding,
+            _RELEASE_BINDING_KEY_FILE,
+            issuer="test-release-authority",
+            key_id="test-release-binding-2026-01",
+        )
+    return _RAW_RENDER(
+        template,
+        bound_values,
+        configuration,
+        git_provenance=provenance,
+        git_provenance_keyring=_PROVENANCE_KEYRING,
+        release_binding=signed_binding,
+        release_binding_keyring=_RELEASE_BINDING_KEYRING,
+    )
+
+
+RENDER.render = _render_with_signed_provenance
 
 
 def runtime_config() -> dict[str, object]:
@@ -88,7 +271,7 @@ def values() -> dict[str, object]:
     })
     return {
         "schema_version": "agenttrust.production-stack-values.v2",
-        "release_id": "v1.2.3",
+        "release_id": _RELEASE_ID,
         "release_digest": digest,
         "images": {key: f"registry.test/agenttrust/{key}@sha256:{digest}" for key in RENDER.IMAGE_KEYS},
         "database": {
@@ -348,6 +531,49 @@ def values() -> dict[str, object]:
 
 
 class ProductionDeploymentTests(unittest.TestCase):
+    def test_full_stack_rejects_worktree_release(self) -> None:
+        unsafe = values()
+        unsafe["release_id"] = "WORKTREE-NO-GIT"
+        with self.assertRaisesRegex(RENDER.RenderError, "PRODUCTION_STACK_RELEASE_ID_INVALID"):
+            RENDER.render("", unsafe, runtime_config())
+
+    def test_release_instructions_and_multizone_gate_use_authoritative_stack(self) -> None:
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("scripts/render-production-stack.py", readme)
+        self.assertIn("deploy/kubernetes/production-stack.yaml.tmpl", readme)
+        self.assertIn("--values /protected/release/production-stack-values.json", readme)
+        conditions = json.loads(
+            (ROOT / "config/production-runtime/conditions.json").read_text()
+        )["conditions"]
+        multizone = next(
+            condition for condition in conditions
+            if condition["condition_id"] == "MULTIZONE_CONTROL_PLANE_TOPOLOGY"
+        )
+        self.assertIn(
+            "deploy/kubernetes/production-stack.yaml.tmpl", multizone["runtime_paths"]
+        )
+        self.assertNotIn(
+            "deploy/kubernetes/production-runtime.yaml.tmpl", multizone["runtime_paths"]
+        )
+        immutable_release = next(
+            condition for condition in conditions
+            if condition["condition_id"] == "IMMUTABLE_GIT_RELEASE_PROVENANCE"
+        )
+        self.assertIn(
+            "scripts/render-production-stack.py", immutable_release["runtime_paths"]
+        )
+        self.assertIn(
+            "deploy/kubernetes/production-stack.yaml.tmpl",
+            immutable_release["runtime_paths"],
+        )
+        self.assertIn(
+            "python/production_gates/tests/test_production_deployment.py",
+            immutable_release["test_paths"],
+        )
+        self.assertNotIn(
+            "scripts/render-production-runtime.py", immutable_release["runtime_paths"]
+        )
+
     def test_complete_stack_renders_without_tokens(self) -> None:
         template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
         result = RENDER.render(template, values(), runtime_config())
@@ -1500,6 +1726,26 @@ class ProductionDeploymentTests(unittest.TestCase):
         for module in ("aiohttp", "asyncpg", "cryptography", "temporalio"):
             self.assertIn(module, dockerfile)
         self.assertNotIn("COPY requirements-production.txt", dockerfile)
+
+    def test_approval_v2_uses_atomic_rollout_and_public_review_keyring(self) -> None:
+        template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
+        approval = template.split(
+            "kind: Deployment\nmetadata:\n  name: agenttrust-approval", 1
+        )[1].split("---", 1)[0]
+        self.assertIn("strategy: {type: Recreate}", approval)
+        self.assertNotIn("type: RollingUpdate", approval)
+        for required in (
+            'objectName: "review-evidence-keys.json"',
+            "AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE",
+            "/var/run/agenttrust/secrets/approval/review-evidence-keys.json",
+        ):
+            self.assertIn(required, template)
+        migration = (
+            ROOT
+            / "migrations/enterprise-approval/0036_01_25_approval_review_evidence_v2.sql"
+        ).read_text()
+        self.assertIn("APPROVAL_V2_LEGACY_MUTABLE_STATE_MUST_BE_DRAINED", migration)
+        self.assertIn("approval_cases_review_evidence_v2_check", migration)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@ const COMMAND_SCHEMA: &str =
     include_str!("../../../../schemas/platform-sre/sre-command.schema.json");
 const ENGINE_SCHEMA: &str =
     include_str!("../../../../schemas/platform-sre/sre-engine-report.schema.json");
-const DOCKERFILE: &str = include_str!("../../../../Dockerfile.sre");
+const DOCKERFILE: &str = include_str!("../../../../Dockerfile.platform-sre");
+const STACK: &str = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
 
 fn expected_operations() -> BTreeSet<&'static str> {
     BTreeSet::from([
@@ -191,4 +192,21 @@ fn public_openapi_and_container_are_production_scoped() {
     assert!(OPENAPI.contains("bearerAuth"));
     assert!(DOCKERFILE.contains("cargo build --locked --release -p agent-trust-platform-sre"));
     assert!(DOCKERFILE.contains("USER nonroot:nonroot"));
+}
+
+#[test]
+fn management_routes_match_production_probes() {
+    for marker in [
+        ".route(\"/live\", get(management_health))",
+        ".route(\"/ready\", get(management_ready))",
+    ] {
+        assert!(SERVER.contains(marker), "missing management route {marker}");
+    }
+    assert!(SERVER.contains("\"schema_version\": \"agenttrust.sre-liveness.v1\""));
+    assert!(STACK.contains(
+        "livenessProbe: {httpGet: {path: /live, port: management}"
+    ));
+    assert!(STACK.contains(
+        "readinessProbe: {httpGet: {path: /ready, port: management}"
+    ));
 }

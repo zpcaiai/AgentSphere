@@ -9,9 +9,25 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 import uuid
+
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from python.production_gates.git_provenance import (  # noqa: E402
+    signed_git_provenance_digest,
+    verify_signed_git_provenance,
+)
+from python.production_gates.live_integrations import GateError  # noqa: E402
+from python.production_gates.release_binding import (  # noqa: E402
+    build_release_binding,
+    verify_signed_release_binding,
+)
 
 
 IMAGE = re.compile(
@@ -20,6 +36,7 @@ IMAGE = re.compile(
     r"@sha256:[0-9a-f]{64}$"
 )
 DIGEST = re.compile(r"^[0-9a-f]{64}$")
+GIT_RELEASE_ID = re.compile(r"^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$")
 TOKEN = re.compile(r"@@[A-Z0-9_]+@@")
 NAME = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$")
 HOST = re.compile(
@@ -404,7 +421,16 @@ def validate_runtime_config(value: object) -> Mapping[str, Any]:
     return value
 
 
-def render(template: str, values: Mapping[str, Any], runtime_config: object) -> str:
+def render(
+    template: str,
+    values: Mapping[str, Any],
+    runtime_config: object,
+    *,
+    git_provenance: object,
+    git_provenance_keyring: object,
+    release_binding: object,
+    release_binding_keyring: object,
+) -> str:
     top_keys = {
         "schema_version", "release_id", "release_digest", "images", "database", "temporal",
         "execution", "registry", "agent_registry", "policy_admin", "incident_release",
@@ -414,10 +440,49 @@ def render(template: str, values: Mapping[str, Any], runtime_config: object) -> 
     }
     if set(values) != top_keys or values.get("schema_version") != "agenttrust.production-stack-values.v2":
         raise RenderError("PRODUCTION_STACK_VALUES_INVALID")
-    release_id = require_text(values["release_id"], "PRODUCTION_STACK_RELEASE_ID_INVALID", IDENTIFIER)
-    if release_id == "WORKTREE-NO-GIT":
+    release_id = require_text(values["release_id"], "PRODUCTION_STACK_RELEASE_ID_INVALID", GIT_RELEASE_ID)
+    if not GIT_RELEASE_ID.fullmatch(release_id):
         raise RenderError("PRODUCTION_STACK_RELEASE_ID_INVALID")
     release_digest = require_text(values["release_digest"], "PRODUCTION_STACK_RELEASE_DIGEST_INVALID", DIGEST)
+    try:
+        provenance_report = verify_signed_git_provenance(
+            git_provenance, git_provenance_keyring
+        )
+        provenance_digest = signed_git_provenance_digest(git_provenance)
+    except GateError as error:
+        raise RenderError("PRODUCTION_STACK_GIT_PROVENANCE_INVALID") from error
+    try:
+        verified_release_binding = verify_signed_release_binding(
+            release_binding, release_binding_keyring
+        )
+    except GateError as error:
+        raise RenderError("PRODUCTION_STACK_RELEASE_BINDING_INVALID") from error
+    checks = provenance_report["checks"]
+    if (
+        checks.get("release_id") != release_id
+        or checks.get("release_tag_required") is not True
+        or checks.get("release_tag_signature_verified") is not True
+        or checks.get("remote_release_tag_verified") is not True
+        or not checks.get("remote_membership_digest")
+    ):
+        raise RenderError("PRODUCTION_STACK_RELEASE_PROVENANCE_MISMATCH")
+    try:
+        expected_release_binding = build_release_binding(
+            template,
+            values,
+            runtime_config,
+            provenance_digest=provenance_digest,
+            template_blob_object_id=verified_release_binding["template_blob_object_id"],
+        )
+    except GateError as error:
+        raise RenderError("PRODUCTION_STACK_RELEASE_BINDING_INVALID") from error
+    if (
+        dict(verified_release_binding) != expected_release_binding
+        or verified_release_binding.get("release_id") != release_id
+        or verified_release_binding.get("signed_git_provenance_digest") != provenance_digest
+        or release_digest != verified_release_binding.get("release_digest")
+    ):
+        raise RenderError("PRODUCTION_STACK_RELEASE_BINDING_MISMATCH")
 
     images = require_mapping(values["images"], "images", IMAGE_KEYS)
     if any(not isinstance(image, str) or not IMAGE.fullmatch(image) for image in images.values()):
@@ -1706,21 +1771,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--values", type=Path, required=True)
     parser.add_argument("--runtime-config", type=Path, required=True)
+    parser.add_argument("--git-provenance", type=Path, required=True)
+    parser.add_argument("--git-provenance-keyring", type=Path, required=True)
+    parser.add_argument("--release-binding", type=Path, required=True)
+    parser.add_argument("--release-binding-keyring", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     if (
         not args.template.is_file() or not args.values.is_file() or not args.runtime_config.is_file()
+        or not args.git_provenance.is_file() or not args.git_provenance_keyring.is_file()
+        or not args.release_binding.is_file() or not args.release_binding_keyring.is_file()
         or not args.output.is_absolute() or args.output.exists()
     ):
         raise RenderError("PRODUCTION_STACK_PATH_INVALID")
     try:
         values = json.loads(args.values.read_text(encoding="utf-8"))
         runtime_config = json.loads(args.runtime_config.read_text(encoding="utf-8"))
+        git_provenance = json.loads(args.git_provenance.read_text(encoding="utf-8"))
+        git_provenance_keyring = json.loads(
+            args.git_provenance_keyring.read_text(encoding="utf-8")
+        )
+        release_binding = json.loads(args.release_binding.read_text(encoding="utf-8"))
+        release_binding_keyring = json.loads(
+            args.release_binding_keyring.read_text(encoding="utf-8")
+        )
     except (OSError, json.JSONDecodeError) as error:
         raise RenderError("PRODUCTION_STACK_INPUT_JSON_INVALID") from error
     if not isinstance(values, dict):
         raise RenderError("PRODUCTION_STACK_VALUES_INVALID")
-    rendered = render(args.template.read_text(encoding="utf-8"), values, runtime_config)
+    rendered = render(
+        args.template.read_text(encoding="utf-8"),
+        values,
+        runtime_config,
+        git_provenance=git_provenance,
+        git_provenance_keyring=git_provenance_keyring,
+        release_binding=release_binding,
+        release_binding_keyring=release_binding_keyring,
+    )
     descriptor = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
         stream.write(rendered)

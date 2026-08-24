@@ -20,9 +20,20 @@ fn production_assets_keep_authority_fail_closed() {
     let authority = include_str!("../src/production.rs");
     assert!(server.contains("v1/evidence/authority-events"));
     assert!(server.contains("SignedAuthorityEvidenceReceipt"));
+    assert!(server.contains("route(\"/live\",get(management_live))"));
+    assert!(server.contains("route(\"/ready\",get(management_ready))"));
+    assert!(server.contains("\"schema_version\":SUPPLY_READINESS_SCHEMA,\"live\":true"));
     assert!(!server.contains("expected_task_state_version"));
     assert!(authority.contains("evidence_requested_at"));
     assert!(authority.contains("installation_receipt_digest"));
     assert!(authority.contains("reconciliation_receipt_digest"));
     assert!(authority.contains("\"schema_version\":SUPPLY_RELEASES_SCHEMA"));
+
+    let stack = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
+    assert!(stack.contains(
+        "livenessProbe: {httpGet: {path: /live, port: management}"
+    ));
+    assert!(stack.contains(
+        "readinessProbe: {httpGet: {path: /ready, port: management}"
+    ));
 }

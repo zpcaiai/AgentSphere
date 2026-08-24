@@ -6,6 +6,7 @@ use super::{
     AuditRecordDraft, ControlDefinition, DeletionProof, EvidenceEdge, EvidenceNode, LegalHold,
     RetentionPolicy, manifest_hash, validate_draft,
 };
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     DataClassification, IdempotencyKey, SchemaVersion, TaskId, TenantId, VerifiedHumanPrincipal,
 };
@@ -467,9 +468,10 @@ impl RetentionDeletionPort for HttpRetentionDeletionClient {
         {
             return Err(AuditError::DeletionFailed);
         }
-        let receipts = response
-            .json::<Vec<RetentionObjectDeletionReceipt>>()
+        let body = read_bounded_body(response, 1_048_576)
             .await
+            .map_err(|_| AuditError::DeletionFailed)?;
+        let receipts = serde_json::from_slice::<Vec<RetentionObjectDeletionReceipt>>(&body)
             .map_err(|_| AuditError::DeletionFailed)?;
         let expected = artifact_hashes.iter().cloned().collect::<BTreeSet<_>>();
         let actual = receipts
@@ -514,10 +516,10 @@ impl RetentionDeletionPort for HttpRetentionDeletionClient {
             }
             _ => return false,
         };
-        response
-            .json::<serde_json::Value>()
+        read_bounded_body(response, 4_096)
             .await
             .ok()
+            .and_then(|body| serde_json::from_slice::<serde_json::Value>(&body).ok())
             .is_some_and(|value| {
                 value.get("schema_version").and_then(|value| value.as_str())
                     == Some(RETENTION_DELETION_READINESS_SCHEMA)

@@ -7,6 +7,7 @@ pub mod postgres;
 pub mod server;
 
 use agent_trust_action_ir::{CanonicalAction, PolicyInput, hash as action_hash};
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     ActionHash, Decision, EXECUTION_AUTHORIZATION_SCHEMA_VERSION, EffectClass,
     ExecutionAuthorization, ExecutionId, IdempotencyKey, MinimalApprovalGrant, Obligation,
@@ -205,8 +206,7 @@ impl PolicyDecisionPointPort for HttpPolicyDecisionPoint {
         if !response.status().is_success() {
             return Err(PolicyError::PdpUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 262_144)
             .await
             .map_err(|_| PolicyError::DecisionInvalid)?;
         if bytes.len() > 262_144 {

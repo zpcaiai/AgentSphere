@@ -1,49 +1,468 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-22T07:52:55Z",
+  "generated_at": "2026-08-24T07:11:53Z",
   "artifacts": [
-    {"path": "evidence/verification-summary.json", "sha256": "88677b9cf42e271f99845ebddb0825088de3d2c854a558c41b18216b94c4f5b9"},
-    {"path": "schemas/release/production-closure-certificate.schema.json", "sha256": "def91e0b3f3152c5e0df1bae3ac9b9538548393a00fca25b13ff7fefa3067d9f"},
-    {"path": "schemas/release/domain-assurance-attestation.schema.json", "sha256": "292347343b7b9ce7a86f994e2c261fc45187e386e04131fba67bb24de602b6ac"},
-    {"path": "schemas/release/external-gate-assurance-attestation.schema.json", "sha256": "9fb0f46bc59ffc0d102ab34eef7f3beeabdd1ff13c642bd84d0cc850e342be5d"},
-    {"path": "schemas/release/external-condition-matrix.schema.json", "sha256": "4914b5c35cd52d0708a972a7e03683ab5580a6aaf81716905ff33ae448b34d6e"},
-    {"path": "config/production-closure/authority.production.json", "sha256": "d6350644334132da51994d165a8a677363f7db082d3b3a0c2c06639bc7df4be7"},
-    {"path": "docs/release/production-closure-runbook.md", "sha256": "075513923454fbf171a6640e34b016017ab45591bfee6e9d32b6f4bc14056640"},
-    {"path": "evidence/batch-36/IMPLEMENTATION_STATUS.json", "sha256": "1796a1f6ce2135f046dd51b36df850a31616c162891ff84f30a6b4582a6f5d00"},
-    {"path": "evidence/production-closure/production-readiness-report.json", "sha256": "bcf6f1342da527cbfd9ffea7f18514a9b17075271cb2cd96d463528e4e5e7aa8"},
-    {"path": "evidence/production-closure/gate-results.json", "sha256": "16b45dd4cf05d0caa9db06b26a9f09388b67fd02b58bb168caafbfdb8d5b9645"},
-    {"path": "evidence/production-closure/residual-risk-register.json", "sha256": "0c93465a34faee3a55687521a2ba31d89d3060e4807038355ce7fa48ca8c84c4"},
-    {"path": "evidence/production-closure/external-condition-matrix.json", "sha256": "dfac61352ca1abef099ca1b58476a8c131aa48beb5a59913891560709d0077c0"},
-    {"path": "evidence/production-closure/CERTIFICATE_NOT_ISSUED.json", "sha256": "c8c5dba181f766ecf1ed1ea7af1986aac8985494713c4dcfd5445e541edc427c"},
-    {"path": "scripts/verify-external-gate-evidence.py", "sha256": "86b404e6c67334add87cc46f74a4384da2d65263cfd995a331651eae9550fa31"},
-    {"path": "scripts/run-linux-isolation-gate.sh", "sha256": "b580855e7fd683c363bb0bc61b3a5055584bc057f69de601f3c2428e95c9e83a"},
-    {"path": "schemas/execution/linux-isolation-report.schema.json", "sha256": "04685fe436c4de413c1d5c7d9545c0463723df370305be9ddf0d0098f5c606b8"},
-    {"path": "schemas/execution/dedicated-linux-host-attestation.schema.json", "sha256": "dc04841e309354a22610c06c1ac7e2ebc8782b0680fe9a01e5d060245209719a"},
-    {"path": "python/production_gates/external_services.py", "sha256": "4b7aee94f043503ddad663c52b4c58e3057841acb1a0c4a259902bb55259b9e2"},
-    {"path": "python/production_gates/git_provenance.py", "sha256": "66b4a7cf0af3d4380ceef67d628e40f8b4c192a83eace68ffe7942bf3cfe6058"},
-    {"path": "python/production_gates/industrial_protocols.py", "sha256": "7a799f9a89c5b9f26ba45208b173c50c5aa49ff96e38e1a1c79fbdee8a6590ad"},
-    {"path": "python/production_gates/object_store_retention.py", "sha256": "3c2b7853a5a101b3b34efdb7515dcd316c7edb69bf7c711fce17c4d2347e18d4"},
-    {"path": "python/platform_sre/multizone_topology_gate.py", "sha256": "84c8a88556701391dd4cc4320aa72dab945165604415918b1420078b2f852175"},
-    {"path": "python/platform_sre/http_load_gate.py", "sha256": "ca2dec18188c0e9b208c55fede81cb278aa45051e6cfd29f6c4422e3ff97bfcd"},
-    {"path": "Cargo.toml", "sha256": "8144f8a85677ad2a468067a375cbd3d998133650eff573f5c7c72d6c88036990"},
-    {"path": "Cargo.lock", "sha256": "ea5dfd6bfe529830362ca484c4c4fbe8ddbeb07f935d252afc5df65955513080"},
-    {"path": "rust/crates/identity/Cargo.toml", "sha256": "94ce16157c9cc54b7fffc1d38324c57a6ff0746b883d7d064681027bd500033b"},
-    {"path": "rust/crates/identity/src/lib.rs", "sha256": "981cccd6f27755ca9c3b4c463ee2dd18b6739a20087c4f9a11cb4102f308c4fd"},
-    {"path": "rust/crates/tool-proxy/src/lib.rs", "sha256": "21684fb8b11ee56cbf65702178fc35fe3e961327c6314fb86cbbd9a2608fe640"},
-    {"path": "rust/crates/model-gateway/src/lib.rs", "sha256": "16fe362c2958aba69b08df4995441e47d98435d36769a17a00e7d47d4f8f6d44"},
-    {"path": "rust/crates/production-closure/src/lib.rs", "sha256": "a1c33cf45a9e6a0d282d3337c1f47ca4ff9e392da37916bf756d61a4e8f82a23"},
-    {"path": "rust/crates/production-closure/src/bin/production-closure.rs", "sha256": "52f7a1c6d80c37de11e17ad6055caef13e00bd0ea11134dfaf3c712f8560cc9a"},
-    {"path": "evidence/external-gates/backup-restore-local-drill.json", "sha256": "4b05d3dca8190f0e27e46971375562f08303c93b8a8cc8cde96c9ce5bde3f8fc"},
-    {"path": "evidence/external-gates/enterprise-iam-not-run.json", "sha256": "7d07a573123ae9ebb4adf7bcfce07fa53b4de627f0977eb6a4bf9476af893491"},
-    {"path": "evidence/external-gates/gateway-local-load.json", "sha256": "c8f799ab276352c84902d42227f3d3f26c8413aecd2597362eb7ecf532385d98"},
-    {"path": "evidence/external-gates/kubernetes-local-recovery.json", "sha256": "408311c33d876337e9ff45fbec5c298213f9f9408c45ce046c2d1383179eb27d"},
-    {"path": "evidence/external-gates/linux-isolation-baseline.json", "sha256": "e5e519df1c9d9fea04cc6ec17ff22747c81347420221c1ab6c1b9bd92092d911"},
-    {"path": "evidence/external-gates/model-provider-live-catalog.json", "sha256": "477be66e01fb49183739d04f1feca9ac7dee12d6314cf767fa27f6fff97c4fea"},
-    {"path": "evidence/external-gates/model-generation-live-failed.json", "sha256": "aa973e971396778879e3f8d20e81c005519eb6a0111ce8e517803e6fdfadcbb8"},
-    {"path": "evidence/external-gates/object-store-local-s3.json", "sha256": "048aca8b7cbb0903061386a2a1f51760c855fdf82308d1445206aab13f89f225"},
-    {"path": "evidence/external-gates/postgres-single-host-failover.json", "sha256": "591a7946f2a81406fe9859a60754ee060dc6b6741ff48670c7be7d240cc5429b"},
-    {"path": "evidence/external-gates/temporal-local-protocol.json", "sha256": "932d71df78d24471723077e26b9588a1848f4dc710536e50cf0bdca5a804be2c"}
+    {
+      "path": "evidence/verification-summary.json",
+      "sha256": "dc07e299566fe509852ca3249959335c9e43fdf242b89566fddf622ca46a2a32"
+    },
+    {
+      "path": "schemas/release/production-closure-certificate.schema.json",
+      "sha256": "def91e0b3f3152c5e0df1bae3ac9b9538548393a00fca25b13ff7fefa3067d9f"
+    },
+    {
+      "path": "schemas/release/domain-assurance-attestation.schema.json",
+      "sha256": "292347343b7b9ce7a86f994e2c261fc45187e386e04131fba67bb24de602b6ac"
+    },
+    {
+      "path": "schemas/release/external-gate-assurance-attestation.schema.json",
+      "sha256": "9fb0f46bc59ffc0d102ab34eef7f3beeabdd1ff13c642bd84d0cc850e342be5d"
+    },
+    {
+      "path": "schemas/release/external-condition-matrix.schema.json",
+      "sha256": "4914b5c35cd52d0708a972a7e03683ab5580a6aaf81716905ff33ae448b34d6e"
+    },
+    {
+      "path": "config/production-closure/authority.production.json",
+      "sha256": "d6350644334132da51994d165a8a677363f7db082d3b3a0c2c06639bc7df4be7"
+    },
+    {
+      "path": "config/production-runtime/conditions.json",
+      "sha256": "652903c86dbc4b491497a6ca589c27c461a513bc979704439672a7407720808f"
+    },
+    {
+      "path": "docs/release/production-closure-runbook.md",
+      "sha256": "d0bd9adeba6dde8523c65b4c031022922497071a97d80c731fe1fb3a21f8c4ae"
+    },
+    {
+      "path": "evidence/batch-01/IMPLEMENTATION_STATUS.json",
+      "sha256": "e4e24d31869067e38037a44c13965f951efd65ae283131b10d644474128477c1"
+    },
+    {
+      "path": "evidence/batch-02/IMPLEMENTATION_STATUS.json",
+      "sha256": "83a992b77c95b3d93f16ed13b7c8533d07c4d80d4c6078b823707c18d05dcd09"
+    },
+    {
+      "path": "evidence/batch-03/IMPLEMENTATION_STATUS.json",
+      "sha256": "03be1408b45f30c9b70b3d9fb2ffa665247d16125b86b1446bd08dd24d9dc42d"
+    },
+    {
+      "path": "evidence/batch-04/IMPLEMENTATION_STATUS.json",
+      "sha256": "8906904c2a4811400e24097f995cd247a98eed63e13543a7a3656c85e7084929"
+    },
+    {
+      "path": "evidence/batch-05/IMPLEMENTATION_STATUS.json",
+      "sha256": "a4a10f1749843add34ffe028b4ec06409b146675a7a960b601874c66a327f709"
+    },
+    {
+      "path": "evidence/batch-06/IMPLEMENTATION_STATUS.json",
+      "sha256": "e35f1020a343dd102a9b1646ab273eae253dbd14c4aaceda89d14b198483ae30"
+    },
+    {
+      "path": "evidence/batch-07/IMPLEMENTATION_STATUS.json",
+      "sha256": "68d29e8b307397c21c42a0babb7d0004999d24425f44eb38a0b1d709a3ed69f8"
+    },
+    {
+      "path": "evidence/batch-08/IMPLEMENTATION_STATUS.json",
+      "sha256": "6d4c06570b9f9f814ad412fbb0b1a7b0eeaab6a9a51e2957908effbbf034de77"
+    },
+    {
+      "path": "evidence/batch-09/IMPLEMENTATION_STATUS.json",
+      "sha256": "48319cc2081c519f1e03e34673ca6cab4765fbe6f210aa30fef6238c9b225b94"
+    },
+    {
+      "path": "evidence/batch-10/IMPLEMENTATION_STATUS.json",
+      "sha256": "83cd69f97a5a9ce802d10f5775a812644976b46ca00464e28fe85552ceabe57b"
+    },
+    {
+      "path": "evidence/batch-11/IMPLEMENTATION_STATUS.json",
+      "sha256": "b2857ff49df3c3810398e9b8af02c4420d2363729c7936270cb697db96d8c7c1"
+    },
+    {
+      "path": "evidence/batch-12/IMPLEMENTATION_STATUS.json",
+      "sha256": "c113064c4077fd1df3b98bf42f09feaf91a7e9e3369faa6392ed87149ad5f13b"
+    },
+    {
+      "path": "evidence/batch-13/IMPLEMENTATION_STATUS.json",
+      "sha256": "14db3ac7e917abb7dbfdea1ca62c2b92b15c6f4dc93fcd2f4b928e49fd7c7972"
+    },
+    {
+      "path": "evidence/batch-14/IMPLEMENTATION_STATUS.json",
+      "sha256": "cc063a9bb2f5f5c9a7fc0ce6f6fedf36c373e4e1df485a910cbfb25cf765a733"
+    },
+    {
+      "path": "evidence/batch-15/IMPLEMENTATION_STATUS.json",
+      "sha256": "3d28ae4d1abbe05bca2c0105079afded56f684fb650ea9b35c5c91e84c706eae"
+    },
+    {
+      "path": "evidence/batch-16/IMPLEMENTATION_STATUS.json",
+      "sha256": "87c06741f46557568b9c936e6776a69b3ed7560dc3cd167205d8aef88ebf51fb"
+    },
+    {
+      "path": "evidence/batch-17/IMPLEMENTATION_STATUS.json",
+      "sha256": "ca28eafd6291388a16fc71384a0ab361c1641ac0aa484c12bd8feab9caad78dc"
+    },
+    {
+      "path": "evidence/batch-18/IMPLEMENTATION_STATUS.json",
+      "sha256": "70c770c8d9283e0630c042a7ae9e790776fd586b094b0255ca7fdaaf4f49767b"
+    },
+    {
+      "path": "evidence/batch-19/IMPLEMENTATION_STATUS.json",
+      "sha256": "1d34efcbcce7f582adce7d3733764511f6e0993683ea471d6f81bb33c10c43cf"
+    },
+    {
+      "path": "evidence/batch-20/IMPLEMENTATION_STATUS.json",
+      "sha256": "b8f5253240918063aea3be14dc472bfa45ed690f3f0346bbd95fbbf3e0eaafbd"
+    },
+    {
+      "path": "evidence/batch-21/IMPLEMENTATION_STATUS.json",
+      "sha256": "f8a4ce9b2fdf30948e9aa851bf5d9edc7eec240db07779b41de41c8af30fd6fe"
+    },
+    {
+      "path": "evidence/batch-22/IMPLEMENTATION_STATUS.json",
+      "sha256": "8d0fc058e2060563c79529ddc6badc1ee26cab34144839d9dd2a626510be1b3b"
+    },
+    {
+      "path": "evidence/batch-23/IMPLEMENTATION_STATUS.json",
+      "sha256": "7cfd30e9324334febee577561d82539ada08f867ae73af0c75a7aa7e97abfb70"
+    },
+    {
+      "path": "evidence/batch-24/IMPLEMENTATION_STATUS.json",
+      "sha256": "02fe54f9fd671dcfd493e495814896e0c1ec1701f9ea19f7c93e586431ab6a01"
+    },
+    {
+      "path": "evidence/batch-25/IMPLEMENTATION_STATUS.json",
+      "sha256": "579d04f3a641a69ed57eea60dfe55bae3abb9131280c3e568da6dc26d9cbf3c5"
+    },
+    {
+      "path": "evidence/batch-26/IMPLEMENTATION_STATUS.json",
+      "sha256": "33f3e7ad08748f104ac75d53889f6f81e947e3b6531113ef45ca45816d65d323"
+    },
+    {
+      "path": "evidence/batch-27/IMPLEMENTATION_STATUS.json",
+      "sha256": "dc23fc845e8514fad86774e50c42ca91cbb32567b8e935eaca0709f385e7f37e"
+    },
+    {
+      "path": "evidence/batch-28/IMPLEMENTATION_STATUS.json",
+      "sha256": "244583de6188ef3c1baef48ae398ef737cc7db99c476d656951b5a3bbd802840"
+    },
+    {
+      "path": "evidence/batch-29/IMPLEMENTATION_STATUS.json",
+      "sha256": "7105a0248ffd67a6d2b6690ca0b1cc16fa1497a58d522639ab1fb285ce8ac00b"
+    },
+    {
+      "path": "evidence/batch-30/IMPLEMENTATION_STATUS.json",
+      "sha256": "5e0b236c4c2d7ede592a0d207123802b87f12c92b19363a901aacc6e700a0480"
+    },
+    {
+      "path": "evidence/batch-31/IMPLEMENTATION_STATUS.json",
+      "sha256": "9134aebd31730328b7398a9cd76b9002e315d24b2ab7aea48c90d98af3f6582b"
+    },
+    {
+      "path": "evidence/batch-32/IMPLEMENTATION_STATUS.json",
+      "sha256": "9e7c8da174cf86df0d43c791de56df546191e6193cf4a6c8ccbb887a91c4c13b"
+    },
+    {
+      "path": "evidence/batch-33/IMPLEMENTATION_STATUS.json",
+      "sha256": "4e2a8f2d973997c35345607022f95ef1b4c0926f07bb8fce80407d91cfb66fcf"
+    },
+    {
+      "path": "evidence/batch-34/IMPLEMENTATION_STATUS.json",
+      "sha256": "05bb85256e8c840992c58666eb6ded8d48e5fbd45cfe47f39398f45764dce12f"
+    },
+    {
+      "path": "evidence/batch-35/IMPLEMENTATION_STATUS.json",
+      "sha256": "456a9656b180ec6c5676151d81c0e85d1fd79eeb8ad6cda042424154bfc40aec"
+    },
+    {
+      "path": "evidence/batch-36/IMPLEMENTATION_STATUS.json",
+      "sha256": "1796a1f6ce2135f046dd51b36df850a31616c162891ff84f30a6b4582a6f5d00"
+    },
+    {
+      "path": "evidence/production-closure/production-readiness-report.json",
+      "sha256": "72ded93a99016fb8d5a49ea7c7c135534761a795bf58ef7f1bd98d1d2eb31c83"
+    },
+    {
+      "path": "evidence/production-closure/gate-results.json",
+      "sha256": "4faa8ff2dca4b1a0da3177140ebe6f25142b543246f3df67fd3a7487ac026738"
+    },
+    {
+      "path": "evidence/production-closure/residual-risk-register.json",
+      "sha256": "ef4904562df22a46f1684f8dffea35cb2d03084e28ddb371f734eba22ca73236"
+    },
+    {
+      "path": "evidence/production-closure/external-condition-matrix.json",
+      "sha256": "dfac61352ca1abef099ca1b58476a8c131aa48beb5a59913891560709d0077c0"
+    },
+    {
+      "path": "evidence/production-closure/CERTIFICATE_NOT_ISSUED.json",
+      "sha256": "c8c5dba181f766ecf1ed1ea7af1986aac8985494713c4dcfd5445e541edc427c"
+    },
+    {
+      "path": "scripts/verify-external-gate-evidence.py",
+      "sha256": "86b404e6c67334add87cc46f74a4384da2d65263cfd995a331651eae9550fa31"
+    },
+    {
+      "path": "scripts/verify-evidence-bundle.py",
+      "sha256": "8a3047c9227d6c548e8a3faa15a9d8224263b2b1ef7216d46e35d096a1bd94b1"
+    },
+    {
+      "path": "scripts/run-linux-isolation-gate.sh",
+      "sha256": "b580855e7fd683c363bb0bc61b3a5055584bc057f69de601f3c2428e95c9e83a"
+    },
+    {
+      "path": "schemas/execution/linux-isolation-report.schema.json",
+      "sha256": "04685fe436c4de413c1d5c7d9545c0463723df370305be9ddf0d0098f5c606b8"
+    },
+    {
+      "path": "schemas/execution/dedicated-linux-host-attestation.schema.json",
+      "sha256": "dc04841e309354a22610c06c1ac7e2ebc8782b0680fe9a01e5d060245209719a"
+    },
+    {
+      "path": "python/production_gates/external_services.py",
+      "sha256": "4b7aee94f043503ddad663c52b4c58e3057841acb1a0c4a259902bb55259b9e2"
+    },
+    {
+      "path": "python/production_gates/git_provenance.py",
+      "sha256": "ef9d4af581d69bff3039e0892406fcec53eee26114b16767d736d13f603bc4bd"
+    },
+    {
+      "path": "python/production_gates/industrial_protocols.py",
+      "sha256": "7a799f9a89c5b9f26ba45208b173c50c5aa49ff96e38e1a1c79fbdee8a6590ad"
+    },
+    {
+      "path": "python/production_gates/object_store_retention.py",
+      "sha256": "3c2b7853a5a101b3b34efdb7515dcd316c7edb69bf7c711fce17c4d2347e18d4"
+    },
+    {
+      "path": "python/platform_sre/multizone_topology_gate.py",
+      "sha256": "84c8a88556701391dd4cc4320aa72dab945165604415918b1420078b2f852175"
+    },
+    {
+      "path": "python/platform_sre/http_load_gate.py",
+      "sha256": "ca2dec18188c0e9b208c55fede81cb278aa45051e6cfd29f6c4422e3ff97bfcd"
+    },
+    {
+      "path": "Cargo.toml",
+      "sha256": "b0a6c9d0ea3b2283494ad98331aed5c14fec874d5630310c570aff5bd43fc7a5"
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "cd706d3da1925a17ba5a501b4b07a6f22b5a31ececbbe63b9bac2bead3f70534"
+    },
+    {
+      "path": "rust/crates/identity/Cargo.toml",
+      "sha256": "94ce16157c9cc54b7fffc1d38324c57a6ff0746b883d7d064681027bd500033b"
+    },
+    {
+      "path": "rust/crates/identity/src/lib.rs",
+      "sha256": "981cccd6f27755ca9c3b4c463ee2dd18b6739a20087c4f9a11cb4102f308c4fd"
+    },
+    {
+      "path": "rust/crates/tool-proxy/src/lib.rs",
+      "sha256": "21684fb8b11ee56cbf65702178fc35fe3e961327c6314fb86cbbd9a2608fe640"
+    },
+    {
+      "path": "rust/crates/model-gateway/src/lib.rs",
+      "sha256": "16fe362c2958aba69b08df4995441e47d98435d36769a17a00e7d47d4f8f6d44"
+    },
+    {
+      "path": "rust/crates/production-closure/src/lib.rs",
+      "sha256": "a1c33cf45a9e6a0d282d3337c1f47ca4ff9e392da37916bf756d61a4e8f82a23"
+    },
+    {
+      "path": "rust/crates/production-closure/src/bin/production-closure.rs",
+      "sha256": "52f7a1c6d80c37de11e17ad6055caef13e00bd0ea11134dfaf3c712f8560cc9a"
+    },
+    {
+      "path": "evidence/external-gates/backup-restore-local-drill.json",
+      "sha256": "4b05d3dca8190f0e27e46971375562f08303c93b8a8cc8cde96c9ce5bde3f8fc"
+    },
+    {
+      "path": "evidence/external-gates/enterprise-iam-not-run.json",
+      "sha256": "7d07a573123ae9ebb4adf7bcfce07fa53b4de627f0977eb6a4bf9476af893491"
+    },
+    {
+      "path": "evidence/external-gates/gateway-local-load.json",
+      "sha256": "c8f799ab276352c84902d42227f3d3f26c8413aecd2597362eb7ecf532385d98"
+    },
+    {
+      "path": "evidence/external-gates/kubernetes-local-recovery.json",
+      "sha256": "408311c33d876337e9ff45fbec5c298213f9f9408c45ce046c2d1383179eb27d"
+    },
+    {
+      "path": "evidence/external-gates/linux-isolation-baseline.json",
+      "sha256": "e5e519df1c9d9fea04cc6ec17ff22747c81347420221c1ab6c1b9bd92092d911"
+    },
+    {
+      "path": "evidence/external-gates/model-provider-live-catalog.json",
+      "sha256": "477be66e01fb49183739d04f1feca9ac7dee12d6314cf767fa27f6fff97c4fea"
+    },
+    {
+      "path": "evidence/external-gates/model-generation-live-failed.json",
+      "sha256": "aa973e971396778879e3f8d20e81c005519eb6a0111ce8e517803e6fdfadcbb8"
+    },
+    {
+      "path": "evidence/external-gates/object-store-local-s3.json",
+      "sha256": "048aca8b7cbb0903061386a2a1f51760c855fdf82308d1445206aab13f89f225"
+    },
+    {
+      "path": "evidence/external-gates/postgres-single-host-failover.json",
+      "sha256": "591a7946f2a81406fe9859a60754ee060dc6b6741ff48670c7be7d240cc5429b"
+    },
+    {
+      "path": "evidence/external-gates/temporal-local-protocol.json",
+      "sha256": "932d71df78d24471723077e26b9588a1848f4dc710536e50cf0bdca5a804be2c"
+    },
+    {
+      "path": "python/production_gates/release_binding.py",
+      "sha256": "73db64ef665687cca75768b049f53630c892203447387ff9f8348d4e13adffea"
+    },
+    {
+      "path": "scripts/render-production-stack.py",
+      "sha256": "7b2967f069fab8ad7bf786768fff5c9042d8a786d6ef22bcb14bebdf2e504cb5"
+    },
+    {
+      "path": "schemas/release/signed-git-provenance.schema.json",
+      "sha256": "8bba5aa5d71611e1b7d44ca6d4a1f31e79cd579d0ef52576fd41fa842b12c7aa"
+    },
+    {
+      "path": "schemas/release/git-provenance-keyring.schema.json",
+      "sha256": "6b225ea963e4b907008bf671a71655d6e5436bbe5970d4a642d55add1b1aeccf"
+    },
+    {
+      "path": "schemas/release/signed-release-binding.schema.json",
+      "sha256": "406f59608c7ba4d1447403f1d2fdcd239b6bf11fa49397f5c625e99a5e1e5e8f"
+    },
+    {
+      "path": "schemas/release/release-binding-keyring.schema.json",
+      "sha256": "ea0bcb52f5b7072332e708d2d26945c4ba7ed7e8a86f21ad5a11c18050e8e51b"
+    },
+    {
+      "path": "deploy/kubernetes/production-stack-values.schema.json",
+      "sha256": "3d17a19edd0de9d6733d37612752a6b4d56402ca02d1ca283603ba8329aca6e5"
+    },
+    {
+      "path": "deploy/kubernetes/production-stack.yaml.tmpl",
+      "sha256": "2f22cc2bcb27273141ac8f1751c31963907f9bca63be4481268d3e30fdee72b3"
+    },
+    {
+      "path": "python/production_gates/tests/test_git_provenance.py",
+      "sha256": "7d2e0b4620506cc5d025f6036c694d05fe32a3afa95b927b3ba14f6f4a056545"
+    },
+    {
+      "path": "python/production_gates/tests/test_signed_git_provenance.py",
+      "sha256": "f6c5a6d2c5911dff8d73806dedaf479a0b7c9c5122dd59117328d905ab1cca09"
+    },
+    {
+      "path": "python/production_gates/tests/test_release_binding.py",
+      "sha256": "f2f13eb28f5195188294357cc90f20d22d8182f204ce5efc2eca45f0132ea15c"
+    },
+    {
+      "path": "python/production_gates/tests/test_production_deployment.py",
+      "sha256": "5c259d1c017c91ab40fcc40da1f0b9a63db5e484ba3ec32dbb6b1f8c226cc19c"
+    },
+    {
+      "path": "python/production_gates/tests/test_evidence_bundle_verifier.py",
+      "sha256": "0996bba343a3c1a78ff72a3c7278fa82f04d9abf15e7b8ff3a630040bb5d9505"
+    },
+    {
+      "path": "rust/crates/bounded-http/Cargo.toml",
+      "sha256": "f5fedfcf1ddc987f3e352c38e52d4f0e516a6fd1ace3a9cf8a90955da4202694"
+    },
+    {
+      "path": "rust/crates/bounded-http/src/lib.rs",
+      "sha256": "2010d95694b5607c4692b53b31957b9188f5e2a6ce3ab148a856173db7bf02bc"
+    },
+    {
+      "path": "scripts/validate-rust-http-bounds.py",
+      "sha256": "090c6209a29d81a8ecce660cfb301720dc2a5deae53d15c47c20fa83d982c54a"
+    },
+    {
+      "path": "rust/crates/enterprise-approval/src/review_evidence.rs",
+      "sha256": "a3a9d3fa99e1443f264c1d33fd9725aeeed0006103d93a404dd8f31508c63805"
+    },
+    {
+      "path": "rust/crates/enterprise-approval/src/lib.rs",
+      "sha256": "cc1db39c469a7ac474f2d4b8de9914399fc4180343fb3766189bf1c02b8e55b4"
+    },
+    {
+      "path": "rust/crates/enterprise-approval/src/postgres.rs",
+      "sha256": "2a9ff17dbee1cc58c80cda7ee2c9048efaf94425a75351ee06139e5bfa833b78"
+    },
+    {
+      "path": "rust/crates/enterprise-approval/tests/production_contract.rs",
+      "sha256": "790b1ab794aad3c03ca5f027729918a126d9a8c3c450be7e814e7867805eab22"
+    },
+    {
+      "path": "schemas/approval/review-evidence-issue.schema.json",
+      "sha256": "f44ef4d2dd9e0df76b9d0482b74048f78f0a003282aca3fa1e0063670fcc244c"
+    },
+    {
+      "path": "schemas/approval/review-evidence-keyring.schema.json",
+      "sha256": "e30184dc5404e738286391121aa5890ea4298edc1c2ea96f3e1b0ed1d7025780"
+    },
+    {
+      "path": "schemas/approval/approval-case.schema.json",
+      "sha256": "13edf16b52d9f896618f113b89c88cc86de757601df736caaf24e19bbe5f6a1a"
+    },
+    {
+      "path": "schemas/openapi/approval-v1.yaml",
+      "sha256": "8c4e2ce983d7b6857d60cd67a65966d06cb87946304c344bda3e925ae710ea21"
+    },
+    {
+      "path": "schemas/evidence/evaluation-request.schema.json",
+      "sha256": "e80eb412b880d4fccfe6fe3afa4c2902a6772122f6de98039241376ee06a3c9d"
+    },
+    {
+      "path": "schemas/openapi/execution-v1.yaml",
+      "sha256": "f66cf6a848258de9c289e99174e3fb6fd6c0e5edc26fbb4049b6c0b2182ca571"
+    },
+    {
+      "path": "schemas/openapi/evidence-v1.yaml",
+      "sha256": "75fa720c2646d92ffb3ec358622dff4ec169511b988ab2844f4845ea65ac515b"
+    },
+    {
+      "path": "migrations/enterprise-approval/0036_01_25_approval_review_evidence_v2.sql",
+      "sha256": "9526ab63456ba5f9b2607ec34d3931bd2571fc81a23dd27ed230c1ba9304b0db"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/server.rs",
+      "sha256": "99eb18ffe741003677cb676d0882d44b605cfb55172b2752a55961c2fd07e2f3"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/tests/production_contract.rs",
+      "sha256": "8423a78e98c85ad113b22c2ebddf0341b2a2e457e8e56d936e1f0397b083d47a"
+    },
+    {
+      "path": "rust/crates/pack-supply-chain/src/server.rs",
+      "sha256": "65673ddd2ec6c208b7fcffc358ea2f329919326705989367f8e3a0e9b489965a"
+    },
+    {
+      "path": "rust/crates/pack-supply-chain/tests/production_contract.rs",
+      "sha256": "fc773a9440f9df374e9b1c9ebd518c3693c1d4c0d796cc2aebf44bef8e98338a"
+    },
+    {
+      "path": "rust/crates/platform-sre/src/server.rs",
+      "sha256": "1154d1c06c2fc3cdcb83fb7034e6fe9d2f97913eefd3ec723715f9872f4ad0e2"
+    },
+    {
+      "path": "rust/crates/platform-sre/tests/production_contract.rs",
+      "sha256": "5185232ffedb61784ad8aa9ebec10de42743b98526fdbf26a6748f4237b5d346"
+    },
+    {
+      "path": "rust/crates/data-governance/src/server.rs",
+      "sha256": "49fe84cdee8721b3e487383beb9568c1fc132aeb270169701fcf367d03cbfddb"
+    },
+    {
+      "path": "rust/crates/data-governance/tests/production_contract.rs",
+      "sha256": "1f8e83e887d94d265b37fb6351c145aa69683827e8d9291629cf60304a512fbe"
+    },
+    {
+      "path": "python/production_gates/tests/test_supply_domain_contract.py",
+      "sha256": "4bb92c67c4057c836e6cc99aad5f81dee2e2dc356b0a3b58a211dd02c6ffcf76"
+    }
   ],
   "offline_verification_required": true,
   "production_certificate_included": false

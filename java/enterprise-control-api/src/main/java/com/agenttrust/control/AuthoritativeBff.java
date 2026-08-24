@@ -731,30 +731,44 @@ public final class AuthoritativeBff {
     }
 
     private static void requireApprovalCaseView(JsonNode item) {
-        Set<String> fields = Set.of("schema_version", "case_id", "domain", "safe_summary",
-            "action_hash", "resource", "resource_version", "policy_version", "risk",
-            "evidence_refs", "status");
+        Set<String> fields = new HashSet<>(Set.of("schema_version", "case_id", "domain",
+            "safe_summary", "action_hash", "resource", "resource_version", "policy_version",
+            "risk", "evidence_refs", "status"));
+        String domain = item.path("domain").asText();
+        if ("CODING".equals(domain)) {
+            fields.add("coding_details");
+        } else if ("INDUSTRIAL".equals(domain)) {
+            fields.add("industrial_details");
+        }
         if (!item.isObject() || !exactFields(item, fields)
             || !"agenttrust.approval-case-view.v1".equals(item.path("schema_version").asText())
             || !item.path("case_id").isTextual()
             || !item.path("case_id").textValue().matches(
                 "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-            || !Set.of("CODING", "INDUSTRIAL").contains(item.path("domain").asText())
-            || invalidText(item.path("safe_summary"), 2000)
+            || !Set.of("CODING", "INDUSTRIAL").contains(domain)
+            || !AuthorityJson.safeReviewText(item.path("safe_summary"), 2000)
             || !item.path("action_hash").isTextual()
             || !item.path("action_hash").textValue().matches("[a-f0-9]{64}")
             || invalidText(item.path("resource"), 2048)
             || invalidText(item.path("resource_version"), 2048)
             || invalidText(item.path("policy_version"), 2048)
             || !Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL").contains(item.path("risk").asText())
-            || !item.path("evidence_refs").isArray() || item.path("evidence_refs").size() > 100
+            || !item.path("evidence_refs").isArray() || item.path("evidence_refs").size() != 3
             || !Set.of("PENDING", "APPROVED", "REJECTED", "EXPIRED", "REVOKED")
                 .contains(item.path("status").asText())) {
             throw new IllegalStateException("APPROVAL_AUTHORITY_CASE_VIEW_INVALID");
         }
+        if ("CODING".equals(domain)) {
+            if (!AuthorityJson.codingApprovalDetails(item.path("coding_details"))) {
+                throw new IllegalStateException("APPROVAL_AUTHORITY_CASE_VIEW_INVALID");
+            }
+        } else if (!AuthorityJson.industrialApprovalDetails(item.path("industrial_details"))) {
+            throw new IllegalStateException("APPROVAL_AUTHORITY_CASE_VIEW_INVALID");
+        }
         Set<String> evidence = new HashSet<>();
         for (JsonNode reference : item.path("evidence_refs")) {
-            if (invalidText(reference, 2048) || !evidence.add(reference.textValue())) {
+            if (!AuthorityJson.approvalEvidenceReference(reference)
+                || !evidence.add(reference.textValue())) {
                 throw new IllegalStateException("APPROVAL_AUTHORITY_CASE_VIEW_INVALID");
             }
         }

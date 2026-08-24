@@ -372,6 +372,10 @@ python3 scripts/render-production-stack.py \
   --template deploy/kubernetes/production-stack.yaml.tmpl \
   --values /protected/release/production-stack-values.json \
   --runtime-config /protected/release/production-runtime.json \
+  --git-provenance /protected/release/signed-git-provenance.json \
+  --git-provenance-keyring /protected/release/git-provenance-keyring.json \
+  --release-binding /protected/release/signed-release-binding.json \
+  --release-binding-keyring /protected/release/release-binding-keyring.json \
   --output "$output"
 kubectl apply --dry-run=server -f "$output"
 kubectl apply -f "$output" --selector agenttrust.io/apply-phase=prerequisite

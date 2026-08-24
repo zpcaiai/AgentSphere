@@ -39,7 +39,11 @@ async function installAuthority(page: Page): Promise<void> {
             case_id: "20000000-0000-4000-8000-000000000001", domain: "CODING",
             safe_summary: "Review bounded source change", action_hash: digest, resource: "repo:example",
             resource_version: "commit:one", policy_version: "policy:v1", risk: "HIGH",
-            evidence_refs: ["evidence://1"], status: "PENDING" }], next_cursor: null,
+            coding_details: { diff_artifact_ref: `artifact://sha256/${digest}`,
+              command_summary: "Apply the reviewed repository patch", network_scope: "egress:none",
+              rollback_summary: "Restore the reviewed parent revision" },
+            evidence_refs: ["evidence://risk-package/1", "evidence://state-snapshot/1",
+              "evidence://approval-review/1"], status: "PENDING" }], next_cursor: null,
           data_digest: digest },
         data_digest: digest, fetched_at: "2026-08-13T00:00:00Z" };
       await route.fulfill({ json: { schema_version: "agenttrust.enterprise-dashboard.v1", tenant_id: tenantId,

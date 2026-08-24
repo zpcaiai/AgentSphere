@@ -24,6 +24,9 @@ fn must_str<'a>(value: &'a serde_json::Value, context: &str) -> &'a str {
 
 const MIGRATION: &str =
     include_str!("../../../../migrations/enterprise-approval/0036_01_02_production_approval.sql");
+const REVIEW_EVIDENCE_MIGRATION: &str = include_str!(
+    "../../../../migrations/enterprise-approval/0036_01_25_approval_review_evidence_v2.sql"
+);
 const OPENAPI: &str = include_str!("../../../../schemas/openapi/approval-v1.yaml");
 const TOKEN_BINDINGS_SCHEMA: &str =
     include_str!("../../../../schemas/approval/token-bindings.schema.json");
@@ -33,10 +36,13 @@ const PRINCIPAL_KEYRING_SCHEMA: &str =
     include_str!("../../../../schemas/approval/principal-keyring.schema.json");
 const PRINCIPAL_GOLDEN_VECTOR: &str =
     include_str!("../../../../schemas/approval/principal-assertion.golden.json");
+const REVIEW_EVIDENCE_KEYRING_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/review-evidence-keyring.schema.json");
 const EXECUTION_CLIENT: &str = include_str!("../../production-runtime/src/execution.rs");
 const APPROVAL_SERVER: &str = include_str!("../src/server.rs");
 const APPROVAL_STORE: &str = include_str!("../src/postgres.rs");
 const APPROVAL_PRINCIPAL_SOURCE: &str = include_str!("../src/principal.rs");
+const APPROVAL_REVIEW_EVIDENCE_SOURCE: &str = include_str!("../src/review_evidence.rs");
 const APPROVAL_BINARY: &str = include_str!("../src/bin/agenttrust-approval-service.rs");
 
 #[test]
@@ -241,6 +247,10 @@ fn authoritative_approval_inbox_is_bounded_tenant_safe_and_cursor_signed() {
         "safe_summary",
         "evidence_refs",
         "next_cursor",
+        "coding_details",
+        "industrial_details",
+        "signed-authority-evidence-receipt.schema.json",
+        "APPROVAL_REVIEW_PREPARED",
     ] {
         assert!(OPENAPI.contains(invariant), "missing {invariant}");
     }
@@ -251,7 +261,8 @@ fn authoritative_approval_inbox_is_bounded_tenant_safe_and_cursor_signed() {
         "decode_authoritative_cursor(",
         "Review governed coding action",
         "Review supervised industrial action",
-        "Evidence references are deliberately empty",
+        "verify_historical_request(&request, created_at)",
+        ".evidence_refs()",
         "canonical_digest(&material)",
     ] {
         assert!(APPROVAL_STORE.contains(invariant), "missing {invariant}");
@@ -259,6 +270,62 @@ fn authoritative_approval_inbox_is_bounded_tenant_safe_and_cursor_signed() {
     assert!(
         MIGRATION.contains("approval_cases_authoritative_page_idx"),
         "authoritative cursor query requires its tenant/order index"
+    );
+}
+
+#[test]
+fn authoritative_review_facts_are_signed_exact_and_migrated_atomically() {
+    for invariant in [
+        "agenttrust.approval-review-evidence-keyring.v2",
+        "AUTHORITY_EVIDENCE_RECEIPT",
+        "additionalProperties",
+        "tenant_ids",
+        "source_services",
+        "not_before",
+        "expires_at",
+    ] {
+        assert!(
+            REVIEW_EVIDENCE_KEYRING_SCHEMA.contains(invariant),
+            "missing review evidence keyring invariant {invariant}"
+        );
+    }
+    for invariant in [
+        "#[serde(deny_unknown_fields)]",
+        "verify_request(",
+        "verify_historical_request(",
+        "review_material_digest",
+        "risk_package_ref",
+        "state_snapshot_ref",
+        "SignedAuthorityEvidenceReceipt",
+        "AuthorityEvidenceEventRequest",
+        "to_authority_event",
+    ] {
+        assert!(
+            APPROVAL_REVIEW_EVIDENCE_SOURCE.contains(invariant),
+            "missing signed review invariant {invariant}"
+        );
+    }
+    for invariant in [
+        "APPROVAL_V2_LEGACY_MUTABLE_STATE_MUST_BE_DRAINED",
+        "agenttrust.signed-authority-evidence-receipt.v1",
+        "APPROVAL_REVIEW_PREPARED",
+        "review_context",
+        "review_evidence",
+    ] {
+        assert!(
+            REVIEW_EVIDENCE_MIGRATION.contains(invariant),
+            "missing atomic v2 migration invariant {invariant}"
+        );
+    }
+    for invariant in ["AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE"] {
+        assert!(
+            APPROVAL_BINARY.contains(invariant),
+            "missing review evidence startup gate {invariant}"
+        );
+    }
+    assert!(
+        APPROVAL_STORE.contains("review_evidence_covers"),
+        "readiness must require active review-evidence key coverage"
     );
 }
 

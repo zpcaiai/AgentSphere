@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+agent-trust-bounded-http = { path = "../bounded-http" }
 agent-trust-contracts = { path = "../contracts" }
 agent-trust-pack-supply-chain = { path = "../pack-supply-chain" }
 async-trait.workspace = true

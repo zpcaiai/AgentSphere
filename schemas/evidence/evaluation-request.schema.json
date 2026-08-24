@@ -11,7 +11,7 @@
     "expected_chain_head": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "required_event_types": {
       "type": "array", "minItems": 1, "maxItems": 32, "uniqueItems": true,
-      "items": {"enum": ["TASK_CREATED", "PLAN_GENERATED", "POLICY_EVALUATED", "APPROVAL_DECISION", "CREDENTIAL_ISSUED", "TOOL_PREPARED", "TOOL_EXECUTED", "COMPENSATION", "EVALUATION", "SECURITY_ALERT", "STATE_TRANSITION", "AUDIT_QUERY", "AUDIT_EXPORT", "LEGAL_HOLD", "RETENTION_DELETION"]},
+      "items": {"enum": ["TASK_CREATED", "PLAN_GENERATED", "POLICY_EVALUATED", "APPROVAL_DECISION", "APPROVAL_REVIEW_PREPARED", "CREDENTIAL_ISSUED", "TOOL_PREPARED", "TOOL_EXECUTED", "COMPENSATION", "EVALUATION", "SECURITY_ALERT", "STATE_TRANSITION", "AUDIT_QUERY", "AUDIT_EXPORT", "LEGAL_HOLD", "RETENTION_DELETION"]},
       "allOf": [
         {"contains": {"const": "TASK_CREATED"}},
         {"contains": {"const": "PLAN_GENERATED"}},

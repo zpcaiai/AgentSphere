@@ -1,6 +1,7 @@
 //! TLS 1.3/mTLS incident, replay, and release-gate production boundary.
 
 use crate::authority::*;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{HumanPrincipalKeyring, TenantId, human_principal_request_digest};
 use axum::extract::{DefaultBodyLimit, Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -478,8 +479,7 @@ impl IncidentOrchestratorPort for HttpIncidentOrchestrator {
         {
             return Err(IncidentAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| IncidentAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 65_536 {
@@ -603,8 +603,7 @@ impl HttpIncidentEffectPort {
         {
             return Err(IncidentAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 262_144)
             .await
             .map_err(|_| IncidentAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 262_144 {
@@ -759,7 +758,7 @@ async fn dependency_ready(
     {
         return false;
     }
-    let Ok(bytes) = response.bytes().await else {
+    let Ok(bytes) = read_bounded_body(response, 4_096).await else {
         return false;
     };
     if bytes.is_empty() || bytes.len() > 4_096 {

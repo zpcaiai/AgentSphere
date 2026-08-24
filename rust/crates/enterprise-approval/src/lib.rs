@@ -5,7 +5,8 @@ use agent_trust_contracts::{
     SchemaVersion, StepId, TaskId, TenantId,
 };
 pub use agent_trust_contracts::{
-    ApprovalConsumptionRequest, ApprovalGrantReceipt, EnterpriseApprovalGrant,
+    ApprovalConsumptionRequest, ApprovalGrantReceipt, ApprovalReviewContext,
+    CodingApprovalReviewDetails, EnterpriseApprovalGrant, IndustrialApprovalReviewDetails,
     SignedApprovalConsumptionReceipt,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -19,7 +20,8 @@ use thiserror::Error;
 use uuid::Uuid;
 
 pub const APPROVAL_SCHEMA_VERSION: &str = "agenttrust.enterprise-approval.v1";
-pub const APPROVAL_CASE_CREATE_SCHEMA_VERSION: &str = "agenttrust.approval-case-create.v1";
+pub const APPROVAL_CASE_SCHEMA_VERSION: &str = "agenttrust.enterprise-approval-case.v2";
+pub const APPROVAL_CASE_CREATE_SCHEMA_VERSION: &str = "agenttrust.approval-case-create.v2";
 pub const APPROVAL_DECISION_SCHEMA_VERSION: &str = "agenttrust.approval-decision.v1";
 pub const APPROVAL_GRANT_REQUEST_SCHEMA_VERSION: &str = "agenttrust.approval-grant-request.v1";
 pub const APPROVAL_GRANT_RECEIPT_SCHEMA_VERSION: &str = "agenttrust.approval-grant-receipt.v1";
@@ -113,6 +115,8 @@ pub struct ApprovalRequest {
     pub policy_version: PolicyVersion,
     pub environment: String,
     pub risk: RiskLevel,
+    pub review_context: ApprovalReviewContext,
+    pub review_evidence: review_evidence::ApprovalReviewEvidence,
     pub requester_subject: String,
     pub agent_owner_subject: String,
     pub justification: String,
@@ -216,6 +220,7 @@ pub struct EnterpriseApprovalService {
     issuer: String,
     key_id: String,
     signing_key: SigningKey,
+    review_evidence_keyring: review_evidence::ApprovalReviewEvidenceKeyring,
     directory: ApproverDirectory,
     state: Mutex<ApprovalState>,
 }
@@ -225,6 +230,7 @@ impl EnterpriseApprovalService {
         issuer: String,
         key_id: String,
         signing_key: SigningKey,
+        review_evidence_keyring: review_evidence::ApprovalReviewEvidenceKeyring,
     ) -> Result<Self, ApprovalError> {
         if issuer.is_empty() || key_id.is_empty() {
             Err(ApprovalError::ConfigurationInvalid)
@@ -233,6 +239,7 @@ impl EnterpriseApprovalService {
                 issuer,
                 key_id,
                 signing_key,
+                review_evidence_keyring,
                 directory: ApproverDirectory::default(),
                 state: Mutex::new(ApprovalState::default()),
             })
@@ -252,6 +259,7 @@ impl EnterpriseApprovalService {
     ) -> Result<ApprovalCase, ApprovalError> {
         validate_policy(&policy)?;
         validate_request(&request, &policy)?;
+        self.review_evidence_keyring.verify_request(&request, now)?;
         let ttl = request
             .requested_ttl_seconds
             .min(policy.maximum_ttl_seconds);
@@ -265,7 +273,7 @@ impl EnterpriseApprovalService {
             post_review_due_at = Some(now + chrono::Duration::hours(24));
         }
         let case = ApprovalCase {
-            schema_version: APPROVAL_SCHEMA_VERSION.into(),
+            schema_version: APPROVAL_CASE_SCHEMA_VERSION.into(),
             case_id: Uuid::new_v4().to_string(),
             request,
             policy,
@@ -649,6 +657,8 @@ fn validate_request(
         || request.plan_hash.len() != 64
         || request.parameter_hash.len() != 64
         || request.resource.is_empty()
+        || !request.review_context.valid()
+        || request_is_industrial(request) != request.review_context.industrial()
         || request.requester_subject.is_empty()
         || request.agent_owner_subject.is_empty()
         || request.justification.is_empty()
@@ -662,6 +672,52 @@ fn validate_request(
     } else {
         Ok(())
     }
+}
+
+pub(crate) fn request_is_industrial(request: &ApprovalRequest) -> bool {
+    let resource = request.resource.to_ascii_lowercase();
+    [
+        "opcua:",
+        "opc.tcp:",
+        "mqtt:",
+        "modbus:",
+        "plc:",
+        "scada:",
+        "plant/",
+        "urn:agenttrust:industrial:",
+    ]
+    .iter()
+    .any(|prefix| resource.starts_with(prefix))
+        || matches!(
+            request.environment.as_str(),
+            "industrial" | "physical-production"
+        )
+}
+
+pub(crate) fn contains_secret_marker(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        "authorization:",
+        "bearer ",
+        "password",
+        "passwd",
+        "client_secret",
+        "api_key",
+        "api-key",
+        "apikey",
+        "x-api-key",
+        "private key",
+        "-----begin",
+        "cookie:",
+        "set-cookie",
+        "credential://",
+        "vault-kv://",
+        "secret://",
+        "token=",
+        "token:",
+    ]
+        .iter()
+        .any(|marker| normalized.contains(marker))
 }
 pub fn binding_hash(binding: &ApprovalExecutionBinding) -> Result<String, ApprovalError> {
     Ok(hex(Sha256::digest(
@@ -732,6 +788,7 @@ impl From<ContractError> for ApprovalError {
 
 pub mod postgres;
 pub mod principal;
+pub mod review_evidence;
 pub mod server;
 pub use postgres::{
     APPROVAL_CASE_VIEW_SCHEMA_VERSION, AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION,
@@ -745,10 +802,23 @@ pub use principal::{
     APPROVAL_PRINCIPAL_REQUEST_BINDING_SCHEMA_VERSION, ApprovalPrincipalAssertionKeyring,
     SignedApprovalPrincipalAssertion, approval_principal_request_digest,
 };
+pub use review_evidence::{
+    APPROVAL_REVIEW_EVIDENCE_KEYRING_SCHEMA_VERSION,
+    APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION, APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION,
+    APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION, ApprovalReviewEvidence,
+    ApprovalReviewEvidenceIssueRequest, ApprovalReviewEvidenceKeyring, ApprovalReviewMaterial,
+    review_material_digest,
+};
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent_trust_contracts::{
+        AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,
+        AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE, AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION,
+        AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, SignedAuthorityEvidenceReceipt,
+        SignedEvidenceEvent,
+    };
     use std::sync::Arc;
 
     struct FailingNotification;
@@ -758,16 +828,137 @@ mod tests {
         }
     }
 
+    fn review_signing_key() -> SigningKey {
+        SigningKey::from_bytes(&[72u8; 32])
+    }
+
+    fn review_keyring(tenant: &TenantId, now: DateTime<Utc>) -> ApprovalReviewEvidenceKeyring {
+        let signing = review_signing_key();
+        let document = serde_json::json!({
+            "schema_version": APPROVAL_REVIEW_EVIDENCE_KEYRING_SCHEMA_VERSION,
+            "keys": [{
+                "issuer": "evidence-authority",
+                "key_id": "review-key",
+                "source_services": ["URI:spiffe://agenttrust/domain-risk-authority"],
+                "algorithm": "Ed25519",
+                "usage": AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
+                "status": "ACTIVE",
+                "public_key": URL_SAFE_NO_PAD.encode(signing.verifying_key().to_bytes()),
+                "tenant_ids": [tenant.0.clone()],
+                "not_before": now - chrono::Duration::hours(1),
+                "expires_at": now + chrono::Duration::days(1)
+            }]
+        });
+        ApprovalReviewEvidenceKeyring::from_json(
+            &serde_json::to_vec(&document).unwrap_or_else(|_| panic!("review keyring JSON")),
+        )
+        .unwrap_or_else(|_| panic!("review keyring"))
+    }
+
+    fn signed_review_evidence(
+        material: ApprovalReviewMaterial,
+        now: DateTime<Utc>,
+    ) -> ApprovalReviewEvidence {
+        let issue = ApprovalReviewEvidenceIssueRequest {
+            schema_version: APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION.into(),
+            request_id: Uuid::new_v4().to_string(),
+            idempotency_key: format!("approval-review:{}", Uuid::new_v4()),
+            actor_subject: "review-fact-authority".into(),
+            source_service: "URI:spiffe://agenttrust/domain-risk-authority".into(),
+            trace_id: Uuid::new_v4().to_string(),
+            material: material.clone(),
+            requested_at: now,
+        };
+        let authority_request = issue
+            .to_authority_event(&issue.source_service, now)
+            .unwrap_or_else(|_| panic!("authority review event"));
+        assert_eq!(
+            authority_request.schema_version,
+            AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION
+        );
+        let signing = review_signing_key();
+        let mut event = SignedEvidenceEvent {
+            schema_version: EVIDENCE_EVENT_SCHEMA_VERSION.into(),
+            event_id: authority_request.authority_event_id.clone(),
+            sequence: 1,
+            previous_hash: "0".repeat(64),
+            event_hash: String::new(),
+            key_id: "review-key".into(),
+            signature: String::new(),
+            draft: authority_request.event.clone(),
+        };
+        event.event_hash = event
+            .expected_hash()
+            .unwrap_or_else(|_| panic!("evidence event hash"));
+        event.signature = URL_SAFE_NO_PAD.encode(
+            signing
+                .sign(event.event_hash.as_bytes())
+                .to_bytes(),
+        );
+        let mut receipt = SignedAuthorityEvidenceReceipt {
+            schema_version: AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION.into(),
+            tenant_id: authority_request.tenant_id.clone(),
+            task_id: authority_request.task_id.clone(),
+            authority_event_id: authority_request.authority_event_id.clone(),
+            idempotency_key: authority_request.idempotency_key.clone(),
+            source_kind: AuthorityEvidenceSourceKind::AuthenticatedEvent,
+            request_digest: authority_request
+                .request_digest()
+                .unwrap_or_else(|_| panic!("authority request digest")),
+            payload_digest: authority_request.event.payload_hash.clone(),
+            evidence_ref: String::new(),
+            evidence_digest: String::new(),
+            event,
+            persisted_at: now,
+            issuer: "evidence-authority".into(),
+            key_id: "review-key".into(),
+            key_usage: AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE.into(),
+            signature: String::new(),
+        };
+        receipt.evidence_ref = receipt.expected_evidence_ref();
+        receipt
+            .sign(&signing)
+            .unwrap_or_else(|_| panic!("shared authority receipt"));
+        ApprovalReviewEvidence {
+            schema_version: APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION.into(),
+            material,
+            authority_request,
+            receipt,
+        }
+    }
+
+    fn material_for_request(request: &ApprovalRequest) -> ApprovalReviewMaterial {
+        ApprovalReviewMaterial {
+            schema_version: APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION.into(),
+            tenant_id: request.tenant_id.0.clone(),
+            task_id: request.task_id.0.clone(),
+            canonical_action_hash: request.action_hash.0.clone(),
+            resource: request.resource.clone(),
+            resource_version: request.resource_version.0.clone(),
+            policy_version: request.policy_version.0.clone(),
+            environment: request.environment.clone(),
+            risk: request.risk,
+            review_context: request.review_context.clone(),
+            risk_package_ref: request.review_evidence.material.risk_package_ref.clone(),
+            risk_package_digest: request.review_evidence.material.risk_package_digest.clone(),
+            state_snapshot_ref: request.review_evidence.material.state_snapshot_ref.clone(),
+            state_snapshot_digest: request.review_evidence.material.state_snapshot_digest.clone(),
+        }
+    }
+
     fn setup(dual: bool) -> (Arc<EnterpriseApprovalService>, ApprovalCase) {
+        let now = Utc::now();
+        let tenant = TenantId::new();
+        let keyring = review_keyring(&tenant, now);
         let service = Arc::new(
             EnterpriseApprovalService::new(
                 "approval".into(),
                 "key".into(),
                 SigningKey::from_bytes(&[71u8; 32]),
+                keyring,
             )
             .unwrap_or_else(|_| panic!("service")),
         );
-        let tenant = TenantId::new();
         for subject in ["approver-1", "approver-2"] {
             service.directory().upsert(ApproverIdentity {
                 tenant_id: tenant.clone(),
@@ -779,11 +970,35 @@ mod tests {
                 active: true,
             });
         }
+        let task_id = TaskId::new();
+        let action_hash = ActionHash("a".repeat(64));
+        let review_context = ApprovalReviewContext::Coding(CodingApprovalReviewDetails {
+            diff_artifact_ref: format!("artifact://sha256/{}", "d".repeat(64)),
+            command_summary: "Apply the reviewed repository patch".into(),
+            network_scope: "egress:none".into(),
+            rollback_summary: "Restore the reviewed parent revision".into(),
+        });
+        let material = ApprovalReviewMaterial {
+            schema_version: APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION.into(),
+            tenant_id: tenant.0.clone(),
+            task_id: task_id.0.clone(),
+            canonical_action_hash: action_hash.0.clone(),
+            resource: "repo:a".into(),
+            resource_version: "v1".into(),
+            policy_version: "policy-v1".into(),
+            environment: "production".into(),
+            risk: RiskLevel::High,
+            review_context: review_context.clone(),
+            risk_package_ref: "urn:agenttrust:evidence:risk-package:test".into(),
+            risk_package_digest: "e".repeat(64),
+            state_snapshot_ref: "urn:agenttrust:evidence:state-snapshot:test".into(),
+            state_snapshot_digest: "f".repeat(64),
+        };
         let request = ApprovalRequest {
             tenant_id: tenant,
-            task_id: TaskId::new(),
+            task_id,
             step_id: StepId::new(),
-            action_hash: ActionHash("a".repeat(64)),
+            action_hash,
             plan_hash: "b".repeat(64),
             parameter_hash: "c".repeat(64),
             resource: "repo:a".into(),
@@ -791,6 +1006,8 @@ mod tests {
             policy_version: PolicyVersion("policy-v1".into()),
             environment: "production".into(),
             risk: RiskLevel::High,
+            review_context,
+            review_evidence: signed_review_evidence(material, now),
             requester_subject: "requester".into(),
             agent_owner_subject: "agent-owner".into(),
             justification: "apply reviewed patch".into(),
@@ -815,7 +1032,7 @@ mod tests {
             maximum_risk: RiskLevel::High,
         };
         let case = service
-            .request(request, policy, Utc::now())
+            .request(request, policy, now)
             .unwrap_or_else(|_| panic!("case"));
         (service, case)
     }
@@ -833,6 +1050,130 @@ mod tests {
             environment: case.request.environment.clone(),
             risk: case.request.risk,
         }
+    }
+
+    #[test]
+    fn review_context_is_domain_bound_and_rejects_secret_like_values() {
+        let (service, case) = setup(false);
+        assert!(validate_request(&case.request, &case.policy).is_ok());
+
+        let mut secret = case.request.clone();
+        secret.review_context = ApprovalReviewContext::Coding(CodingApprovalReviewDetails {
+            diff_artifact_ref: format!("artifact://sha256/{}", "d".repeat(64)),
+            command_summary: "Authorization: Bearer must-not-enter-the-inbox".into(),
+            network_scope: "egress:none".into(),
+            rollback_summary: "Restore the reviewed parent revision".into(),
+        });
+        assert_eq!(
+            validate_request(&secret, &case.policy),
+            Err(ApprovalError::RequestInvalid)
+        );
+
+        let mut mismatched = case.request.clone();
+        mismatched.resource = "opcua:plant/line-1/point-7".into();
+        mismatched.environment = "industrial".into();
+        assert_eq!(
+            validate_request(&mismatched, &case.policy),
+            Err(ApprovalError::RequestInvalid)
+        );
+
+        mismatched.review_context =
+            ApprovalReviewContext::Industrial(IndustrialApprovalReviewDetails {
+                current_value: "42.0 C".into(),
+                target_value: "43.0 C".into(),
+                allowed_range: "40.0 C to 45.0 C".into(),
+                interlock_summary: "SIS permissive and operator supervision required".into(),
+                physical_impact: "One degree setpoint increase on line 1".into(),
+            });
+        assert!(validate_request(&mismatched, &case.policy).is_ok());
+        assert_eq!(
+            service.review_evidence_keyring.verify_request(&mismatched, Utc::now()),
+            Err(ApprovalError::RequestInvalid)
+        );
+        mismatched.review_evidence =
+            signed_review_evidence(material_for_request(&mismatched), Utc::now());
+        assert!(service.review_evidence_keyring
+            .verify_request(&mismatched, Utc::now())
+            .is_ok());
+
+        let mut unknown = serde_json::to_value(&case.request.review_context)
+            .unwrap_or_else(|_| panic!("review context JSON"));
+        unknown
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("review context object"))
+            .insert("raw_command".into(), serde_json::json!("hidden"));
+        assert!(serde_json::from_value::<ApprovalReviewContext>(unknown).is_err());
+    }
+
+    #[test]
+    fn persisted_review_evidence_is_verified_at_case_creation_time() {
+        let (service, case) = setup(false);
+        let created_at = case.created_at;
+        assert!(
+            service
+                .review_evidence_keyring
+                .verify_historical_request(&case.request, created_at)
+                .is_ok()
+        );
+        assert_eq!(
+            service.review_evidence_keyring.verify_request(
+                &case.request,
+                created_at + chrono::Duration::hours(1),
+            ),
+            Err(ApprovalError::RequestInvalid)
+        );
+        assert!(
+            service
+                .review_evidence_keyring
+                .verify_historical_request(&case.request, created_at)
+                .is_ok(),
+            "an immutable case must remain listable after the short-lived creation receipt expires"
+        );
+    }
+
+    #[test]
+    fn shared_authority_request_binds_exact_source_payload_and_artifacts() {
+        let (service, case) = setup(false);
+        let authority = &case.request.review_evidence.authority_request;
+        assert_eq!(authority.source_kind, AuthorityEvidenceSourceKind::AuthenticatedEvent);
+        assert!(authority.control_binding.is_none());
+        assert_eq!(
+            authority.event.event_type,
+            agent_trust_contracts::EvidenceEventType::ApprovalReviewPrepared
+        );
+        assert_eq!(authority.event.artifact_refs.len(), 3);
+        assert_eq!(
+            authority.event.payload_hash,
+            review_material_digest(&case.request.review_evidence.material)
+                .unwrap_or_else(|_| panic!("review material digest"))
+        );
+
+        let mut source_drift = case.request.clone();
+        source_drift
+            .review_evidence
+            .authority_request
+            .event
+            .source_service = "URI:spiffe://agenttrust/untrusted-requester".into();
+        assert_eq!(
+            service
+                .review_evidence_keyring
+                .verify_request(&source_drift, case.created_at),
+            Err(ApprovalError::RequestInvalid)
+        );
+
+        let mut artifact_drift = case.request.clone();
+        let _ = artifact_drift
+            .review_evidence
+            .authority_request
+            .event
+            .artifact_refs
+            .pop();
+        assert_eq!(
+            service
+                .review_evidence_keyring
+                .verify_request(&artifact_drift, case.created_at),
+            Err(ApprovalError::RequestInvalid)
+        );
     }
 
     #[test]

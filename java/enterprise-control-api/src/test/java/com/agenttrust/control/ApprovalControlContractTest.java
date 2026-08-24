@@ -19,6 +19,14 @@ class ApprovalControlContractTest {
         assertTrue(approval.contains("/v1/approvals/cases/{case_id}/decisions:"));
         assertTrue(approval.contains("x-required-service-scope: approvals:decide"));
         assertTrue(approval.contains("name: x-agenttrust-principal-assertion"));
+        assertTrue(approval.contains("agenttrust.approval-case-create.v2"));
+        assertTrue(approval.contains("agenttrust.enterprise-approval-case.v2"));
+        for (String field : new String[] {"review_context", "review_evidence",
+            "canonical_action_hash", "risk_package_ref", "state_snapshot_ref",
+            "authority_request", "agenttrust.signed-authority-evidence-receipt.v1",
+            "APPROVAL_REVIEW_PREPARED", "AUTHORITY_EVIDENCE_RECEIPT"}) {
+            assertTrue(approval.contains(field));
+        }
         assertTrue(control.contains("CONTROL_APPROVAL_EVIDENCE_PENDING"));
         for (String field : new String[] {"owned_resources", "strong_auth",
             "authentication_time", "authentication_context"}) {

@@ -2,6 +2,7 @@
 
 use crate::authority::*;
 use crate::principal::HumanPrincipalKeyring;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{TenantId, human_principal_request_digest};
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Query, State};
@@ -449,8 +450,7 @@ impl MarketplaceOrchestratorPort for HttpMarketplaceOrchestrator {
         {
             return Err(MarketplaceAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| MarketplaceAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 65_536 {

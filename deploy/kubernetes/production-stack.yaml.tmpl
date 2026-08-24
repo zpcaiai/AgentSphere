@@ -334,6 +334,8 @@ spec:
       - {objectName: "approval-token-bindings.json", secretPath: "@@VAULT_APPROVAL_PATH@@", secretKey: "approval_token_bindings", filePermission: 0o440}
       - {objectName: "approval-private-key", secretPath: "@@VAULT_APPROVAL_PATH@@", secretKey: "approval_private_key", filePermission: 0o440}
       - {objectName: "principal-keys.json", secretPath: "@@VAULT_APPROVAL_PATH@@", secretKey: "principal_keys", filePermission: 0o440}
+      # Public-only shared Evidence Authority receipt keys plus pinned review-fact source SANs.
+      - {objectName: "review-evidence-keys.json", secretPath: "@@VAULT_APPROVAL_PATH@@", secretKey: "review_evidence_keys", filePermission: 0o440}
 ---
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
@@ -1421,7 +1423,8 @@ metadata:
 spec:
   replicas: 3
   revisionHistoryLimit: 10
-  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  # ApprovalCase v2 is intentionally atomic: a v1 pod cannot accept or render v2 review evidence.
+  strategy: {type: Recreate}
   selector: {matchLabels: {app.kubernetes.io/name: agenttrust-approval}}
   template:
     metadata:
@@ -1454,6 +1457,7 @@ spec:
             - {name: AGENT_TRUST_APPROVAL_CLIENT_IDENTITIES, value: "@@APPROVAL_CLIENT_IDENTITIES@@"}
             - {name: AGENT_TRUST_APPROVAL_TOKEN_BINDINGS_FILE, value: /var/run/agenttrust/secrets/approval/approval-token-bindings.json}
             - {name: AGENT_TRUST_APPROVAL_PRINCIPAL_KEYS_FILE, value: /var/run/agenttrust/secrets/approval/principal-keys.json}
+            - {name: AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE, value: /var/run/agenttrust/secrets/approval/review-evidence-keys.json}
             - {name: AGENT_TRUST_APPROVAL_PRINCIPAL_AUDIENCE, value: "@@APPROVAL_PRINCIPAL_AUDIENCE@@"}
             - {name: AGENT_TRUST_APPROVAL_TLS_CA_FILE, value: /var/run/agenttrust/secrets/approval/caller-ca.pem}
             - {name: AGENT_TRUST_APPROVAL_TLS_CERTIFICATE_FILE, value: /var/run/agenttrust/secrets/approval/server-cert.pem}
@@ -1484,7 +1488,7 @@ kind: PodDisruptionBudget
 metadata:
   name: agenttrust-approval
   labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
-spec: {minAvailable: 2, selector: {matchLabels: {app.kubernetes.io/name: agenttrust-approval}}}
+spec: {maxUnavailable: "100%", selector: {matchLabels: {app.kubernetes.io/name: agenttrust-approval}}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -2844,6 +2848,7 @@ spec:
       - {objectName: "outbound-ca.pem", secretPath: "@@VAULT_DOMAIN_RUNTIME_PATH@@", secretKey: "outbound_ca", filePermission: 0o440}
       - {objectName: "outbound-cert.pem", secretPath: "@@VAULT_DOMAIN_RUNTIME_PATH@@", secretKey: "outbound_certificate", filePermission: 0o440}
       - {objectName: "outbound-key.pem", secretPath: "@@VAULT_DOMAIN_RUNTIME_PATH@@", secretKey: "outbound_private_key", filePermission: 0o440}
+      # Includes a distinct caller credential bound to domain-runtime:approval-review-evidence.
       - {objectName: "token-bindings.json", secretPath: "@@VAULT_DOMAIN_RUNTIME_PATH@@", secretKey: "token_bindings", filePermission: 0o440}
       - {objectName: "evidence-keyring.json", secretPath: "@@VAULT_DOMAIN_RUNTIME_PATH@@", secretKey: "evidence_keyring", filePermission: 0o440}
       - {objectName: "receipt-keyring.json", secretPath: "@@VAULT_DOMAIN_RUNTIME_PATH@@", secretKey: "receipt_keyring", filePermission: 0o440}
@@ -2866,7 +2871,7 @@ spec:
   template:
     metadata:
       labels: {app.kubernetes.io/name: agenttrust-domain-runtime, app.kubernetes.io/component: domain-runtime, app.kubernetes.io/part-of: agenttrust-control-plane}
-      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@", agenttrust.io/outbound-client-identity: "@@DOMAIN_RUNTIME_OUTBOUND_CLIENT_IDENTITY@@", agenttrust.io/readiness-schema: "@@DOMAIN_RUNTIME_READINESS_SCHEMA@@", agenttrust.io/organization-id: "@@DOMAIN_RUNTIME_ORGANIZATION_ID@@", agenttrust.io/agent-version: "@@DOMAIN_RUNTIME_AGENT_VERSION@@", agenttrust.io/region: "@@DOMAIN_RUNTIME_REGION@@", agenttrust.io/service-subject: "@@DOMAIN_RUNTIME_SERVICE_SUBJECT@@", agenttrust.io/signing-key-id: "@@DOMAIN_RUNTIME_SIGNING_KEY_ID@@", agenttrust.io/recovery-interval-seconds: "@@DOMAIN_RUNTIME_RECOVERY_INTERVAL_SECONDS@@", agenttrust.io/max-authentication-age-seconds: "@@DOMAIN_RUNTIME_MAX_AUTH_AGE_SECONDS@@"}
+      annotations: {agenttrust.io/release-id: "@@RELEASE_ID@@", agenttrust.io/release-digest: "@@RELEASE_DIGEST@@", agenttrust.io/outbound-client-identity: "@@DOMAIN_RUNTIME_OUTBOUND_CLIENT_IDENTITY@@", agenttrust.io/readiness-schema: "@@DOMAIN_RUNTIME_READINESS_SCHEMA@@", agenttrust.io/organization-id: "@@DOMAIN_RUNTIME_ORGANIZATION_ID@@", agenttrust.io/agent-version: "@@DOMAIN_RUNTIME_AGENT_VERSION@@", agenttrust.io/region: "@@DOMAIN_RUNTIME_REGION@@", agenttrust.io/service-subject: "@@DOMAIN_RUNTIME_SERVICE_SUBJECT@@", agenttrust.io/signing-key-id: "@@DOMAIN_RUNTIME_SIGNING_KEY_ID@@", agenttrust.io/recovery-interval-seconds: "@@DOMAIN_RUNTIME_RECOVERY_INTERVAL_SECONDS@@", agenttrust.io/max-authentication-age-seconds: "@@DOMAIN_RUNTIME_MAX_AUTH_AGE_SECONDS@@", agenttrust.io/approval-review-scope: "domain-runtime:approval-review-evidence", agenttrust.io/approval-review-evidence-event: "APPROVAL_REVIEW_PREPARED"}
     spec:
       serviceAccountName: agenttrust-domain-runtime
       automountServiceAccountToken: false

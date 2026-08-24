@@ -1,5 +1,7 @@
 from pathlib import Path
 import importlib.util
+import re
+import tomllib
 import unittest
 
 
@@ -11,6 +13,51 @@ _SPEC.loader.exec_module(_MODULE)
 
 
 class BuildProductionImageTests(unittest.TestCase):
+    def test_every_cargo_dockerfile_uses_a_declared_binary(self) -> None:
+        packages: dict[str, tuple[Path, set[str]]] = {}
+        for manifest in (_ROOT / "rust/crates").glob("*/Cargo.toml"):
+            data = tomllib.loads(manifest.read_text())
+            package = data.get("package", {}).get("name")
+            if not isinstance(package, str):
+                continue
+            crate = manifest.parent
+            binaries = {
+                item["name"] for item in data.get("bin", [])
+                if isinstance(item, dict) and isinstance(item.get("name"), str)
+            }
+            binary_directory = crate / "src/bin"
+            if binary_directory.is_dir():
+                binaries.update(path.stem for path in binary_directory.glob("*.rs"))
+            if (crate / "src/main.rs").is_file():
+                binaries.add(package)
+            packages[package] = (manifest, binaries)
+
+        checked = 0
+        for dockerfile in _ROOT.rglob("Dockerfile*"):
+            if "skills" in dockerfile.parts or "target" in dockerfile.parts:
+                continue
+            content = dockerfile.read_text()
+            if "cargo build" not in content:
+                continue
+            command = re.search(
+                r"cargo\s+build\b.*?(?:-p|--package)\s+([A-Za-z0-9_-]+)"
+                r"(.*?)(?:&&|\n\s*\n|\nFROM )",
+                content,
+                re.DOTALL,
+            )
+            with self.subTest(dockerfile=str(dockerfile)):
+                self.assertIsNotNone(command)
+                assert command is not None
+                package, arguments = command.groups()
+                self.assertIn(package, packages)
+                binary_match = re.search(r"--bin\s+([A-Za-z0-9_-]+)", arguments)
+                binary = binary_match.group(1) if binary_match else package
+                self.assertIn(binary, packages[package][1])
+                self.assertIn(f"/target/release/{binary}", content)
+                self.assertIn(f"/usr/local/bin/{binary}", content)
+            checked += 1
+        self.assertEqual(checked, 26)
+
     def test_mutable_base_is_rejected(self) -> None:
         with self.assertRaisesRegex(_MODULE.BuildConfigurationError, "CONFIGURATION_INVALID"):
             _MODULE.command_for("orchestrator", "agenttrust/orchestrator:release-1", ["python:latest"], _ROOT)

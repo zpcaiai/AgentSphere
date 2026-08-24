@@ -12,7 +12,10 @@
   ],
   "properties": {
     "schema_version": {"const": "agenttrust.production-stack-values.v2"},
-    "release_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$", "not": {"const": "WORKTREE-NO-GIT"}},
+    "release_id": {
+      "type": "string",
+      "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"
+    },
     "release_digest": {"$ref": "#/$defs/digest"},
     "images": {"$ref": "#/$defs/images"},
     "database": {"$ref": "#/$defs/database"},

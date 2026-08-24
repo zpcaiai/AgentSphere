@@ -1,6 +1,7 @@
 //! TLS 1.3/mTLS HTTP boundary and typed supply-chain runtime adapter.
 
 use crate::production::*;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     ActionHash,ExecutionId,IdempotencyKey,TaskId,TenantId,
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,AuthorityEvidenceControlBinding,
@@ -323,12 +324,17 @@ impl EvidenceEventKeyring {
     }
 
     pub fn verify(&self,receipt:&SignedAuthorityEvidenceReceipt,request:&AuthorityEvidenceEventRequest,payload_digest:&str,source_identity:&str)->Result<AuthorityEvidenceDelivery,SupplyAuthorityError>{
+        self.verify_for_source_kind(receipt,request,payload_digest,source_identity,AuthorityEvidenceSourceKind::GovernedAction)
+    }
+
+    pub fn verify_for_source_kind(&self,receipt:&SignedAuthorityEvidenceReceipt,request:&AuthorityEvidenceEventRequest,payload_digest:&str,source_identity:&str,expected_source_kind:AuthorityEvidenceSourceKind)->Result<AuthorityEvidenceDelivery,SupplyAuthorityError>{
         let key=self.keys.get(&receipt.key_id).ok_or(SupplyAuthorityError::ReceiptInvalid)?;
         receipt.verify(key,Utc::now()).map_err(|_|SupplyAuthorityError::ReceiptInvalid)?;
         let request_digest=request.request_digest().map_err(|_|SupplyAuthorityError::ReceiptInvalid)?;
         if receipt.tenant_id!=request.tenant_id||receipt.task_id!=request.task_id
             ||receipt.authority_event_id!=request.authority_event_id||receipt.idempotency_key!=request.idempotency_key
-            ||receipt.source_kind!=AuthorityEvidenceSourceKind::GovernedAction||receipt.request_digest!=request_digest
+            ||receipt.source_kind!=expected_source_kind||receipt.source_kind!=request.source_kind
+            ||receipt.request_digest!=request_digest
             ||receipt.payload_digest!=payload_digest||receipt.event.draft!=request.event
             ||receipt.event.draft.source_service!=source_identity{
             return Err(SupplyAuthorityError::ReceiptInvalid);
@@ -359,7 +365,7 @@ impl SupplyChainRuntimePort for HttpSupplyChainRuntimePort {
         if !response.status().is_success() || response.content_length().is_some_and(|length|length>262_144) {
             return Err(SupplyAuthorityError::DependencyUnavailable);
         }
-        let bytes=response.bytes().await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)?;
+        let bytes=read_bounded_body(response,262_144).await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty()||bytes.len()>262_144 { return Err(SupplyAuthorityError::DependencyUnavailable); }
         serde_json::from_slice(&bytes).map_err(|_|SupplyAuthorityError::DependencyUnavailable)
     }
@@ -412,7 +418,7 @@ impl SupplyChainRuntimePort for HttpSupplyChainRuntimePort {
             .header("Idempotency-Key",idempotency_key).header("X-AgentTrust-Authority-Event-Id",authority_event_id.to_string()).header("X-AgentTrust-Payload-Digest",payload_digest)
             .json(&request).send().await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)?;
         if !response.status().is_success()||response.content_length().is_some_and(|length|length>262_144){return Err(SupplyAuthorityError::DependencyUnavailable);}
-        let bytes=response.bytes().await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)?;
+        let bytes=read_bounded_body(response,262_144).await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty()||bytes.len()>262_144{return Err(SupplyAuthorityError::DependencyUnavailable);}
         let receipt:SignedAuthorityEvidenceReceipt=serde_json::from_slice(&bytes).map_err(|_|SupplyAuthorityError::DependencyUnavailable)?;
         self.evidence_keyring.verify(&receipt,&request,payload_digest,&self.evidence_client_identity)
@@ -424,7 +430,7 @@ async fn dependency_ready(client:&reqwest::Client,dependency:&SupplyDependency)-
     let Ok(url)=dependency.endpoint.join("ready") else {return false;};
     let Ok(response)=client.get(url).bearer_auth(token).send().await else {return false;};
     if !response.status().is_success()||response.content_length().is_some_and(|length|length>4096){return false;}
-    let Ok(bytes)=response.bytes().await else{return false;};
+    let Ok(bytes)=read_bounded_body(response,4_096).await else{return false;};
     !bytes.is_empty()&&bytes.len()<=4096&&serde_json::from_slice::<DependencyReadiness>(&bytes)
         .is_ok_and(|value|value.schema_version==dependency.readiness_schema&&value.ready)
 }
@@ -435,13 +441,14 @@ pub async fn serve(config:SupplyServerConfig,application:Router,authority:Supply
         ||config.data_address==config.management_address{return Err(SupplyAuthorityError::ConfigurationInvalid);}
     let tls=build_server_tls(&config.tls_ca_file,&config.tls_certificate_file,&config.tls_private_key_file)?;
     let acceptor=ExactPeerIdentityAcceptor{inner:RustlsAcceptor::new(tls),allowed_identities:Arc::new(config.allowed_client_identities)};
-    let management=Router::new().route("/ready",get(management_ready)).with_state(ReadinessState{authority});
+    let management=Router::new().route("/live",get(management_live)).route("/ready",get(management_ready)).with_state(ReadinessState{authority});
     let listener=tokio::net::TcpListener::bind(config.management_address).await.map_err(|_|SupplyAuthorityError::ConfigurationInvalid)?;
     let data=async move{axum_server::bind(config.data_address).acceptor(acceptor).serve(application.into_make_service()).await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)};
     let management=async move{axum::serve(listener,management).await.map_err(|_|SupplyAuthorityError::DependencyUnavailable)};
     tokio::try_join!(data,management)?; Ok(())
 }
 
+async fn management_live()->Json<serde_json::Value>{Json(serde_json::json!({"schema_version":SUPPLY_READINESS_SCHEMA,"live":true}))}
 async fn management_ready(State(state):State<ReadinessState>)->Result<Json<serde_json::Value>,ApiError>{ready(&state.authority).await}
 async fn ready(authority:&SupplyChainAuthority)->Result<Json<serde_json::Value>,ApiError>{
     if !authority.ready().await{return Err(SupplyAuthorityError::DependencyUnavailable.into());}

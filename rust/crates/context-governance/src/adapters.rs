@@ -12,6 +12,7 @@ use crate::authority::{
     RetrievalDecision, VectorSearchHit, canonical_digest, digest, evidence_reference, identifier,
     index_reference, object_reference, valid_idempotency_key,
 };
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
     AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
@@ -178,7 +179,7 @@ impl ContextOrchestratorPort for HttpContextOrchestrator {
         {
             return false;
         }
-        let Ok(bytes) = response.bytes().await else {
+        let Ok(bytes) = read_bounded_body(response, 4_096).await else {
             return false;
         };
         strict_json::<DependencyReadiness>(&bytes).is_ok_and(|value| {
@@ -219,8 +220,7 @@ impl ContextOrchestratorPort for HttpContextOrchestrator {
         {
             return Err(ContextAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| ContextAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 65_536 {
@@ -355,8 +355,7 @@ impl HttpContextRuntime {
         {
             return Err(ContextAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, MAX_DEPENDENCY_RESPONSE_BYTES)
             .await
             .map_err(|_| ContextAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > MAX_DEPENDENCY_RESPONSE_BYTES {
@@ -387,7 +386,7 @@ impl HttpContextRuntime {
         {
             return false;
         }
-        let Ok(bytes) = response.bytes().await else {
+        let Ok(bytes) = read_bounded_body(response, 4_096).await else {
             return false;
         };
         strict_json::<DependencyReadiness>(&bytes).is_ok_and(|value| {
@@ -934,8 +933,7 @@ impl ContextRuntimePort for HttpContextRuntime {
         {
             return Err(ContextAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| ContextAuthorityError::DependencyUnavailable)?;
         if bytes.is_empty() || bytes.len() > 65_536 {

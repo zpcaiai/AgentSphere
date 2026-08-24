@@ -140,6 +140,7 @@ pack_gateway = (root / "java/enterprise-control-api/src/main/java/com/agenttrust
 readiness = (root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/AuthorityReadinessConfiguration.java").read_text(encoding="utf-8")
 bff = (root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/AuthoritativeBff.java").read_text(encoding="utf-8")
 console_state = (root / "web/control-console/src/control-state.ts").read_text(encoding="utf-8")
+console_router = (root / "web/control-console/src/router.ts").read_text(encoding="utf-8")
 for marker in (
     "AGENT_TRUST_INCIDENT_READ_TOKEN_FILE", "AGENT_TRUST_INCIDENT_MUTATE_TOKEN_FILE",
     "AGENT_TRUST_PACK_MARKETPLACE_READ_TOKEN_FILE", "AGENT_TRUST_PACK_MARKETPLACE_MUTATE_TOKEN_FILE",
@@ -339,6 +340,196 @@ assert section_block is not None, "console service section declaration missing"
 actual_sections = set(re.findall(r'"([A-Z_]+)"', section_block.group(1)))
 assert len(actual_sections) == 21 and expected_sections <= actual_sections, (
     "console production authority section set drift"
+)
+router_block = re.search(
+    r"const modules = new Set\(\[(.*?)\]\);", console_router, re.DOTALL
+)
+assert router_block is not None, "console module route allowlist missing"
+actual_routes = set(re.findall(r'"([a-z_]+)"', router_block.group(1)))
+expected_routes = {section.lower() for section in actual_sections} | {"overview", "admin"}
+assert actual_routes == expected_routes, (
+    f"console module route drift missing={sorted(expected_routes - actual_routes)} "
+    f"extra={sorted(actual_routes - expected_routes)}"
+)
+
+# Batch 17 approval review facts form one strict v2 contract. Requester text is never rendered
+# unless an independently signed authority attestation binds it to the exact Canonical Action,
+# risk package and state snapshot. Legacy mutable rows must be drained before the atomic rollout.
+approval_openapi = (root / "schemas/openapi/approval-v1.yaml").read_text(encoding="utf-8")
+approval_schema = json.loads(
+    (root / "schemas/approval/approval-case.schema.json").read_text(encoding="utf-8")
+)
+review_keyring_schema = json.loads(
+    (root / "schemas/approval/review-evidence-keyring.schema.json").read_text(encoding="utf-8")
+)
+review_issue_schema = json.loads(
+    (root / "schemas/approval/review-evidence-issue.schema.json").read_text(encoding="utf-8")
+)
+approval_rust = (root / "rust/crates/enterprise-approval/src/lib.rs").read_text(encoding="utf-8")
+approval_store = (root / "rust/crates/enterprise-approval/src/postgres.rs").read_text(encoding="utf-8")
+review_evidence_rust = (
+    root / "rust/crates/enterprise-approval/src/review_evidence.rs"
+).read_text(encoding="utf-8")
+review_shared_contracts = (
+    root / "rust/crates/contracts/src/lib.rs"
+).read_text(encoding="utf-8")
+domain_review_producer = (
+    root / "rust/crates/domain-risk-packs/server.rs"
+).read_text(encoding="utf-8")
+domain_review_binary = (
+    root / "rust/crates/domain-risk-packs/src/bin/agenttrust-domain-runtime-authority.rs"
+).read_text(encoding="utf-8")
+domain_review_openapi = (
+    root / "schemas/openapi/domain-runtime-v1.yaml"
+).read_text(encoding="utf-8")
+domain_token_schema = json.loads(
+    (root / "schemas/domain-packs/domain-runtime-token-bindings.schema.json").read_text(
+        encoding="utf-8"
+    )
+)
+approval_gateway = (
+    root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/GovernedAuthorityGateway.java"
+).read_text(encoding="utf-8")
+approval_json = (
+    root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/AuthorityJson.java"
+).read_text(encoding="utf-8")
+approval_browser = (root / "web/approval-console/src/approval-state.ts").read_text(encoding="utf-8")
+approval_view = (root / "web/approval-console/src/ApprovalConsole.vue").read_text(encoding="utf-8")
+approval_tests = (root / "web/approval-console/src/approval-state.test.ts").read_text(encoding="utf-8")
+approval_request_fields = {
+    "tenant_id", "task_id", "step_id", "action_hash", "plan_hash", "parameter_hash",
+    "resource", "resource_version", "policy_version", "environment", "risk",
+    "review_context", "review_evidence", "requester_subject", "agent_owner_subject",
+    "justification", "requested_ttl_seconds", "requested_uses",
+}
+assert set(approval_schema["properties"]["request"]["required"]) == approval_request_fields
+assert set(approval_schema["properties"]["request"]["properties"]) == approval_request_fields
+assert approval_schema["properties"]["request"]["additionalProperties"] is False
+assert approval_schema["properties"]["schema_version"]["const"] == (
+    "agenttrust.enterprise-approval-case.v2"
+)
+assert review_keyring_schema["properties"]["schema_version"]["const"] == (
+    "agenttrust.approval-review-evidence-keyring.v2"
+)
+assert review_keyring_schema["properties"]["keys"]["items"]["properties"]["usage"]["const"] == (
+    "AUTHORITY_EVIDENCE_RECEIPT"
+)
+assert set(review_issue_schema["required"]) == {
+    "schema_version", "request_id", "idempotency_key", "actor_subject", "source_service",
+    "trace_id", "material", "requested_at",
+}
+for marker in (
+    "agenttrust.approval-case-create.v2", "agenttrust.enterprise-approval-case.v2",
+    "agenttrust.approval-review-evidence-binding.v1", "agenttrust.approval-review-material.v1",
+    "signed-authority-evidence-receipt.schema.json", "canonical_action_hash",
+    "authority_request", "APPROVAL_REVIEW_PREPARED",
+    "risk_package_ref", "risk_package_digest", "state_snapshot_ref", "state_snapshot_digest",
+):
+    assert marker in approval_openapi, f"approval v2 OpenAPI marker missing: {marker}"
+for marker in ("deny_unknown_fields", "review_context", "review_evidence"):
+    assert marker in approval_rust, f"strict Rust approval request marker missing: {marker}"
+for marker in (
+    "verify_request(&envelope.request, now)", "verify_historical_request(&request, created_at)",
+    "LegacyApprovalRequestV0", "parse_authoritative_request", ".evidence_refs()",
+):
+    assert marker in approval_store, f"approval persistence compatibility marker missing: {marker}"
+for marker in (
+    "ApprovalReviewEvidenceKeyring", "ApprovalReviewMaterial", "review_material_digest",
+    "AuthorityEvidenceSourceKind::AuthenticatedEvent", "risk_package_ref", "state_snapshot_ref",
+    "VerifyingKey", "to_authority_event",
+):
+    assert marker in review_evidence_rust, f"review evidence verifier missing: {marker}"
+for marker in (
+    "pub struct ApprovalReviewEvidenceIssueRequest", "pub struct ApprovalReviewMaterial",
+    "pub struct ApprovalReviewEvidence", "AuthorityEvidenceEventRequest",
+    "SignedAuthorityEvidenceReceipt", "EvidenceEventType::ApprovalReviewPrepared",
+):
+    assert marker in review_shared_contracts, f"shared review contract missing: {marker}"
+for forbidden in ("bind_and_sign", "SigningKey", "private_key", "evidence:authority-event"):
+    assert forbidden not in review_evidence_rust, f"approval review verifier owns issuer material: {forbidden}"
+for marker in (
+    "/v1/domain-runtime/approval-review-evidence", "issue_approval_review_evidence",
+    "v1/evidence/authority-events", "issue.to_authority_event(&self.evidence_client_identity",
+    "verify_for_source_kind", "AuthorityEvidenceSourceKind::AuthenticatedEvent",
+    "read_bounded_body(response,262_144)", "X-AgentTrust-Authority-Event-Id",
+    "X-AgentTrust-Payload-Digest",
+):
+    assert marker in domain_review_producer, f"executable review producer missing: {marker}"
+for marker in (
+    "/v1/domain-runtime/approval-review-evidence",
+    "domain-runtime:approval-review-evidence",
+    "review-evidence-issue.schema.json",
+):
+    assert marker in domain_review_openapi, f"review producer OpenAPI drift: {marker}"
+assert "router(authority.clone(),tokens,runtime)" in domain_review_binary
+assert "domain-runtime:approval-review-evidence" in (
+    domain_token_schema["properties"]["bindings"]["items"]["properties"]["scope"]["enum"]
+)
+assert "SigningKey" not in domain_review_producer
+for marker in (
+    '"review_context", "review_evidence"', "agenttrust.enterprise-approval-case.v2",
+    "signedApprovalReviewEvidence",
+):
+    assert marker in approval_gateway, f"Java approval v2 binding missing: {marker}"
+for marker in (
+    "Character::isISOControl", "AUTHORITY_EVIDENCE_RECEIPT", "expectedReference",
+    "agenttrust.signed-authority-evidence-receipt.v1",
+):
+    assert marker in approval_json, f"Java review evidence guard missing: {marker}"
+for field in (
+    "diff_artifact_ref", "command_summary", "network_scope", "rollback_summary",
+    "current_value", "target_value", "allowed_range", "interlock_summary", "physical_impact",
+):
+    for source in (approval_openapi, approval_browser, approval_view):
+        assert field in source, f"approval review field drift: {field}"
+for marker in ("raw_command", "production-secret", "evidence_refs.length !== 3"):
+    assert marker in approval_tests or marker in approval_browser, (
+        f"approval browser negative contract missing: {marker}"
+    )
+deployment = (root / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(encoding="utf-8")
+approval_deployment = deployment.split(
+    "kind: Deployment\nmetadata:\n  name: agenttrust-approval", 1
+)[1].split("---", 1)[0]
+assert "strategy: {type: Recreate}" in approval_deployment
+assert "AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE" in approval_deployment
+assert "AGENT_TRUST_APPROVAL_EVIDENCE_PRIVATE_KEY" not in approval_deployment
+assert "AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN" not in approval_deployment
+assert "enterprise-approval/0036_01_25_approval_review_evidence_v2.sql" in (
+    root / "migrations/manifest.txt"
+).read_text(encoding="utf-8")
+
+contracts_rust = (root / "rust/crates/contracts/src/lib.rs").read_text(encoding="utf-8")
+execution_openapi = (root / "schemas/openapi/execution-v1.yaml").read_text(encoding="utf-8")
+evaluation_schema = json.loads(
+    (root / "schemas/evidence/evaluation-request.schema.json").read_text(encoding="utf-8")
+)
+authority_event_schema = json.loads(
+    (root / "schemas/evidence/authority-evidence-event-request.schema.json").read_text(
+        encoding="utf-8"
+    )
+)
+evidence_openapi = (root / "schemas/openapi/evidence-v1.yaml").read_text(encoding="utf-8")
+assert "ApprovalReviewPrepared" in contracts_rust
+for source in (approval_openapi, execution_openapi, json.dumps(evaluation_schema), evidence_openapi):
+    assert "APPROVAL_REVIEW_PREPARED" in source, "shared EvidenceEventType drift"
+expected_evidence_event_types = {
+    "TASK_CREATED", "PLAN_GENERATED", "POLICY_EVALUATED", "APPROVAL_DECISION",
+    "APPROVAL_REVIEW_PREPARED", "CREDENTIAL_ISSUED", "TOOL_PREPARED", "TOOL_EXECUTED",
+    "COMPENSATION", "EVALUATION", "SECURITY_ALERT", "STATE_TRANSITION", "AUDIT_QUERY",
+    "AUDIT_EXPORT", "LEGAL_HOLD", "RETENTION_DELETION",
+}
+event_enum_match = re.search(
+    r"event_type:\s*\{enum:\s*\[([^\]]+)\]\}", execution_openapi
+)
+assert event_enum_match is not None
+assert {value.strip() for value in event_enum_match.group(1).split(",")} == (
+    expected_evidence_event_types
+)
+assert set(evaluation_schema["properties"]["required_event_types"]["items"]["enum"]) == (
+    expected_evidence_event_types
+)
+assert authority_event_schema["properties"]["event"]["allOf"][0]["$ref"].endswith(
+    "execution-v1.yaml#/components/schemas/EvidenceEventDraft"
 )
 
 for authority, contract in production_runtime_contracts.items():

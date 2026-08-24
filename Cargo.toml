@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "rust/crates/contracts",
+  "rust/crates/bounded-http",
   "rust/crates/action-ir",
   "rust/crates/gateway",
   "rust/crates/identity",

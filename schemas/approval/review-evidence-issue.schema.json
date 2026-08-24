@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval-review-evidence-issue.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "request_id", "idempotency_key", "actor_subject",
+    "source_service", "trace_id", "material", "requested_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.approval-review-evidence-issue.v2"},
+    "request_id": {"type": "string", "format": "uuid"},
+    "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$"},
+    "actor_subject": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,512}$"},
+    "source_service": {
+      "type": "string", "pattern": "^(DNS|URI):[A-Za-z0-9._:/@-]{1,252}$"
+    },
+    "trace_id": {"type": "string", "pattern": "^[A-Za-z0-9._:/@-]{1,256}$"},
+    "material": {"$ref": "approval-case.schema.json#/$defs/reviewMaterial"},
+    "requested_at": {"type": "string", "format": "date-time"}
+  }
+}

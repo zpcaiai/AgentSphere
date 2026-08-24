@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-bounded-http = { path = "../bounded-http" }
 agent-trust-contracts = { path = "../contracts" }
 async-trait.workspace = true
 axum.workspace = true
@@ -20,7 +21,7 @@ hmac.workspace = true
 http.workspace = true
 nix = { workspace = true, features = ["user"] }
 parking_lot.workspace = true
-reqwest = { workspace = true, features = ["stream"] }
+reqwest.workspace = true
 ring.workspace = true
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std"] }
 rustls-pemfile = "2.2.0"

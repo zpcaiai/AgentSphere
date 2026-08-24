@@ -4,6 +4,7 @@ use crate::principal::VerifiedHumanPrincipal;
 use agent_trust_action_ir::{
     ActionDraft, CredentialRef, NormalizationContext, TypedPayload, hash as action_hash, normalize,
 };
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     ActionId, AgentIdentity, AgentInstanceId, CONTRACT_SCHEMA_VERSION, DataClassification,
     DataContext, ExecutionEnvironment, ExpectedOutcome, Intent, ResourceSelector, RiskContext,
@@ -1575,11 +1576,10 @@ impl CredentialAuthorityPort for VaultKvCredentialAuthority {
         {
             return Err(EnterpriseAuthorityError::OutcomeUnknown);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| EnterpriseAuthorityError::OutcomeUnknown)?;
-        if bytes.is_empty() || bytes.len() > 65_536 {
+        if bytes.is_empty() {
             return Err(EnterpriseAuthorityError::OutcomeUnknown);
         }
         let metadata: VaultKvWriteResponse =

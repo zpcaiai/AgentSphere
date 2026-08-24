@@ -397,7 +397,9 @@ pub async fn serve(
 ) -> Result<(), DataAuthorityError> {
     validate_identities(&config.allowed_client_identities)?;
     if !(5..=300).contains(&config.recovery_interval_seconds)
-        || !config.management_address.ip().is_loopback()
+        || config.data_address.ip().is_loopback()
+        || !(config.management_address.ip().is_loopback()
+            || config.management_address.ip().is_unspecified())
         || config.data_address == config.management_address
     {
         return Err(DataAuthorityError::ConfigurationInvalid);

@@ -57,3 +57,49 @@ fn domain_runtime_has_authoritative_wire_and_shared_evidence_bridge() {
     assert!(openapi.contains(":8094"));
     assert!(dockerfile.contains("EXPOSE 8094 9104"));
 }
+
+#[test]
+fn review_evidence_producer_is_executable_bounded_and_scope_separated() {
+    let server = include_str!("../server.rs");
+    let binary = include_str!("../src/bin/agenttrust-domain-runtime-authority.rs");
+    let contracts = include_str!("../../contracts/src/lib.rs");
+    let openapi = include_str!("../../../../schemas/openapi/domain-runtime-v1.yaml");
+    let token_schema =
+        include_str!("../../../../schemas/domain-packs/domain-runtime-token-bindings.schema.json");
+
+    for source in [server, openapi, token_schema] {
+        assert!(source.contains("domain-runtime:approval-review-evidence"));
+    }
+    for marker in [
+        "/v1/domain-runtime/approval-review-evidence",
+        "issue_approval_review_evidence",
+        "v1/evidence/authority-events",
+        "verify_for_source_kind",
+        "AuthorityEvidenceSourceKind::AuthenticatedEvent",
+        "read_bounded_body(response,262_144)",
+        "X-AgentTrust-Authority-Event-Id",
+        "X-AgentTrust-Payload-Digest",
+    ] {
+        assert!(server.contains(marker), "producer marker missing: {marker}");
+    }
+    assert!(contracts.contains("pub struct ApprovalReviewEvidenceIssueRequest"));
+    assert!(contracts.contains("pub struct ApprovalReviewEvidence"));
+    assert!(server.contains("issue.to_authority_event(&self.evidence_client_identity"));
+    assert!(binary.contains("router(authority.clone(),tokens,runtime)"));
+    assert!(!server.contains("SigningKey"));
+}
+
+#[test]
+fn domain_management_routes_match_production_probes() {
+    let server = include_str!("../server.rs");
+    let stack = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
+    assert!(server.contains("route(\"/live\",get(management_live))"));
+    assert!(server.contains("route(\"/ready\",get(management_ready))"));
+    assert!(server.contains("\"schema_version\":DOMAIN_READINESS_SCHEMA,\"live\":true"));
+    assert!(stack.contains(
+        "livenessProbe: {httpGet: {path: /live, port: management}"
+    ));
+    assert!(stack.contains(
+        "readinessProbe: {httpGet: {path: /ready, port: management}"
+    ));
+}

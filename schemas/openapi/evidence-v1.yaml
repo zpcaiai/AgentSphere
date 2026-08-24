@@ -17,7 +17,9 @@ paths:
         Appends a state-owning authority event without fabricating an orchestrator task-state
         version. GOVERNED_ACTION requests are checked against the final PEP authorization and
         ledger/fence binding. AUTHENTICATED_EVENT requests require an existing task and carry no
-        action binding. The source_service and token-binding subject equal the exact caller SAN.
+        action binding. APPROVAL_REVIEW_PREPARED is an authenticated review-fact event whose
+        payload digest and artifact references are independently rebound by the approval service.
+        The source_service and token-binding subject equal the exact caller SAN.
       security: [{mtls: [], bearer: []}]
       parameters:
         - {$ref: '#/components/parameters/Tenant'}

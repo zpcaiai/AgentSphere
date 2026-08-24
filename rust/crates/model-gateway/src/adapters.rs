@@ -2,6 +2,7 @@
 
 use crate::authority::*;
 use agent_trust_action_ir::{ParseLimits, parse_strict_json};
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     ActionHash, ApprovalId, ArtifactRef, AuthorityEvidenceControlBinding,
     AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind, DataPolicyDecision,
@@ -13,7 +14,6 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD}};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use futures::TryStreamExt;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
@@ -2836,25 +2836,9 @@ async fn bounded_bytes(
     response: reqwest::Response,
     maximum: usize,
 ) -> Result<Vec<u8>, AuthorityError> {
-    if response
-        .content_length()
-        .is_some_and(|length| length > maximum as u64)
-    {
-        return Err(AuthorityError::DependencyUnavailable);
-    }
-    let mut stream = response.bytes_stream();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = stream
-        .try_next()
+    read_bounded_body(response, maximum)
         .await
-        .map_err(|_| AuthorityError::DependencyUnavailable)?
-    {
-        if bytes.len().saturating_add(chunk.len()) > maximum {
-            return Err(AuthorityError::DependencyUnavailable);
-        }
-        bytes.extend_from_slice(&chunk);
-    }
-    Ok(bytes)
+        .map_err(|_| AuthorityError::DependencyUnavailable)
 }
 
 fn strict_json<T: DeserializeOwned>(raw: &[u8], maximum: usize) -> Result<T, AuthorityError> {

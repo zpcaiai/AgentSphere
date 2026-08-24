@@ -20,6 +20,8 @@ fn authority_events_are_distinct_from_orchestrator_lifecycle_events() {
     assert!(OPENAPI.contains("appendAuthorityEvidenceEvent"));
     assert!(REQUEST_SCHEMA.contains("GOVERNED_ACTION"));
     assert!(REQUEST_SCHEMA.contains("AUTHENTICATED_EVENT"));
+    assert!(CONTRACTS.contains("ApprovalReviewPrepared"));
+    assert!(OPENAPI.contains("APPROVAL_REVIEW_PREPARED"));
     assert!(!REQUEST_SCHEMA.contains("expected_task_state_version"));
     assert!(CONTRACTS.contains("AuthorityEvidenceEventRequest"));
     assert!(CONTRACTS.contains("SignedAuthorityEvidenceReceipt"));

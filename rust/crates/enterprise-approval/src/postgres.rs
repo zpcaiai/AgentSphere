@@ -47,6 +47,10 @@ pub struct ApprovalCaseView {
     pub resource_version: String,
     pub policy_version: String,
     pub risk: RiskLevel,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coding_details: Option<CodingApprovalReviewDetails>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub industrial_details: Option<IndustrialApprovalReviewDetails>,
     pub evidence_refs: Vec<String>,
     pub status: ApprovalCaseViewStatus,
 }
@@ -93,6 +97,58 @@ impl AuthoritativeApprovalCursor {
         let mut material = self.clone();
         material.signature.clear();
         serde_jcs::to_vec(&material).map_err(|_| ApprovalError::RequestInvalid)
+    }
+}
+
+/// The wire shape persisted before review_context became mandatory. These rows remain durable
+/// audit records, but they cannot be rendered as an approval view because doing so would require
+/// inventing the missing human-review facts. The authoritative inbox identifies this exact shape
+/// and excludes it while continuing pagination; every other deserialization failure remains fatal.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyApprovalRequestV0 {
+    tenant_id: TenantId,
+    task_id: TaskId,
+    step_id: StepId,
+    action_hash: ActionHash,
+    plan_hash: String,
+    parameter_hash: String,
+    resource: String,
+    resource_version: ResourceVersion,
+    policy_version: PolicyVersion,
+    environment: String,
+    risk: RiskLevel,
+    requester_subject: String,
+    agent_owner_subject: String,
+    justification: String,
+    requested_ttl_seconds: u64,
+    requested_uses: u32,
+}
+
+impl LegacyApprovalRequestV0 {
+    fn valid_for_authoritative_exclusion(&self, tenant: &TenantId) -> bool {
+        self.tenant_id == *tenant
+            && canonical_uuid(&self.tenant_id.0)
+            && canonical_uuid(&self.task_id.0)
+            && canonical_uuid(&self.step_id.0)
+            && is_digest(&self.action_hash.0)
+            && is_digest(&self.plan_hash)
+            && is_digest(&self.parameter_hash)
+            && bounded(&self.resource)
+            && bounded(&self.resource_version.0)
+            && bounded(&self.policy_version.0)
+            && bounded(&self.environment)
+            && matches!(
+                self.risk,
+                RiskLevel::Low | RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical
+            )
+            && bounded(&self.requester_subject)
+            && bounded(&self.agent_owner_subject)
+            && !self.justification.trim().is_empty()
+            && self.justification.len() <= MAX_REASON_BYTES
+            && !self.justification.chars().any(char::is_control)
+            && (1..=MAX_APPROVAL_TTL_SECONDS).contains(&self.requested_ttl_seconds)
+            && self.requested_uses > 0
     }
 }
 
@@ -281,15 +337,28 @@ impl ApprovalSigner {
 pub struct PostgresApprovalStore {
     pool: PgPool,
     signer: ApprovalSigner,
+    review_evidence_keyring: ApprovalReviewEvidenceKeyring,
 }
 
 impl PostgresApprovalStore {
-    pub fn new(pool: PgPool, signer: ApprovalSigner) -> Self {
-        Self { pool, signer }
+    pub fn new(
+        pool: PgPool,
+        signer: ApprovalSigner,
+        review_evidence_keyring: ApprovalReviewEvidenceKeyring,
+    ) -> Self {
+        Self {
+            pool,
+            signer,
+            review_evidence_keyring,
+        }
     }
 
     pub fn signer(&self) -> &ApprovalSigner {
         &self.signer
+    }
+
+    pub fn review_evidence_covers(&self, tenant: &TenantId, now: DateTime<Utc>) -> bool {
+        self.review_evidence_keyring.covers_tenant_at(&tenant.0, now)
     }
 
     pub async fn ready(&self) -> bool {
@@ -329,6 +398,8 @@ impl PostgresApprovalStore {
         now: DateTime<Utc>,
     ) -> Result<ApprovalCase, ApprovalError> {
         validate_create(envelope)?;
+        self.review_evidence_keyring
+            .verify_request(&envelope.request, now)?;
         validate_principal(principal, now)?;
         require_same_tenant(&envelope.request.tenant_id, &principal.tenant_id)?;
         if envelope.request.requester_subject != principal.subject {
@@ -355,7 +426,7 @@ impl PostgresApprovalStore {
         )
         .await?
         {
-            if replay.schema_version != APPROVAL_SCHEMA_VERSION
+            if replay.schema_version != APPROVAL_CASE_SCHEMA_VERSION
                 || replay.request.tenant_id != principal.tenant_id
                 || replay.request.requester_subject != principal.subject
             {
@@ -375,7 +446,7 @@ impl PostgresApprovalStore {
         let post_review_due_at = (envelope.policy.approval_type == ApprovalType::Emergency)
             .then_some(now + chrono::Duration::hours(24));
         let case = ApprovalCase {
-            schema_version: APPROVAL_SCHEMA_VERSION.into(),
+            schema_version: APPROVAL_CASE_SCHEMA_VERSION.into(),
             case_id: case_id.clone(),
             request: envelope.request.clone(),
             policy: envelope.policy.clone(),
@@ -486,11 +557,9 @@ impl PostgresApprovalStore {
 
         let has_more = rows.len() > usize::from(limit);
         let mut results = Vec::with_capacity(rows.len().min(usize::from(limit)));
+        let mut last_scanned = None;
         for row in rows.into_iter().take(usize::from(limit)) {
             let case_id = row.try_get::<String, _>("case_id").map_err(database)?;
-            let request: ApprovalRequest =
-                serde_json::from_value(row.try_get::<Value, _>("request").map_err(database)?)
-                    .map_err(|_| ApprovalError::DatabaseUnavailable)?;
             let stored_status =
                 parse_status(&row.try_get::<String, _>("status").map_err(database)?)?;
             let created_at = row
@@ -499,10 +568,36 @@ impl PostgresApprovalStore {
             let expires_at = row
                 .try_get::<DateTime<Utc>, _>("expires_at")
                 .map_err(database)?;
-            if request.tenant_id != *tenant || !canonical_uuid(&case_id) {
+            if !canonical_uuid(&case_id) {
                 return Err(ApprovalError::DatabaseUnavailable);
             }
+            last_scanned = Some((created_at.to_owned(), case_id.clone()));
+            let request = match parse_authoritative_request(
+                row.try_get::<Value, _>("request").map_err(database)?,
+                tenant,
+            )? {
+                Some(request) => request,
+                // A legacy row has no safe domain review package. It stays in the immutable
+                // database history, is never upgraded with fabricated content, and cannot block
+                // newer reviewable cases from the bounded cursor scan.
+                None => continue,
+            };
+            if request.tenant_id != *tenant {
+                return Err(ApprovalError::DatabaseUnavailable);
+            }
+            self.review_evidence_keyring
+                .verify_historical_request(&request, created_at)
+                .map_err(|_| ApprovalError::DatabaseUnavailable)?;
             let domain = approval_case_domain(&request);
+            let (coding_details, industrial_details) = match (&domain, &request.review_context) {
+                (ApprovalCaseDomain::Coding, ApprovalReviewContext::Coding(details)) => {
+                    (Some(details.clone()), None)
+                }
+                (ApprovalCaseDomain::Industrial, ApprovalReviewContext::Industrial(details)) => {
+                    (None, Some(details.clone()))
+                }
+                _ => return Err(ApprovalError::DatabaseUnavailable),
+            };
             let status = approval_case_view_status(stored_status, expires_at, now);
             let safe_summary = match domain {
                 ApprovalCaseDomain::Coding => "Review governed coding action",
@@ -519,9 +614,9 @@ impl PostgresApprovalStore {
                 resource_version: request.resource_version.0,
                 policy_version: request.policy_version.0,
                 risk: request.risk,
-                // Evidence references are deliberately empty until a real immutable
-                // evidence artifact is linked; the authority never fabricates one.
-                evidence_refs: Vec::new(),
+                coding_details,
+                industrial_details,
+                evidence_refs: request.review_evidence.evidence_refs(),
                 status,
             };
             validate_case_view(&view)?;
@@ -530,8 +625,8 @@ impl PostgresApprovalStore {
         transaction.commit().await.map_err(database)?;
 
         let next_cursor = if has_more {
-            let (_, created_at, case_id) =
-                results.last().ok_or(ApprovalError::DatabaseUnavailable)?;
+            let (created_at, case_id) =
+                last_scanned.as_ref().ok_or(ApprovalError::DatabaseUnavailable)?;
             Some(encode_authoritative_cursor(
                 tenant,
                 resource,
@@ -604,7 +699,7 @@ impl PostgresApprovalStore {
         )
         .await?
         {
-            if replay.schema_version != APPROVAL_SCHEMA_VERSION
+            if replay.schema_version != APPROVAL_CASE_SCHEMA_VERSION
                 || replay.case_id != case_id
                 || replay.request.tenant_id != principal.tenant_id
             {
@@ -1352,7 +1447,7 @@ async fn load_case(
     })
     .collect::<Result<Vec<_>, ApprovalError>>()?;
     Ok(ApprovalCase {
-        schema_version: APPROVAL_SCHEMA_VERSION.into(),
+        schema_version: APPROVAL_CASE_SCHEMA_VERSION.into(),
         case_id: row.try_get("case_id").map_err(database)?,
         request: serde_json::from_value(row.try_get("request").map_err(database)?)
             .map_err(|_| ApprovalError::DatabaseUnavailable)?,
@@ -1946,26 +2041,26 @@ fn dashboard_resource(value: &str) -> bool {
         })
 }
 
+fn parse_authoritative_request(
+    value: Value,
+    tenant: &TenantId,
+) -> Result<Option<ApprovalRequest>, ApprovalError> {
+    match serde_json::from_value::<ApprovalRequest>(value.clone()) {
+        Ok(request) => Ok(Some(request)),
+        Err(_) if value.get("review_context").is_none() && value.get("review_evidence").is_none() => {
+            let legacy: LegacyApprovalRequestV0 = serde_json::from_value(value)
+                .map_err(|_| ApprovalError::DatabaseUnavailable)?;
+            if !legacy.valid_for_authoritative_exclusion(tenant) {
+                return Err(ApprovalError::DatabaseUnavailable);
+            }
+            Ok(None)
+        }
+        Err(_) => Err(ApprovalError::DatabaseUnavailable),
+    }
+}
+
 fn approval_case_domain(request: &ApprovalRequest) -> ApprovalCaseDomain {
-    let resource = request.resource.to_ascii_lowercase();
-    let industrial_resource = [
-        "opcua:",
-        "opc.tcp:",
-        "mqtt:",
-        "modbus:",
-        "plc:",
-        "scada:",
-        "plant/",
-        "urn:agenttrust:industrial:",
-    ]
-    .iter()
-    .any(|prefix| resource.starts_with(prefix));
-    if industrial_resource
-        || matches!(
-            request.environment.as_str(),
-            "industrial" | "physical-production"
-        )
-    {
+    if request_is_industrial(request) {
         ApprovalCaseDomain::Industrial
     } else {
         ApprovalCaseDomain::Coding
@@ -2000,13 +2095,51 @@ fn validate_case_view(view: &ApprovalCaseView) -> Result<(), ApprovalError> {
         || !bounded(&view.resource)
         || !bounded(&view.resource_version)
         || !bounded(&view.policy_version)
-        || view.evidence_refs.len() > 100
-        || view.evidence_refs.iter().any(|value| !bounded(value))
+        || match view.domain {
+            ApprovalCaseDomain::Coding => {
+                view.industrial_details.is_some()
+                    || !view
+                        .coding_details
+                        .as_ref()
+                        .is_some_and(|details| {
+                            ApprovalReviewContext::Coding(details.clone()).valid()
+                        })
+            }
+            ApprovalCaseDomain::Industrial => {
+                view.coding_details.is_some()
+                    || !view
+                        .industrial_details
+                        .as_ref()
+                        .is_some_and(|details| {
+                            ApprovalReviewContext::Industrial(details.clone()).valid()
+                        })
+            }
+        }
+        || view.evidence_refs.len() != 3
+        || view
+            .evidence_refs
+            .iter()
+            .any(|value| !evidence_reference(value))
         || view.evidence_refs.iter().collect::<BTreeSet<_>>().len() != view.evidence_refs.len()
     {
         return Err(ApprovalError::DatabaseUnavailable);
     }
     Ok(())
+}
+
+fn evidence_reference(value: &str) -> bool {
+    let suffix = value
+        .strip_prefix("evidence://")
+        .or_else(|| value.strip_prefix("urn:agenttrust:evidence:"))
+        .or_else(|| value.strip_prefix("urn:agenttrust:ledger-evidence:"));
+    bounded(value)
+        && suffix.is_some_and(|suffix| !suffix.is_empty())
+        && !contains_secret_marker(value)
+        && !value
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+        && !value.contains('?')
+        && !value.contains('#')
 }
 
 fn require_same_tenant(left: &TenantId, right: &TenantId) -> Result<(), ApprovalError> {
@@ -2198,5 +2331,52 @@ mod tests {
             .unwrap_or_else(|_| panic!("changed plan lookup digest"));
         assert_ne!(original, changed_resource_version);
         assert_ne!(original, changed_plan);
+    }
+
+    #[test]
+    fn legacy_requests_are_excluded_without_fabricating_review_facts() {
+        let tenant = TenantId("11111111-1111-4111-8111-111111111111".into());
+        let legacy = serde_json::json!({
+            "tenant_id": tenant.0.clone(),
+            "task_id": "22222222-2222-4222-8222-222222222222",
+            "step_id": "33333333-3333-4333-8333-333333333333",
+            "action_hash": "a".repeat(64),
+            "plan_hash": "b".repeat(64),
+            "parameter_hash": "c".repeat(64),
+            "resource": "repo:a",
+            "resource_version": "v1",
+            "policy_version": "policy-v1",
+            "environment": "production",
+            "risk": "HIGH",
+            "requester_subject": "requester",
+            "agent_owner_subject": "agent-owner",
+            "justification": "legacy request",
+            "requested_ttl_seconds": 300,
+            "requested_uses": 1
+        });
+        assert!(matches!(
+            parse_authoritative_request(legacy.clone(), &tenant),
+            Ok(None)
+        ));
+
+        let mut unknown = legacy.clone();
+        unknown
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("legacy object"))
+            .insert("raw_command".into(), serde_json::json!("unsafe"));
+        assert_eq!(
+            parse_authoritative_request(unknown, &tenant),
+            Err(ApprovalError::DatabaseUnavailable)
+        );
+
+        let mut partial_upgrade = legacy;
+        partial_upgrade
+            .as_object_mut()
+            .unwrap_or_else(|| panic!("partial object"))
+            .insert("review_context".into(), serde_json::json!({"domain": "CODING"}));
+        assert_eq!(
+            parse_authoritative_request(partial_upgrade, &tenant),
+            Err(ApprovalError::DatabaseUnavailable)
+        );
     }
 }

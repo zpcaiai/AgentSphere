@@ -11,6 +11,7 @@ use crate::service::{
     ArtifactAuthorizationRequest, DataInspectionPort, EnterpriseDlpReceipt,
     ObjectAuthorizationReceipt,
 };
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     ActionHash, AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
     AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
@@ -663,7 +664,7 @@ async fn bounded_json_response<T: DeserializeOwned>(
     {
         return Err(DataAuthorityError::DependencyUnavailable);
     }
-    let bytes = response.bytes().await
+    let bytes = read_bounded_body(response, maximum).await
         .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
     if bytes.is_empty() || bytes.len() > maximum {
         return Err(DataAuthorityError::DependencyUnavailable);

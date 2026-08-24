@@ -2,7 +2,9 @@ import { createRouter, createWebHashHistory } from "vue-router";
 
 const modules = new Set([
   "overview", "tasks", "agents", "approvals", "policies", "tools", "credentials", "packs",
-  "trace", "evidence", "incidents", "compliance", "audit", "sre", "deployments", "admin",
+  "trace", "evidence", "incidents", "compliance", "audit", "models", "data", "context",
+  "anomalies", "security_evaluations", "supply_chain", "domain_packs", "sre", "deployments",
+  "admin",
 ]);
 
 export const router = createRouter({

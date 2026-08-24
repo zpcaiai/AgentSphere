@@ -12,7 +12,15 @@ const item = {
   resource_version: "commit:one",
   policy_version: "policy:v1",
   risk: "HIGH",
-  evidence_refs: [],
+  coding_details: {
+    diff_artifact_ref: `artifact://sha256/${"c".repeat(64)}`,
+    command_summary: "Apply the reviewed repository patch",
+    network_scope: "egress:none",
+    rollback_summary: "Restore the reviewed parent revision",
+  },
+  evidence_refs: ["urn:agenttrust:evidence:risk-package-one",
+    "urn:agenttrust:evidence:state-snapshot-one",
+    "urn:agenttrust:evidence:approval-case-one"],
   status: "PENDING",
 };
 
@@ -48,5 +56,44 @@ describe("authoritative approval inbox", () => {
     const unsafe = page();
     unsafe.items = [{ ...item, raw_payload: "must not reach the browser" }] as typeof unsafe.items;
     expect(() => parseApprovalCases(unsafe, tenantId)).toThrow("APPROVAL_CASE_INVALID");
+  });
+
+  it("fails closed when domain review details are missing or contain secret-like values", () => {
+    const missing = page();
+    const withoutDetails = { ...item } as Record<string, unknown>;
+    delete withoutDetails.coding_details;
+    missing.items = [withoutDetails] as unknown as typeof missing.items;
+    expect(() => parseApprovalCases(missing, tenantId)).toThrow("APPROVAL_CASE_INVALID");
+
+    const secret = page();
+    secret.items = [{ ...item, coding_details: { ...item.coding_details,
+      command_summary: "Authorization: Bearer production-secret" } }];
+    expect(() => parseApprovalCases(secret, tenantId)).toThrow("APPROVAL_CASE_INVALID");
+
+    const unknownDetail = page();
+    unknownDetail.items = [{ ...item, coding_details: { ...item.coding_details,
+      raw_command: "must never reach the browser" } }] as unknown as typeof unknownDetail.items;
+    expect(() => parseApprovalCases(unknownDetail, tenantId)).toThrow("APPROVAL_CASE_INVALID");
+
+    const secretEvidence = page();
+    secretEvidence.items = [{ ...item, evidence_refs: [item.evidence_refs[0]!,
+      item.evidence_refs[1]!, "evidence://case?token=production-secret"] }];
+    expect(() => parseApprovalCases(secretEvidence, tenantId)).toThrow("APPROVAL_CASE_INVALID");
+  });
+
+  it("accepts complete industrial review details and rejects coding details on that domain", () => {
+    const industrial = { ...item, domain: "INDUSTRIAL" as const,
+      industrial_details: { current_value: "42.0 C", target_value: "43.0 C",
+        allowed_range: "40.0 C to 45.0 C",
+        interlock_summary: "SIS permissive and operator supervision required",
+        physical_impact: "One degree setpoint increase on line 1" } };
+    const industrialRecord = industrial as unknown as Record<string, unknown>;
+    delete industrialRecord.coding_details;
+    const valid = page(); valid.items = [industrialRecord] as unknown as typeof valid.items;
+    expect(parseApprovalCases(valid, tenantId)[0]?.domain).toBe("INDUSTRIAL");
+
+    const mixed = page();
+    mixed.items = [{ ...industrialRecord, coding_details: item.coding_details }] as unknown as typeof mixed.items;
+    expect(() => parseApprovalCases(mixed, tenantId)).toThrow("APPROVAL_CASE_INVALID");
   });
 });

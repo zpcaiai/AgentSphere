@@ -321,6 +321,118 @@ components:
       properties:
         schema_version: { type: string, const: agenttrust.approval-readiness.v1 }
         ready: { type: boolean }
+    CodingApprovalReviewDetails:
+      type: object
+      additionalProperties: false
+      required: [diff_artifact_ref, command_summary, network_scope, rollback_summary]
+      properties:
+        diff_artifact_ref: {type: string, pattern: '^artifact://sha256/[a-f0-9]{64}$'}
+        command_summary: {type: string, minLength: 1, maxLength: 2048}
+        network_scope: {type: string, minLength: 1, maxLength: 1024}
+        rollback_summary: {type: string, minLength: 1, maxLength: 2048}
+    IndustrialApprovalReviewDetails:
+      type: object
+      additionalProperties: false
+      required: [current_value, target_value, allowed_range, interlock_summary, physical_impact]
+      properties:
+        current_value: {type: string, minLength: 1, maxLength: 512}
+        target_value: {type: string, minLength: 1, maxLength: 512}
+        allowed_range: {type: string, minLength: 1, maxLength: 512}
+        interlock_summary: {type: string, minLength: 1, maxLength: 2048}
+        physical_impact: {type: string, minLength: 1, maxLength: 2048}
+    ApprovalReviewContext:
+      description: >-
+        Domain-discriminated safe review material. Raw commands, device frames, credentials,
+        secrets and bearer values are rejected by the authority before persistence.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [domain, details]
+          properties:
+            domain: {const: CODING}
+            details: {$ref: '#/components/schemas/CodingApprovalReviewDetails'}
+        - type: object
+          additionalProperties: false
+          required: [domain, details]
+          properties:
+            domain: {const: INDUSTRIAL}
+            details: {$ref: '#/components/schemas/IndustrialApprovalReviewDetails'}
+    ApprovalReviewMaterial:
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - tenant_id
+        - task_id
+        - canonical_action_hash
+        - resource
+        - resource_version
+        - policy_version
+        - environment
+        - risk
+        - review_context
+        - risk_package_ref
+        - risk_package_digest
+        - state_snapshot_ref
+        - state_snapshot_digest
+      properties:
+        schema_version: {type: string, const: agenttrust.approval-review-material.v1}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        canonical_action_hash: {$ref: '#/components/schemas/Digest'}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        resource_version: {type: string, minLength: 1, maxLength: 2048}
+        policy_version: {type: string, minLength: 1, maxLength: 2048}
+        environment: {type: string, minLength: 1, maxLength: 2048}
+        risk: {$ref: '#/components/schemas/RiskLevel'}
+        review_context: {$ref: '#/components/schemas/ApprovalReviewContext'}
+        risk_package_ref: {$ref: '#/components/schemas/EvidenceReference'}
+        risk_package_digest: {$ref: '#/components/schemas/Digest'}
+        state_snapshot_ref: {$ref: '#/components/schemas/EvidenceReference'}
+        state_snapshot_digest: {$ref: '#/components/schemas/Digest'}
+    ApprovalReviewEvidenceIssueRequest:
+      description: >-
+        Strict adapter input that produces an AUTHENTICATED_EVENT
+        APPROVAL_REVIEW_PREPARED request for the existing Evidence Authority. It never accepts a
+        private key and cannot sign a receipt.
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - request_id
+        - idempotency_key
+        - actor_subject
+        - source_service
+        - trace_id
+        - material
+        - requested_at
+      properties:
+        schema_version: {type: string, const: agenttrust.approval-review-evidence-issue.v2}
+        request_id: {$ref: '#/components/schemas/Uuid'}
+        idempotency_key: {type: string, pattern: '^[A-Za-z0-9._:-]{1,128}$'}
+        actor_subject: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,512}$'}
+        source_service: {type: string, pattern: '^(DNS|URI):[A-Za-z0-9._:/@-]{1,252}$'}
+        trace_id: {type: string, pattern: '^[A-Za-z0-9._:/@-]{1,256}$'}
+        material: {$ref: '#/components/schemas/ApprovalReviewMaterial'}
+        requested_at: {$ref: '#/components/schemas/DateTime'}
+    ApprovalReviewEvidence:
+      description: >-
+        Exact review material plus the complete request and shared signed receipt returned by
+        POST /v1/evidence/authority-events. Approval persists both request and receipt so it can
+        recompute request_digest and reject any requester-authored substitution.
+      type: object
+      additionalProperties: false
+      required: [schema_version, material, authority_request, receipt]
+      properties:
+        schema_version: {type: string, const: agenttrust.approval-review-evidence-binding.v1}
+        material: {$ref: '#/components/schemas/ApprovalReviewMaterial'}
+        authority_request: {$ref: '../evidence/authority-evidence-event-request.schema.json'}
+        receipt: {$ref: '../evidence/signed-authority-evidence-receipt.schema.json'}
+    EvidenceReference:
+      type: string
+      minLength: 1
+      maxLength: 2048
+      pattern: '^(evidence://|urn:agenttrust:(evidence|ledger-evidence):)[^\s?#]+$'
     ApprovalCaseView:
       type: object
       additionalProperties: false
@@ -336,6 +448,15 @@ components:
         - risk
         - evidence_refs
         - status
+      oneOf:
+        - required: [coding_details]
+          properties:
+            domain: {const: CODING}
+          not: {required: [industrial_details]}
+        - required: [industrial_details]
+          properties:
+            domain: {const: INDUSTRIAL}
+          not: {required: [coding_details]}
       properties:
         schema_version: { type: string, const: agenttrust.approval-case-view.v1 }
         case_id: { $ref: '#/components/schemas/Uuid' }
@@ -346,11 +467,18 @@ components:
         resource_version: { type: string, minLength: 1, maxLength: 2048 }
         policy_version: { type: string, minLength: 1, maxLength: 2048 }
         risk: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        coding_details: {$ref: '#/components/schemas/CodingApprovalReviewDetails'}
+        industrial_details: {$ref: '#/components/schemas/IndustrialApprovalReviewDetails'}
         evidence_refs:
           type: array
-          maxItems: 100
+          minItems: 3
+          maxItems: 3
           uniqueItems: true
-          items: { type: string, minLength: 1, maxLength: 2048 }
+          items:
+            type: string
+            minLength: 1
+            maxLength: 2048
+            pattern: '^(evidence://|urn:agenttrust:(evidence|ledger-evidence):)[^\s?#]+$'
         status: { type: string, enum: [PENDING, APPROVED, REJECTED, EXPIRED, REVOKED] }
     AuthoritativeApprovalPage:
       type: object
@@ -462,6 +590,8 @@ components:
         - policy_version
         - environment
         - risk
+        - review_context
+        - review_evidence
         - requester_subject
         - agent_owner_subject
         - justification
@@ -479,6 +609,8 @@ components:
         policy_version: { type: string, minLength: 1, maxLength: 2048 }
         environment: { type: string, minLength: 1, maxLength: 2048 }
         risk: { $ref: '#/components/schemas/RiskLevel' }
+        review_context: { $ref: '#/components/schemas/ApprovalReviewContext' }
+        review_evidence: { $ref: '#/components/schemas/ApprovalReviewEvidence' }
         requester_subject: { type: string, minLength: 1, maxLength: 256 }
         agent_owner_subject: { type: string, minLength: 1, maxLength: 256 }
         justification: { type: string, minLength: 1, maxLength: 4096 }
@@ -520,7 +652,7 @@ components:
       additionalProperties: false
       required: [schema_version, request, policy]
       properties:
-        schema_version: { type: string, const: agenttrust.approval-case-create.v1 }
+        schema_version: { type: string, const: agenttrust.approval-case-create.v2 }
         request: { $ref: '#/components/schemas/ApprovalRequest' }
         policy: { $ref: '#/components/schemas/ApprovalPolicy' }
     ApprovalDecisionRecord:
@@ -543,7 +675,7 @@ components:
       additionalProperties: false
       required: [schema_version, case_id, request, policy, status, decisions, created_at, expires_at, post_review_due_at]
       properties:
-        schema_version: { type: string, const: agenttrust.enterprise-approval.v1 }
+        schema_version: { type: string, const: agenttrust.enterprise-approval-case.v2 }
         case_id: { $ref: '#/components/schemas/Uuid' }
         request: { $ref: '#/components/schemas/ApprovalRequest' }
         policy: { $ref: '#/components/schemas/ApprovalPolicy' }

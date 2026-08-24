@@ -2,6 +2,7 @@
 
 use crate::authority::*;
 use crate::principal::HumanPrincipalKeyring;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{TenantId, human_principal_request_digest};
 use axum::extract::{DefaultBodyLimit, Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -471,11 +472,10 @@ impl PolicyOrchestratorPort for HttpPolicyOrchestrator {
         {
             return Err(PolicyAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| PolicyAuthorityError::DependencyUnavailable)?;
-        if bytes.is_empty() || bytes.len() > 65_536 {
+        if bytes.is_empty() {
             return Err(PolicyAuthorityError::DependencyUnavailable);
         }
         let accepted: OrchestratorAcceptance = serde_json::from_slice(&bytes)

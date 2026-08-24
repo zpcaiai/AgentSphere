@@ -18,6 +18,7 @@ const RUNBOOK: &str =
     include_str!("../../../../docs/data-governance/production-runbook.md");
 const FAILURE_MATRIX: &str =
     include_str!("../../../../tests/data-governance/failure-injection-matrix.json");
+const STACK: &str = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
 
 #[test]
 fn durable_operations_match_code_schema_and_database_contract() {
@@ -116,6 +117,11 @@ fn production_boundary_is_tls13_single_san_exact_scope_and_fixed_ports() {
     assert!(BINARY.contains("DATA_GOVERNANCE_DATABASE_ROLE_UNSAFE"));
     assert!(ADAPTERS.contains("self.endpoint.port().is_none()"));
     assert!(ADAPTERS.contains("value.schema_version == endpoint.readiness_schema"));
+    assert!(SERVER.contains("config.data_address.ip().is_loopback()"));
+    assert!(SERVER.contains("config.management_address.ip().is_unspecified()"));
+    assert!(STACK.contains(
+        "AGENT_TRUST_DATA_MANAGEMENT_LISTEN_ADDRESS, value: 0.0.0.0"
+    ));
 }
 
 #[test]

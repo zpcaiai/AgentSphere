@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-bounded-http = { path = "../bounded-http" }
 agent-trust-contracts = { path = "../contracts" }
 agent-trust-gateway = { path = "../gateway" }
 async-trait.workspace = true

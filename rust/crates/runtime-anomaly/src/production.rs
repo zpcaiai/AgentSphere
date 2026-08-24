@@ -2,6 +2,7 @@
 
 use crate::AuthorizationAdjustment;
 use crate::authority::*;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
     AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
@@ -594,7 +595,7 @@ async fn dependency_ready(client: &reqwest::Client, endpoint: &RuntimeAnomalyEnd
     {
         return false;
     }
-    let Ok(bytes) = response.bytes().await else {
+    let Ok(bytes) = read_bounded_body(response, 4_096).await else {
         return false;
     };
     if bytes.is_empty() || bytes.len() > 4_096 {
@@ -615,8 +616,7 @@ async fn bounded_json<T: for<'de> Deserialize<'de>>(
     {
         return Err(RuntimeAnomalyAuthorityError::DependencyUnavailable);
     }
-    let bytes = response
-        .bytes()
+    let bytes = read_bounded_body(response, maximum)
         .await
         .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
     if bytes.is_empty() || bytes.len() > maximum {

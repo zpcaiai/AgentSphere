@@ -63,6 +63,35 @@ paths:
         "401": {$ref: "#/components/responses/Error"}
         "409": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
+  /v1/domain-runtime/approval-review-evidence:
+    post:
+      operationId: issueApprovalReviewEvidence
+      description: >-
+        Independent domain-risk producer for exact Coding or Industrial review facts. The producer
+        fixes source_service to its configured outbound mTLS SAN, forwards the canonical shared
+        AUTHENTICATED_EVENT to the Evidence Authority, verifies the signed receipt, and never owns
+        an Evidence signing key.
+      x-required-service-scope: domain-runtime:approval-review-evidence
+      parameters:
+        - {$ref: "#/components/parameters/Tenant"}
+        - {$ref: "#/components/parameters/ApprovalReviewIdempotency"}
+        - {$ref: "#/components/parameters/AuthorityEventId"}
+        - {$ref: "#/components/parameters/PayloadDigest"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: ../approval/review-evidence-issue.schema.json}
+      responses:
+        "200":
+          description: Exact material, Evidence Authority request, and verified signed receipt
+          content:
+            application/json:
+              schema: {$ref: ../approval/approval-case.schema.json#/$defs/reviewEvidence}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
   /v1/authoritative/domain-runtime/executions:
     get:
       operationId: listAuthoritativeDomainExecutionState
@@ -108,6 +137,7 @@ components:
   parameters:
     Tenant: {name: X-AgentTrust-Tenant-Id, in: header, required: true, schema: {type: string, format: uuid}}
     Idempotency: {name: Idempotency-Key, in: header, required: true, schema: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._:/-]{15,255}$"}}
+    ApprovalReviewIdempotency: {name: Idempotency-Key, in: header, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$"}}
     ExecutionId: {name: X-AgentTrust-Execution-Id, in: header, required: true, schema: {type: string, format: uuid}}
     ActionId: {name: X-AgentTrust-Action-Id, in: header, required: true, schema: {type: string, format: uuid}}
     AuthorizationId: {name: X-AgentTrust-Authorization-Id, in: header, required: true, schema: {type: string, format: uuid}}
@@ -122,6 +152,8 @@ components:
     FenceDigest: {name: X-AgentTrust-Fence-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
     ResourceVersion: {name: X-AgentTrust-Resource-Version, in: header, required: true, schema: {type: integer, minimum: 1}}
     TraceId: {name: X-AgentTrust-Trace-Id, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 256}}
+    AuthorityEventId: {name: X-AgentTrust-Authority-Event-Id, in: header, required: true, schema: {type: string, format: uuid}}
+    PayloadDigest: {name: X-AgentTrust-Payload-Digest, in: header, required: true, schema: {$ref: "#/components/schemas/Digest"}}
   schemas:
     Digest: {type: string, pattern: "^[a-f0-9]{64}$"}
   responses:

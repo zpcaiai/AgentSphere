@@ -569,18 +569,19 @@ components:
     EvidenceEventDraft:
       type: object
       additionalProperties: false
-      required: [tenant_id, task_id, event_type, actor_subject, source_service, trace_id, span_id, payload_hash, safe_summary, artifact_refs, occurred_at]
+      required: [schema_version, tenant_id, task_id, event_type, actor_subject, source_service, trace_id, span_id, payload_hash, safe_summary, artifact_refs, occurred_at]
       properties:
+        schema_version: {const: agenttrust.evidence.v1}
         tenant_id: {$ref: '#/components/schemas/Uuid'}
         task_id: {$ref: '#/components/schemas/Uuid'}
-        event_type: {enum: [TASK_CREATED, PLAN_GENERATED, POLICY_EVALUATED, APPROVAL_DECISION, CREDENTIAL_ISSUED, TOOL_PREPARED, TOOL_EXECUTED, COMPENSATION, EVALUATION, SECURITY_ALERT, STATE_TRANSITION]}
+        event_type: {enum: [TASK_CREATED, PLAN_GENERATED, POLICY_EVALUATED, APPROVAL_DECISION, APPROVAL_REVIEW_PREPARED, CREDENTIAL_ISSUED, TOOL_PREPARED, TOOL_EXECUTED, COMPENSATION, EVALUATION, SECURITY_ALERT, STATE_TRANSITION, AUDIT_QUERY, AUDIT_EXPORT, LEGAL_HOLD, RETENTION_DELETION]}
         actor_subject: {type: string, minLength: 1, maxLength: 512}
         source_service: {type: string, minLength: 1, maxLength: 256}
         trace_id: {type: string, minLength: 1, maxLength: 256}
         span_id: {type: string, minLength: 1, maxLength: 256}
         payload_hash: {$ref: '#/components/schemas/Digest'}
-        safe_summary: {type: string, maxLength: 2048}
-        artifact_refs: {type: array, maxItems: 1024, items: {type: string, maxLength: 2048}}
+        safe_summary: {type: string, maxLength: 512}
+        artifact_refs: {type: array, maxItems: 256, items: {type: string, minLength: 1, maxLength: 2048}}
         occurred_at: {type: string, format: date-time}
     SignedEvidenceEvent:
       type: object

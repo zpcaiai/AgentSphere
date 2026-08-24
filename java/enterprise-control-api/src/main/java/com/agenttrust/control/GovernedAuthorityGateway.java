@@ -40,7 +40,7 @@ public final class GovernedAuthorityGateway {
     private static final Set<String> APPROVAL_REQUEST_FIELDS = Set.of(
         "tenant_id", "task_id", "step_id", "action_hash", "plan_hash", "parameter_hash",
         "resource", "resource_version", "policy_version", "environment", "risk",
-        "requester_subject", "agent_owner_subject", "justification",
+        "review_context", "review_evidence", "requester_subject", "agent_owner_subject", "justification",
         "requested_ttl_seconds", "requested_uses");
     private static final Set<String> APPROVAL_POLICY_FIELDS = Set.of(
         "policy_id", "policy_version", "approval_type", "minimum_approvers",
@@ -319,9 +319,9 @@ public final class GovernedAuthorityGateway {
         return false;
     }
 
-    private static void requireApprovalCaseShape(JsonNode value) {
+    private void requireApprovalCaseShape(JsonNode value) {
         if (value == null || !value.isObject() || !hasExactFields(value, APPROVAL_CASE_FIELDS)
-            || !"agenttrust.enterprise-approval.v1".equals(text(value, "schema_version", 128))
+            || !"agenttrust.enterprise-approval-case.v2".equals(text(value, "schema_version", 128))
             || !canonicalUuid(text(value, "case_id", 36))
             || !value.path("request").isObject()
             || !hasExactFields(value.path("request"), APPROVAL_REQUEST_FIELDS)
@@ -342,6 +342,11 @@ public final class GovernedAuthorityGateway {
             || invalidBoundedText(request, "environment", 2048)
             || !Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL")
                 .contains(text(request, "risk", 16))
+            || !AuthorityJson.approvalReviewContext(request.path("review_context"),
+                AuthorityJson.industrialApprovalResource(
+                    request.path("resource").asText(), request.path("environment").asText()))
+            || !AuthorityJson.signedApprovalReviewEvidence(request.path("review_evidence"),
+                request, value.path("created_at"), canonical)
             || invalidBoundedText(request, "requester_subject", 256)
             || invalidBoundedText(request, "agent_owner_subject", 256)
             || invalidBoundedText(request, "justification", 4096)

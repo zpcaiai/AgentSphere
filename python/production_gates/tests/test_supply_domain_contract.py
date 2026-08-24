@@ -174,6 +174,53 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
             )
             self.assertIn(str(expected), command)
 
+    def test_domain_management_routes_match_production_probes(self) -> None:
+        server = (ROOT / "rust/crates/domain-risk-packs/server.rs").read_text(encoding="utf-8")
+        stack = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('route("/live",get(management_live))', server)
+        self.assertIn('route("/ready",get(management_ready))', server)
+        self.assertIn(
+            '"schema_version":DOMAIN_READINESS_SCHEMA,"live":true', server
+        )
+        self.assertIn(
+            "livenessProbe: {httpGet: {path: /live, port: management}", stack
+        )
+        self.assertIn(
+            "readinessProbe: {httpGet: {path: /ready, port: management}", stack
+        )
+
+    def test_supply_and_platform_management_routes_match_production_probes(self) -> None:
+        supply = (ROOT / "rust/crates/pack-supply-chain/src/server.rs").read_text(
+            encoding="utf-8"
+        )
+        platform = (ROOT / "rust/crates/platform-sre/src/server.rs").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('route("/live",get(management_live))', supply)
+        self.assertIn('route("/ready",get(management_ready))', supply)
+        self.assertIn(
+            '"schema_version":SUPPLY_READINESS_SCHEMA,"live":true', supply
+        )
+        self.assertIn('.route("/live", get(management_health))', platform)
+        self.assertIn('.route("/ready", get(management_ready))', platform)
+        self.assertIn('"schema_version": "agenttrust.sre-liveness.v1"', platform)
+
+    def test_data_management_binding_accepts_kubernetes_probe_address(self) -> None:
+        server = (ROOT / "rust/crates/data-governance/src/server.rs").read_text(
+            encoding="utf-8"
+        )
+        stack = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("config.data_address.ip().is_loopback()", server)
+        self.assertIn("config.management_address.ip().is_loopback()", server)
+        self.assertIn("config.management_address.ip().is_unspecified()", server)
+        self.assertIn(
+            "AGENT_TRUST_DATA_MANAGEMENT_LISTEN_ADDRESS, value: 0.0.0.0", stack
+        )
+
     def test_domain_limited_write_is_dual_approved_and_single_use(self) -> None:
         shared = (ROOT / "migrations/domain-packs/0036_01_18_production_coding_pack.sql").read_text(encoding="utf-8")
         industrial = (ROOT / "migrations/domain-packs/0036_01_19_production_industrial_pack.sql").read_text(encoding="utf-8")

@@ -14,8 +14,22 @@ The BFF approval inbox reads `GET /v1/authoritative/approvals` with
 safe views and a canonical `data_digest`. The optional cursor is Ed25519 signed,
 expires after 15 minutes, and is bound to the exact tenant and dashboard
 `resource` selector. The view never returns request justification, assertion
-documents, approver identities, or fabricated evidence references. Until a
-real immutable evidence artifact is linked, `evidence_refs` is an empty array.
+documents, approver identities, or fabricated evidence references. Every v2 case carries exact
+`agenttrust.approval-review-material.v1` material, the complete
+`agenttrust.authority-evidence-event-request.v1` sent to the existing Evidence Authority, and its
+`agenttrust.signed-authority-evidence-receipt.v1`. The request is an `AUTHENTICATED_EVENT` with
+event type `APPROVAL_REVIEW_PREPARED`; its payload hash is JCS SHA-256 of the material and its
+artifact list is exactly diff/risk/snapshot for Coding or risk/snapshot for Industrial. Approval
+recomputes the request digest, verifies the shared receipt, pins tenant, task, issuer, key and exact
+mTLS source SAN, and exposes three immutable Evidence references. Missing, stale or mismatched
+evidence fails closed.
+
+Create that binding through `POST /v1/domain-runtime/approval-review-evidence`, not in the
+approval process. The caller must present mTLS plus a tenant-bound
+`domain-runtime:approval-review-evidence` credential and exact tenant, idempotency, authority-event
+and payload-digest headers. The domain-risk producer pins `source_service` to its configured
+outbound SAN, calls Evidence Authority with its dedicated `evidence:authority-event` token, verifies
+the bounded signed response, and returns the complete material/request/receipt tuple consumed here.
 
 ## Required configuration
 
@@ -36,6 +50,7 @@ and embedded newlines, and allow at most one trailing line ending.
 | `AGENT_TRUST_APPROVAL_TOKEN_BINDINGS_FILE` | `agenttrust.approval-token-bindings.v1` document. Each raw token digest is bound to one mTLS identity, tenant, service subject, and scope. A digest cannot be reused across scopes or subjects. |
 | `AGENT_TRUST_APPROVAL_PRINCIPAL_KEYS_FILE` | Independent `agenttrust.approval-principal-keyring.v1` Ed25519 public keyring for human principal assertions. Every key has an explicit canonical tenant allow-list. |
 | `AGENT_TRUST_APPROVAL_PRINCIPAL_AUDIENCE` | Expected audience, which must exactly match the keyring and every assertion. |
+| `AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE` | Public-only `AUTHORITY_EVIDENCE_RECEIPT` trust policy for the Evidence Authority issuer/key and allowlisted independent review-fact source SANs. Approval never mounts an Evidence Authority private key or an `evidence:authority-event` producer token. |
 | `AGENT_TRUST_APPROVAL_TLS_CA_FILE` | Client-certificate CA bundle. |
 | `AGENT_TRUST_APPROVAL_TLS_CERTIFICATE_FILE` | Server certificate chain. |
 | `AGENT_TRUST_APPROVAL_TLS_PRIVATE_KEY_FILE` | Server private key secret file. |
@@ -77,7 +92,7 @@ The four human mutations and exact service scopes are:
 
 | Path | Scope | Strict body |
 | --- | --- | --- |
-| `POST /v1/approvals/cases` | `approvals:request` | `{"schema_version":"agenttrust.approval-case-create.v1","request":ApprovalRequest,"policy":ApprovalPolicy}` |
+| `POST /v1/approvals/cases` | `approvals:request` | `{"schema_version":"agenttrust.approval-case-create.v2","request":ApprovalRequest,"policy":ApprovalPolicy}` |
 | `POST /v1/approvals/cases/{case_id}/decisions` | `approvals:decide` | `{"schema_version":"agenttrust.approval-decision.v1","decision":"APPROVE|REJECT|POST_REVIEWED","reason":"..."}` |
 | `POST /v1/approvals/cases/{case_id}/grants` | `approvals:issue` | `{"schema_version":"agenttrust.enterprise-approval.v1"}` |
 | `POST /v1/approvals/grants/{grant_id}/revoke` | `approvals:revoke` | `{"schema_version":"agenttrust.enterprise-approval.v1","reason":"..."}` |
@@ -85,7 +100,7 @@ The four human mutations and exact service scopes are:
 `ApprovalRequest` contains, in typed DTO declaration order, `tenant_id`,
 `task_id`, `step_id`, `action_hash`, `plan_hash`, `parameter_hash`, `resource`,
 `resource_version`, `policy_version`, `environment`, `risk`,
-`requester_subject`, `agent_owner_subject`, `justification`,
+`review_context`, `review_evidence`, `requester_subject`, `agent_owner_subject`, `justification`,
 `requested_ttl_seconds`, and `requested_uses`. `ApprovalPolicy` contains
 `policy_id`, `policy_version`, `approval_type`, `minimum_approvers`,
 `required_roles`, `prohibit_requester`, `prohibit_agent_owner`,
@@ -119,6 +134,12 @@ responses, assertions, events, and signed consumption receipts, and constrains
 grants to one use. The migration is environment-independent and intentionally
 does not create roles or grant application privileges; the production migration
 runner must configure the expected least-privilege role before service startup.
+
+Apply `0036_01_25_approval_review_evidence_v2.sql` before the v2 workload. It refuses to run while
+any legacy case remains mutable or any unrevoked single-use grant still derives from a legacy
+request. Terminal legacy rows are retained as audit history but are excluded from the approval
+inbox because the service will not invent their missing review facts. The approval Deployment uses
+`Recreate`, preventing v1 and v2 request/response contracts from serving concurrently.
 
 Grant consumption selects and locks the exact tenant/action/plan/parameter/
 resource-version/policy/environment binding, verifies the stored Ed25519 grant,

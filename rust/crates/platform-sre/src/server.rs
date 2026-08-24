@@ -1,6 +1,7 @@
 //! TLS 1.3/mTLS Platform SRE data plane and loopback management readiness plane.
 
 use crate::authority::*;
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
     AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
@@ -549,8 +550,7 @@ impl HttpSreEffectPort {
         {
             return Err(SreAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 1_048_576)
             .await
             .map_err(|_| SreAuthorityError::DependencyUnavailable)?;
         strict_json(&bytes).map_err(|_| SreAuthorityError::DependencyUnavailable)
@@ -681,8 +681,7 @@ impl SreEffectPort for HttpSreEffectPort {
         {
             return Err(SreAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| SreAuthorityError::DependencyUnavailable)?;
         let receipt: SignedAuthorityEvidenceReceipt =
@@ -836,8 +835,7 @@ impl SreOrchestratorPort for HttpSreOrchestrator {
         {
             return Err(SreAuthorityError::DependencyUnavailable);
         }
-        let bytes = response
-            .bytes()
+        let bytes = read_bounded_body(response, 65_536)
             .await
             .map_err(|_| SreAuthorityError::DependencyUnavailable)?;
         let accepted: OrchestratorAcceptance =
@@ -894,6 +892,8 @@ pub async fn serve(
         allowed_identities: Arc::new(config.allowed_client_identities),
     };
     let management = Router::new()
+        .route("/live", get(management_health))
+        .route("/ready", get(management_ready))
         .route("/healthz", get(management_health))
         .route("/readyz", get(management_ready))
         .with_state((readiness_ingress, readiness_executor));
@@ -1287,7 +1287,7 @@ async fn dependency_ready(
     {
         return false;
     }
-    let Ok(bytes) = response.bytes().await else {
+    let Ok(bytes) = read_bounded_body(response, 16_384).await else {
         return false;
     };
     let Ok(readiness) = strict_json::<DependencyReadiness>(&bytes) else {

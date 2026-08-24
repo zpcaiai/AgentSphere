@@ -15,7 +15,7 @@
     "evidence/external-gates/kubernetes-local-recovery.json"
   ],
   "gates": [
-    {"gate_id":"CONTRACT_COMPATIBILITY","result":"PASS_LOCAL","external_required":false,"evidence_ref":"evidence/verification-summary.json"},
+    {"gate_id":"CONTRACT_COMPATIBILITY","result":"NOT_RUN_RESOURCE_FREEZE","historical_result":"PASS_LOCAL_NOT_CURRENT_RELEASE","external_required":false,"evidence_ref":"evidence/verification-summary.json"},
     {"gate_id":"SUPPLY_CHAIN_PROVENANCE","result":"NOT_RUN","external_required":true},
     {"gate_id":"MULTITENANT_ISOLATION","result":"NOT_RUN","external_required":true},
     {"gate_id":"IDEMPOTENCY_AND_RECOVERY","result":"NOT_RUN","external_required":true},

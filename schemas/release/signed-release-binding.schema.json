@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/release/signed-release-binding.schema.json",
+  "title": "Signed production release material binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "binding", "binding_digest", "issuer", "key_id",
+    "key_usage", "algorithm", "signed_at", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-release-binding.v1"},
+    "binding": {"$ref": "#/$defs/binding"},
+    "binding_digest": {"$ref": "#/$defs/digest"},
+    "issuer": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "key_usage": {"const": "PRODUCTION_RELEASE_BINDING"},
+    "algorithm": {"const": "Ed25519"},
+    "signed_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "objectId": {
+      "oneOf": [
+        {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "release_id", "release_digest",
+        "signed_git_provenance_digest", "template_git_path",
+        "template_blob_object_id", "template_digest",
+        "values_without_release_digest", "runtime_config_digest"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.release-binding.v1"},
+        "release_id": {
+          "type": "string",
+          "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"
+        },
+        "release_digest": {"$ref": "#/$defs/digest"},
+        "signed_git_provenance_digest": {"$ref": "#/$defs/digest"},
+        "template_git_path": {
+          "const": "deploy/kubernetes/production-stack.yaml.tmpl"
+        },
+        "template_blob_object_id": {"$ref": "#/$defs/objectId"},
+        "template_digest": {"$ref": "#/$defs/digest"},
+        "values_without_release_digest": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 128,
+          "not": {"required": ["release_digest"]}
+        },
+        "runtime_config_digest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

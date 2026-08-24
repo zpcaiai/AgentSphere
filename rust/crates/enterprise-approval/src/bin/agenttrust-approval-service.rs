@@ -1,4 +1,6 @@
-use agent_trust_enterprise_approval::ApprovalPrincipalAssertionKeyring;
+use agent_trust_enterprise_approval::{
+    ApprovalPrincipalAssertionKeyring, ApprovalReviewEvidenceKeyring,
+};
 use agent_trust_enterprise_approval::postgres::{ApprovalSigner, PostgresApprovalStore};
 use agent_trust_enterprise_approval::server::{
     ApprovalApiState, ApprovalServerConfig, TokenBindingApprovalAuthorizer, serve,
@@ -49,7 +51,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         required_key_identifier("AGENT_TRUST_APPROVAL_KEY_ID")?,
         read_signing_key("AGENT_TRUST_APPROVAL_PRIVATE_KEY_FILE")?,
     )?;
-    let store = Arc::new(PostgresApprovalStore::new(pool, signer));
+    let review_evidence_keyring = ApprovalReviewEvidenceKeyring::from_file(&required_file(
+        "AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE",
+        false,
+    )?)?;
+    let store = Arc::new(PostgresApprovalStore::new(
+        pool,
+        signer,
+        review_evidence_keyring,
+    ));
     if !store.ready().await {
         return Err("APPROVAL_DATABASE_NOT_READY".into());
     }
