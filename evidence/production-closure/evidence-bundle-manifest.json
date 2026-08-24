@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-24T09:15:02Z",
+  "generated_at": "2026-08-24T09:23:50Z",
   "artifacts": [
     {
       "path": "evidence/verification-summary.json",
@@ -737,15 +737,15 @@
     },
     {
       "path": "scripts/run-production-migrations.sh",
-      "sha256": "668c4f298497ee0d1f7621360f61c859ec6b5a8c2c932ba83512420dc0bd1c13"
+      "sha256": "b4990c4d1ff7d95b56d942383c016d96ed3e2c2f52493d5d7a9b1ff15fc21668"
     },
     {
       "path": "scripts/validate-production-migrations.py",
-      "sha256": "d3b9815d0bd049e1b2cca8623ab4ac2493b158f5260e8952f1fe0aa3617bc04b"
+      "sha256": "167a0deb091767f95ec46d4b6b163563697003add0ccf047487e2c083f764a22"
     },
     {
       "path": "python/production_gates/tests/test_migration_idempotency.py",
-      "sha256": "cc77072499f8da1be7d546698d25d2353811cdd0c71463cf0f595175b92fb7a9"
+      "sha256": "eb5b0ce94f55730ddaf5afd402477b10a6924508825811d4b047cda31ec4feb3"
     },
     {
       "path": ".github/workflows/ci.yml",

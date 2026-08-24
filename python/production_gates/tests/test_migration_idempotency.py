@@ -134,6 +134,20 @@ class MigrationIdempotencyValidatorTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, code):
                     VALIDATOR.validate_transaction_boundary("fixture.sql", sql)
 
+    def test_application_grant_catalog_queries_qualify_plpgsql_collisions(self) -> None:
+        runner = (ROOT / "scripts/run-production-migrations.sh").read_text(encoding="utf-8")
+        VALIDATOR.validate_application_grant_catalog_queries(runner)
+        ambiguous = runner.replace(
+            "column_grant.table_name='enterprise_remote_actions'",
+            "table_name='enterprise_remote_actions'",
+            1,
+        )
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "MIGRATION_RUNNER_CATALOG_COLUMN_AMBIGUOUS:table_name",
+        ):
+            VALIDATOR.validate_application_grant_catalog_queries(ambiguous)
+
     def test_runner_renders_each_migration_and_history_row_in_one_transaction(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             temporary = Path(temporary_directory).resolve()

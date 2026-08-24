@@ -1,5 +1,6 @@
 package com.agenttrust.control;
 
+import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;

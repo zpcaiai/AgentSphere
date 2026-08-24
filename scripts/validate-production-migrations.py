@@ -59,6 +59,39 @@ def fail(code: str) -> None:
     raise RuntimeError(code)
 
 
+def validate_application_grant_catalog_queries(runner: str) -> None:
+    start = "DO \\$application_grants\\$"
+    end = "\\$application_grants\\$;"
+    if runner.count(start) != 1 or runner.count(end) != 1:
+        fail("MIGRATION_RUNNER_APPLICATION_GRANTS_BLOCK_INVALID")
+    application_grants = runner.split(start, 1)[1].split(end, 1)[0]
+    queries: list[str] = []
+    query_lines: list[str] = []
+    catalog = "FROM information_schema.column_privileges"
+    for line in application_grants.splitlines():
+        if not query_lines and catalog in line:
+            query_lines.append(line)
+        elif query_lines:
+            query_lines.append(line)
+        if query_lines and re.search(r"\bTHEN\b", line):
+            queries.append("\n".join(query_lines))
+            query_lines = []
+    if query_lines or len(queries) != 8:
+        fail("MIGRATION_RUNNER_COLUMN_PRIVILEGE_QUERY_SET_INVALID")
+    for query in queries:
+        if f"{catalog} AS column_grant" not in query:
+            fail("MIGRATION_RUNNER_COLUMN_PRIVILEGE_ALIAS_MISSING")
+        for identifier in (
+            "table_schema",
+            "table_name",
+            "column_name",
+            "grantee",
+            "privilege_type",
+        ):
+            if re.search(rf"(?<![A-Za-z0-9_.]){identifier}\b", query):
+                fail(f"MIGRATION_RUNNER_CATALOG_COLUMN_AMBIGUOUS:{identifier}")
+
+
 def migration_version(value: str) -> tuple[int, ...]:
     match = VERSION.match(Path(value).name)
     if match is None:
@@ -422,6 +455,7 @@ def main() -> int:
         fail("MIGRATION_RUNNER_SOURCE_DIGEST_TOCTOU")
     if runner.index("unset PGPASSWORD") > runner.index('mode="${1:---apply}"'):
         fail("MIGRATION_RUNNER_INHERITED_PASSWORD_EXPOSURE")
+    validate_application_grant_catalog_queries(runner)
     print(f"validated {len(entries)} ordered production migrations and tenant RLS closure")
     return 0
 

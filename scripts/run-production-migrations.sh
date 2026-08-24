@@ -1720,18 +1720,21 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND grantee='$enterprise_application_role'
-       AND privilege_type='UPDATE'
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.grantee='$enterprise_application_role'
+       AND column_grant.privilege_type='UPDATE'
        AND (
-         (table_name='enterprise_remote_actions' AND column_name NOT IN (
+         (column_grant.table_name='enterprise_remote_actions'
+          AND column_grant.column_name NOT IN (
            'status','response_payload','evidence_ref','attempts','next_attempt_at',
            'last_error_code','updated_at'
          )) OR
-         (table_name='enterprise_approval_intents' AND column_name NOT IN (
+         (column_grant.table_name='enterprise_approval_intents'
+          AND column_grant.column_name NOT IN (
            'status','evidence_ref','attempts','next_attempt_at','last_error_code','updated_at'
          )) OR
-         table_name NOT IN (
+         column_grant.table_name NOT IN (
            'enterprise_remote_actions','enterprise_approval_intents',
            'spring_session','spring_session_attributes'
          )
@@ -1808,19 +1811,25 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND grantee='$enterprise_authority_application_role'
-       AND privilege_type='UPDATE'
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.grantee='$enterprise_authority_application_role'
+       AND column_grant.privilege_type='UPDATE'
        AND NOT (
-         (table_name='enterprise_action_ingress' AND column_name IN ('state','receipt','updated_at')) OR
-         (table_name='enterprise_resource_versions' AND column_name IN (
+         (column_grant.table_name='enterprise_action_ingress'
+          AND column_grant.column_name IN ('state','receipt','updated_at')) OR
+         (column_grant.table_name='enterprise_resource_versions'
+          AND column_grant.column_name IN (
            'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
          )) OR
-         (table_name='enterprise_authority_executions' AND column_name IN (
+         (column_grant.table_name='enterprise_authority_executions'
+          AND column_grant.column_name IN (
            'state','safe_result','safe_result_digest','stable_error','updated_at'
          )) OR
-         (table_name='enterprise_quota_usage' AND column_name IN ('used','limit_value')) OR
-         (table_name='enterprise_api_keys' AND column_name IN ('revoked_at','revocation_reason'))
+         (column_grant.table_name='enterprise_quota_usage'
+          AND column_grant.column_name IN ('used','limit_value')) OR
+         (column_grant.table_name='enterprise_api_keys'
+          AND column_grant.column_name IN ('revoked_at','revocation_reason'))
        )
   ) THEN
     RAISE EXCEPTION 'MIGRATION_ENTERPRISE_AUTHORITY_EXCESS_COLUMN_UPDATE_GRANT';
@@ -1844,13 +1853,13 @@ BEGIN
        '$orchestrator_application_role', 'public.orchestrator_stream_events', 'UPDATE,DELETE'
      )
      OR EXISTS (
-       SELECT 1 FROM information_schema.column_privileges
-        WHERE table_schema = 'public'
-          AND grantee = '$orchestrator_application_role'
-          AND privilege_type = 'UPDATE'
+       SELECT 1 FROM information_schema.column_privileges AS column_grant
+        WHERE column_grant.table_schema = 'public'
+          AND column_grant.grantee = '$orchestrator_application_role'
+          AND column_grant.privilege_type = 'UPDATE'
           AND NOT (
-            table_name = 'orchestrator_ingress_actions'
-            AND column_name IN ('status', 'updated_at')
+            column_grant.table_name = 'orchestrator_ingress_actions'
+            AND column_grant.column_name IN ('status', 'updated_at')
           )
      )
   THEN
@@ -1928,16 +1937,19 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND grantee='$pep_application_role'
-       AND privilege_type='UPDATE'
-       AND table_name <> 'pep_authorization_requests'
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.grantee='$pep_application_role'
+       AND column_grant.privilege_type='UPDATE'
+       AND column_grant.table_name <> 'pep_authorization_requests'
        AND NOT (
-         (table_name='pep_policy_activation_requests' AND column_name IN (
+         (column_grant.table_name='pep_policy_activation_requests'
+          AND column_grant.column_name IN (
            'state','claim_owner','claim_expires_at','pdp_ack_digest','pdp_ack_body',
            'response_digest','response_body','completed_at','updated_at'
          )) OR
-         (table_name='pep_active_policy_bundles' AND column_name IN (
+         (column_grant.table_name='pep_active_policy_bundles'
+          AND column_grant.column_name IN (
            'activation_id','policy_id','sequence','bundle_digest','policy_version',
            'pdp_ack_digest','activated_at'
          ))
@@ -2168,10 +2180,12 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND table_name='legal_holds'
-       AND grantee='$audit_application_role' AND privilege_type='UPDATE'
-       AND column_name NOT IN ('released_by','released_at','release_reason')
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.table_name='legal_holds'
+       AND column_grant.grantee='$audit_application_role'
+       AND column_grant.privilege_type='UPDATE'
+       AND column_grant.column_name NOT IN ('released_by','released_at','release_reason')
   ) THEN
     RAISE EXCEPTION 'MIGRATION_AUDIT_LEGAL_HOLD_EXCESS_GRANT';
   END IF;
@@ -2352,25 +2366,34 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND grantee='$policy_admin_application_role'
-       AND privilege_type='UPDATE'
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.grantee='$policy_admin_application_role'
+       AND column_grant.privilege_type='UPDATE'
        AND NOT (
-         (table_name='policy_sources' AND column_name IN ('lifecycle_state','updated_at')) OR
-         (table_name='policy_bundles' AND column_name IN ('status','deprecated_at')) OR
-         (table_name='policy_exceptions' AND column_name IN (
+         (column_grant.table_name='policy_sources'
+          AND column_grant.column_name IN ('lifecycle_state','updated_at')) OR
+         (column_grant.table_name='policy_bundles'
+          AND column_grant.column_name IN ('status','deprecated_at')) OR
+         (column_grant.table_name='policy_exceptions'
+          AND column_grant.column_name IN (
            'revoked_at','revocation_reason_digest','expired_at'
          )) OR
-         (table_name='policy_promotions' AND column_name IN ('state','completed_at')) OR
-         (table_name='policy_activation_intents' AND column_name IN (
+         (column_grant.table_name='policy_promotions'
+          AND column_grant.column_name IN ('state','completed_at')) OR
+         (column_grant.table_name='policy_activation_intents'
+          AND column_grant.column_name IN (
            'state','claim_owner','claim_expires_at','acknowledgement_digest',
            'acknowledgement','updated_at','activated_at'
          )) OR
-         (table_name='policy_resource_versions' AND column_name IN (
+         (column_grant.table_name='policy_resource_versions'
+          AND column_grant.column_name IN (
            'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
          )) OR
-         (table_name='policy_action_ingress' AND column_name IN ('state','receipt','updated_at')) OR
-         (table_name='policy_authority_executions' AND column_name IN (
+         (column_grant.table_name='policy_action_ingress'
+          AND column_grant.column_name IN ('state','receipt','updated_at')) OR
+         (column_grant.table_name='policy_authority_executions'
+          AND column_grant.column_name IN (
            'state','safe_result','safe_result_digest','stable_error','updated_at'
          ))
        )
@@ -2448,24 +2471,29 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND grantee='$incident_release_application_role'
-       AND privilege_type='UPDATE'
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.grantee='$incident_release_application_role'
+       AND column_grant.privilege_type='UPDATE'
        AND NOT (
-         (table_name='incidents' AND column_name IN (
+         (column_grant.table_name='incidents' AND column_grant.column_name IN (
            'status','owner','severity','resource_version','updated_at'
          )) OR
-         (table_name='incident_action_ingress' AND column_name IN (
+         (column_grant.table_name='incident_action_ingress'
+          AND column_grant.column_name IN (
            'state','receipt','updated_at'
          )) OR
-         (table_name='incident_resource_versions' AND column_name IN (
+         (column_grant.table_name='incident_resource_versions'
+          AND column_grant.column_name IN (
            'resource_version','action_hash','ledger_execution_id','fence_digest','updated_at'
          )) OR
-         (table_name='incident_authority_executions' AND column_name IN (
+         (column_grant.table_name='incident_authority_executions'
+          AND column_grant.column_name IN (
            'state','execution_owner','execution_lease_until','safe_result',
            'safe_result_digest','stable_error','updated_at'
          )) OR
-         (table_name='release_gate_runs' AND column_name IN ('state','updated_at'))
+         (column_grant.table_name='release_gate_runs'
+          AND column_grant.column_name IN ('state','updated_at'))
        )
   ) THEN
     RAISE EXCEPTION 'MIGRATION_INCIDENT_RELEASE_EXCESS_COLUMN_UPDATE_GRANT';
@@ -2577,38 +2605,48 @@ BEGIN
     END IF;
   END LOOP;
   IF EXISTS (
-    SELECT 1 FROM information_schema.column_privileges
-     WHERE table_schema='public' AND grantee='$pack_marketplace_application_role'
-       AND privilege_type='UPDATE'
+    SELECT 1 FROM information_schema.column_privileges AS column_grant
+     WHERE column_grant.table_schema='public'
+       AND column_grant.grantee='$pack_marketplace_application_role'
+       AND column_grant.privilege_type='UPDATE'
        AND NOT (
-         (table_name='marketplace_publishers' AND column_name IN (
+         (column_grant.table_name='marketplace_publishers'
+          AND column_grant.column_name IN (
            'trust_status','verified_by','verified_at','revoked_at','updated_at'
          )) OR
-         (table_name='marketplace_publisher_keys' AND column_name IN ('status','revoked_at')) OR
-         (table_name='marketplace_tenant_catalog' AND column_name IN (
+         (column_grant.table_name='marketplace_publisher_keys'
+          AND column_grant.column_name IN ('status','revoked_at')) OR
+         (column_grant.table_name='marketplace_tenant_catalog'
+          AND column_grant.column_name IN (
            'control_plane_version','region','entitlements','allowed_compatibility',
            'minimum_publisher_trust','maximum_risk','configured_by','updated_at'
          )) OR
-         (table_name='marketplace_releases' AND column_name IN (
+         (column_grant.table_name='marketplace_releases'
+          AND column_grant.column_name IN (
            'review_status','reviewed_by','review_digest','published_at','revoked_at','updated_at'
          )) OR
-         (table_name='marketplace_installations' AND column_name IN (
+         (column_grant.table_name='marketplace_installations'
+          AND column_grant.column_name IN (
            'state','approved_by','approval_digest','artifact_receipt_digest',
            'previous_installation_id','production_certificate_digest',
            'deactivation_reason_digest','approved_at','installed_at','activated_at',
            'deactivated_at','revoked_at','updated_at'
          )) OR
-         (table_name='marketplace_upgrade_plans' AND column_name IN (
+         (column_grant.table_name='marketplace_upgrade_plans'
+          AND column_grant.column_name IN (
            'state','rollback_reason_digest','completed_at','rolled_back_at','updated_at'
          )) OR
-         (table_name='marketplace_resource_versions' AND column_name IN (
+         (column_grant.table_name='marketplace_resource_versions'
+          AND column_grant.column_name IN (
            'resource_version','action_hash','policy_decision_id','ledger_entry_id',
            'ledger_execution_id','fence_digest','updated_at'
          )) OR
-         (table_name='marketplace_action_ingress' AND column_name IN (
+         (column_grant.table_name='marketplace_action_ingress'
+          AND column_grant.column_name IN (
            'state','receipt','updated_at'
          )) OR
-         (table_name='marketplace_authority_executions' AND column_name IN (
+         (column_grant.table_name='marketplace_authority_executions'
+          AND column_grant.column_name IN (
            'state','safe_result','safe_result_digest','stable_error','updated_at'
          ))
        )
