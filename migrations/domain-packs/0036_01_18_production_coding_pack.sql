@@ -12,7 +12,7 @@ REVOKE ALL ON TABLE public.coding_pack_runs_legacy_0023 FROM PUBLIC;
 
 -- Shared production contract consumed by all five Domain Packs. Domain plugins do not own a
 -- second PEP, ledger, fence, idempotency, executor or Evidence implementation.
-CREATE TABLE public.domain_pack_executions (
+CREATE TABLE IF NOT EXISTS public.domain_pack_executions (
   tenant_id uuid NOT NULL,
   execution_id uuid NOT NULL,
   command_id uuid NOT NULL,
@@ -70,7 +70,7 @@ CREATE TABLE public.domain_pack_executions (
       OR state IN ('PREPARED','EXECUTING','VERIFYING'))
 );
 
-CREATE TABLE public.domain_expert_approvals (
+CREATE TABLE IF NOT EXISTS public.domain_expert_approvals (
   tenant_id uuid NOT NULL, approval_id uuid NOT NULL, approval_set_id uuid NOT NULL,
   domain varchar(24) NOT NULL CHECK (domain IN ('CODING','INDUSTRIAL','ENERGY','MEDICAL','SENSITIVE')),
   operation varchar(128) NOT NULL, resource_key varchar(1024) NOT NULL,
@@ -87,7 +87,7 @@ CREATE TABLE public.domain_expert_approvals (
   PRIMARY KEY (tenant_id,approval_id), UNIQUE (tenant_id,approval_set_id,reviewer_subject)
 );
 
-CREATE TABLE public.domain_physical_supervision (
+CREATE TABLE IF NOT EXISTS public.domain_physical_supervision (
   tenant_id uuid NOT NULL, supervision_id uuid NOT NULL, approval_set_id uuid NOT NULL,
   domain varchar(24) NOT NULL CHECK (domain IN ('INDUSTRIAL','ENERGY')),
   stage varchar(24) NOT NULL CHECK (stage IN ('SIMULATOR','DIGITAL_TWIN','READ_ONLY','SHADOW','LIMITED_WRITE')),
@@ -104,7 +104,7 @@ CREATE TABLE public.domain_physical_supervision (
   CHECK ((consumed_by_execution_id IS NULL AND consumed_at IS NULL) OR (consumed_by_execution_id IS NOT NULL AND consumed_at IS NOT NULL))
 );
 
-CREATE TABLE public.domain_pack_evidence_outbox (
+CREATE TABLE IF NOT EXISTS public.domain_pack_evidence_outbox (
   tenant_id uuid NOT NULL, outbox_id uuid NOT NULL, execution_id uuid NOT NULL,
   domain varchar(24) NOT NULL CHECK (domain IN ('CODING','INDUSTRIAL','ENERGY','MEDICAL','SENSITIVE')),
   idempotency_key varchar(256) NOT NULL, payload jsonb NOT NULL CHECK (jsonb_typeof(payload)='object'),
@@ -116,7 +116,7 @@ CREATE TABLE public.domain_pack_evidence_outbox (
       OR (delivered_at IS NOT NULL AND delivery_evidence_ref LIKE 'evidence://%' AND delivery_receipt_digest ~ '^[0-9a-f]{64}$'))
 );
 
-CREATE TABLE public.coding_repository_resources (
+CREATE TABLE IF NOT EXISTS public.coding_repository_resources (
   tenant_id uuid NOT NULL, repository_id uuid NOT NULL,
   repository_uri varchar(1024) NOT NULL CHECK (repository_uri ~ '^https://'), baseline_commit varchar(128) NOT NULL,
   protected_branches text[] NOT NULL CHECK (cardinality(protected_branches) BETWEEN 1 AND 128),
@@ -133,7 +133,7 @@ CREATE TABLE public.coding_repository_resources (
   CHECK ('.env'=ANY(denied_path_prefixes)), CHECK ('.git/hooks'=ANY(denied_path_prefixes))
 );
 
-CREATE TABLE public.coding_execution_cases (
+CREATE TABLE IF NOT EXISTS public.coding_execution_cases (
   tenant_id uuid NOT NULL, execution_id uuid NOT NULL, repository_id uuid NOT NULL,
   baseline_commit varchar(128) NOT NULL, task_branch varchar(512) NOT NULL,
   patch_digest char(64) NOT NULL CHECK (patch_digest ~ '^[0-9a-f]{64}$'),
@@ -227,14 +227,19 @@ BEGIN
   RETURN NEW;
 END $function$;
 
+DROP TRIGGER IF EXISTS domain_execution_transition_guard ON public.domain_pack_executions;
 CREATE TRIGGER domain_execution_transition_guard BEFORE UPDATE ON public.domain_pack_executions
 FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_execution_transition();
+DROP TRIGGER IF EXISTS domain_outbox_transition_guard ON public.domain_pack_evidence_outbox;
 CREATE TRIGGER domain_outbox_transition_guard BEFORE UPDATE OR DELETE ON public.domain_pack_evidence_outbox
 FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_outbox_transition();
+DROP TRIGGER IF EXISTS domain_approval_immutable ON public.domain_expert_approvals;
 CREATE TRIGGER domain_approval_immutable BEFORE UPDATE OR DELETE ON public.domain_expert_approvals
 FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS domain_supervision_consume_guard ON public.domain_physical_supervision;
 CREATE TRIGGER domain_supervision_consume_guard BEFORE UPDATE OR DELETE ON public.domain_physical_supervision
 FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_supervision_consume();
+DROP TRIGGER IF EXISTS coding_case_immutable ON public.coding_execution_cases;
 CREATE TRIGGER coding_case_immutable BEFORE UPDATE OR DELETE ON public.coding_execution_cases
 FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
 
@@ -242,15 +247,16 @@ DO $rls$ DECLARE table_name text; BEGIN
   FOREACH table_name IN ARRAY ARRAY['domain_pack_executions','domain_expert_approvals','domain_physical_supervision','domain_pack_evidence_outbox','coding_repository_resources','coding_execution_cases'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',table_name);
     EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY',table_name);
+    EXECUTE format('DROP POLICY IF EXISTS domain_tenant_isolation ON public.%I',table_name);
     EXECUTE format('CREATE POLICY domain_tenant_isolation ON public.%I USING (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',table_name);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',table_name);
   END LOOP;
 END $rls$;
 
-CREATE UNIQUE INDEX domain_single_resource_flight_idx ON public.domain_pack_executions(tenant_id,resource_key) WHERE state IN ('PREPARED','EXECUTING','VERIFYING');
-CREATE INDEX domain_execution_recovery_idx ON public.domain_pack_executions(tenant_id,state,lease_expires_at,updated_at);
-CREATE INDEX domain_evidence_delivery_idx ON public.domain_pack_evidence_outbox(tenant_id,created_at) WHERE delivered_at IS NULL;
-CREATE INDEX coding_repository_status_idx ON public.coding_repository_resources(tenant_id,status,updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS domain_single_resource_flight_idx ON public.domain_pack_executions(tenant_id,resource_key) WHERE state IN ('PREPARED','EXECUTING','VERIFYING');
+CREATE INDEX IF NOT EXISTS domain_execution_recovery_idx ON public.domain_pack_executions(tenant_id,state,lease_expires_at,updated_at);
+CREATE INDEX IF NOT EXISTS domain_evidence_delivery_idx ON public.domain_pack_evidence_outbox(tenant_id,created_at) WHERE delivered_at IS NULL;
+CREATE INDEX IF NOT EXISTS coding_repository_status_idx ON public.coding_repository_resources(tenant_id,status,updated_at);
 REVOKE ALL ON FUNCTION public.agenttrust_domain_execution_transition() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.agenttrust_domain_immutable_row() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.agenttrust_domain_outbox_transition() FROM PUBLIC;

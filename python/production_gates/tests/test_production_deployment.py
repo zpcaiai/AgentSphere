@@ -1652,6 +1652,56 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertIn("pep_active_policy_bundles", runner)
         self.assertIn("audit_human_assertion_uses", runner)
 
+    def test_migration_runner_commits_body_and_history_atomically(self) -> None:
+        runner = (ROOT / "scripts/run-production-migrations.sh").read_text()
+        self.assertIn("append_atomic_migration_body", runner)
+        self.assertIn("MIGRATION_TRANSACTION_BOUNDARY_INVALID", runner)
+        self.assertIn(
+            '\\else\nBEGIN;\nSQL\n    append_atomic_migration_body "$migration_snapshot" "$relative" "$sql_file"',
+            runner,
+        )
+        self.assertIn(
+            "VALUES ('$relative', '$digest', '$release_id');\nCOMMIT;\n\\endif",
+            runner,
+        )
+        self.assertNotIn("\\i '$migration'", runner)
+        self.assertNotIn("ON CONFLICT (migration_path) DO NOTHING", runner)
+        self.assertIn('chmod 0400 "$migration_snapshot"', runner)
+        self.assertIn('digest_file "$migration_snapshot"', runner)
+        self.assertIn("MIGRATION_DIGEST_INVALID", runner)
+        self.assertNotIn('digest_file "$migration"', runner)
+        self.assertIn(
+            'if [ "$mode" = "--apply" ]; then\n  printf \'%s\\n\' \'COMMIT;\'',
+            runner,
+        )
+
+    def test_ci_executes_tls_runner_replay_and_atomic_failure_probe(self) -> None:
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        self.assertIn("Enable verify-full TLS on the PostgreSQL service", workflow)
+        self.assertIn("sslmode=verify-full&sslrootcert=%s", workflow)
+        self.assertIn("Bootstrap least-privilege migration and application roles", workflow)
+        self.assertIn("Prove migration body and history rollback together", workflow)
+        self.assertIn("CI_FORCED_HISTORY_FAILURE", workflow)
+        self.assertIn("to_regclass('public.trust_bundles') IS NULL", workflow)
+        standalone_replay = workflow.split(
+            "- name: Replay every standalone migration after the runner",
+            maxsplit=1,
+        )[1].split(
+            "- name: Recheck production migration history after standalone replay",
+            maxsplit=1,
+        )[0]
+        self.assertIn("PGDATABASE=\"$database_url\" psql --no-psqlrc", standalone_replay)
+        self.assertIn("PGPASSWORD: agenttrust-ci-migration-password", standalone_replay)
+        self.assertNotIn("-U postgres", standalone_replay)
+        self.assertGreaterEqual(
+            workflow.count("run-production-migrations.sh --apply"),
+            3,
+        )
+        self.assertGreaterEqual(
+            workflow.count("run-production-migrations.sh --check"),
+            2,
+        )
+
     def test_application_database_tls_identity_verification_is_required(self) -> None:
         java = (
             ROOT

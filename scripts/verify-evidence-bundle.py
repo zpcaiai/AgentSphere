@@ -70,6 +70,7 @@ REQUIRED_DENIAL_REASONS = {
     "CUSTOMER_EXPERT_INDEPENDENT_SIGNATURES_ABSENT",
 }
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+MIGRATION_PATH = re.compile(r"^[A-Za-z0-9._/-]+\.sql$")
 
 
 def read_object(path: Path) -> dict[str, object]:
@@ -94,6 +95,28 @@ def require_string_set(value: object, code: str) -> set[str]:
     ):
         raise RuntimeError(code)
     return set(value)
+
+
+def production_migration_required_items() -> set[str]:
+    manifest = ROOT / "migrations/manifest.txt"
+    entries = [
+        line.strip()
+        for line in manifest.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    if (
+        len(entries) != 66
+        or len(entries) != len(set(entries))
+        or any(
+            not MIGRATION_PATH.fullmatch(relative)
+            or Path(relative).is_absolute()
+            or Path(relative).as_posix() != relative
+            or ".." in Path(relative).parts
+            for relative in entries
+        )
+    ):
+        raise RuntimeError("EVIDENCE_BUNDLE_MIGRATION_MANIFEST_INVALID")
+    return {f"migrations/{relative}" for relative in entries}
 
 
 def verify_non_certificate_truth(manifest: dict[str, object]) -> None:
@@ -314,7 +337,15 @@ def main() -> int:
         raise RuntimeError("EVIDENCE_BUNDLE_EMPTY")
     required = {
         *(f"evidence/batch-{batch:02}/IMPLEMENTATION_STATUS.json" for batch in range(1, 37)),
+        *production_migration_required_items(),
+        ".github/workflows/ci.yml",
         "config/production-runtime/conditions.json",
+        "requirements-ci.txt",
+        "python/durable_worker/requirements.production.txt",
+        "migrations/manifest.txt",
+        "scripts/run-production-migrations.sh",
+        "scripts/validate-production-migrations.py",
+        "python/production_gates/tests/test_migration_idempotency.py",
         "evidence/verification-summary.json",
         "evidence/production-closure/production-readiness-report.json",
         "evidence/production-closure/gate-results.json",

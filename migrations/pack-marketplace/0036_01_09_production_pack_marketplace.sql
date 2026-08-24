@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS marketplace_pack_names (
 
 CREATE TABLE IF NOT EXISTS marketplace_tenant_catalog (
   tenant_id uuid PRIMARY KEY,
-  control_plane_version text NOT NULL CHECK (control_plane_version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'),
+  control_plane_version text NOT NULL CHECK (control_plane_version ~ '^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$'),
   region text NOT NULL CHECK (length(region) BETWEEN 1 AND 128),
   entitlements text[] NOT NULL CHECK (cardinality(entitlements) BETWEEN 1 AND 256),
   allowed_compatibility text[] NOT NULL CHECK (cardinality(allowed_compatibility) BETWEEN 1 AND 256),
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS marketplace_releases (
   tenant_id uuid NOT NULL,
   release_id uuid NOT NULL,
   pack_id text NOT NULL,
-  version text NOT NULL CHECK (version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'),
+  version text NOT NULL CHECK (version ~ '^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$'),
   publisher_id text NOT NULL,
   manifest jsonb NOT NULL,
   pack_digest char(64) NOT NULL CHECK (pack_digest ~ '^[a-f0-9]{64}$'),
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS marketplace_releases (
   allowed_regions text[] NOT NULL CHECK (cardinality(allowed_regions) BETWEEN 1 AND 64),
   risk_rating text NOT NULL CHECK (risk_rating IN ('LOW','MEDIUM','HIGH','CRITICAL')),
   minimum_publisher_trust text NOT NULL CHECK (minimum_publisher_trust='VERIFIED'),
-  minimum_control_plane_version text NOT NULL CHECK (minimum_control_plane_version ~ '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'),
+  minimum_control_plane_version text NOT NULL CHECK (minimum_control_plane_version ~ '^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$'),
   review_status text NOT NULL CHECK (review_status IN ('SUBMITTED','PUBLISHED','REJECTED','REVOKED')),
   submitted_by text NOT NULL CHECK (length(submitted_by) BETWEEN 1 AND 256),
   reviewed_by text,

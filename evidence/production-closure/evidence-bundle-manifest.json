@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-24T07:11:53Z",
+  "generated_at": "2026-08-24T08:15:37Z",
   "artifacts": [
     {
       "path": "evidence/verification-summary.json",
@@ -205,7 +205,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "8a3047c9227d6c548e8a3faa15a9d8224263b2b1ef7216d46e35d096a1bd94b1"
+      "sha256": "cd6bdd3cef51e1f6348e8283026b54f0b598e535c5aea0ce2a28eed88959fe61"
     },
     {
       "path": "scripts/run-linux-isolation-gate.sh",
@@ -361,7 +361,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "5c259d1c017c91ab40fcc40da1f0b9a63db5e484ba3ec32dbb6b1f8c226cc19c"
+      "sha256": "569cbf7750c60b22dda19377bd4c03af447ab862ccf63da9c4d3e5ffc11ab239"
     },
     {
       "path": "python/production_gates/tests/test_evidence_bundle_verifier.py",
@@ -425,7 +425,7 @@
     },
     {
       "path": "migrations/enterprise-approval/0036_01_25_approval_review_evidence_v2.sql",
-      "sha256": "9526ab63456ba5f9b2607ec34d3931bd2571fc81a23dd27ed230c1ba9304b0db"
+      "sha256": "e50dac62be2b0317fa30b5fc34f4ce153fd2492f2b67e4016a892a1a6d028d30"
     },
     {
       "path": "rust/crates/domain-risk-packs/server.rs",
@@ -462,6 +462,294 @@
     {
       "path": "python/production_gates/tests/test_supply_domain_contract.py",
       "sha256": "4bb92c67c4057c836e6cc99aad5f81dee2e2dc356b0a3b58a211dd02c6ffcf76"
+    },
+    {
+      "path": "requirements-ci.txt",
+      "sha256": "43de647f4ce3d3fb7840e4bc09c721e5bb835dc7e13e97092dc1a929d49613d4"
+    },
+    {
+      "path": "python/durable_worker/requirements.production.txt",
+      "sha256": "5955c24991826cae3436b3ee43cb99fb1487c1f0910499abd30b00933fc1415f"
+    },
+    {
+      "path": "migrations/manifest.txt",
+      "sha256": "f9599fb02b899b2302a50e7aaf9b03abe589cf241431d7c943cf9b52b5d8ce33"
+    },
+    {
+      "path": "migrations/identity/0001_identity.sql",
+      "sha256": "93f3f182d7e829b890a821bd78b65cd5935f6e72c8cd1b571f1b231987412dc6"
+    },
+    {
+      "path": "migrations/tool-registry/0001_tool_registry.sql",
+      "sha256": "5e2d93a2396156452349aba56f13eded1e5241d32dfbb4646fb7bf6c99dc27b1"
+    },
+    {
+      "path": "migrations/transaction-ledger/0001_transaction_ledger.sql",
+      "sha256": "fae97bb9e0541afe6e23c73e366dc7ad9f7fe8e7cbe24e7a4a042156b2d418d7"
+    },
+    {
+      "path": "migrations/transaction-ledger/0002_transaction_ledger_tenant_isolation.sql",
+      "sha256": "2e4317724c6a8c4776ba220c5fba5cd1d20fec21c0be83b15eae2238e6a7a918"
+    },
+    {
+      "path": "migrations/transaction-ledger/0003_transaction_ledger_inbox_tenant.sql",
+      "sha256": "4f7ca0324abcb99fa1308d831f2a77f25e1b866622d3a55f14bd54014fc65268"
+    },
+    {
+      "path": "migrations/evidence/0010_evidence.sql",
+      "sha256": "f10dbbe74ad20b8a16eb6f32c95bd4714e1b387141306de5db2347127e133fdf"
+    },
+    {
+      "path": "migrations/protocol-adapters/0011_protocol_adapters.sql",
+      "sha256": "6e86d39fc21af4f9afc24db3921f72261e2833d58d37eb3937506aed1bc6d6f2"
+    },
+    {
+      "path": "migrations/mcp/0012_mcp.sql",
+      "sha256": "9d19a08201237a8cc51debd7bbec3a3ec5d1fede6cd30feec4f9a1d89498e217"
+    },
+    {
+      "path": "migrations/a2a/0013_a2a_agui.sql",
+      "sha256": "227e544f26c61ab09aca8d6d19167739e3253ccfd833d3aff1f8d8b1752283c9"
+    },
+    {
+      "path": "migrations/cn-standard/0014_cn_standard.sql",
+      "sha256": "7380bfaf279e3ead4246263c0edf0ae9c488738bbd8aa974a87dbc8c854a3128"
+    },
+    {
+      "path": "migrations/model-gateway/0015_model_gateway.sql",
+      "sha256": "0e118784cb66770ff825c10ae57a1512c64b6826125ab511c97c811997afb632"
+    },
+    {
+      "path": "migrations/industrial/0016_industrial.sql",
+      "sha256": "44568c66eae298fdd19b1f744e9b89b81f7e426c1f84c4ab015c17b60f527ac3"
+    },
+    {
+      "path": "migrations/enterprise-approval/0017_enterprise_approval.sql",
+      "sha256": "49b5e8d4a6c6385f2f5f2df5a4b2640259caab5ffa0055ec4f0cfc1a84d60857"
+    },
+    {
+      "path": "migrations/data-governance/0018_data_governance.sql",
+      "sha256": "c0647128e2302981b50ea5a52b897b25b27fe75a3909358600e91b30a7fb2dd6"
+    },
+    {
+      "path": "migrations/audit-retention/0019_01_audit_retention.sql",
+      "sha256": "1f5efdce3e61687f16644dc59d0205f42ae5fde2b6a93fb6087cf8d55ecf7e19"
+    },
+    {
+      "path": "migrations/audit-retention/0019_02_audit_records.sql",
+      "sha256": "c0b8763870d9a88b00eef521f4c65b16e91bbe4035e09e3c5f5f625696b62f68"
+    },
+    {
+      "path": "migrations/pack-supply-chain/0020_pack_supply_chain.sql",
+      "sha256": "29e6a56be966e133ba6595162c253506d0e2022d7ccb4d38fa934ebe04593ffd"
+    },
+    {
+      "path": "migrations/runtime-anomaly/0021_runtime_anomaly.sql",
+      "sha256": "66701e4eaa6be5b06f6388df9880b1c74ec7f2a6c78ca75541579facf6080b0c"
+    },
+    {
+      "path": "migrations/incidents/0022_incidents_release_gates.sql",
+      "sha256": "88c1152a2680ff9c5837b4e01659f575a9f8b26c36c191bf193d1d8f32dcf5fb"
+    },
+    {
+      "path": "migrations/incidents/0022_01_production_incident_release_authority.sql",
+      "sha256": "976e63bea7b36620739c3d4246372fcec501b57322998a379d7ebbd854e34757"
+    },
+    {
+      "path": "migrations/domain-packs/0023_coding_pack.sql",
+      "sha256": "2b97efbcb6e2510cd9397878d4fa16da18bfca951a09c780a1c677f251510566"
+    },
+    {
+      "path": "migrations/domain-packs/0024_industrial_pack.sql",
+      "sha256": "fd5ced22d808cd7d7f2fe1c10af48943e9d5a97db808160e6c19b317a9ec4ee0"
+    },
+    {
+      "path": "migrations/domain-packs/0025_energy_pack.sql",
+      "sha256": "0947a966c9a23d48eb93b0b5357dbbecf1ddceda76fe6300d865fd9ae7e15981"
+    },
+    {
+      "path": "migrations/domain-packs/0026_medical_pack.sql",
+      "sha256": "2cc125d01aa581e55458b5363f201d96094a9def72a9b22d9bee6b6faf1166fe"
+    },
+    {
+      "path": "migrations/domain-packs/0027_sensitive_interaction_pack.sql",
+      "sha256": "26967be9173ef4df8197b2f48cf522b2d3b2c6e436679aaf833bf71d68d292db"
+    },
+    {
+      "path": "migrations/pack-marketplace/0028_pack_marketplace.sql",
+      "sha256": "ab7850fe12da9b1f91b653a6dd8b5278a945763aff63a66f39c16177e7523a3f"
+    },
+    {
+      "path": "migrations/orchestrator/0029_durable_orchestrator.sql",
+      "sha256": "01f7447093b0ca44810ec01636e36616fab0055bdb0dd47c2b9a13828d03557d"
+    },
+    {
+      "path": "migrations/orchestrator/0029_02_production_ingress.sql",
+      "sha256": "a1b49e988a5d6f791c97c2453ff8532f65360391a949d74a7f58544b0e309c9b"
+    },
+    {
+      "path": "migrations/orchestrator/0029_03_orchestrator_rls.sql",
+      "sha256": "f0c268c9b0842917705e4dc91e1452271255e2e6118628d61c03d2be3b27c8e0"
+    },
+    {
+      "path": "migrations/agent-registry/0030_agent_registry.sql",
+      "sha256": "e9acab25c81074cee144974a17fdf17aa7ee5372cfb1e8f5a63cfc5ef62eb205"
+    },
+    {
+      "path": "migrations/policy-admin/0031_policy_administration.sql",
+      "sha256": "480e6e4a5ca98dced2341b92fce18e6209ac735a756febe75a74bac638c47a79"
+    },
+    {
+      "path": "migrations/context-governance/0032_context_governance.sql",
+      "sha256": "515a12712b6b52394fe1953787ac67699f7f7644af0fe9f8105e057582def6c5"
+    },
+    {
+      "path": "migrations/security-evaluation/0033_security_evaluation.sql",
+      "sha256": "3813ccf4e95e5087590a34a8b54f913b2c08fab8222b24ba78add97fc66900cc"
+    },
+    {
+      "path": "migrations/platform-sre/0034_platform_sre.sql",
+      "sha256": "16eae16a27b754b0a6021c93844e4ee70e4813028a1a6384876116264fb3408d"
+    },
+    {
+      "path": "migrations/enterprise-control/0035_01_enterprise_control.sql",
+      "sha256": "1d42ce052729865c17ac8a7ad6092eee1ab02c4e41e30c5330c5679fb9eb82a2"
+    },
+    {
+      "path": "migrations/enterprise-control/0035_02_enterprise_security.sql",
+      "sha256": "42b82947afa081cd4e8252ee3770157e0c704942c7ef33ad1a4d423429042391"
+    },
+    {
+      "path": "migrations/enterprise-control/0035_03_remote_action_closure.sql",
+      "sha256": "7013b2c4898df21e2a5fd1345e965b4aef440e6e10927481b51228dd040ee473"
+    },
+    {
+      "path": "migrations/enterprise-control/0035_04_spring_session.sql",
+      "sha256": "21d17dc2aef69c14044da63a0682f48e33c77e7495d8dc8a60de09dc8917c915"
+    },
+    {
+      "path": "migrations/production-closure/0036_production_closure.sql",
+      "sha256": "8a474922e2da34a6b2140f2efc9de86f37b24ab847ac757afcd0522c59e7ae6c"
+    },
+    {
+      "path": "migrations/identity/0036_00_01_production_identity.sql",
+      "sha256": "9107e90c4efdd58b577997386fb84303eb50bf857f6f258bcae9106d823cc444"
+    },
+    {
+      "path": "migrations/tool-registry/0036_01_production_registry.sql",
+      "sha256": "c104c8bb61d475c0b740214a649eee5ee8a6367ff2c824b1e043e533c0133842"
+    },
+    {
+      "path": "migrations/enterprise-approval/0036_01_02_production_approval.sql",
+      "sha256": "7b5f8f6e8d1d54d0be4ee23453c13bd14565a1b448e3a96a9546251d70a4d1ca"
+    },
+    {
+      "path": "migrations/policy-pep/0036_01_03_production_pep.sql",
+      "sha256": "3488c6a571620ee884d034cfe36fd15652f8865d39e25b7adba3f966ba42e3d4"
+    },
+    {
+      "path": "migrations/tool-proxy/0036_01_04_production_tool_proxy.sql",
+      "sha256": "28dfd71796877b21b92c57f934a04764540f00b8a5bd981d1dd49e9524b2bb54"
+    },
+    {
+      "path": "migrations/evidence/0036_01_05_production_evidence.sql",
+      "sha256": "7821b0bbb97976e2d6a2ebc42f263e65b20be49771345cc024455c4f11e455cf"
+    },
+    {
+      "path": "migrations/audit-retention/0036_01_06_production_audit_retention.sql",
+      "sha256": "ed33aea325e34c373632b86eb79c38e44ecc451bbb4d816c13a386a8563039a5"
+    },
+    {
+      "path": "migrations/enterprise-control/0036_01_07_production_enterprise_authority.sql",
+      "sha256": "56abf195beeb38e123d25286b7d4d8699e29184deefea6cf9eb40c0d707b14b0"
+    },
+    {
+      "path": "migrations/agent-registry/0036_01_08_production_agent_registry.sql",
+      "sha256": "491952c56c50fc48e2fc216d534f8613a8e6a0feebda0abf6dae2f6424b86224"
+    },
+    {
+      "path": "migrations/pack-marketplace/0036_01_09_production_pack_marketplace.sql",
+      "sha256": "7d0af67eeb615547df5a0ee94e26bb8d1dfc877213831286201c5592f619e5bd"
+    },
+    {
+      "path": "migrations/policy-admin/0036_01_10_production_policy_administration.sql",
+      "sha256": "86692c0c9fec8caa99df60429bb94f26ec609298be3c9a0fcf06e38b269adfe6"
+    },
+    {
+      "path": "migrations/context-governance/0036_01_11_production_context_governance.sql",
+      "sha256": "aeb27e840725e7e2514d39f11d9324a695e7a94637473756514b8247abc622c9"
+    },
+    {
+      "path": "migrations/security-evaluation/0036_01_12_production_security_evaluation.sql",
+      "sha256": "4b66fa0a7251e67afd9bcff7dfcf0ca87910189d35a9a529f8e913037f8c90c8"
+    },
+    {
+      "path": "migrations/platform-sre/0036_01_13_production_platform_sre.sql",
+      "sha256": "90574fee05fc0095618e022821935f7e114df81bca77c8c74df4ee205d1efdf9"
+    },
+    {
+      "path": "migrations/model-gateway/0036_01_14_production_model_gateway.sql",
+      "sha256": "d9351577d18917cbb96c380e37b8a5b050e482857a941131cf9592bb585752f5"
+    },
+    {
+      "path": "migrations/data-governance/0036_01_15_production_data_governance.sql",
+      "sha256": "cc101cddf72cc3ff68328c886a4d0b9485748a35cc128fee01b2d5442df7a0b8"
+    },
+    {
+      "path": "migrations/pack-supply-chain/0036_01_16_production_pack_supply_chain.sql",
+      "sha256": "3843af9c8d0059d1124761e6b1daf4eedc0bc7e6de00ca8c21bd9e741f1ff31c"
+    },
+    {
+      "path": "migrations/runtime-anomaly/0036_01_17_production_runtime_anomaly.sql",
+      "sha256": "25797be3cffef86ee414d2aa75b5c6c0f6e6ebf5ff613eba53b117b650997810"
+    },
+    {
+      "path": "migrations/domain-packs/0036_01_18_production_coding_pack.sql",
+      "sha256": "ec21cf0ea6b84e15d688358ab5538404fd88f94b46f8eb1687383a46cad36c13"
+    },
+    {
+      "path": "migrations/domain-packs/0036_01_19_production_industrial_pack.sql",
+      "sha256": "70c406d1c269e1d06eb0ac9f945be8cb81aeb19cf5ee66f98a354ced39fa576c"
+    },
+    {
+      "path": "migrations/domain-packs/0036_01_20_production_energy_pack.sql",
+      "sha256": "abb60b51b784ecb46befbf094605b8904d7d3ae4b7c4094e973847a5ec99df03"
+    },
+    {
+      "path": "migrations/domain-packs/0036_01_21_production_medical_pack.sql",
+      "sha256": "235128d7924fab85e3163f9fd3da7951565ea688ae1ccbcbdc7be0240af3582e"
+    },
+    {
+      "path": "migrations/domain-packs/0036_01_22_production_sensitive_pack.sql",
+      "sha256": "209145653dc0c80ca76eeb4a116197767af2027e9683ffc491c197403139d1f3"
+    },
+    {
+      "path": "migrations/evidence/0036_01_23_production_authority_evidence.sql",
+      "sha256": "b5e878838da89f581b57dc0c904060d9c22d6f9687e82ae7907ca8f572aad472"
+    },
+    {
+      "path": "migrations/orchestrator/0036_01_24_production_orchestrator_hardening.sql",
+      "sha256": "ee521afc0a52d67a7bb892d416c1ed458ddc1e5f249389b08e5ad29d7c9ca5eb"
+    },
+    {
+      "path": "migrations/production-closure/0036_02_global_tenant_isolation.sql",
+      "sha256": "51a147d4ae02738764a722e7de3cd228f10e040006bf4964997199e8e8d3726b"
+    },
+    {
+      "path": "scripts/run-production-migrations.sh",
+      "sha256": "669f987feb9fef04734c75c57c7299a8473036109c10c336602543e98fea156f"
+    },
+    {
+      "path": "scripts/validate-production-migrations.py",
+      "sha256": "864ce054de8bb69635531c6564e075b9a9c217364094547cf6a2ca990a591423"
+    },
+    {
+      "path": "python/production_gates/tests/test_migration_idempotency.py",
+      "sha256": "fbdd844d5ef031e0628710f1159257a893d51b14524419c2d26de2e09c3bec35"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "a457093a491de932b00ee9d9bc59551029090eb59117429e6b2d8bbd4f603d7e"
     }
   ],
   "offline_verification_required": true,

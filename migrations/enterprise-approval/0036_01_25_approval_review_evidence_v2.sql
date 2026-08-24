@@ -27,6 +27,9 @@ END
 $$;
 
 ALTER TABLE approval_cases
+  DROP CONSTRAINT IF EXISTS approval_cases_review_evidence_v2_check;
+
+ALTER TABLE approval_cases
   ADD CONSTRAINT approval_cases_review_evidence_v2_check
   CHECK (
     status NOT IN ('PENDING', 'APPROVED', 'POST_REVIEW_REQUIRED')

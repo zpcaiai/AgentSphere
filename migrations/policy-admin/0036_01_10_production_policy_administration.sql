@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS policy_promotions (
 );
 
 DROP INDEX IF EXISTS policy_promotions_single_active_idx;
-CREATE UNIQUE INDEX policy_promotions_single_active_idx
+CREATE UNIQUE INDEX IF NOT EXISTS policy_promotions_single_active_idx
   ON policy_promotions (tenant_id, environment) WHERE state='ACTIVE';
 CREATE UNIQUE INDEX IF NOT EXISTS policy_promotions_single_unresolved_idx
   ON policy_promotions (tenant_id, environment)

@@ -167,7 +167,8 @@ CREATE TABLE IF NOT EXISTS audit_human_assertion_uses (
   operation varchar(64) NOT NULL CHECK (operation='AUTHORITATIVE_QUERY'),
   actor_subject varchar(512) NOT NULL CHECK (
     length(actor_subject) BETWEEN 1 AND 512
-    AND actor_subject !~ E'[\\r\\n]'
+    AND position(chr(13) in actor_subject)=0
+    AND position(chr(10) in actor_subject)=0
   ),
   client_identity varchar(512) NOT NULL CHECK (
     client_identity ~ '^(DNS|URI):[^[:space:]]{1,508}$'

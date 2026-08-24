@@ -49,6 +49,15 @@ ALTER TABLE governed_memory_entries
   ALTER COLUMN updated_at SET NOT NULL;
 
 ALTER TABLE governed_memory_entries
+  DROP CONSTRAINT IF EXISTS governed_memory_classification_check,
+  DROP CONSTRAINT IF EXISTS governed_memory_jurisdiction_check,
+  DROP CONSTRAINT IF EXISTS governed_memory_visibility_array_check,
+  DROP CONSTRAINT IF EXISTS governed_memory_trust_check,
+  DROP CONSTRAINT IF EXISTS governed_memory_provenance_check,
+  DROP CONSTRAINT IF EXISTS governed_memory_fence_digest_check,
+  DROP CONSTRAINT IF EXISTS governed_memory_resource_version_check;
+
+ALTER TABLE governed_memory_entries
   ADD CONSTRAINT governed_memory_classification_check
     CHECK (classification IN ('PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED','REGULATED')),
   ADD CONSTRAINT governed_memory_jurisdiction_check
@@ -98,6 +107,13 @@ ALTER TABLE prompt_versions
   ALTER COLUMN resource_version SET NOT NULL,
   ALTER COLUMN object_ref SET NOT NULL,
   ALTER COLUMN updated_at SET NOT NULL;
+
+ALTER TABLE prompt_versions
+  DROP CONSTRAINT IF EXISTS prompt_status_check,
+  DROP CONSTRAINT IF EXISTS prompt_trust_check,
+  DROP CONSTRAINT IF EXISTS prompt_approved_by_array_check,
+  DROP CONSTRAINT IF EXISTS prompt_rollout_percent_check,
+  DROP CONSTRAINT IF EXISTS prompt_resource_version_check;
 
 ALTER TABLE prompt_versions
   ADD CONSTRAINT prompt_status_check
@@ -155,6 +171,12 @@ ALTER TABLE knowledge_snapshots
   ALTER COLUMN tombstoned SET NOT NULL,
   ALTER COLUMN created_at SET NOT NULL,
   ALTER COLUMN updated_at SET NOT NULL;
+
+ALTER TABLE knowledge_snapshots
+  DROP CONSTRAINT IF EXISTS knowledge_snapshot_classification_check,
+  DROP CONSTRAINT IF EXISTS knowledge_snapshot_trust_check,
+  DROP CONSTRAINT IF EXISTS knowledge_snapshot_resource_version_check,
+  DROP CONSTRAINT IF EXISTS knowledge_snapshot_index_ref_check;
 
 ALTER TABLE knowledge_snapshots
   ADD CONSTRAINT knowledge_snapshot_classification_check

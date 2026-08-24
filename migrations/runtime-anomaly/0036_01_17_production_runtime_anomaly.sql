@@ -5,11 +5,25 @@ BEGIN;
 -- closure. Preserve them owner-only; they are not promoted into authoritative state.
 CREATE SCHEMA IF NOT EXISTS agenttrust_legacy_runtime_anomaly;
 REVOKE ALL ON SCHEMA agenttrust_legacy_runtime_anomaly FROM PUBLIC;
-ALTER TABLE public.risk_signals SET SCHEMA agenttrust_legacy_runtime_anomaly;
-ALTER TABLE public.continuous_authorization_commands SET SCHEMA agenttrust_legacy_runtime_anomaly;
+DO $legacy_tables$
+BEGIN
+  IF to_regclass('agenttrust_legacy_runtime_anomaly.risk_signals') IS NULL THEN
+    IF to_regclass('public.risk_signals') IS NULL THEN
+      RAISE EXCEPTION 'RUNTIME_ANOMALY_LEGACY_SIGNALS_MISSING';
+    END IF;
+    ALTER TABLE public.risk_signals SET SCHEMA agenttrust_legacy_runtime_anomaly;
+  END IF;
+  IF to_regclass('agenttrust_legacy_runtime_anomaly.continuous_authorization_commands') IS NULL THEN
+    IF to_regclass('public.continuous_authorization_commands') IS NULL THEN
+      RAISE EXCEPTION 'RUNTIME_ANOMALY_LEGACY_COMMANDS_MISSING';
+    END IF;
+    ALTER TABLE public.continuous_authorization_commands SET SCHEMA agenttrust_legacy_runtime_anomaly;
+  END IF;
+END
+$legacy_tables$;
 REVOKE ALL ON ALL TABLES IN SCHEMA agenttrust_legacy_runtime_anomaly FROM PUBLIC;
 
-CREATE TABLE runtime_anomaly_signal_sources (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_signal_sources (
   tenant_id uuid NOT NULL,
   source_id text NOT NULL CHECK (source_id ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$'),
   key_id text NOT NULL CHECK (key_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'),
@@ -30,7 +44,7 @@ CREATE TABLE runtime_anomaly_signal_sources (
   ]::text[])
 );
 
-CREATE TABLE runtime_anomaly_trajectories (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_trajectories (
   tenant_id uuid NOT NULL,
   task_id uuid NOT NULL,
   agent_instance_id uuid NOT NULL,
@@ -57,7 +71,7 @@ CREATE TABLE runtime_anomaly_trajectories (
   CHECK (last_seen_at >= started_at)
 );
 
-CREATE TABLE runtime_anomaly_signals (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_signals (
   tenant_id uuid NOT NULL,
   event_id uuid NOT NULL,
   task_id uuid NOT NULL,
@@ -85,10 +99,10 @@ CREATE TABLE runtime_anomaly_signals (
   CHECK (received_at >= occurred_at - interval '5 minutes')
 );
 
-CREATE INDEX runtime_anomaly_signals_task_time_idx
+CREATE INDEX IF NOT EXISTS runtime_anomaly_signals_task_time_idx
   ON runtime_anomaly_signals(tenant_id,task_id,occurred_at,event_id);
 
-CREATE TABLE runtime_anomaly_findings (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_findings (
   tenant_id uuid NOT NULL,
   finding_id uuid NOT NULL,
   task_id uuid NOT NULL,
@@ -110,7 +124,7 @@ CREATE TABLE runtime_anomaly_findings (
   CHECK (NOT deterministic OR confidence_millionths >= 900000)
 );
 
-CREATE TABLE runtime_anomaly_aggregates (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_aggregates (
   tenant_id uuid NOT NULL,
   aggregate_id uuid NOT NULL,
   task_id uuid NOT NULL,
@@ -133,7 +147,7 @@ CREATE TABLE runtime_anomaly_aggregates (
       OR (semantic_model_id IS NOT NULL AND semantic_model_version IS NOT NULL AND semantic_score_millionths IS NOT NULL))
 );
 
-CREATE TABLE runtime_anomaly_baselines (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_baselines (
   tenant_id uuid NOT NULL,
   baseline_id uuid NOT NULL,
   agent_type text NOT NULL CHECK (length(agent_type) BETWEEN 1 AND 128),
@@ -154,7 +168,7 @@ CREATE TABLE runtime_anomaly_baselines (
   UNIQUE (tenant_id,agent_type,domain,threshold_version)
 );
 
-CREATE TABLE runtime_anomaly_feedback (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_feedback (
   tenant_id uuid NOT NULL,
   feedback_id uuid NOT NULL,
   finding_id uuid NOT NULL,
@@ -169,7 +183,7 @@ CREATE TABLE runtime_anomaly_feedback (
   FOREIGN KEY (tenant_id,finding_id) REFERENCES runtime_anomaly_findings(tenant_id,finding_id)
 );
 
-CREATE TABLE runtime_anomaly_cases (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_cases (
   tenant_id uuid NOT NULL,
   case_id uuid NOT NULL,
   task_id uuid NOT NULL,
@@ -190,7 +204,7 @@ CREATE TABLE runtime_anomaly_cases (
   CHECK ((status='CLOSED' AND closed_at IS NOT NULL) OR (status<>'CLOSED' AND closed_at IS NULL))
 );
 
-CREATE TABLE runtime_anomaly_action_ingress (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_action_ingress (
   tenant_id uuid NOT NULL,
   idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 16 AND 256),
   command_id uuid NOT NULL,
@@ -217,7 +231,7 @@ CREATE TABLE runtime_anomaly_action_ingress (
       OR state<>'ACCEPTED')
 );
 
-CREATE TABLE runtime_anomaly_authority_executions (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_authority_executions (
   tenant_id uuid NOT NULL,
   ledger_execution_id uuid NOT NULL,
   command_id uuid NOT NULL,
@@ -253,7 +267,7 @@ CREATE TABLE runtime_anomaly_authority_executions (
       OR (execution_owner IS NOT NULL AND execution_lease_until IS NOT NULL))
 );
 
-CREATE TABLE runtime_anomaly_response_commands (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_response_commands (
   tenant_id uuid NOT NULL,
   response_id uuid NOT NULL,
   task_id uuid NOT NULL,
@@ -290,7 +304,7 @@ CREATE TABLE runtime_anomaly_response_commands (
       OR (delivery_owner IS NOT NULL AND delivery_lease_until IS NOT NULL))
 );
 
-CREATE TABLE runtime_anomaly_evidence_events (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_evidence_events (
   tenant_id uuid NOT NULL,
   event_id uuid NOT NULL,
   event_kind text NOT NULL CHECK (event_kind IN (
@@ -307,7 +321,7 @@ CREATE TABLE runtime_anomaly_evidence_events (
   UNIQUE (tenant_id,event_digest)
 );
 
-CREATE TABLE runtime_anomaly_evidence_outbox (
+CREATE TABLE IF NOT EXISTS runtime_anomaly_evidence_outbox (
   tenant_id uuid NOT NULL,
   outbox_id uuid NOT NULL,
   event_id uuid NOT NULL,
@@ -333,13 +347,13 @@ CREATE TABLE runtime_anomaly_evidence_outbox (
       OR (delivery_owner IS NOT NULL AND delivery_lease_until IS NOT NULL))
 );
 
-CREATE INDEX runtime_anomaly_open_findings_idx
+CREATE INDEX IF NOT EXISTS runtime_anomaly_open_findings_idx
   ON runtime_anomaly_findings(tenant_id,task_id,severity,created_at)
   WHERE status IN ('OPEN','ACKNOWLEDGED','MITIGATING');
-CREATE INDEX runtime_anomaly_response_recovery_idx
+CREATE INDEX IF NOT EXISTS runtime_anomaly_response_recovery_idx
   ON runtime_anomaly_response_commands(tenant_id,state,delivery_lease_until,issued_at)
   WHERE state IN ('PENDING','DELIVERING','UNKNOWN');
-CREATE INDEX runtime_anomaly_evidence_recovery_idx
+CREATE INDEX IF NOT EXISTS runtime_anomaly_evidence_recovery_idx
   ON runtime_anomaly_evidence_outbox(tenant_id,state,delivery_lease_until,created_at)
   WHERE state IN ('PENDING','DELIVERING','UNKNOWN');
 
@@ -375,10 +389,13 @@ BEGIN
   RETURN NEW;
 END $$;
 
+DROP TRIGGER IF EXISTS runtime_anomaly_trajectory_guard ON runtime_anomaly_trajectories;
 CREATE TRIGGER runtime_anomaly_trajectory_guard BEFORE UPDATE ON runtime_anomaly_trajectories
   FOR EACH ROW EXECUTE FUNCTION runtime_anomaly_guard_transition();
+DROP TRIGGER IF EXISTS runtime_anomaly_response_guard ON runtime_anomaly_response_commands;
 CREATE TRIGGER runtime_anomaly_response_guard BEFORE UPDATE ON runtime_anomaly_response_commands
   FOR EACH ROW EXECUTE FUNCTION runtime_anomaly_guard_transition();
+DROP TRIGGER IF EXISTS runtime_anomaly_execution_guard ON runtime_anomaly_authority_executions;
 CREATE TRIGGER runtime_anomaly_execution_guard BEFORE UPDATE ON runtime_anomaly_authority_executions
   FOR EACH ROW EXECUTE FUNCTION runtime_anomaly_guard_transition();
 
@@ -396,6 +413,7 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',table_name);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY',table_name);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I',table_name || '_tenant_policy',table_name);
     EXECUTE format(
       'CREATE POLICY %I ON %I USING (tenant_id=current_setting(''app.tenant_id'',true)::uuid) WITH CHECK (tenant_id=current_setting(''app.tenant_id'',true)::uuid)',
       table_name || '_tenant_policy', table_name

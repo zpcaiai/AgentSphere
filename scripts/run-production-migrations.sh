@@ -156,17 +156,242 @@ if [ "$sslrootcert_summary" != "1:$database_ca_file" ]; then
 fi
 
 digest_file() {
+  digest_path=$1
   if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | awk '{print $1}'
+    digest_output=$(sha256sum "$digest_path") || return 1
+    digest_candidate=${digest_output%% *}
   elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" | awk '{print $1}'
+    digest_output=$(shasum -a 256 "$digest_path") || return 1
+    digest_candidate=${digest_output%% *}
   else
-    openssl dgst -sha256 "$1" | awk '{print $NF}'
+    digest_output=$(openssl dgst -sha256 "$digest_path") || return 1
+    digest_candidate=${digest_output##* }
+  fi
+  case "$digest_candidate" in
+    ''|*[!0-9a-f]*) return 1 ;;
+  esac
+  [ "${#digest_candidate}" -eq 64 ] || return 1
+  printf '%s\n' "$digest_candidate"
+}
+
+# Migration files are authored as standalone transactions so operators can
+# inspect or replay them directly.  The production runner must additionally
+# bind the migration body and its immutable history row to one commit.  Strip
+# only a single, outer BEGIN/COMMIT pair after lexing the entire file. Any
+# transaction-control variant or backslash byte fails closed; migration SQL
+# uses chr() rather than backslash escapes so psql meta-commands cannot hide in
+# comments, quoted strings, or on the same line as SQL.
+append_atomic_migration_body() {
+  migration_path=$1
+  migration_label=$2
+  migration_destination=$3
+  if ! awk '
+    BEGIN {
+      lexer_state = "normal"
+    }
+    function trim(value, copy) {
+      copy = value
+      sub(/^[ \t\r\n]+/, "", copy)
+      sub(/[ \t\r\n]+$/, "", copy)
+      return copy
+    }
+    function normalized_statement(value, copy) {
+      copy = value
+      gsub(/[[:space:]]+/, " ", copy)
+      copy = trim(copy)
+      return toupper(copy)
+    }
+    function is_transaction_control(value, normalized) {
+      normalized = normalized_statement(value)
+      return normalized ~ /^(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|RELEASE SAVEPOINT|PREPARE TRANSACTION)( |$)/
+    }
+    {
+      lines[NR] = $0
+      value = trim($0)
+      upper = toupper(value)
+      if (index($0, "\\") != 0) {
+        invalid_backslash = 1
+      }
+      source_line = $0
+      source_length = length(source_line)
+      visible_line_start = length(visible_sql) + 1
+      position = 1
+      while (position <= source_length) {
+        character = substr(source_line, position, 1)
+        pair = substr(source_line, position, 2)
+
+        if (lexer_state == "single_quote") {
+          if (character == "\047") {
+            if (substr(source_line, position + 1, 1) == "\047") {
+              position += 2
+            } else {
+              lexer_state = "normal"
+              position++
+            }
+          } else {
+            position++
+          }
+          continue
+        }
+        if (lexer_state == "double_quote") {
+          if (character == "\042") {
+            if (substr(source_line, position + 1, 1) == "\042") {
+              position += 2
+            } else {
+              lexer_state = "normal"
+              position++
+            }
+          } else {
+            position++
+          }
+          continue
+        }
+        if (lexer_state == "block_comment") {
+          if (pair == "/*") {
+            block_depth++
+            position += 2
+          } else if (pair == "*/") {
+            block_depth--
+            position += 2
+            if (block_depth == 0) {
+              lexer_state = "normal"
+            }
+          } else {
+            position++
+          }
+          continue
+        }
+        if (lexer_state == "dollar_quote") {
+          remainder = substr(source_line, position)
+          closing_position = index(remainder, dollar_delimiter)
+          if (closing_position == 0) {
+            position = source_length + 1
+          } else {
+            position += closing_position - 1 + length(dollar_delimiter)
+            dollar_delimiter = ""
+            lexer_state = "normal"
+          }
+          continue
+        }
+
+        if (pair == "--") {
+          position = source_length + 1
+        } else if (pair == "/*") {
+          visible_sql = visible_sql " "
+          block_depth = 1
+          lexer_state = "block_comment"
+          position += 2
+        } else if (character == "\047") {
+          visible_sql = visible_sql " "
+          lexer_state = "single_quote"
+          position++
+        } else if (character == "\042") {
+          visible_sql = visible_sql " "
+          lexer_state = "double_quote"
+          position++
+        } else if (character == "$") {
+          remainder = substr(source_line, position)
+          candidate_delimiter = ""
+          if (substr(remainder, 1, 2) == "$$") {
+            candidate_delimiter = "$$"
+          } else if (match(remainder, /^\$[A-Za-z_][A-Za-z0-9_]*\$/)) {
+            candidate_delimiter = substr(remainder, RSTART, RLENGTH)
+          }
+          if (candidate_delimiter != "") {
+            visible_sql = visible_sql " "
+            dollar_delimiter = candidate_delimiter
+            lexer_state = "dollar_quote"
+            position += length(candidate_delimiter)
+          } else {
+            visible_sql = visible_sql character
+            position++
+          }
+        } else {
+          visible_sql = visible_sql character
+          position++
+        }
+      }
+      if (lexer_state == "normal") {
+        visible_sql = visible_sql "\n"
+      }
+      visible_line = substr(visible_sql, visible_line_start)
+      visible_line_upper = toupper(trim(visible_line))
+      if (visible_line_upper == "BEGIN;" || visible_line_upper == "COMMIT;" || visible_line_upper == "ROLLBACK;") {
+        if (upper != visible_line_upper) {
+          invalid_noncanonical_transaction_line = 1
+        } else {
+          canonical_transaction_count++
+          canonical_transaction_line[canonical_transaction_count] = NR
+          canonical_transaction_kind[canonical_transaction_count] = visible_line_upper
+        }
+      }
+    }
+    END {
+      if (lexer_state != "normal" || invalid_backslash || invalid_noncanonical_transaction_line) {
+        exit 1
+      }
+      statement_count = split(visible_sql, statements, ";")
+      visible_transaction_count = 0
+      nonempty_statement_count = 0
+      for (statement_number = 1; statement_number <= statement_count; statement_number++) {
+        normalized = normalized_statement(statements[statement_number])
+        if (normalized != "") {
+          nonempty_statement_count++
+          if (first_statement == "") {
+            first_statement = normalized
+          }
+          last_statement = normalized
+          if (is_transaction_control(normalized)) {
+            visible_transaction_count++
+          }
+        }
+      }
+      if (nonempty_statement_count == 0) {
+        exit 1
+      }
+      strip_outer_transaction = canonical_transaction_count == 2 && canonical_transaction_kind[1] == "BEGIN;" && canonical_transaction_kind[2] == "COMMIT;" && visible_transaction_count == 2 && first_statement == "BEGIN" && last_statement == "COMMIT"
+      if (visible_transaction_count != 0 && !strip_outer_transaction) {
+        exit 1
+      }
+      for (line_number = 1; line_number <= NR; line_number++) {
+        if (!strip_outer_transaction || (line_number != canonical_transaction_line[1] && line_number != canonical_transaction_line[2])) {
+          print lines[line_number]
+        }
+      }
+    }
+  ' "$migration_path" >>"$migration_destination"; then
+    echo "MIGRATION_TRANSACTION_BOUNDARY_INVALID:$migration_label" >&2
+    exit 65
   fi
 }
 
 sql_file=$(mktemp "${TMPDIR:-/tmp}/agenttrust-migrations.XXXXXX")
-trap 'rm -f "$sql_file"' EXIT HUP INT TERM
+migration_snapshot=
+psql_pid=
+# Invoked indirectly through the EXIT trap.
+# shellcheck disable=SC2329
+cleanup_migration_files() {
+  rm -f "$sql_file"
+  if [ -n "$migration_snapshot" ]; then
+    rm -f "$migration_snapshot"
+  fi
+}
+# Invoked indirectly through the signal traps.
+# shellcheck disable=SC2329
+terminate_migration_runner() {
+  signal_name=$1
+  signal_exit_code=$2
+  trap - HUP INT TERM
+  if [ -n "$psql_pid" ]; then
+    kill "-$signal_name" "$psql_pid" 2>/dev/null || true
+    wait "$psql_pid" 2>/dev/null || true
+  fi
+  exit "$signal_exit_code"
+}
+trap cleanup_migration_files EXIT
+trap 'terminate_migration_runner HUP 129' HUP
+trap 'terminate_migration_runner INT 130' INT
+trap 'terminate_migration_runner TERM 143' TERM
 chmod 0600 "$sql_file"
 
 cat >"$sql_file" <<'SQL'
@@ -338,7 +563,17 @@ while IFS= read -r relative || [ -n "$relative" ]; do
     echo "MIGRATION_FILE_MISSING:$relative" >&2
     exit 78
   fi
-  digest=$(digest_file "$migration")
+  migration_snapshot=$(mktemp "${TMPDIR:-/tmp}/agenttrust-migration-snapshot.XXXXXX")
+  chmod 0600 "$migration_snapshot"
+  if ! cp "$migration" "$migration_snapshot"; then
+    echo "MIGRATION_SNAPSHOT_FAILED:$relative" >&2
+    exit 74
+  fi
+  chmod 0400 "$migration_snapshot"
+  if ! digest=$(digest_file "$migration_snapshot"); then
+    echo "MIGRATION_DIGEST_INVALID:$relative" >&2
+    exit 65
+  fi
   expected_count=$((expected_count + 1))
   cat >>"$sql_file" <<SQL
 DO \$migration_check\$
@@ -360,13 +595,17 @@ SELECT EXISTS (
 ) AS migration_already_applied \gset
 \if :migration_already_applied
 \else
-\i '$migration'
+BEGIN;
+SQL
+    append_atomic_migration_body "$migration_snapshot" "$relative" "$sql_file"
+    cat >>"$sql_file" <<SQL
 INSERT INTO public.agenttrust_schema_migrations(migration_path, content_sha256, release_id)
-VALUES ('$relative', '$digest', '$release_id')
-ON CONFLICT (migration_path) DO NOTHING;
+VALUES ('$relative', '$digest', '$release_id');
+COMMIT;
 \endif
 SQL
   else
+    append_atomic_migration_body "$migration_snapshot" "$relative" /dev/null
     cat >>"$sql_file" <<SQL
 DO \$migration_applied\$
 BEGIN
@@ -380,10 +619,13 @@ END
 \$migration_applied\$;
 SQL
   fi
+  rm -f "$migration_snapshot"
+  migration_snapshot=
 done <"$manifest"
 
 if [ "$mode" = "--apply" ]; then
   cat >>"$sql_file" <<SQL
+BEGIN;
 DO \$database_acl\$
 DECLARE
   role_name text;
@@ -2849,6 +3091,11 @@ BEGIN
   END LOOP;
 END
 \$production_authority_posture\$;
+SQL
+if [ "$mode" = "--apply" ]; then
+  printf '%s\n' 'COMMIT;' >>"$sql_file"
+fi
+cat >>"$sql_file" <<'SQL'
 SELECT pg_advisory_unlock(hashtextextended('agenttrust-production-migrations', 0));
 SQL
 
@@ -2856,4 +3103,12 @@ export PGCONNECT_TIMEOUT="${AGENT_TRUST_DATABASE_CONNECT_TIMEOUT_SECONDS:-10}"
 export PGAPPNAME="agenttrust-production-migrations"
 # libpq accepts a connection URI through PGDATABASE. Keep credentials out of
 # process arguments and out of the generated SQL file.
-PGDATABASE="$database_url" psql --no-psqlrc --file "$sql_file"
+PGDATABASE="$database_url" psql --no-psqlrc --file "$sql_file" &
+psql_pid=$!
+if wait "$psql_pid"; then
+  psql_status=0
+else
+  psql_status=$?
+fi
+psql_pid=
+exit "$psql_status"

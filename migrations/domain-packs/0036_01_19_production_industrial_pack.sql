@@ -6,7 +6,7 @@ DO $migration$ BEGIN
 END $migration$;
 REVOKE ALL ON TABLE public.industrial_pack_actions_legacy_0024 FROM PUBLIC;
 
-CREATE TABLE public.industrial_asset_models (
+CREATE TABLE IF NOT EXISTS public.industrial_asset_models (
   tenant_id uuid NOT NULL, asset_id uuid NOT NULL, site_id varchar(256) NOT NULL,
   line_id varchar(256) NOT NULL, asset_key varchar(512) NOT NULL, protocol varchar(16) NOT NULL CHECK (protocol IN ('OPC_UA','MQTT','MODBUS')),
   endpoint_manifest_digest char(64) NOT NULL CHECK (endpoint_manifest_digest ~ '^[0-9a-f]{64}$'),
@@ -16,7 +16,7 @@ CREATE TABLE public.industrial_asset_models (
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id,asset_id), UNIQUE (tenant_id,asset_key)
 );
-CREATE TABLE public.industrial_point_policies (
+CREATE TABLE IF NOT EXISTS public.industrial_point_policies (
   tenant_id uuid NOT NULL, asset_id uuid NOT NULL, point_id varchar(512) NOT NULL,
   engineering_unit varchar(64) NOT NULL, minimum_value double precision NOT NULL,
   maximum_value double precision NOT NULL CHECK (maximum_value>minimum_value),
@@ -27,7 +27,7 @@ CREATE TABLE public.industrial_point_policies (
   limited_write_allowed boolean NOT NULL DEFAULT false, policy_digest char(64) NOT NULL CHECK (policy_digest ~ '^[0-9a-f]{64}$'),
   PRIMARY KEY (tenant_id,asset_id,point_id), FOREIGN KEY (tenant_id,asset_id) REFERENCES public.industrial_asset_models(tenant_id,asset_id)
 );
-CREATE TABLE public.industrial_setpoint_cases (
+CREATE TABLE IF NOT EXISTS public.industrial_setpoint_cases (
   tenant_id uuid NOT NULL, execution_id uuid NOT NULL, asset_id uuid NOT NULL, point_id varchar(512) NOT NULL,
   stage varchar(24) NOT NULL CHECK (stage IN ('SIMULATOR','DIGITAL_TWIN','READ_ONLY','SHADOW','LIMITED_WRITE')),
   before_value double precision NOT NULL, target_value double precision NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE public.industrial_setpoint_cases (
   CHECK ((stage='LIMITED_WRITE' AND approval_set_id IS NOT NULL AND supervision_id IS NOT NULL) OR (stage<>'LIMITED_WRITE' AND supervision_id IS NULL)),
   CHECK (commit_state<>'COMMITTED' OR protocol_receipt_digest ~ '^[0-9a-f]{64}$')
 );
-CREATE TABLE public.industrial_telemetry_outcomes (
+CREATE TABLE IF NOT EXISTS public.industrial_telemetry_outcomes (
   tenant_id uuid NOT NULL, outcome_id uuid NOT NULL, execution_id uuid NOT NULL,
   telemetry_window_digest char(64) NOT NULL CHECK (telemetry_window_digest ~ '^[0-9a-f]{64}$'),
   converged boolean NOT NULL, stable_duration_ms bigint NOT NULL CHECK (stable_duration_ms>=0),
@@ -58,7 +58,7 @@ CREATE TABLE public.industrial_telemetry_outcomes (
   FOREIGN KEY (tenant_id,execution_id) REFERENCES public.industrial_setpoint_cases(tenant_id,execution_id),
   CHECK (conclusion<>'PASS' OR (converged AND quality='GOOD' AND NOT interlock_tripped AND new_alarm_count=0))
 );
-CREATE TABLE public.industrial_stage_certifications (
+CREATE TABLE IF NOT EXISTS public.industrial_stage_certifications (
   tenant_id uuid NOT NULL, certification_id uuid NOT NULL,
   stage varchar(24) NOT NULL CHECK (stage IN ('SIMULATOR','DIGITAL_TWIN','READ_ONLY','SHADOW','LIMITED_WRITE')),
   asset_scope_digest char(64) NOT NULL CHECK (asset_scope_digest ~ '^[0-9a-f]{64}$'),
@@ -101,18 +101,22 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$;
+DROP TRIGGER IF EXISTS industrial_supervision_guard ON public.industrial_setpoint_cases;
 CREATE TRIGGER industrial_supervision_guard BEFORE INSERT ON public.industrial_setpoint_cases
 FOR EACH ROW EXECUTE FUNCTION public.agenttrust_industrial_supervision_guard();
 
 DO $rls$ DECLARE table_name text; BEGIN
   FOREACH table_name IN ARRAY ARRAY['industrial_asset_models','industrial_point_policies','industrial_setpoint_cases','industrial_telemetry_outcomes','industrial_stage_certifications'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',table_name); EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY',table_name);
+    EXECUTE format('DROP POLICY IF EXISTS industrial_tenant_isolation ON public.%I',table_name);
     EXECUTE format('CREATE POLICY industrial_tenant_isolation ON public.%I USING (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',table_name);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',table_name);
   END LOOP;
 END $rls$;
+DROP TRIGGER IF EXISTS industrial_outcome_immutable ON public.industrial_telemetry_outcomes;
 CREATE TRIGGER industrial_outcome_immutable BEFORE UPDATE OR DELETE ON public.industrial_telemetry_outcomes FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS industrial_certificate_immutable ON public.industrial_stage_certifications;
 CREATE TRIGGER industrial_certificate_immutable BEFORE UPDATE OR DELETE ON public.industrial_stage_certifications FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
-CREATE INDEX industrial_case_state_idx ON public.industrial_setpoint_cases(tenant_id,stage,commit_state,updated_at);
+CREATE INDEX IF NOT EXISTS industrial_case_state_idx ON public.industrial_setpoint_cases(tenant_id,stage,commit_state,updated_at);
 REVOKE ALL ON FUNCTION public.agenttrust_industrial_supervision_guard() FROM PUBLIC;
 COMMIT;

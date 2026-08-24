@@ -12,6 +12,47 @@ MIGRATIONS = ROOT / "migrations"
 MANIFEST = MIGRATIONS / "manifest.txt"
 PATH = re.compile(r"^[A-Za-z0-9._/-]+\.sql$")
 VERSION = re.compile(r"^\d{4}(?:_\d{2})*")
+BARE_CREATE = (
+    ("TABLE", re.compile(r"^[ \t]*CREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE | re.MULTILINE)),
+    ("INDEX", re.compile(r"^[ \t]*CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE | re.MULTILINE)),
+    ("SEQUENCE", re.compile(r"^[ \t]*CREATE\s+SEQUENCE\s+(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE | re.MULTILINE)),
+    ("SCHEMA", re.compile(r"^[ \t]*CREATE\s+SCHEMA\s+(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE | re.MULTILINE)),
+    ("EXTENSION", re.compile(r"^[ \t]*CREATE\s+EXTENSION\s+(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE | re.MULTILINE)),
+    ("MATERIALIZED_VIEW", re.compile(r"^[ \t]*CREATE\s+MATERIALIZED\s+VIEW\s+(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE | re.MULTILINE)),
+    ("VIEW", re.compile(r"^[ \t]*CREATE\s+VIEW\b", re.IGNORECASE | re.MULTILINE)),
+    ("FUNCTION", re.compile(r"^[ \t]*CREATE\s+FUNCTION\b", re.IGNORECASE | re.MULTILINE)),
+    ("PROCEDURE", re.compile(r"^[ \t]*CREATE\s+PROCEDURE\b", re.IGNORECASE | re.MULTILINE)),
+    ("TYPE", re.compile(r"^[ \t]*CREATE\s+TYPE\b", re.IGNORECASE | re.MULTILINE)),
+)
+TRIGGER = re.compile(
+    r"^[ \t]*CREATE\s+TRIGGER\s+(\"?[A-Za-z_][A-Za-z0-9_$]*\"?)",
+    re.IGNORECASE | re.MULTILINE,
+)
+POLICY = re.compile(
+    r"^[ \t]*CREATE\s+POLICY\s+(\"?[A-Za-z_][A-Za-z0-9_$]*\"?)",
+    re.IGNORECASE | re.MULTILINE,
+)
+CONSTRAINT = re.compile(
+    r"\bADD\s+CONSTRAINT\s+(\"?[A-Za-z_][A-Za-z0-9_$]*\"?)",
+    re.IGNORECASE,
+)
+DYNAMIC_CREATE = re.compile(r"['\"]CREATE\s+(TRIGGER|POLICY)\b", re.IGNORECASE)
+SET_SCHEMA = re.compile(
+    r"^[ \t]*ALTER\s+TABLE\s+[^;\n]+\s+SET\s+SCHEMA\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+RENAME_TABLE = re.compile(
+    r"^[ \t]*ALTER\s+TABLE\s+[^;\n]+\s+RENAME\s+TO\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+INSERT = re.compile(r"^[ \t]*INSERT\s+INTO\b.*?;", re.IGNORECASE | re.MULTILINE | re.DOTALL)
+TRANSACTION_CONTROL = frozenset({"BEGIN;", "COMMIT;", "ROLLBACK;"})
+TRANSACTION_STATEMENT = re.compile(
+    r"^(?:BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK|ABORT|SAVEPOINT|"
+    r"RELEASE\s+SAVEPOINT|PREPARE\s+TRANSACTION)(?:\s|$)",
+    re.IGNORECASE,
+)
+DOLLAR_DELIMITER = re.compile(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$")
 
 
 def fail(code: str) -> None:
@@ -23,6 +64,221 @@ def migration_version(value: str) -> tuple[int, ...]:
     if match is None:
         fail("MIGRATION_VERSION_INVALID")
     return tuple(int(part) for part in match.group(0).split("_"))
+
+
+def location(source: str, offset: int) -> int:
+    return source.count("\n", 0, offset) + 1
+
+
+def lex_visible_sql(relative: str, source: str) -> str:
+    visible: list[str] = []
+    position = 0
+    state = "normal"
+    block_depth = 0
+    dollar_delimiter = ""
+    while position < len(source):
+        character = source[position]
+        pair = source[position:position + 2]
+        if state == "single_quote":
+            if character == "'":
+                if source[position + 1:position + 2] == "'":
+                    position += 2
+                else:
+                    state = "normal"
+                    position += 1
+            elif character == "\n":
+                visible.append("\n")
+                position += 1
+            else:
+                position += 1
+            continue
+        if state == "double_quote":
+            if character == '"':
+                if source[position + 1:position + 2] == '"':
+                    position += 2
+                else:
+                    state = "normal"
+                    position += 1
+            elif character == "\n":
+                visible.append("\n")
+                position += 1
+            else:
+                position += 1
+            continue
+        if state == "block_comment":
+            if pair == "/*":
+                block_depth += 1
+                position += 2
+            elif pair == "*/":
+                block_depth -= 1
+                position += 2
+                if block_depth == 0:
+                    state = "normal"
+            elif character == "\n":
+                visible.append("\n")
+                position += 1
+            else:
+                position += 1
+            continue
+        if state == "dollar_quote":
+            closing_position = source.find(dollar_delimiter, position)
+            if closing_position < 0:
+                fail(f"MIGRATION_SQL_LEXER_INVALID:{relative}")
+            visible.append("\n" * source.count("\n", position, closing_position))
+            position = closing_position + len(dollar_delimiter)
+            state = "normal"
+            dollar_delimiter = ""
+            continue
+
+        if pair == "--":
+            newline = source.find("\n", position + 2)
+            if newline < 0:
+                visible.append(" ")
+                position = len(source)
+            else:
+                visible.append("\n")
+                position = newline + 1
+        elif pair == "/*":
+            visible.append(" ")
+            state = "block_comment"
+            block_depth = 1
+            position += 2
+        elif character == "'":
+            visible.append(" ")
+            state = "single_quote"
+            position += 1
+        elif character == '"':
+            visible.append(" ")
+            state = "double_quote"
+            position += 1
+        elif character == "$":
+            match = DOLLAR_DELIMITER.match(source, position)
+            if match is None:
+                visible.append(character)
+                position += 1
+            else:
+                visible.append(" ")
+                dollar_delimiter = match.group(0)
+                state = "dollar_quote"
+                position = match.end()
+        else:
+            visible.append(character)
+            position += 1
+    if state != "normal":
+        fail(f"MIGRATION_SQL_LEXER_INVALID:{relative}")
+    return "".join(visible)
+
+
+def validate_transaction_boundary(relative: str, source: str) -> None:
+    # Production migration SQL deliberately has no backslash bytes. This
+    # strict rule prevents psql meta-commands even when placed after SQL or in
+    # a context a line-oriented detector would misclassify.
+    if "\\" in source:
+        fail(f"MIGRATION_PSQL_META_COMMAND_FORBIDDEN:{relative}")
+
+    visible_source = lex_visible_sql(relative, source)
+    transaction_lines: list[tuple[int, str]] = []
+    for line_number, (raw_line, visible_line) in enumerate(
+        zip(source.splitlines(), visible_source.splitlines(), strict=True),
+        start=1,
+    ):
+        visible_normalized = " ".join(visible_line.split()).upper()
+        if visible_normalized in TRANSACTION_CONTROL:
+            if raw_line.strip().upper() != visible_normalized:
+                fail(f"MIGRATION_TRANSACTION_BOUNDARY_INVALID:{relative}")
+            transaction_lines.append((line_number, visible_normalized))
+    statements = [
+        " ".join(statement.split()).upper()
+        for statement in visible_source.split(";")
+        if statement.split()
+    ]
+    if not statements:
+        fail(f"MIGRATION_EMPTY:{relative}")
+    transaction_statements = [
+        statement for statement in statements if TRANSACTION_STATEMENT.match(statement)
+    ]
+    if not transaction_statements:
+        return
+    if not (
+        len(transaction_lines) == 2
+        and transaction_lines[0][1] == "BEGIN;"
+        and transaction_lines[1][1] == "COMMIT;"
+        and transaction_statements == ["BEGIN", "COMMIT"]
+        and statements[0] == "BEGIN"
+        and statements[-1] == "COMMIT"
+    ):
+        fail(f"MIGRATION_TRANSACTION_BOUNDARY_INVALID:{relative}")
+
+
+def validate_idempotent_sql(relative: str, source: str) -> None:
+    for kind, pattern in BARE_CREATE:
+        match = pattern.search(source)
+        if match is not None:
+            fail(f"MIGRATION_DDL_NOT_IDEMPOTENT:{relative}:{location(source, match.start())}:{kind}")
+
+    for kind, pattern, drop_kind, catalog_name in (
+        ("TRIGGER", TRIGGER, "TRIGGER", "tgname"),
+        ("POLICY", POLICY, "POLICY", "policyname"),
+    ):
+        for match in pattern.finditer(source):
+            name = match.group(1).strip('"')
+            before = source[:match.start()]
+            guarded = re.search(
+                rf"DROP\s+{drop_kind}\s+IF\s+EXISTS\s+{re.escape(name)}\b",
+                before,
+                re.IGNORECASE,
+            ) or re.search(
+                rf"{catalog_name}\s*=\s*'{re.escape(name)}'",
+                before,
+                re.IGNORECASE,
+            )
+            if not guarded:
+                fail(f"MIGRATION_DDL_NOT_IDEMPOTENT:{relative}:{location(source, match.start())}:{kind}")
+
+    for match in CONSTRAINT.finditer(source):
+        name = match.group(1).strip('"')
+        before = source[:match.start()]
+        guarded = re.search(
+            rf"DROP\s+CONSTRAINT\s+IF\s+EXISTS\s+{re.escape(name)}\b",
+            before,
+            re.IGNORECASE,
+        ) or re.search(
+            rf"conname\s*=\s*'{re.escape(name)}'",
+            before,
+            re.IGNORECASE,
+        )
+        if not guarded:
+            fail(f"MIGRATION_DDL_NOT_IDEMPOTENT:{relative}:{location(source, match.start())}:CONSTRAINT")
+
+    for match in DYNAMIC_CREATE.finditer(source):
+        kind = match.group(1).upper()
+        before = source[max(0, match.start() - 1_500):match.start()].upper()
+        guarded = f"DROP {kind}" in before
+        if kind == "POLICY":
+            guarded = guarded or ("PG_POLICIES" in before and "IF NOT EXISTS" in before)
+        else:
+            guarded = guarded or ("PG_TRIGGER" in before and "IF NOT EXISTS" in before)
+        if not guarded:
+            fail(f"MIGRATION_DYNAMIC_DDL_NOT_IDEMPOTENT:{relative}:{location(source, match.start())}:{kind}")
+
+    for pattern, kind in ((SET_SCHEMA, "SET_SCHEMA"), (RENAME_TABLE, "RENAME_TABLE")):
+        for match in pattern.finditer(source):
+            before = source[max(0, match.start() - 1_500):match.start()].upper()
+            if "TO_REGCLASS" not in before or "IS NULL" not in before:
+                fail(f"MIGRATION_DDL_NOT_IDEMPOTENT:{relative}:{location(source, match.start())}:{kind}")
+
+    for match in INSERT.finditer(source):
+        statement = match.group(0).upper()
+        if "ON CONFLICT" not in statement and "WHERE NOT EXISTS" not in statement:
+            fail(f"MIGRATION_INSERT_NOT_IDEMPOTENT:{relative}:{location(source, match.start())}")
+
+    if relative == "security-evaluation/0036_01_12_production_security_evaluation.sql":
+        for table_name in ("attack_scenarios", "security_campaigns", "security_findings"):
+            if f"FROM security_eval_legacy.{table_name}" not in source:
+                fail(f"MIGRATION_SECURITY_LEGACY_SOURCE_UNSAFE:{table_name}")
+    if relative == "platform-sre/0036_01_13_production_platform_sre.sql":
+        if source.count("WHERE NOT EXISTS (") < 3:
+            fail("MIGRATION_SRE_LEGACY_QUARANTINE_NOT_IDEMPOTENT")
 
 
 def main() -> int:
@@ -56,6 +312,11 @@ def main() -> int:
         "enterprise-control/0035_04_spring_session.sql"
     ):
         fail("ENTERPRISE_SESSION_MIGRATION_ORDER_INVALID")
+
+    for relative in entries:
+        migration_source = (MIGRATIONS / relative).read_text(encoding="utf-8")
+        validate_transaction_boundary(relative, migration_source)
+        validate_idempotent_sql(relative, migration_source)
 
     source = "\n".join((MIGRATIONS / value).read_text(encoding="utf-8") for value in entries)
     upper = source.upper()
@@ -134,9 +395,18 @@ def main() -> int:
         "MIGRATION_AGENT_REGISTRY_GRANTS_INVALID",
         "MIGRATION_APPLICATION_ROLE_CROSS_DOMAIN_GRANT",
         "MIGRATION_APPLICATION_ROLE_EXCESS_FUNCTION_GRANT",
+        "append_atomic_migration_body",
+        "MIGRATION_TRANSACTION_BOUNDARY_INVALID",
+        "MIGRATION_SNAPSHOT_FAILED",
+        "MIGRATION_DIGEST_INVALID",
+        'chmod 0400 "$migration_snapshot"',
     ):
         if required not in runner:
             fail(f"MIGRATION_RUNNER_CLOSURE_MISSING:{required}")
+    if "\\i '$migration'" in runner or "ON CONFLICT (migration_path) DO NOTHING" in runner:
+        fail("MIGRATION_RUNNER_NON_ATOMIC_HISTORY_WRITE")
+    if 'digest_file "$migration"' in runner:
+        fail("MIGRATION_RUNNER_SOURCE_DIGEST_TOCTOU")
     print(f"validated {len(entries)} ordered production migrations and tenant RLS closure")
     return 0
 

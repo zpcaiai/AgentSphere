@@ -6,7 +6,7 @@ DO $migration$ BEGIN
 END $migration$;
 REVOKE ALL ON TABLE public.energy_candidate_plans_legacy_0025 FROM PUBLIC;
 
-CREATE TABLE public.energy_assets (
+CREATE TABLE IF NOT EXISTS public.energy_assets (
   tenant_id uuid NOT NULL, asset_id uuid NOT NULL, asset_key varchar(512) NOT NULL,
   asset_type varchar(24) NOT NULL CHECK (asset_type IN ('BATTERY','INVERTER','LOAD','PV','GRID_POINT','DATA_CENTER')),
   control_endpoint_manifest_digest char(64) NOT NULL CHECK (control_endpoint_manifest_digest ~ '^[0-9a-f]{64}$'),
@@ -20,7 +20,7 @@ CREATE TABLE public.energy_assets (
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (tenant_id,asset_id), UNIQUE (tenant_id,asset_key)
 );
-CREATE TABLE public.energy_forecast_snapshots (
+CREATE TABLE IF NOT EXISTS public.energy_forecast_snapshots (
   tenant_id uuid NOT NULL, forecast_id uuid NOT NULL, asset_id uuid NOT NULL,
   model_manifest_digest char(64) NOT NULL CHECK (model_manifest_digest ~ '^[0-9a-f]{64}$'),
   training_data_summary_digest char(64) NOT NULL CHECK (training_data_summary_digest ~ '^[0-9a-f]{64}$'),
@@ -29,7 +29,7 @@ CREATE TABLE public.energy_forecast_snapshots (
   out_of_distribution boolean NOT NULL, observed_at timestamptz NOT NULL, valid_until timestamptz NOT NULL CHECK (valid_until>observed_at),
   PRIMARY KEY (tenant_id,forecast_id), FOREIGN KEY (tenant_id,asset_id) REFERENCES public.energy_assets(tenant_id,asset_id)
 );
-CREATE TABLE public.energy_dispatch_cases (
+CREATE TABLE IF NOT EXISTS public.energy_dispatch_cases (
   tenant_id uuid NOT NULL, execution_id uuid NOT NULL, asset_id uuid NOT NULL, forecast_id uuid NOT NULL,
   stage varchar(24) NOT NULL CHECK (stage IN ('SIMULATOR','DIGITAL_TWIN','READ_ONLY','SHADOW','LIMITED_WRITE')),
   algorithm_type varchar(16) NOT NULL CHECK (algorithm_type IN ('MPC','RL','CBF','RULE')),
@@ -47,7 +47,7 @@ CREATE TABLE public.energy_dispatch_cases (
   CHECK ((stage='LIMITED_WRITE' AND approval_set_id IS NOT NULL AND supervision_id IS NOT NULL) OR (stage<>'LIMITED_WRITE' AND supervision_id IS NULL)),
   CHECK (dispatch_state<>'DISPATCHED' OR dispatch_receipt_digest ~ '^[0-9a-f]{64}$')
 );
-CREATE TABLE public.energy_outcomes (
+CREATE TABLE IF NOT EXISTS public.energy_outcomes (
   tenant_id uuid NOT NULL, outcome_id uuid NOT NULL, execution_id uuid NOT NULL,
   telemetry_digest char(64) NOT NULL CHECK (telemetry_digest ~ '^[0-9a-f]{64}$'), hard_violation_count integer NOT NULL CHECK (hard_violation_count>=0),
   stability_score double precision NOT NULL, economic_delta_microunits bigint NOT NULL, peak_delta_kw double precision NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE public.energy_outcomes (
   PRIMARY KEY (tenant_id,outcome_id), UNIQUE (tenant_id,execution_id), FOREIGN KEY (tenant_id,execution_id) REFERENCES public.energy_dispatch_cases(tenant_id,execution_id),
   CHECK (conclusion<>'PASS' OR hard_violation_count=0)
 );
-CREATE TABLE public.energy_fallback_drills (
+CREATE TABLE IF NOT EXISTS public.energy_fallback_drills (
   tenant_id uuid NOT NULL, drill_id uuid NOT NULL, asset_id uuid NOT NULL,
   fallback_digest char(64) NOT NULL CHECK (fallback_digest ~ '^[0-9a-f]{64}$'), scenario_digest char(64) NOT NULL CHECK (scenario_digest ~ '^[0-9a-f]{64}$'),
   execution_receipt_digest char(64) NOT NULL CHECK (execution_receipt_digest ~ '^[0-9a-f]{64}$'), conclusion varchar(16) NOT NULL CHECK (conclusion IN ('PASS','FAIL','INCONCLUSIVE')),
@@ -95,16 +95,21 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$;
+DROP TRIGGER IF EXISTS energy_supervision_guard ON public.energy_dispatch_cases;
 CREATE TRIGGER energy_supervision_guard BEFORE INSERT ON public.energy_dispatch_cases FOR EACH ROW EXECUTE FUNCTION public.agenttrust_energy_supervision_guard();
 DO $rls$ DECLARE table_name text; BEGIN
   FOREACH table_name IN ARRAY ARRAY['energy_assets','energy_forecast_snapshots','energy_dispatch_cases','energy_outcomes','energy_fallback_drills'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',table_name); EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY',table_name);
+    EXECUTE format('DROP POLICY IF EXISTS energy_tenant_isolation ON public.%I',table_name);
     EXECUTE format('CREATE POLICY energy_tenant_isolation ON public.%I USING (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',table_name); EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',table_name);
   END LOOP;
 END $rls$;
+DROP TRIGGER IF EXISTS energy_forecast_immutable ON public.energy_forecast_snapshots;
 CREATE TRIGGER energy_forecast_immutable BEFORE UPDATE OR DELETE ON public.energy_forecast_snapshots FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS energy_outcome_immutable ON public.energy_outcomes;
 CREATE TRIGGER energy_outcome_immutable BEFORE UPDATE OR DELETE ON public.energy_outcomes FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS energy_fallback_drill_immutable ON public.energy_fallback_drills;
 CREATE TRIGGER energy_fallback_drill_immutable BEFORE UPDATE OR DELETE ON public.energy_fallback_drills FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
-CREATE INDEX energy_dispatch_state_idx ON public.energy_dispatch_cases(tenant_id,stage,dispatch_state,updated_at);
+CREATE INDEX IF NOT EXISTS energy_dispatch_state_idx ON public.energy_dispatch_cases(tenant_id,stage,dispatch_state,updated_at);
 REVOKE ALL ON FUNCTION public.agenttrust_energy_supervision_guard() FROM PUBLIC;
 COMMIT;

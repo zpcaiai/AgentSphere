@@ -12,25 +12,56 @@ CREATE TABLE IF NOT EXISTS security_eval_legacy.security_eval_legacy_quarantine 
   quarantined_at timestamptz NOT NULL DEFAULT now()
 );
 
-INSERT INTO security_eval_legacy.security_eval_legacy_quarantine(source_table,legacy_record,quarantine_reason)
-SELECT 'attack_scenarios',to_jsonb(legacy_row),'LEGACY_UNSIGNED_OR_TENANT_UNBOUND'
-FROM attack_scenarios legacy_row
-ON CONFLICT DO NOTHING;
-INSERT INTO security_eval_legacy.security_eval_legacy_quarantine(source_table,legacy_record,quarantine_reason)
-SELECT 'security_campaigns',to_jsonb(legacy_row),'LEGACY_CONTROL_BINDING_INCOMPLETE'
-FROM security_campaigns legacy_row
-ON CONFLICT DO NOTHING;
-INSERT INTO security_eval_legacy.security_eval_legacy_quarantine(source_table,legacy_record,quarantine_reason)
-SELECT 'security_findings',to_jsonb(legacy_row),'LEGACY_REMEDIATION_CHAIN_INCOMPLETE'
-FROM security_findings legacy_row
-ON CONFLICT DO NOTHING;
-
-ALTER TABLE security_findings SET SCHEMA security_eval_legacy;
-ALTER TABLE security_campaigns SET SCHEMA security_eval_legacy;
-ALTER TABLE attack_scenarios SET SCHEMA security_eval_legacy;
+DO $legacy_tables$
+BEGIN
+  IF to_regclass('security_eval_legacy.security_findings') IS NULL THEN
+    IF to_regclass('public.security_findings') IS NULL THEN
+      RAISE EXCEPTION 'SECURITY_EVAL_LEGACY_FINDINGS_MISSING';
+    END IF;
+    ALTER TABLE public.security_findings SET SCHEMA security_eval_legacy;
+  END IF;
+  IF to_regclass('security_eval_legacy.security_campaigns') IS NULL THEN
+    IF to_regclass('public.security_campaigns') IS NULL THEN
+      RAISE EXCEPTION 'SECURITY_EVAL_LEGACY_CAMPAIGNS_MISSING';
+    END IF;
+    ALTER TABLE public.security_campaigns SET SCHEMA security_eval_legacy;
+  END IF;
+  IF to_regclass('security_eval_legacy.attack_scenarios') IS NULL THEN
+    IF to_regclass('public.attack_scenarios') IS NULL THEN
+      RAISE EXCEPTION 'SECURITY_EVAL_LEGACY_SCENARIOS_MISSING';
+    END IF;
+    ALTER TABLE public.attack_scenarios SET SCHEMA security_eval_legacy;
+  END IF;
+END
+$legacy_tables$;
 REVOKE ALL ON ALL TABLES IN SCHEMA security_eval_legacy FROM PUBLIC;
 
-CREATE TABLE security_eval_datasets (
+INSERT INTO security_eval_legacy.security_eval_legacy_quarantine(source_table,legacy_record,quarantine_reason)
+SELECT 'attack_scenarios',to_jsonb(legacy_row),'LEGACY_UNSIGNED_OR_TENANT_UNBOUND'
+FROM security_eval_legacy.attack_scenarios legacy_row
+WHERE NOT EXISTS (
+  SELECT 1 FROM security_eval_legacy.security_eval_legacy_quarantine quarantine
+  WHERE quarantine.source_table='attack_scenarios'
+    AND quarantine.legacy_record=to_jsonb(legacy_row)
+);
+INSERT INTO security_eval_legacy.security_eval_legacy_quarantine(source_table,legacy_record,quarantine_reason)
+SELECT 'security_campaigns',to_jsonb(legacy_row),'LEGACY_CONTROL_BINDING_INCOMPLETE'
+FROM security_eval_legacy.security_campaigns legacy_row
+WHERE NOT EXISTS (
+  SELECT 1 FROM security_eval_legacy.security_eval_legacy_quarantine quarantine
+  WHERE quarantine.source_table='security_campaigns'
+    AND quarantine.legacy_record=to_jsonb(legacy_row)
+);
+INSERT INTO security_eval_legacy.security_eval_legacy_quarantine(source_table,legacy_record,quarantine_reason)
+SELECT 'security_findings',to_jsonb(legacy_row),'LEGACY_REMEDIATION_CHAIN_INCOMPLETE'
+FROM security_eval_legacy.security_findings legacy_row
+WHERE NOT EXISTS (
+  SELECT 1 FROM security_eval_legacy.security_eval_legacy_quarantine quarantine
+  WHERE quarantine.source_table='security_findings'
+    AND quarantine.legacy_record=to_jsonb(legacy_row)
+);
+
+CREATE TABLE IF NOT EXISTS security_eval_datasets (
   tenant_id uuid NOT NULL,
   dataset_id uuid NOT NULL,
   dataset_key text NOT NULL,
@@ -46,7 +77,7 @@ CREATE TABLE security_eval_datasets (
   CHECK (dataset_key ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$')
 );
 
-CREATE TABLE security_eval_dataset_versions (
+CREATE TABLE IF NOT EXISTS security_eval_dataset_versions (
   tenant_id uuid NOT NULL,
   dataset_id uuid NOT NULL,
   version text NOT NULL,
@@ -64,12 +95,12 @@ CREATE TABLE security_eval_dataset_versions (
   PRIMARY KEY (tenant_id,dataset_id,version),
   UNIQUE (tenant_id,dataset_digest),
   FOREIGN KEY (tenant_id,dataset_id) REFERENCES security_eval_datasets(tenant_id,dataset_id),
-  CHECK (version ~ '^[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9.-]+)?$'),
+  CHECK (version ~ '^[0-9]+[.][0-9]+[.][0-9]+([+-][A-Za-z0-9.-]+)?$'),
   CHECK (length(signature) BETWEEN 64 AND 1024),
   CHECK (manifest ?& ARRAY['schema_version','dataset_id','version','samples_digest','categories','provenance','license'])
 );
 
-CREATE TABLE attack_scenarios (
+CREATE TABLE IF NOT EXISTS attack_scenarios (
   tenant_id uuid NOT NULL,
   scenario_id uuid NOT NULL,
   scenario_key text NOT NULL,
@@ -102,7 +133,7 @@ CREATE TABLE attack_scenarios (
   CHECK (length(signature) BETWEEN 64 AND 1024)
 );
 
-CREATE TABLE security_campaigns (
+CREATE TABLE IF NOT EXISTS security_campaigns (
   tenant_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
   campaign_key text NOT NULL,
@@ -139,7 +170,7 @@ CREATE TABLE security_campaigns (
   CHECK (deadline_at > created_at)
 );
 
-CREATE TABLE security_eval_campaign_scenarios (
+CREATE TABLE IF NOT EXISTS security_eval_campaign_scenarios (
   tenant_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
   scenario_id uuid NOT NULL,
@@ -153,7 +184,7 @@ CREATE TABLE security_eval_campaign_scenarios (
   FOREIGN KEY (tenant_id,scenario_id,scenario_version) REFERENCES attack_scenarios(tenant_id,scenario_id,version)
 );
 
-CREATE TABLE security_eval_scenario_results (
+CREATE TABLE IF NOT EXISTS security_eval_scenario_results (
   tenant_id uuid NOT NULL,
   result_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
@@ -183,7 +214,7 @@ CREATE TABLE security_eval_scenario_results (
   CHECK (coverage ?& ARRAY['threat_surfaces','control_ids','domain_packs','sample_count'])
 );
 
-CREATE TABLE security_findings (
+CREATE TABLE IF NOT EXISTS security_findings (
   tenant_id uuid NOT NULL,
   finding_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
@@ -210,7 +241,7 @@ CREATE TABLE security_findings (
   CHECK (severity NOT IN ('HIGH','CRITICAL') OR (remediation_required AND retest_required))
 );
 
-CREATE TABLE security_eval_remediations (
+CREATE TABLE IF NOT EXISTS security_eval_remediations (
   tenant_id uuid NOT NULL,
   remediation_id uuid NOT NULL,
   finding_id uuid NOT NULL,
@@ -227,7 +258,7 @@ CREATE TABLE security_eval_remediations (
   FOREIGN KEY (tenant_id,finding_id) REFERENCES security_findings(tenant_id,finding_id)
 );
 
-CREATE TABLE security_eval_retests (
+CREATE TABLE IF NOT EXISTS security_eval_retests (
   tenant_id uuid NOT NULL,
   retest_id uuid NOT NULL,
   finding_id uuid NOT NULL,
@@ -246,7 +277,7 @@ CREATE TABLE security_eval_retests (
   CHECK (cardinality(evidence_refs) BETWEEN 1 AND 128)
 );
 
-CREATE TABLE security_eval_baselines (
+CREATE TABLE IF NOT EXISTS security_eval_baselines (
   tenant_id uuid NOT NULL,
   baseline_id uuid NOT NULL,
   baseline_key text NOT NULL,
@@ -269,7 +300,7 @@ CREATE TABLE security_eval_baselines (
   CHECK (length(signature) BETWEEN 64 AND 1024)
 );
 
-CREATE TABLE security_eval_reports (
+CREATE TABLE IF NOT EXISTS security_eval_reports (
   tenant_id uuid NOT NULL,
   report_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
@@ -297,7 +328,7 @@ CREATE TABLE security_eval_reports (
   CHECK (report ?& ARRAY['schema_version','campaign_id','release_digest','metrics','risk_summary','coverage'])
 );
 
-CREATE TABLE security_eval_kill_switches (
+CREATE TABLE IF NOT EXISTS security_eval_kill_switches (
   tenant_id uuid NOT NULL,
   switch_id uuid NOT NULL,
   environment_profile text NOT NULL,
@@ -312,7 +343,7 @@ CREATE TABLE security_eval_kill_switches (
   CHECK ((state='TRIPPED')=(activated_at IS NOT NULL))
 );
 
-CREATE TABLE security_eval_resource_versions (
+CREATE TABLE IF NOT EXISTS security_eval_resource_versions (
   tenant_id uuid NOT NULL,
   resource_id text NOT NULL,
   resource_version bigint NOT NULL CHECK (resource_version >= 0),
@@ -321,7 +352,7 @@ CREATE TABLE security_eval_resource_versions (
   PRIMARY KEY (tenant_id,resource_id)
 );
 
-CREATE TABLE security_eval_action_ingress (
+CREATE TABLE IF NOT EXISTS security_eval_action_ingress (
   tenant_id uuid NOT NULL,
   idempotency_key text NOT NULL,
   request_digest char(64) NOT NULL CHECK (request_digest ~ '^[0-9a-f]{64}$'),
@@ -339,7 +370,7 @@ CREATE TABLE security_eval_action_ingress (
   UNIQUE (tenant_id,action_id)
 );
 
-CREATE TABLE security_eval_authority_executions (
+CREATE TABLE IF NOT EXISTS security_eval_authority_executions (
   tenant_id uuid NOT NULL,
   idempotency_key text NOT NULL,
   request_digest char(64) NOT NULL CHECK (request_digest ~ '^[0-9a-f]{64}$'),
@@ -365,7 +396,7 @@ CREATE TABLE security_eval_authority_executions (
   UNIQUE (tenant_id,ledger_event_id)
 );
 
-CREATE TABLE security_eval_evidence_events (
+CREATE TABLE IF NOT EXISTS security_eval_evidence_events (
   tenant_id uuid NOT NULL,
   evidence_event_id uuid NOT NULL,
   event_type text NOT NULL,
@@ -384,7 +415,7 @@ CREATE TABLE security_eval_evidence_events (
   PRIMARY KEY (tenant_id,evidence_event_id)
 );
 
-CREATE TABLE security_eval_evidence_outbox (
+CREATE TABLE IF NOT EXISTS security_eval_evidence_outbox (
   tenant_id uuid NOT NULL,
   evidence_event_id uuid NOT NULL,
   event_digest char(64) NOT NULL CHECK (event_digest ~ '^[0-9a-f]{64}$'),
@@ -555,36 +586,52 @@ BEGIN
   RETURN NEW;
 END $$;
 
+DROP TRIGGER IF EXISTS security_eval_dataset_versions_immutable ON security_eval_dataset_versions;
 CREATE TRIGGER security_eval_dataset_versions_immutable BEFORE UPDATE OR DELETE ON security_eval_dataset_versions
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_scenarios_immutable ON attack_scenarios;
 CREATE TRIGGER security_eval_scenarios_immutable BEFORE UPDATE OR DELETE ON attack_scenarios
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_results_immutable ON security_eval_scenario_results;
 CREATE TRIGGER security_eval_results_immutable BEFORE UPDATE OR DELETE ON security_eval_scenario_results
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_retests_immutable ON security_eval_retests;
 CREATE TRIGGER security_eval_retests_immutable BEFORE UPDATE OR DELETE ON security_eval_retests
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_baselines_immutable ON security_eval_baselines;
 CREATE TRIGGER security_eval_baselines_immutable BEFORE UPDATE OR DELETE ON security_eval_baselines
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_reports_immutable ON security_eval_reports;
 CREATE TRIGGER security_eval_reports_immutable BEFORE UPDATE OR DELETE ON security_eval_reports
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_evidence_immutable ON security_eval_evidence_events;
 CREATE TRIGGER security_eval_evidence_immutable BEFORE UPDATE OR DELETE ON security_eval_evidence_events
 FOR EACH ROW EXECUTE FUNCTION reject_security_eval_immutable_change();
+DROP TRIGGER IF EXISTS security_eval_resource_fence_guard ON security_eval_resource_versions;
 CREATE TRIGGER security_eval_resource_fence_guard BEFORE UPDATE ON security_eval_resource_versions
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_resource_fence();
+DROP TRIGGER IF EXISTS security_eval_campaign_transition_guard ON security_campaigns;
 CREATE TRIGGER security_eval_campaign_transition_guard BEFORE UPDATE ON security_campaigns
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_campaign_transition();
+DROP TRIGGER IF EXISTS security_eval_execution_transition_guard ON security_eval_authority_executions;
 CREATE TRIGGER security_eval_execution_transition_guard BEFORE UPDATE ON security_eval_authority_executions
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_execution_transition();
+DROP TRIGGER IF EXISTS security_eval_ingress_transition_guard ON security_eval_action_ingress;
 CREATE TRIGGER security_eval_ingress_transition_guard BEFORE UPDATE ON security_eval_action_ingress
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_ingress_transition();
+DROP TRIGGER IF EXISTS security_eval_dataset_transition_guard ON security_eval_datasets;
 CREATE TRIGGER security_eval_dataset_transition_guard BEFORE UPDATE ON security_eval_datasets
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_dataset_transition();
+DROP TRIGGER IF EXISTS security_eval_finding_transition_guard ON security_findings;
 CREATE TRIGGER security_eval_finding_transition_guard BEFORE UPDATE ON security_findings
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_finding_transition();
+DROP TRIGGER IF EXISTS security_eval_remediation_transition_guard ON security_eval_remediations;
 CREATE TRIGGER security_eval_remediation_transition_guard BEFORE UPDATE ON security_eval_remediations
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_remediation_transition();
+DROP TRIGGER IF EXISTS security_eval_kill_switch_transition_guard ON security_eval_kill_switches;
 CREATE TRIGGER security_eval_kill_switch_transition_guard BEFORE UPDATE ON security_eval_kill_switches
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_kill_switch_transition();
+DROP TRIGGER IF EXISTS security_eval_outbox_transition_guard ON security_eval_evidence_outbox;
 CREATE TRIGGER security_eval_outbox_transition_guard BEFORE UPDATE ON security_eval_evidence_outbox
 FOR EACH ROW EXECUTE FUNCTION enforce_security_eval_outbox_transition();
 
@@ -598,17 +645,18 @@ DO $$ DECLARE table_name text; BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',table_name);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY',table_name);
+    EXECUTE format('DROP POLICY IF EXISTS security_eval_tenant_isolation ON %I',table_name);
     EXECUTE format('CREATE POLICY security_eval_tenant_isolation ON %I USING '
       '(tenant_id::text=current_setting(''app.tenant_id'',true)) WITH CHECK '
       '(tenant_id::text=current_setting(''app.tenant_id'',true))',table_name);
   END LOOP;
 END $$;
 
-CREATE INDEX security_eval_campaign_status_idx ON security_campaigns(tenant_id,status,updated_at);
-CREATE INDEX security_eval_results_campaign_idx ON security_eval_scenario_results(tenant_id,campaign_id,created_at);
-CREATE INDEX security_eval_findings_status_idx ON security_findings(tenant_id,status,severity,updated_at);
-CREATE INDEX security_eval_executions_state_idx ON security_eval_authority_executions(tenant_id,state,updated_at);
-CREATE INDEX security_eval_outbox_pending_idx ON security_eval_evidence_outbox(tenant_id,next_attempt_at)
+CREATE INDEX IF NOT EXISTS security_eval_campaign_status_idx ON security_campaigns(tenant_id,status,updated_at);
+CREATE INDEX IF NOT EXISTS security_eval_results_campaign_idx ON security_eval_scenario_results(tenant_id,campaign_id,created_at);
+CREATE INDEX IF NOT EXISTS security_eval_findings_status_idx ON security_findings(tenant_id,status,severity,updated_at);
+CREATE INDEX IF NOT EXISTS security_eval_executions_state_idx ON security_eval_authority_executions(tenant_id,state,updated_at);
+CREATE INDEX IF NOT EXISTS security_eval_outbox_pending_idx ON security_eval_evidence_outbox(tenant_id,next_attempt_at)
   WHERE published_at IS NULL;
 
 REVOKE ALL ON TABLE security_eval_datasets,

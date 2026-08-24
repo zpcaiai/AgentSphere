@@ -6,9 +6,28 @@ BEGIN;
 -- silently trusted or exposed to the runtime role.
 CREATE SCHEMA IF NOT EXISTS agenttrust_legacy_sre;
 REVOKE ALL ON SCHEMA agenttrust_legacy_sre FROM PUBLIC;
-ALTER TABLE public.backup_manifests SET SCHEMA agenttrust_legacy_sre;
-ALTER TABLE public.recovery_drills SET SCHEMA agenttrust_legacy_sre;
-ALTER TABLE public.deployment_rollouts SET SCHEMA agenttrust_legacy_sre;
+DO $legacy_tables$
+BEGIN
+  IF to_regclass('agenttrust_legacy_sre.backup_manifests') IS NULL THEN
+    IF to_regclass('public.backup_manifests') IS NULL THEN
+      RAISE EXCEPTION 'SRE_LEGACY_BACKUP_MANIFESTS_MISSING';
+    END IF;
+    ALTER TABLE public.backup_manifests SET SCHEMA agenttrust_legacy_sre;
+  END IF;
+  IF to_regclass('agenttrust_legacy_sre.recovery_drills') IS NULL THEN
+    IF to_regclass('public.recovery_drills') IS NULL THEN
+      RAISE EXCEPTION 'SRE_LEGACY_RECOVERY_DRILLS_MISSING';
+    END IF;
+    ALTER TABLE public.recovery_drills SET SCHEMA agenttrust_legacy_sre;
+  END IF;
+  IF to_regclass('agenttrust_legacy_sre.deployment_rollouts') IS NULL THEN
+    IF to_regclass('public.deployment_rollouts') IS NULL THEN
+      RAISE EXCEPTION 'SRE_LEGACY_DEPLOYMENT_ROLLOUTS_MISSING';
+    END IF;
+    ALTER TABLE public.deployment_rollouts SET SCHEMA agenttrust_legacy_sre;
+  END IF;
+END
+$legacy_tables$;
 REVOKE ALL ON TABLE agenttrust_legacy_sre.backup_manifests,
   agenttrust_legacy_sre.recovery_drills,
   agenttrust_legacy_sre.deployment_rollouts FROM PUBLIC;
@@ -23,15 +42,30 @@ CREATE TABLE IF NOT EXISTS sre_legacy_quarantine (
 
 INSERT INTO sre_legacy_quarantine(source_table,legacy_record,quarantine_reason)
 SELECT 'backup_manifests',to_jsonb(value),'LEGACY_TENANT_OR_CONTROL_BINDING_MISSING'
-FROM agenttrust_legacy_sre.backup_manifests value;
+FROM agenttrust_legacy_sre.backup_manifests value
+WHERE NOT EXISTS (
+  SELECT 1 FROM sre_legacy_quarantine quarantine
+  WHERE quarantine.source_table='backup_manifests'
+    AND quarantine.legacy_record=to_jsonb(value)
+);
 INSERT INTO sre_legacy_quarantine(source_table,legacy_record,quarantine_reason)
 SELECT 'recovery_drills',to_jsonb(value),'LEGACY_TENANT_OR_CONTROL_BINDING_MISSING'
-FROM agenttrust_legacy_sre.recovery_drills value;
+FROM agenttrust_legacy_sre.recovery_drills value
+WHERE NOT EXISTS (
+  SELECT 1 FROM sre_legacy_quarantine quarantine
+  WHERE quarantine.source_table='recovery_drills'
+    AND quarantine.legacy_record=to_jsonb(value)
+);
 INSERT INTO sre_legacy_quarantine(source_table,legacy_record,quarantine_reason)
 SELECT 'deployment_rollouts',to_jsonb(value),'LEGACY_TENANT_OR_CONTROL_BINDING_MISSING'
-FROM agenttrust_legacy_sre.deployment_rollouts value;
+FROM agenttrust_legacy_sre.deployment_rollouts value
+WHERE NOT EXISTS (
+  SELECT 1 FROM sre_legacy_quarantine quarantine
+  WHERE quarantine.source_table='deployment_rollouts'
+    AND quarantine.legacy_record=to_jsonb(value)
+);
 
-CREATE TABLE sre_service_slos (
+CREATE TABLE IF NOT EXISTS sre_service_slos (
   tenant_id uuid NOT NULL,
   slo_id uuid NOT NULL,
   service text NOT NULL CHECK (service ~ '^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$'),
@@ -54,7 +88,7 @@ CREATE TABLE sre_service_slos (
   CHECK (tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid)
 );
 
-CREATE TABLE sre_sli_observations (
+CREATE TABLE IF NOT EXISTS sre_sli_observations (
   tenant_id uuid NOT NULL,
   observation_id uuid NOT NULL,
   slo_id uuid NOT NULL,
@@ -77,7 +111,7 @@ CREATE TABLE sre_sli_observations (
   CHECK (logs_evidence_ref ~ '^evidence://')
 );
 
-CREATE TABLE sre_burn_alerts (
+CREATE TABLE IF NOT EXISTS sre_burn_alerts (
   tenant_id uuid NOT NULL,
   alert_id uuid NOT NULL,
   slo_id uuid NOT NULL,
@@ -97,7 +131,7 @@ CREATE TABLE sre_burn_alerts (
       OR (state='RESOLVED' AND owner_subject IS NOT NULL AND resolved_at IS NOT NULL))
 );
 
-CREATE TABLE sre_incident_links (
+CREATE TABLE IF NOT EXISTS sre_incident_links (
   tenant_id uuid NOT NULL,
   link_id uuid NOT NULL,
   alert_id uuid NOT NULL,
@@ -110,7 +144,7 @@ CREATE TABLE sre_incident_links (
   FOREIGN KEY (tenant_id,alert_id) REFERENCES sre_burn_alerts(tenant_id,alert_id)
 );
 
-CREATE TABLE sre_deployment_topologies (
+CREATE TABLE IF NOT EXISTS sre_deployment_topologies (
   tenant_id uuid NOT NULL,
   topology_id uuid NOT NULL,
   deployment_mode text NOT NULL CHECK (deployment_mode IN ('SAAS','PRIVATE','OFFLINE','EDGE_HYBRID')),
@@ -132,7 +166,7 @@ CREATE TABLE sre_deployment_topologies (
       AND jsonb_typeof(disruption_budgets)='object' AND jsonb_typeof(immutable_image_digests)='object')
 );
 
-CREATE TABLE sre_zone_health_observations (
+CREATE TABLE IF NOT EXISTS sre_zone_health_observations (
   tenant_id uuid NOT NULL,
   observation_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -149,7 +183,7 @@ CREATE TABLE sre_zone_health_observations (
   CHECK (jsonb_typeof(component_health)='object' AND jsonb_typeof(dependency_health)='object')
 );
 
-CREATE TABLE backup_manifests (
+CREATE TABLE IF NOT EXISTS backup_manifests (
   tenant_id uuid NOT NULL,
   backup_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -176,7 +210,7 @@ CREATE TABLE backup_manifests (
   CHECK (length(signature) BETWEEN 64 AND 1024)
 );
 
-CREATE TABLE sre_backup_artifacts (
+CREATE TABLE IF NOT EXISTS sre_backup_artifacts (
   tenant_id uuid NOT NULL,
   artifact_id uuid NOT NULL,
   backup_id uuid NOT NULL,
@@ -193,7 +227,7 @@ CREATE TABLE sre_backup_artifacts (
   FOREIGN KEY (tenant_id,backup_id) REFERENCES backup_manifests(tenant_id,backup_id)
 );
 
-CREATE TABLE recovery_drills (
+CREATE TABLE IF NOT EXISTS recovery_drills (
   tenant_id uuid NOT NULL,
   drill_id uuid NOT NULL,
   backup_id uuid NOT NULL,
@@ -223,7 +257,7 @@ CREATE TABLE recovery_drills (
   CHECK (jsonb_typeof(expected_record_counts)='object' AND jsonb_typeof(restored_record_counts)='object')
 );
 
-CREATE TABLE sre_dr_plans (
+CREATE TABLE IF NOT EXISTS sre_dr_plans (
   tenant_id uuid NOT NULL,
   plan_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -249,7 +283,7 @@ CREATE TABLE sre_dr_plans (
   CHECK (jsonb_typeof(health_checks)='array' AND jsonb_array_length(health_checks)>0)
 );
 
-CREATE TABLE sre_dr_events (
+CREATE TABLE IF NOT EXISTS sre_dr_events (
   tenant_id uuid NOT NULL,
   event_id uuid NOT NULL,
   plan_id uuid NOT NULL,
@@ -268,7 +302,7 @@ CREATE TABLE sre_dr_events (
   FOREIGN KEY (tenant_id,plan_id) REFERENCES sre_dr_plans(tenant_id,plan_id)
 );
 
-CREATE TABLE sre_chaos_campaigns (
+CREATE TABLE IF NOT EXISTS sre_chaos_campaigns (
   tenant_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -290,7 +324,7 @@ CREATE TABLE sre_chaos_campaigns (
   CHECK (jsonb_typeof(blast_radius)='object' AND jsonb_typeof(abort_conditions)='array')
 );
 
-CREATE TABLE sre_chaos_results (
+CREATE TABLE IF NOT EXISTS sre_chaos_results (
   tenant_id uuid NOT NULL,
   result_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
@@ -311,7 +345,7 @@ CREATE TABLE sre_chaos_results (
   CHECK (cardinality(evidence_refs) BETWEEN 1 AND 128)
 );
 
-CREATE TABLE sre_load_campaigns (
+CREATE TABLE IF NOT EXISTS sre_load_campaigns (
   tenant_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -331,7 +365,7 @@ CREATE TABLE sre_load_campaigns (
   CHECK (jsonb_typeof(tenant_quota)='object' AND jsonb_typeof(stop_conditions)='array')
 );
 
-CREATE TABLE sre_load_results (
+CREATE TABLE IF NOT EXISTS sre_load_results (
   tenant_id uuid NOT NULL,
   result_id uuid NOT NULL,
   campaign_id uuid NOT NULL,
@@ -355,7 +389,7 @@ CREATE TABLE sre_load_results (
   CHECK (cardinality(evidence_refs) BETWEEN 1 AND 128)
 );
 
-CREATE TABLE deployment_rollouts (
+CREATE TABLE IF NOT EXISTS deployment_rollouts (
   tenant_id uuid NOT NULL,
   rollout_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -382,7 +416,7 @@ CREATE TABLE deployment_rollouts (
   CHECK (schema_compatible AND api_compatible AND policy_compatible AND pack_compatible)
 );
 
-CREATE TABLE sre_canary_observations (
+CREATE TABLE IF NOT EXISTS sre_canary_observations (
   tenant_id uuid NOT NULL,
   observation_id uuid NOT NULL,
   rollout_id uuid NOT NULL,
@@ -401,7 +435,7 @@ CREATE TABLE sre_canary_observations (
   CHECK (NOT (unsafe_allow_count > 0 OR evidence_gap_count > 0) OR rollback_triggered)
 );
 
-CREATE TABLE sre_cost_capacity_observations (
+CREATE TABLE IF NOT EXISTS sre_cost_capacity_observations (
   tenant_id uuid NOT NULL,
   observation_id uuid NOT NULL,
   topology_id uuid NOT NULL,
@@ -427,7 +461,7 @@ CREATE TABLE sre_cost_capacity_observations (
   CHECK (maximum_tasks_per_tenant <= maximum_global_tasks)
 );
 
-CREATE TABLE sre_observability_evidence (
+CREATE TABLE IF NOT EXISTS sre_observability_evidence (
   tenant_id uuid NOT NULL,
   evidence_id uuid NOT NULL,
   resource text NOT NULL,
@@ -442,7 +476,7 @@ CREATE TABLE sre_observability_evidence (
   CHECK (cardinality(immutable_refs) BETWEEN 3 AND 128)
 );
 
-CREATE TABLE sre_resource_versions (
+CREATE TABLE IF NOT EXISTS sre_resource_versions (
   tenant_id uuid NOT NULL,
   resource text NOT NULL CHECK (length(resource) BETWEEN 1 AND 1024),
   resource_version bigint NOT NULL CHECK (resource_version >= 0),
@@ -455,7 +489,7 @@ CREATE TABLE sre_resource_versions (
   PRIMARY KEY (tenant_id,resource)
 );
 
-CREATE TABLE sre_action_ingress (
+CREATE TABLE IF NOT EXISTS sre_action_ingress (
   tenant_id uuid NOT NULL,
   idempotency_key varchar(128) NOT NULL,
   request_digest char(64) NOT NULL CHECK (request_digest ~ '^[0-9a-f]{64}$'),
@@ -475,7 +509,7 @@ CREATE TABLE sre_action_ingress (
   CHECK ((state='ACCEPTED' AND receipt IS NOT NULL) OR state<>'ACCEPTED')
 );
 
-CREATE TABLE sre_principal_assertion_replay (
+CREATE TABLE IF NOT EXISTS sre_principal_assertion_replay (
   tenant_id uuid NOT NULL,
   jti uuid NOT NULL,
   assertion_digest char(64) NOT NULL CHECK (assertion_digest ~ '^[0-9a-f]{64}$'),
@@ -485,7 +519,7 @@ CREATE TABLE sre_principal_assertion_replay (
   PRIMARY KEY (tenant_id,jti)
 );
 
-CREATE TABLE sre_authority_executions (
+CREATE TABLE IF NOT EXISTS sre_authority_executions (
   tenant_id uuid NOT NULL,
   idempotency_key varchar(128) NOT NULL,
   request_digest char(64) NOT NULL CHECK (request_digest ~ '^[0-9a-f]{64}$'),
@@ -520,7 +554,7 @@ CREATE TABLE sre_authority_executions (
       OR state<>'SUCCEEDED')
 );
 
-CREATE TABLE sre_evidence_outbox (
+CREATE TABLE IF NOT EXISTS sre_evidence_outbox (
   tenant_id uuid NOT NULL,
   event_id uuid NOT NULL,
   idempotency_key varchar(128) NOT NULL,
@@ -626,17 +660,17 @@ BEGIN
 END
 $rls$;
 
-CREATE INDEX sre_slo_active_idx ON sre_service_slos(tenant_id,status,service,sli_kind);
-CREATE INDEX sre_sli_window_idx ON sre_sli_observations(tenant_id,slo_id,window_ended_at DESC);
-CREATE INDEX sre_burn_alert_open_idx ON sre_burn_alerts(tenant_id,severity,opened_at) WHERE state<>'RESOLVED';
-CREATE INDEX sre_zone_health_idx ON sre_zone_health_observations(tenant_id,topology_id,observed_at DESC);
-CREATE INDEX sre_backup_time_idx ON backup_manifests(tenant_id,created_at DESC);
-CREATE INDEX sre_dr_plan_state_idx ON sre_dr_plans(tenant_id,status,updated_at);
-CREATE INDEX sre_chaos_state_idx ON sre_chaos_campaigns(tenant_id,status,updated_at);
-CREATE INDEX sre_load_state_idx ON sre_load_campaigns(tenant_id,status,updated_at);
-CREATE INDEX sre_rollout_state_idx ON deployment_rollouts(tenant_id,status,updated_at);
-CREATE INDEX sre_execution_state_idx ON sre_authority_executions(tenant_id,state,lease_expires_at);
-CREATE INDEX sre_evidence_pending_idx ON sre_evidence_outbox(tenant_id,next_attempt_at,created_at) WHERE delivered_at IS NULL;
+CREATE INDEX IF NOT EXISTS sre_slo_active_idx ON sre_service_slos(tenant_id,status,service,sli_kind);
+CREATE INDEX IF NOT EXISTS sre_sli_window_idx ON sre_sli_observations(tenant_id,slo_id,window_ended_at DESC);
+CREATE INDEX IF NOT EXISTS sre_burn_alert_open_idx ON sre_burn_alerts(tenant_id,severity,opened_at) WHERE state<>'RESOLVED';
+CREATE INDEX IF NOT EXISTS sre_zone_health_idx ON sre_zone_health_observations(tenant_id,topology_id,observed_at DESC);
+CREATE INDEX IF NOT EXISTS sre_backup_time_idx ON backup_manifests(tenant_id,created_at DESC);
+CREATE INDEX IF NOT EXISTS sre_dr_plan_state_idx ON sre_dr_plans(tenant_id,status,updated_at);
+CREATE INDEX IF NOT EXISTS sre_chaos_state_idx ON sre_chaos_campaigns(tenant_id,status,updated_at);
+CREATE INDEX IF NOT EXISTS sre_load_state_idx ON sre_load_campaigns(tenant_id,status,updated_at);
+CREATE INDEX IF NOT EXISTS sre_rollout_state_idx ON deployment_rollouts(tenant_id,status,updated_at);
+CREATE INDEX IF NOT EXISTS sre_execution_state_idx ON sre_authority_executions(tenant_id,state,lease_expires_at);
+CREATE INDEX IF NOT EXISTS sre_evidence_pending_idx ON sre_evidence_outbox(tenant_id,next_attempt_at,created_at) WHERE delivered_at IS NULL;
 
 REVOKE ALL ON TABLE sre_legacy_quarantine FROM PUBLIC;
 REVOKE ALL ON TABLE sre_service_slos,sre_sli_observations,sre_burn_alerts,sre_incident_links,

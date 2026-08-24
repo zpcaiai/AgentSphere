@@ -6,7 +6,7 @@ DO $migration$ BEGIN
 END $migration$;
 REVOKE ALL ON TABLE public.medical_review_cases_legacy_0026 FROM PUBLIC;
 
-CREATE TABLE public.medical_care_relationships (
+CREATE TABLE IF NOT EXISTS public.medical_care_relationships (
   tenant_id uuid NOT NULL, relationship_id uuid NOT NULL, patient_ref_digest char(64) NOT NULL CHECK (patient_ref_digest ~ '^[0-9a-f]{64}$'),
   practitioner_subject varchar(512) NOT NULL, relationship_type varchar(32) NOT NULL CHECK (relationship_type IN ('TREATING','DELEGATED','CODING','EMERGENCY')),
   purpose_of_use varchar(64) NOT NULL, permitted_data_classes text[] NOT NULL CHECK (cardinality(permitted_data_classes) BETWEEN 1 AND 64),
@@ -16,7 +16,7 @@ CREATE TABLE public.medical_care_relationships (
   source_evidence_ref varchar(1024) NOT NULL, source_evidence_digest char(64) NOT NULL CHECK (source_evidence_digest ~ '^[0-9a-f]{64}$'),
   PRIMARY KEY (tenant_id,relationship_id), UNIQUE (tenant_id,patient_ref_digest,practitioner_subject,purpose_of_use)
 );
-CREATE TABLE public.medical_access_decisions (
+CREATE TABLE IF NOT EXISTS public.medical_access_decisions (
   tenant_id uuid NOT NULL, decision_id uuid NOT NULL, execution_id uuid NOT NULL, relationship_id uuid NOT NULL,
   patient_ref_digest char(64) NOT NULL CHECK (patient_ref_digest ~ '^[0-9a-f]{64}$'), requester_subject varchar(512) NOT NULL,
   purpose_of_use varchar(64) NOT NULL, requested_fields text[] NOT NULL CHECK (cardinality(requested_fields) BETWEEN 1 AND 256),
@@ -30,7 +30,7 @@ CREATE TABLE public.medical_access_decisions (
   FOREIGN KEY (tenant_id,relationship_id) REFERENCES public.medical_care_relationships(tenant_id,relationship_id),
   CHECK (conclusion<>'ALLOW' OR minimum_necessary), CHECK ((break_glass AND break_glass_approval_id IS NOT NULL) OR NOT break_glass)
 );
-CREATE TABLE public.medical_clinical_evidence (
+CREATE TABLE IF NOT EXISTS public.medical_clinical_evidence (
   tenant_id uuid NOT NULL, evidence_id uuid NOT NULL, execution_id uuid NOT NULL,
   source_snapshot_digest char(64) NOT NULL CHECK (source_snapshot_digest ~ '^[0-9a-f]{64}$'),
   source_time timestamptz NOT NULL, knowledge_version varchar(256) NOT NULL, knowledge_digest char(64) NOT NULL CHECK (knowledge_digest ~ '^[0-9a-f]{64}$'),
@@ -40,7 +40,7 @@ CREATE TABLE public.medical_clinical_evidence (
   created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id,evidence_id),
   FOREIGN KEY (tenant_id,execution_id) REFERENCES public.domain_pack_executions(tenant_id,execution_id)
 );
-CREATE TABLE public.medical_human_reviews (
+CREATE TABLE IF NOT EXISTS public.medical_human_reviews (
   tenant_id uuid NOT NULL, review_id uuid NOT NULL, execution_id uuid NOT NULL, evidence_id uuid NOT NULL,
   output_digest char(64) NOT NULL CHECK (output_digest ~ '^[0-9a-f]{64}$'), risk_level varchar(16) NOT NULL CHECK (risk_level IN ('LOW','MEDIUM','HIGH','CRITICAL')),
   reviewer_subject varchar(512) NOT NULL, reviewer_role varchar(128) NOT NULL,
@@ -52,7 +52,7 @@ CREATE TABLE public.medical_human_reviews (
   FOREIGN KEY (tenant_id,evidence_id) REFERENCES public.medical_clinical_evidence(tenant_id,evidence_id),
   CHECK (risk_level NOT IN ('HIGH','CRITICAL') OR reviewer_role IN ('CLINICIAN','PHYSICIAN','PHARMACIST','LICENSED_REVIEWER'))
 );
-CREATE TABLE public.medical_evaluation_findings (
+CREATE TABLE IF NOT EXISTS public.medical_evaluation_findings (
   tenant_id uuid NOT NULL, finding_id uuid NOT NULL, execution_id uuid NOT NULL,
   patient_match boolean NOT NULL, evidence_complete boolean NOT NULL, factual_consistency boolean NOT NULL,
   sensitive_leakage_count integer NOT NULL CHECK (sensitive_leakage_count>=0), omission_risk_count integer NOT NULL CHECK (omission_risk_count>=0),
@@ -67,13 +67,18 @@ CREATE TABLE public.medical_evaluation_findings (
 DO $rls$ DECLARE table_name text; BEGIN
   FOREACH table_name IN ARRAY ARRAY['medical_care_relationships','medical_access_decisions','medical_clinical_evidence','medical_human_reviews','medical_evaluation_findings'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',table_name); EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY',table_name);
+    EXECUTE format('DROP POLICY IF EXISTS medical_tenant_isolation ON public.%I',table_name);
     EXECUTE format('CREATE POLICY medical_tenant_isolation ON public.%I USING (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid) WITH CHECK (tenant_id=nullif(current_setting(''app.tenant_id'',true),'''')::uuid)',table_name); EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC',table_name);
   END LOOP;
 END $rls$;
+DROP TRIGGER IF EXISTS medical_access_immutable ON public.medical_access_decisions;
 CREATE TRIGGER medical_access_immutable BEFORE UPDATE OR DELETE ON public.medical_access_decisions FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS medical_evidence_immutable ON public.medical_clinical_evidence;
 CREATE TRIGGER medical_evidence_immutable BEFORE UPDATE OR DELETE ON public.medical_clinical_evidence FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS medical_review_immutable ON public.medical_human_reviews;
 CREATE TRIGGER medical_review_immutable BEFORE UPDATE OR DELETE ON public.medical_human_reviews FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
+DROP TRIGGER IF EXISTS medical_finding_immutable ON public.medical_evaluation_findings;
 CREATE TRIGGER medical_finding_immutable BEFORE UPDATE OR DELETE ON public.medical_evaluation_findings FOR EACH ROW EXECUTE FUNCTION public.agenttrust_domain_immutable_row();
-CREATE INDEX medical_relationship_lookup_idx ON public.medical_care_relationships(tenant_id,patient_ref_digest,practitioner_subject,status,valid_until);
-CREATE INDEX medical_review_execution_idx ON public.medical_human_reviews(tenant_id,execution_id,decision);
+CREATE INDEX IF NOT EXISTS medical_relationship_lookup_idx ON public.medical_care_relationships(tenant_id,patient_ref_digest,practitioner_subject,status,valid_until);
+CREATE INDEX IF NOT EXISTS medical_review_execution_idx ON public.medical_human_reviews(tenant_id,execution_id,decision);
 COMMIT;

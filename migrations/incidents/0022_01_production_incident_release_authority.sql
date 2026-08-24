@@ -33,7 +33,8 @@ BEGIN
       severity IN ('P0','P1','P2','P3') AND
       status IN ('DETECTED','TRIAGED','CONTAINED','INVESTIGATING','REMEDIATING','RECERTIFYING','CLOSED') AND
       length(correlation_key) BETWEEN 1 AND 256 AND length(owner) BETWEEN 1 AND 256 AND
-      length(safe_summary) BETWEEN 1 AND 512 AND safe_summary !~ E'[\\x00\\r\\n]' AND
+      length(safe_summary) BETWEEN 1 AND 512 AND
+      position(chr(13) in safe_summary)=0 AND position(chr(10) in safe_summary)=0 AND
       jsonb_typeof(scope)='array' AND jsonb_array_length(scope) BETWEEN 1 AND 256 AND
       jsonb_typeof(evidence_refs)='array' AND jsonb_array_length(evidence_refs) BETWEEN 1 AND 256 AND
       length(legal_hold_id) BETWEEN 1 AND 256 AND resource_version >= 0
@@ -55,7 +56,10 @@ CREATE TABLE IF NOT EXISTS incident_action_ingress (
   idempotency_key text NOT NULL CHECK (length(idempotency_key) BETWEEN 16 AND 128 AND idempotency_key ~ '^[A-Za-z0-9._:/-]+$'),
   request_digest char(64) NOT NULL CHECK (request_digest ~ '^[a-f0-9]{64}$'),
   action_id uuid NOT NULL, task_id uuid NOT NULL,
-  resource_id text NOT NULL CHECK (length(resource_id) BETWEEN 1 AND 1024 AND resource_id !~ E'[\\x00\\r\\n]'),
+  resource_id text NOT NULL CHECK (
+    length(resource_id) BETWEEN 1 AND 1024 AND
+    position(chr(13) in resource_id)=0 AND position(chr(10) in resource_id)=0
+  ),
   operation text NOT NULL CHECK (operation IN ('DETECT','TRIAGE','CONTAIN','INVESTIGATE','PRESERVE_EVIDENCE','PLAN_REPLAY','COMPLETE_REPLAY','PUBLISH_ROOT_CAUSE','BEGIN_REMEDIATION','TRIGGER_RECERTIFICATION','EVALUATE_RELEASE','START_CANARY','RECORD_CANARY','ROLLBACK_RELEASE','CLOSE')),
   principal_subject text NOT NULL CHECK (length(principal_subject) BETWEEN 1 AND 256),
   principal_kind text NOT NULL CHECK (principal_kind IN ('HUMAN','WORKLOAD')),

@@ -23,7 +23,7 @@ REVOKE ALL ON TABLE public.supply_chain_artifacts_legacy_0020 FROM PUBLIC;
 REVOKE ALL ON TABLE public.domain_pack_versions_legacy_0020 FROM PUBLIC;
 REVOKE ALL ON TABLE public.publisher_revocations_legacy_0020 FROM PUBLIC;
 
-CREATE TABLE public.supply_chain_publishers (
+CREATE TABLE IF NOT EXISTS public.supply_chain_publishers (
   publisher_id varchar(256) PRIMARY KEY,
   organization_id varchar(256) NOT NULL,
   source_repository_prefix varchar(1024) NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE public.supply_chain_publishers (
   CHECK (source_repository_prefix ~ '^https://')
 );
 
-CREATE TABLE public.supply_chain_publisher_keys (
+CREATE TABLE IF NOT EXISTS public.supply_chain_publisher_keys (
   publisher_id varchar(256) NOT NULL REFERENCES public.supply_chain_publishers(publisher_id),
   key_id varchar(256) NOT NULL,
   algorithm varchar(24) NOT NULL CHECK (algorithm IN ('ED25519','SIGSTORE_KEYLESS','ENTERPRISE_PKI')),
@@ -53,7 +53,7 @@ CREATE TABLE public.supply_chain_publisher_keys (
       OR (status<>'REVOKED' AND revoked_at IS NULL AND revocation_reason IS NULL))
 );
 
-CREATE TABLE public.supply_chain_artifact_revisions (
+CREATE TABLE IF NOT EXISTS public.supply_chain_artifact_revisions (
   tenant_id uuid NOT NULL,
   artifact_id uuid NOT NULL,
   artifact_type varchar(32) NOT NULL CHECK (artifact_type IN (
@@ -88,11 +88,11 @@ CREATE TABLE public.supply_chain_artifact_revisions (
   FOREIGN KEY (publisher_id,publisher_key_id)
     REFERENCES public.supply_chain_publisher_keys(publisher_id,key_id),
   CHECK (tenant_id <> '00000000-0000-0000-0000-000000000000'::uuid),
-  CHECK (version ~ '^[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9.-]+)?$'),
+  CHECK (version ~ '^[0-9]+[.][0-9]+[.][0-9]+([+-][A-Za-z0-9.-]+)?$'),
   CHECK (immutable_reference !~* '(^|:)latest($|@)' AND immutable_reference LIKE '%sha256:%')
 );
 
-CREATE TABLE public.supply_chain_pack_releases (
+CREATE TABLE IF NOT EXISTS public.supply_chain_pack_releases (
   tenant_id uuid NOT NULL,
   pack_id varchar(256) NOT NULL,
   version varchar(128) NOT NULL,
@@ -112,11 +112,11 @@ CREATE TABLE public.supply_chain_pack_releases (
   UNIQUE (tenant_id,manifest_digest),
   FOREIGN KEY (tenant_id,artifact_id)
     REFERENCES public.supply_chain_artifact_revisions(tenant_id,artifact_id),
-  CHECK (version ~ '^[0-9]+\.[0-9]+\.[0-9]+([+-][A-Za-z0-9.-]+)?$'),
+  CHECK (version ~ '^[0-9]+[.][0-9]+[.][0-9]+([+-][A-Za-z0-9.-]+)?$'),
   CHECK (manifest ?& ARRAY['schema_version','pack_id','version','digest','permissions','tools','signature'])
 );
 
-CREATE TABLE public.supply_chain_conformance_runs (
+CREATE TABLE IF NOT EXISTS public.supply_chain_conformance_runs (
   tenant_id uuid NOT NULL,
   run_id uuid NOT NULL,
   pack_id varchar(256) NOT NULL,
@@ -137,7 +137,7 @@ CREATE TABLE public.supply_chain_conformance_runs (
     REFERENCES public.supply_chain_pack_releases(tenant_id,pack_id,version)
 );
 
-CREATE TABLE public.supply_chain_pack_approvals (
+CREATE TABLE IF NOT EXISTS public.supply_chain_pack_approvals (
   tenant_id uuid NOT NULL,
   approval_id uuid NOT NULL,
   pack_id varchar(256) NOT NULL,
@@ -161,7 +161,7 @@ CREATE TABLE public.supply_chain_pack_approvals (
     REFERENCES public.supply_chain_pack_releases(tenant_id,pack_id,version)
 );
 
-CREATE TABLE public.supply_chain_installations (
+CREATE TABLE IF NOT EXISTS public.supply_chain_installations (
   tenant_id uuid NOT NULL,
   environment varchar(64) NOT NULL,
   pack_id varchar(256) NOT NULL,
@@ -181,7 +181,7 @@ CREATE TABLE public.supply_chain_installations (
     REFERENCES public.supply_chain_pack_approvals(tenant_id,approval_id)
 );
 
-CREATE TABLE public.supply_chain_revocations (
+CREATE TABLE IF NOT EXISTS public.supply_chain_revocations (
   tenant_id uuid NOT NULL,
   revocation_id uuid NOT NULL,
   scope varchar(24) NOT NULL CHECK (scope IN ('PUBLISHER','KEY','ARTIFACT','PACK_RELEASE')),
@@ -196,7 +196,7 @@ CREATE TABLE public.supply_chain_revocations (
   UNIQUE (tenant_id,scope,subject_id)
 );
 
-CREATE TABLE public.supply_chain_authority_commands (
+CREATE TABLE IF NOT EXISTS public.supply_chain_authority_commands (
   tenant_id uuid NOT NULL,
   command_id uuid NOT NULL,
   task_id uuid NOT NULL,
@@ -247,7 +247,7 @@ CREATE TABLE public.supply_chain_authority_commands (
       OR state IN ('PREPARED','EXECUTING'))
 );
 
-CREATE TABLE public.supply_chain_evidence_events (
+CREATE TABLE IF NOT EXISTS public.supply_chain_evidence_events (
   tenant_id uuid NOT NULL,
   event_id uuid NOT NULL,
   command_id uuid NOT NULL,
@@ -266,7 +266,7 @@ CREATE TABLE public.supply_chain_evidence_events (
     REFERENCES public.supply_chain_authority_commands(tenant_id,command_id)
 );
 
-CREATE TABLE public.supply_chain_evidence_outbox (
+CREATE TABLE IF NOT EXISTS public.supply_chain_evidence_outbox (
   tenant_id uuid NOT NULL,
   outbox_id uuid NOT NULL,
   command_id uuid NOT NULL,
@@ -464,14 +464,14 @@ BEGIN
 END
 $rls$;
 
-CREATE UNIQUE INDEX supply_single_pack_flight_idx
+CREATE UNIQUE INDEX IF NOT EXISTS supply_single_pack_flight_idx
   ON public.supply_chain_authority_commands(tenant_id,resource_key)
   WHERE state IN ('PREPARED','EXECUTING');
-CREATE INDEX supply_command_recovery_idx
+CREATE INDEX IF NOT EXISTS supply_command_recovery_idx
   ON public.supply_chain_authority_commands(tenant_id,state,lease_expires_at,updated_at);
-CREATE INDEX supply_outbox_delivery_idx
+CREATE INDEX IF NOT EXISTS supply_outbox_delivery_idx
   ON public.supply_chain_evidence_outbox(tenant_id,created_at) WHERE delivered_at IS NULL;
-CREATE UNIQUE INDEX supply_one_active_manifest_idx
+CREATE UNIQUE INDEX IF NOT EXISTS supply_one_active_manifest_idx
   ON public.supply_chain_installations(tenant_id,environment,pack_id) WHERE state='ACTIVE';
 
 REVOKE ALL ON TABLE public.supply_chain_publishers,public.supply_chain_publisher_keys FROM PUBLIC;

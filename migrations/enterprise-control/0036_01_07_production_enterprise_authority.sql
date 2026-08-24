@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS enterprise_resource_versions (
   tenant_id uuid NOT NULL,
   resource text NOT NULL CHECK (
     length(resource) BETWEEN 1 AND 1000
-    AND resource !~ E'[\\x00\\r\\n]'
+    AND position(chr(13) in resource)=0
+    AND position(chr(10) in resource)=0
   ),
   resource_version bigint NOT NULL CHECK (resource_version > 0),
   action_hash char(64) NOT NULL CHECK (action_hash ~ '^[a-f0-9]{64}$'),
