@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T20:13:24Z",
+  "generated_at": "2026-08-25T20:20:56Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -1101,7 +1101,7 @@
     },
     {
       "path": "rust/crates/pack-supply-chain/src/server.rs",
-      "sha256": "2219938a5d088aebfce8c54f007d73e93b8f9dd1e374215365c72584a0d464f4"
+      "sha256": "336dc86632f1e2a3b1f61fe2ef71e5c1a9d7031b61a050902c4f2a7f5b0df836"
     },
     {
       "path": "rust/crates/pack-supply-chain/tests/production_contract.rs",
@@ -1169,7 +1169,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/authority.rs",
-      "sha256": "944f639fe68473b2d4cdc7f2a99ad2c8aa237d07cce3d4fe239895f0a0c9513c"
+      "sha256": "cd34c45acb8a119779289b23572d2b88dc9b959109dd49b7561121180264d4c7"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/bin/agenttrust-runtime-anomaly-authority.rs",
@@ -1181,7 +1181,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/production.rs",
-      "sha256": "f547714f094d7e0507176d022747c1ad701602d3d7e9ec92af2c38a6fb09689b"
+      "sha256": "fc7000d2e89c37d055df43b26962398b11c820bfadf5707d6b49921faa10ffeb"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/server.rs",

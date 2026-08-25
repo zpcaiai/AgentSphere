@@ -502,9 +502,7 @@ async fn load_trajectory(
             first_seen_at: row.get("started_at"),
             last_seen_at: row.get("last_seen_at"),
         },
-        agent_instance_id: AgentInstanceId(
-            row.get::<Uuid, _>("agent_instance_id").to_string(),
-        ),
+        agent_instance_id: AgentInstanceId(row.get::<Uuid, _>("agent_instance_id").to_string()),
         revocation_epoch: u64::try_from(row.get::<i64, _>("revocation_epoch"))
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?,
         status: row.get("status"),
@@ -3324,8 +3322,8 @@ fn parse_tenant(tenant: &TenantId) -> Result<Uuid, RuntimeAnomalyAuthorityError>
 }
 
 fn parse_uuid(value: &str) -> Result<Uuid, RuntimeAnomalyAuthorityError> {
-    let parsed = Uuid::parse_str(value)
-        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
+    let parsed =
+        Uuid::parse_str(value).map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
     if parsed.is_nil() || parsed.to_string() != value {
         return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
     }

@@ -602,7 +602,7 @@ impl SupplyChainRuntimePort for HttpSupplyChainRuntimePort {
     async fn ready(&self) -> bool {
         let coordinator = dependency_ready(&self.client, &self.coordinator);
         let dependencies = async {
-        for dependency in self.dependencies.iter() {
+            for dependency in self.dependencies.iter() {
                 if !dependency_ready(&self.client, dependency).await {
                     return false;
                 }
