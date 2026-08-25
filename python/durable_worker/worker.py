@@ -366,7 +366,7 @@ class TransitionHttpClient:
         self._endpoint = endpoint.rstrip("/")
         self._token = bearer_token
         self._opener = urllib_request.build_opener(
-            urllib_request.HTTPSHandler(context=context), _NoRedirectHandler()
+            urllib_request.HTTPSHandler(context=context), _no_redirect_handler()
         )
         self._timeout = timeout_seconds
         self._maximum_response_bytes = maximum_response_bytes
@@ -494,7 +494,7 @@ class ExecutionHttpClient:
         self._token = bearer_token
         self._timeout = timeout_seconds
         self._opener = urllib_request.build_opener(
-            urllib_request.HTTPSHandler(context=context), _NoRedirectHandler()
+            urllib_request.HTTPSHandler(context=context), _no_redirect_handler()
         )
 
     async def execute(self, reference: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -570,9 +570,19 @@ class ExecutionHttpClient:
         return outcome
 
 
-class _NoRedirectHandler(urllib_request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+def _no_redirect_handler() -> Any:
+    """Build the activity-side redirect guard without touching it during sandbox import."""
+
+    # Temporal imports this module inside its workflow sandbox. Defining this subclass at module
+    # scope makes Python resolve HTTPRedirectHandler's MRO while urllib.request is sandbox-proxied,
+    # which is forbidden on Python 3.14. HTTP clients are constructed only by the worker/activity
+    # side, so resolve the standard-library base lazily there while preserving urllib's documented
+    # redirect-denial contract: returning None makes the original 3xx surface as HTTPError.
+    class _NoRedirectHandler(urllib_request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    return _NoRedirectHandler()
 
 
 def _readiness_response(response: Any, expected_schema: str) -> bool:

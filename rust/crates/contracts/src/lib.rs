@@ -1399,6 +1399,7 @@ impl HumanPrincipalKeyring {
             maximum_authentication_age_seconds,
             now,
         )?;
+        let assertion_digest = assertion.assertion_digest()?;
         Ok(VerifiedHumanPrincipal {
             tenant_id: assertion.tenant_id,
             subject: assertion.subject,
@@ -1413,7 +1414,7 @@ impl HumanPrincipalKeyring {
             service_subject: assertion.service_subject,
             scope: assertion.scope,
             jti: assertion.jti,
-            assertion_digest: assertion.assertion_digest()?,
+            assertion_digest,
             expires_at: assertion.expires_at,
         })
     }

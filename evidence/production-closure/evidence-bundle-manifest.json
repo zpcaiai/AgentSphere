@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T17:24:18Z",
+  "generated_at": "2026-08-25T17:30:17Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -764,6 +764,14 @@
       "sha256": "5955c24991826cae3436b3ee43cb99fb1487c1f0910499abd30b00933fc1415f"
     },
     {
+      "path": "python/durable_worker/tests/test_worker.py",
+      "sha256": "12beebc4047a8ded17286134b8407e2db15fc0b0199c4ee1ced109ad472628d4"
+    },
+    {
+      "path": "python/durable_worker/worker.py",
+      "sha256": "707f41699f6f4ead6c7b992ff1e344b8c9b0b53892359b31866ea82ccde4ab63"
+    },
+    {
       "path": "python/platform_sre/http_load_gate.py",
       "sha256": "ca2dec18188c0e9b208c55fede81cb278aa45051e6cfd29f6c4422e3ff97bfcd"
     },
@@ -837,7 +845,7 @@
     },
     {
       "path": "rust/crates/contracts/src/lib.rs",
-      "sha256": "95c8d36d6947e22b0497635efd1b87008d35b36f196237ecfaf057ff98819067"
+      "sha256": "4f1d952b722d54d0471fb8e575d06663818f09b1ff3982a6c43b0898b56b4c70"
     },
     {
       "path": "rust/crates/data-governance/src/server.rs",
@@ -1065,7 +1073,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "672047408234c16e4d1bc8c8235b48b5f8be7206ad90367a1816514faaf15439"
+      "sha256": "fb06b2859c3da8b486b45ea5831123b59afa88dc96dc7cfdb3829cb42293f078"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",

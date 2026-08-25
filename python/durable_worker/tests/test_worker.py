@@ -5,6 +5,7 @@ import tempfile
 from datetime import datetime, timezone
 import unittest
 import uuid
+from urllib import request as urllib_request
 
 from python.durable_worker.worker import (
     AuthoritativeTransitionActivities,
@@ -14,6 +15,7 @@ from python.durable_worker.worker import (
     TaskCommand,
     TaskWorkflow,
     TransitionRejected,
+    _no_redirect_handler,
     _secure_file,
     command_fingerprint,
     command_payload_digest,
@@ -55,6 +57,19 @@ class DurableWorkerTests(unittest.TestCase):
             TransitionHttpClient("http://localhost/transition", "token")
         with self.assertRaisesRegex(ValueError, "TRANSITION_CLIENT_CONFIG_INVALID"):
             TransitionHttpClient("https://control.example/transition", "")
+
+    def test_http_clients_do_not_follow_redirects(self) -> None:
+        request = urllib_request.Request("https://control.example/v1/transitions/apply")
+        self.assertIsNone(
+            _no_redirect_handler().redirect_request(
+                request,
+                None,
+                307,
+                "Temporary Redirect",
+                {},
+                "https://untrusted.example/v1/transitions/apply",
+            )
+        )
 
     def test_activity_boundary_is_concrete(self) -> None:
         class Client:

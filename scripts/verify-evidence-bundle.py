@@ -342,6 +342,8 @@ def main() -> int:
         "config/production-runtime/conditions.json",
         "requirements-ci.txt",
         "python/durable_worker/requirements.production.txt",
+        "python/durable_worker/worker.py",
+        "python/durable_worker/tests/test_worker.py",
         "migrations/manifest.txt",
         "scripts/run-production-migrations.sh",
         "scripts/validate-production-migrations.py",
