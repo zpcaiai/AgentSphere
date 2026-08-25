@@ -204,7 +204,10 @@ pub fn router(
         .route("/v1/enterprise/actions", post(submit_action))
         .route("/v1/enterprise/mutations", post(execute_mutation))
         .layer(DefaultBodyLimit::max(262_144))
-        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(30),
+        ))
         .with_state(state)
 }
 

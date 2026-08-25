@@ -199,7 +199,10 @@ pub fn router(authority: SupplyChainAuthority, tokens: Arc<SupplyTokenAuthorizer
         )
         .route("/v1/supply-chain/recoveries/{tenant_id}", post(recover))
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(Duration::from_secs(60)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(60),
+        ))
         .with_state(ServerState { authority, tokens })
 }
 
@@ -599,7 +602,7 @@ impl SupplyChainRuntimePort for HttpSupplyChainRuntimePort {
     async fn ready(&self) -> bool {
         let coordinator = dependency_ready(&self.client, &self.coordinator);
         let dependencies = async {
-            for dependency in self.dependencies.iter() {
+        for dependency in self.dependencies.iter() {
                 if !dependency_ready(&self.client, dependency).await {
                     return false;
                 }

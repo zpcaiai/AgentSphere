@@ -184,24 +184,21 @@ impl IdentityResponseProtector {
             .map_err(|_| IdentityError::ResponseProtectionInvalid)?;
         let mut plaintext = Zeroizing::new(ciphertext.to_vec());
         let aad = idempotency_aad(request_digest);
-        let parsed = {
-            let opened = self
-                .keys
-                .get(key_id)
-                .ok_or(IdentityError::ResponseProtectionInvalid)?
-                .open_in_place(
-                    Nonce::assume_unique_for_key(nonce),
-                    Aad::from(aad.as_bytes()),
-                    &mut *plaintext,
-                )
-                .map_err(|_| IdentityError::ResponseProtectionInvalid)?;
-            if sha256(opened) != expected_digest {
-                Err(IdentityError::ResponseProtectionInvalid)
-            } else {
-                serde_json::from_slice(opened).map_err(|_| IdentityError::ResponseProtectionInvalid)
-            }
-        };
-        parsed
+        let opened = self
+            .keys
+            .get(key_id)
+            .ok_or(IdentityError::ResponseProtectionInvalid)?
+            .open_in_place(
+                Nonce::assume_unique_for_key(nonce),
+                Aad::from(aad.as_bytes()),
+                &mut plaintext,
+            )
+            .map_err(|_| IdentityError::ResponseProtectionInvalid)?;
+        if sha256(opened) != expected_digest {
+            Err(IdentityError::ResponseProtectionInvalid)
+        } else {
+            serde_json::from_slice(opened).map_err(|_| IdentityError::ResponseProtectionInvalid)
+        }
     }
 }
 
@@ -815,6 +812,7 @@ impl PostgresCredentialAuthority {
         Ok(receipt)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn set_task_state(
         &self,
         tenant: &TenantId,
@@ -956,6 +954,7 @@ impl PostgresCredentialAuthority {
         Ok(receipt)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn revoke_agent_or_tenant(
         &self,
         tenant: &TenantId,
@@ -1612,6 +1611,7 @@ async fn insert_revocation(
     Ok(result.rows_affected() == 1)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn append_event(
     transaction: &mut Transaction<'_, Postgres>,
     tenant_uuid: Uuid,
@@ -1709,6 +1709,7 @@ async fn advisory_lock(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn lifecycle_receipt(
     operation: &str,
     subject_kind: &str,

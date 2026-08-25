@@ -315,7 +315,10 @@ pub async fn serve(
         .route("/ready", get(data_ready))
         .with_state(state)
         .layer(DefaultBodyLimit::max(config.maximum_request_bytes))
-        .layer(TimeoutLayer::new(Duration::from_secs(45)));
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(45),
+        ));
     let management = Router::new()
         .route("/ready", get(management_ready))
         .with_state(ReadinessState {

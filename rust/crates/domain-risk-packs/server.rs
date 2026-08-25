@@ -543,7 +543,10 @@ pub fn router(
         )
         .route("/v1/domain-runtime/recoveries/{tenant_id}", post(recover))
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(Duration::from_secs(60)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(60),
+        ))
         .with_state(ApiState {
             authority,
             tokens,

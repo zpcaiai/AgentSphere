@@ -214,7 +214,10 @@ pub fn router(
         .route("/v1/packs/executions", post(execute_mutation))
         .route("/v1/authoritative/packs", get(authoritative_packs))
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(Duration::from_secs(30)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(30),
+        ))
         .with_state(ServerState {
             ingress,
             executor,

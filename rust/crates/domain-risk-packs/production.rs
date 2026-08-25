@@ -311,7 +311,7 @@ impl ProductionDomainPackContract {
         if manifest.pack_id != domain.pack_id()
             || manifest.version != expected.version
             || manifest.publisher_identity != expected.publisher_identity
-            || manifest.permissions.secret_scopes.len() > 0
+            || !manifest.permissions.secret_scopes.is_empty()
             || manifest.permissions.network_destinations
                 != expected.permissions.network_destinations
             || manifest.permissions.data_classes != expected.permissions.data_classes
@@ -1145,7 +1145,7 @@ fn valid_region(value: &str) -> bool {
         })
 }
 fn postgres_timestamp(value: &DateTime<Utc>) -> bool {
-    value.timestamp_subsec_nanos() % 1_000 == 0
+    value.timestamp_subsec_nanos().is_multiple_of(1_000)
 }
 fn idempotency(value: &str) -> bool {
     (16..=256).contains(&value.len())

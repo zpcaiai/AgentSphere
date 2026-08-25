@@ -705,9 +705,12 @@ fn canonical_digest<T: Serialize + ?Sized>(
 }
 
 fn parse_uuid(value: &str) -> Result<Uuid, RuntimeAnomalyAuthorityError> {
-    Uuid::parse_str(value)
-        .filter(|parsed| !parsed.is_nil() && parsed.to_string() == value)
-        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)
+    let parsed = Uuid::parse_str(value)
+        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
+    if parsed.is_nil() || parsed.to_string() != value {
+        return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
+    }
+    Ok(parsed)
 }
 
 fn digest(value: &str) -> bool {

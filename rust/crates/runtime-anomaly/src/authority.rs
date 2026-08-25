@@ -28,7 +28,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::{BTreeMap, BTreeSet};
@@ -502,6 +502,9 @@ async fn load_trajectory(
             first_seen_at: row.get("started_at"),
             last_seen_at: row.get("last_seen_at"),
         },
+        agent_instance_id: AgentInstanceId(
+            row.get::<Uuid, _>("agent_instance_id").to_string(),
+        ),
         revocation_epoch: u64::try_from(row.get::<i64, _>("revocation_epoch"))
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?,
         status: row.get("status"),
@@ -1305,6 +1308,7 @@ struct SourceRecord {
 #[derive(Debug)]
 struct TrajectoryRecord {
     state: TrajectoryState,
+    agent_instance_id: AgentInstanceId,
     revocation_epoch: u64,
     status: String,
     resource_version: u64,
@@ -1334,7 +1338,7 @@ impl PostgresRuntimeAnomalyStore {
         let source = load_source(&mut tx, tenant_uuid, &envelope.source_id).await?;
         verify_source_and_signature(&source, workload_identity, envelope, &payload_digest)?;
         let mut trajectory = load_trajectory(&mut tx, tenant_uuid, task_uuid).await?;
-        if trajectory.state.agent_instance_id != envelope.signal.agent_instance_id
+        if trajectory.agent_instance_id != envelope.signal.agent_instance_id
             || !matches!(
                 trajectory.status.as_str(),
                 "ACTIVE" | "APPROVAL_REQUIRED" | "PAUSED"
@@ -3320,9 +3324,12 @@ fn parse_tenant(tenant: &TenantId) -> Result<Uuid, RuntimeAnomalyAuthorityError>
 }
 
 fn parse_uuid(value: &str) -> Result<Uuid, RuntimeAnomalyAuthorityError> {
-    Uuid::parse_str(value)
-        .filter(|parsed| !parsed.is_nil() && parsed.to_string() == value)
-        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)
+    let parsed = Uuid::parse_str(value)
+        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
+    if parsed.is_nil() || parsed.to_string() != value {
+        return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
+    }
+    Ok(parsed)
 }
 
 fn canonical_uuid(value: &str) -> bool {

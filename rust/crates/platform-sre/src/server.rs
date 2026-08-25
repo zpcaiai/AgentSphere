@@ -223,7 +223,10 @@ pub fn router(
             get(authoritative_resources),
         )
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(Duration::from_secs(45)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(45),
+        ))
         .with_state(ServerState {
             ingress,
             executor,

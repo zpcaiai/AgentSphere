@@ -207,7 +207,10 @@ pub fn data_router(
             get(authoritative_campaign),
         )
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(Duration::from_secs(45)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(45),
+        ))
         .layer(ConcurrencyLimitLayer::new(maximum_concurrency))
         .with_state(DataState {
             ingress,
@@ -224,7 +227,10 @@ pub fn management_router(
         .route("/live", get(management_live))
         .route("/ready", get(management_ready))
         .layer(DefaultBodyLimit::max(4_096))
-        .layer(TimeoutLayer::new(Duration::from_secs(5)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(5),
+        ))
         .layer(ConcurrencyLimitLayer::new(32))
         .with_state(ManagementState { ingress, executor })
 }

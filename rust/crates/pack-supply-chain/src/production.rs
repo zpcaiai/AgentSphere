@@ -379,7 +379,9 @@ impl SupplyReceiptKeyring {
 
 impl SupplyExecutionRequest {
     fn binding_action_hash(&self) -> Result<String, SupplyAuthorityError> {
-        action_hash(&self.canonical_action).map_err(|_| SupplyAuthorityError::RequestInvalid)
+        action_hash(&self.canonical_action)
+            .map(|hash| hash.0)
+            .map_err(|_| SupplyAuthorityError::RequestInvalid)
     }
 
     pub fn validate(&self, now: DateTime<Utc>) -> Result<String, SupplyAuthorityError> {

@@ -158,7 +158,10 @@ where
             post(execute::<M, R, A, P, T, E, L>),
         )
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(90)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(90),
+        ))
         .with_state(state);
     let management_listener = tokio::net::TcpListener::bind(config.management_address)
         .await

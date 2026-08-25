@@ -293,7 +293,10 @@ pub async fn serve(
         .with_state(management_state);
     let data = approval_router(state)
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)));
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(30),
+        ));
     let management_listener = tokio::net::TcpListener::bind(config.management_address)
         .await
         .map_err(|_| ApprovalError::ConfigurationInvalid)?;
