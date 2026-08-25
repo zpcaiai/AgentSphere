@@ -980,7 +980,7 @@ impl PostgresEvidenceStore {
             .map(|value| {
                 serde_json::from_value(value).map_err(|_| EvidenceError::PersistenceUnavailable)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<SignedEvidenceEvent>, _>>()?;
         for event in &events {
             event.verify(self.verification_key(&event.key_id)?)?;
         }

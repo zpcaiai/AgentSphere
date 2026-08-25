@@ -26,6 +26,7 @@ export type PolicyActionReceipt = Schemas["PolicyActionReceipt"];
 export type PolicySummary = Schemas["PolicySummary"];
 export type PolicyPage = Schemas["PolicyPage"];
 export type PolicyArtifact = Schemas["PolicyArtifact"];
+export type PolicyReview = Schemas["PolicyReview"];
 export type PolicyArtifactPage = Schemas["PolicyArtifactPage"];
 export type PolicyArtifactType = PolicyArtifactPage["artifact_type"];
 export type Incident = Schemas["Incident"];

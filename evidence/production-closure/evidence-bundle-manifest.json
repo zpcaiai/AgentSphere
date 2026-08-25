@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T18:29:40Z",
+  "generated_at": "2026-08-25T18:38:34Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -928,6 +928,18 @@
       "sha256": "40e3fdaa015d778404dc56d8de0c502baeedcdee08c0277a4b95b7b53c14d6f1"
     },
     {
+      "path": "rust/crates/evidence-evaluator/src/lib.rs",
+      "sha256": "823d2ea318c30f9739d0f177c3f111580f285bb611df09ecdcd442001ffd7da5"
+    },
+    {
+      "path": "rust/crates/evidence-evaluator/src/postgres.rs",
+      "sha256": "5b742d3dc3dc4085a4fed408693e8d4bb2576366ce68cbd2cfc2d0cb807ab47a"
+    },
+    {
+      "path": "rust/crates/evidence-evaluator/src/server.rs",
+      "sha256": "d91630571fedec8f49e24fe32ab263ad7c2feff6eacae9f17bef7f6bc933e81e"
+    },
+    {
       "path": "rust/crates/identity/Cargo.toml",
       "sha256": "94ce16157c9cc54b7fffc1d38324c57a6ff0746b883d7d064681027bd500033b"
     },
@@ -1129,7 +1141,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "d6a54338badc297f541ea04bab28a2001ab5b6b46e67b328f24e33b5714501fd"
+      "sha256": "2fb5559bdcfeeece71a00aa311abd3882749918979614e3f5ca85be62b0b7a4c"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",
@@ -1141,7 +1153,7 @@
     },
     {
       "path": "web/approval-console/src/approval-state.test.ts",
-      "sha256": "cb044444a7ffdb3d5c11857b1a05078acfd6e3183f3df52a3c505fb98b290fc1"
+      "sha256": "5fa807483043b0d93eca8999d9ce954524d4b9eb8db33c56961e0ff0ece1ddb4"
     },
     {
       "path": "web/approval-console/src/approval-state.ts",
@@ -1185,11 +1197,11 @@
     },
     {
       "path": "web/control-console/src/components/PolicyStudio.vue",
-      "sha256": "9ccc5eea5fc84599afbf446146e4a721b7338e24972e9284b35d4fa7efcba423"
+      "sha256": "5fe062b620e1c162160f077d51992f476eea6d3bf4388f27ef0e4dfa3fb1d75c"
     },
     {
       "path": "web/control-console/src/enterprise-api-types.ts",
-      "sha256": "ac4fce696312d77d1ea87a49eace762c1ab869dac84ef6fcc9be1c78374261ea"
+      "sha256": "e77fd857f40340eea07b24dce79611e296097e92b0cf394967267eeae03faa1b"
     },
     {
       "path": "web/control-console/src/generated/control-plane-v1.d.ts",
@@ -1197,7 +1209,7 @@
     },
     {
       "path": "web/control-console/tsconfig.json",
-      "sha256": "60fe3cbd36cef8dfc37b59b4123db7e645eff77b88a4febd1a6a0cf9d14e669e"
+      "sha256": "d452b13aac963eca33c6977f26aa54daf679d3796cb9d754d3846dd4bc664dfa"
     },
     {
       "path": "web/control-console/vite.config.ts",

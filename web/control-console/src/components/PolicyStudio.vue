@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { isRecord, isUuid, sha256Canonical } from "../control-state";
 import type {
   PolicyAction, PolicyArtifact, PolicyArtifactPage, PolicyArtifactType, PolicyCommand, PolicyOperation,
-  PolicyPage, PolicyRule, PolicyActionReceipt,
+  PolicyPage, PolicyReview, PolicyRule, PolicyActionReceipt,
 } from "../enterprise-api-types";
 
 const props = withDefaults(defineProps<{
@@ -187,8 +187,7 @@ function requireDigest(value: string): string {
   if (!/^[a-f0-9]{64}$/.test(value)) throw new Error("CONTROL_POLICY_DIGEST_INVALID");
   return value;
 }
-type PolicyReviewArtifact = Extract<PolicyArtifact, { reviewer_subject: string }>;
-function isPolicyReview(value: PolicyArtifact): value is PolicyReviewArtifact {
+function isPolicyReview(value: unknown): value is PolicyReview {
   if (!isRecord(value)) return false;
   const fields = new Set(["review_id", "revision", "reviewer_subject", "decision", "review_digest", "reviewed_at"]);
   const keys = Object.keys(value);

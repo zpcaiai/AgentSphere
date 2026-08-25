@@ -5,8 +5,8 @@ pub mod postgres;
 pub mod server;
 
 use agent_trust_contracts::{
-    ActionHash, ArtifactRef, ContractError, EvaluationResult, EvaluationStatus, ExecutionId,
-    IdempotencyKey, SchemaVersion, StepId, TaskId, TenantId,
+    ArtifactRef, ContractError, EvaluationResult, EvaluationStatus, IdempotencyKey, SchemaVersion,
+    TaskId, TenantId,
 };
 pub use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
@@ -842,6 +842,7 @@ impl From<ContractError> for EvidenceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent_trust_contracts::{ActionHash, ExecutionId, StepId};
 
     fn draft(
         task_id: TaskId,
