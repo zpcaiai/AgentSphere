@@ -2666,7 +2666,7 @@ fn validate_effect(
         required.insert("VECTOR_INDEX");
     }
     if !required.is_subset(&adapters)
-        || receipt.quarantine != !receipt.poisoning_findings.is_empty()
+        || receipt.quarantine == receipt.poisoning_findings.is_empty()
         || receipt.quarantine && receipt.index_ref.is_some()
         || !receipt.quarantine
             && matches!(

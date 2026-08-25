@@ -2047,8 +2047,8 @@ pub fn is_public_target_ip(ip: std::net::IpAddr) -> bool {
                 && !ip.is_unique_local()
                 && !ip.is_unicast_link_local()
                 && !ip.is_multicast()
-                && !(ip.segments()[0] & 0xffc0 == 0xfec0)
-                && !(ip.segments()[0] == 0x2001 && ip.segments()[1] == 0x0db8)
+                && (ip.segments()[0] & 0xffc0) != 0xfec0
+                && (ip.segments()[0] != 0x2001 || ip.segments()[1] != 0x0db8)
                 && (!embedded_v4
                     || public_ipv4(std::net::Ipv4Addr::new(
                         octets[12], octets[13], octets[14], octets[15],
