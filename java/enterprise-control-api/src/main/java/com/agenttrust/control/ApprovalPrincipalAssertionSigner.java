@@ -105,7 +105,8 @@ public final class ApprovalPrincipalAssertionSigner {
                 throw new IllegalStateException("CONTROL_APPROVAL_ASSERTION_INVALID");
             }
             String header = Base64.getUrlEncoder().withoutPadding().encodeToString(document);
-            return new SignedHeader(header, requestDigest, canonical.digest(assertion));
+            return new SignedHeader(header, requestDigest, canonical.digest(assertion),
+                assertion.get("jti").toString());
         } catch (JsonProcessingException error) {
             throw new IllegalStateException("CONTROL_APPROVAL_ASSERTION_INVALID", error);
         }
@@ -273,5 +274,6 @@ public final class ApprovalPrincipalAssertionSigner {
         return false;
     }
 
-    public record SignedHeader(String headerValue, String requestDigest, String assertionDigest) {}
+    public record SignedHeader(String headerValue, String requestDigest, String assertionDigest,
+                               String jti) {}
 }

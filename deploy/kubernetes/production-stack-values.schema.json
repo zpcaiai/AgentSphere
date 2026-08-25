@@ -304,9 +304,9 @@
     },
     "approvalAuthority": {
       "type": "object", "additionalProperties": false,
-      "required": ["client_identities", "issuer", "key_id", "principal_audience", "principal_issuer", "principal_key_id", "principal_signing_key_format", "service_subject", "assertion_ttl_seconds", "accepted_strong_auth_acrs", "maximum_authentication_age_seconds"],
+      "required": ["client_identities", "evidence_source_identity", "issuer", "key_id", "principal_audience", "principal_issuer", "principal_key_id", "principal_signing_key_format", "service_subject", "assertion_ttl_seconds", "accepted_strong_auth_acrs", "maximum_authentication_age_seconds"],
       "properties": {
-        "client_identities": {"$ref": "#/$defs/clientIdentities"}, "issuer": {"$ref": "#/$defs/identifier"}, "key_id": {"$ref": "#/$defs/shortIdentifier"},
+        "client_identities": {"$ref": "#/$defs/clientIdentities"}, "evidence_source_identity": {"$ref": "#/$defs/clientIdentity"}, "issuer": {"$ref": "#/$defs/identifier"}, "key_id": {"$ref": "#/$defs/shortIdentifier"},
         "principal_audience": {"$ref": "#/$defs/identifier"}, "principal_issuer": {"$ref": "#/$defs/identifier"}, "principal_key_id": {"$ref": "#/$defs/shortIdentifier"},
         "principal_signing_key_format": {"enum": ["RAW_BASE64URL", "PKCS8_PEM"]}, "service_subject": {"$ref": "#/$defs/identifier"},
         "assertion_ttl_seconds": {"type": "integer", "minimum": 1, "maximum": 300},

@@ -10,6 +10,7 @@ import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -149,9 +150,46 @@ public final class AdminModels {
         @JsonProperty("schema_version") @NotBlank String schemaVersion,
         @NotNull UUID caseId,
         @NotBlank @Pattern(regexp = "^(APPROVE|REJECT)$") String decision,
-        @NotBlank @Size(max = 2000) String reason,
+        @NotBlank String reason,
         @NotBlank @Pattern(regexp = "^[a-f0-9]{64}$") String observedActionHash,
-        @NotBlank @Size(max = 512) String observedResourceVersion) {}
+        @NotBlank String observedResourceVersion) {
+        public ApprovalIntent {
+            if (reason != null
+                && (reason.codePointCount(0, reason.length()) > 2_000
+                    || reason.indexOf('\0') >= 0
+                    || reason.getBytes(StandardCharsets.UTF_8).length > 4_096)) {
+                throw new IllegalArgumentException("CONTROL_APPROVAL_REASON_TOO_LARGE");
+            }
+            if (observedResourceVersion != null
+                && (observedResourceVersion.codePointCount(
+                    0, observedResourceVersion.length()) > 512
+                    || observedResourceVersion.indexOf('\0') >= 0
+                    || observedResourceVersion.indexOf('\r') >= 0
+                    || observedResourceVersion.indexOf('\n') >= 0)) {
+                throw new IllegalArgumentException(
+                    "CONTROL_APPROVAL_RESOURCE_VERSION_INVALID");
+            }
+        }
+    }
+
+    /**
+     * Browser-safe projection of one independently signed Approval authority decision receipt.
+     * The principal assertion, human reason and mutable full Approval case deliberately remain
+     * server-side.
+     */
+    public record ApprovalIntentReceipt(
+        @JsonProperty("schema_version") String schemaVersion,
+        @JsonProperty("tenant_id") UUID tenantId,
+        @JsonProperty("case_id") UUID caseId,
+        String decision,
+        @JsonProperty("action_hash") String actionHash,
+        @JsonProperty("resource_version") String resourceVersion,
+        @JsonProperty("case_status") String caseStatus,
+        @JsonProperty("decided_at") Instant decidedAt,
+        @JsonProperty("evidence_ref") String evidenceRef,
+        @JsonProperty("evidence_digest") String evidenceDigest,
+        @JsonProperty("authority_issuer") String authorityIssuer,
+        @JsonProperty("authority_key_id") String authorityKeyId) {}
 
     public record AdminIntent(@JsonProperty("schema_version") @NotBlank String schemaVersion,
                               @NotNull UUID actionId,
@@ -174,7 +212,9 @@ public final class AdminModels {
         public boolean allowed() {
             return "ALLOW".equals(decision)
                 && policyDigest != null && policyDigest.matches("[a-f0-9]{64}")
-                && evidenceRef != null && !evidenceRef.isBlank();
+                && evidenceRef != null
+                && evidenceRef.getBytes(StandardCharsets.UTF_8).length <= 2_048
+                && evidenceRef.matches("[A-Za-z][A-Za-z0-9+.-]*:[^\\s]{1,2031}");
         }
     }
 

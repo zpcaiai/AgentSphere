@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.agenttrust.control.AdminModels.PolicyCommandRequest;
 import com.agenttrust.control.AdminModels.PrincipalContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
@@ -14,7 +15,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class PolicyAuthorityGatewayTest {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+        .registerModule(new JavaTimeModule());
     private static final CanonicalDigest CANONICAL = new CanonicalDigest(MAPPER);
     private static final UUID TENANT = UUID.fromString("11111111-1111-4111-8111-111111111111");
     private static final UUID COMMAND = UUID.fromString("22222222-2222-4222-8222-222222222222");

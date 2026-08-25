@@ -136,11 +136,14 @@ paths:
               $ref: '#/components/schemas/ApprovalDecisionEnvelope'
       responses:
         '200':
-          description: Case with the durable decision
+          description: >-
+            Exact post-decision case plus the immutable Approval-authority
+            receipt. An idempotent retry returns the first persisted result,
+            including its original principal assertion JTI and signature.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ApprovalCase'
+                $ref: '#/components/schemas/ApprovalDecisionResult'
         default:
           $ref: '#/components/responses/Error'
   /v1/approvals/cases/{case_id}/grants:
@@ -613,7 +616,13 @@ components:
         review_evidence: { $ref: '#/components/schemas/ApprovalReviewEvidence' }
         requester_subject: { type: string, minLength: 1, maxLength: 256 }
         agent_owner_subject: { type: string, minLength: 1, maxLength: 256 }
-        justification: { type: string, minLength: 1, maxLength: 4096 }
+        justification:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\u0000]*$'
+          description: Human justification encoded as at most 4096 UTF-8 bytes
+          x-agenttrust-max-utf8-bytes: 4096
         requested_ttl_seconds: { type: integer, minimum: 1, maximum: 604800 }
         requested_uses: { type: integer, const: 1 }
     ApprovalPolicy:
@@ -667,7 +676,13 @@ components:
           maxItems: 64
           items: { type: string, minLength: 1, maxLength: 256 }
         decision: { type: string, enum: [APPROVE, REJECT, POST_REVIEWED] }
-        reason: { type: string, minLength: 1, maxLength: 4096 }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\u0000]*$'
+          description: Persisted human reason encoded as at most 4096 UTF-8 bytes
+          x-agenttrust-max-utf8-bytes: 4096
         decided_at: { $ref: '#/components/schemas/DateTime' }
         strong_auth: { type: boolean, const: true }
     ApprovalCase:
@@ -697,7 +712,118 @@ components:
       properties:
         schema_version: { type: string, const: agenttrust.approval-decision.v1 }
         decision: { type: string, enum: [APPROVE, REJECT, POST_REVIEWED] }
-        reason: { type: string, minLength: 1, maxLength: 4096 }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\u0000]*$'
+          description: Human decision reason encoded as at most 4096 UTF-8 bytes
+          x-agenttrust-max-utf8-bytes: 4096
+    ApprovalDecisionResult:
+      type: object
+      additionalProperties: false
+      required: [schema_version, approval_case, evidence_receipt]
+      properties:
+        schema_version: {type: string, const: agenttrust.approval-decision-result.v1}
+        approval_case: {$ref: '#/components/schemas/ApprovalCase'}
+        evidence_receipt: {$ref: '#/components/schemas/ApprovalDecisionEvidenceReceipt'}
+    ApprovalDecisionEvidenceReceipt:
+      description: >-
+        Approval-authority Ed25519 receipt. decision_reason_digest and
+        idempotency_key_digest hash the exact accepted UTF-8/ASCII bytes.
+        request_digest hashes RFC 8785 JCS of the named
+        agenttrust.approval-decision-request-binding.v1 projection.
+        decision_digest hashes the semantic decision projection through
+        decided_at. evidence_digest hashes RFC 8785 JCS of this complete
+        receipt with only evidence_digest and signature set to empty strings;
+        signature is Ed25519 over the 64 lowercase ASCII evidence-digest bytes.
+      type: object
+      additionalProperties: false
+      required:
+        - schema_version
+        - receipt_id
+        - tenant_id
+        - case_id
+        - task_id
+        - decision
+        - decision_reason_digest
+        - request_digest
+        - decision_digest
+        - idempotency_key_digest
+        - actor_subject
+        - principal_assertion_jti
+        - principal_assertion_request_digest
+        - principal_assertion_digest
+        - approval_case_digest
+        - action_hash
+        - step_id
+        - plan_hash
+        - parameter_hash
+        - resource
+        - resource_version
+        - policy_version
+        - environment
+        - risk
+        - case_status
+        - decided_at
+        - evidence_ref
+        - evidence_digest
+        - authority_request_digest
+        - evidence_outbox_ref
+        - issuer
+        - key_id
+        - key_usage
+        - signature
+      allOf:
+        - if: {properties: {decision: {const: REJECT}}, required: [decision]}
+          then: {properties: {case_status: {const: REJECTED}}}
+        - if: {properties: {decision: {const: POST_REVIEWED}}, required: [decision]}
+          then: {properties: {case_status: {const: APPROVED}}}
+        - if: {properties: {decision: {const: APPROVE}}, required: [decision]}
+          then:
+            properties:
+              case_status: {enum: [PENDING, APPROVED, POST_REVIEW_REQUIRED]}
+      properties:
+        schema_version: {type: string, const: agenttrust.approval-decision-evidence.v1}
+        receipt_id: {$ref: '#/components/schemas/Uuid'}
+        tenant_id: {$ref: '#/components/schemas/Uuid'}
+        case_id: {$ref: '#/components/schemas/Uuid'}
+        task_id: {$ref: '#/components/schemas/Uuid'}
+        decision: {type: string, enum: [APPROVE, REJECT, POST_REVIEWED]}
+        decision_reason_digest: {$ref: '#/components/schemas/Digest'}
+        request_digest: {$ref: '#/components/schemas/Digest'}
+        decision_digest: {$ref: '#/components/schemas/Digest'}
+        idempotency_key_digest: {$ref: '#/components/schemas/Digest'}
+        actor_subject: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$'}
+        principal_assertion_jti: {$ref: '#/components/schemas/Uuid'}
+        principal_assertion_request_digest: {$ref: '#/components/schemas/Digest'}
+        principal_assertion_digest: {$ref: '#/components/schemas/Digest'}
+        approval_case_digest: {$ref: '#/components/schemas/Digest'}
+        action_hash: {$ref: '#/components/schemas/Digest'}
+        step_id: {$ref: '#/components/schemas/Uuid'}
+        plan_hash: {$ref: '#/components/schemas/Digest'}
+        parameter_hash: {$ref: '#/components/schemas/Digest'}
+        resource: {type: string, minLength: 1, maxLength: 2048}
+        resource_version: {type: string, minLength: 1, maxLength: 2048}
+        policy_version: {type: string, minLength: 1, maxLength: 2048}
+        environment: {type: string, minLength: 1, maxLength: 2048}
+        risk: {$ref: '#/components/schemas/RiskLevel'}
+        case_status: {enum: [PENDING, APPROVED, REJECTED, POST_REVIEW_REQUIRED]}
+        decided_at: {$ref: '#/components/schemas/DateTime'}
+        evidence_ref:
+          type: string
+          maxLength: 2048
+          pattern: '^urn:agenttrust:approval-decision:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        evidence_digest: {$ref: '#/components/schemas/Digest'}
+        authority_request_digest: {$ref: '#/components/schemas/Digest'}
+        evidence_outbox_ref:
+          type: string
+          maxLength: 2048
+          pattern: '^outbox://approval-decision-evidence/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/sha256:[a-f0-9]{64}$'
+        issuer: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$'}
+        key_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$'}
+        key_usage: {type: string, const: APPROVAL_DECISION_EVIDENCE}
+        signature: {type: string, pattern: '^[A-Za-z0-9_-]{86}$'}
     ApprovalGrantIssueRequest:
       type: object
       additionalProperties: false
@@ -710,7 +836,13 @@ components:
       required: [schema_version, reason]
       properties:
         schema_version: { type: string, const: agenttrust.enterprise-approval.v1 }
-        reason: { type: string, minLength: 1, maxLength: 4096 }
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 4096
+          pattern: '^[^\u0000]*$'
+          description: Human revocation reason encoded as at most 4096 UTF-8 bytes
+          x-agenttrust-max-utf8-bytes: 4096
     EnterpriseApprovalGrant:
       type: object
       additionalProperties: false

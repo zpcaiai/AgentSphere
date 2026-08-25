@@ -54,6 +54,16 @@ describe("AG-UI client", () => {
       schema_version: "agenttrust.approval-intent.v1", case_id: "20000000-0000-4000-8000-000000000001", decision: "APPROVE",
       reason: "reviewed", observed_action_hash: "a".repeat(64), observed_resource_version: "v1",
     });
+    expect(buildApprovalIntent("20000000-0000-4000-8000-000000000001", "APPROVE",
+      "😀".repeat(1_001), "a".repeat(64), "v1").reason).toBe("😀".repeat(1_001));
     expect(() => buildApprovalIntent("20000000-0000-4000-8000-000000000001", "APPROVE", "", "a".repeat(64), "v1")).toThrow();
+    expect(() => buildApprovalIntent("20000000-0000-4000-8000-000000000001", "APPROVE",
+      "界".repeat(1_366), "a".repeat(64), "v1")).toThrow("APPROVAL_INTENT_INVALID");
+    expect(() => buildApprovalIntent("20000000-0000-4000-8000-000000000001", "APPROVE",
+      "bad\0reason", "a".repeat(64), "v1")).toThrow("APPROVAL_INTENT_INVALID");
+    expect(() => buildApprovalIntent("20000000-0000-4000-8000-000000000001", "APPROVE",
+      "reviewed", "a".repeat(64), "😀".repeat(513))).toThrow("APPROVAL_INTENT_INVALID");
+    expect(() => buildApprovalIntent("20000000-0000-4000-8000-00000000000A", "APPROVE",
+      "reviewed", "a".repeat(64), "v1")).toThrow("APPROVAL_INTENT_INVALID");
   });
 });

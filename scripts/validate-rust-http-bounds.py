@@ -20,6 +20,7 @@ EXPECTED_CONSUMERS = {
     "context-governance",
     "data-governance",
     "domain-risk-packs",
+    "enterprise-approval",
     "enterprise-control",
     "evidence-evaluator",
     "incident-release-gate",

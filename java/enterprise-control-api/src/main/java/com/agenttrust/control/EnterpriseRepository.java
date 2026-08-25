@@ -2,6 +2,7 @@ package com.agenttrust.control;
 
 import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
+import com.agenttrust.control.AdminModels.AuthorizationDecision;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -65,39 +66,55 @@ public final class EnterpriseRepository {
     }
 
     public ApprovalReservation reserveApprovalIntent(UUID tenantId, String key, String digest,
-                                                       String actor, ApprovalIntent intent) {
-        int inserted = jdbc.update("INSERT INTO enterprise_approval_intents(tenant_id, idempotency_key, intent_digest, case_id, actor_subject, decision, observed_action_hash, observed_resource_version, reason_digest, status, attempts, next_attempt_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,'DISPATCHED',1,now() + interval '2 minutes',now(),now()) ON CONFLICT DO NOTHING",
+                                                       String actor, ApprovalIntent intent,
+                                                       AuthorizationDecision pepDecision) {
+        if (pepDecision == null || !pepDecision.allowed()) {
+            throw new ControlDeniedException("CONTROL_PEP_DECISION_INVALID");
+        }
+        int inserted = jdbc.update("INSERT INTO enterprise_approval_intents(tenant_id, idempotency_key, intent_digest, case_id, actor_subject, decision, observed_action_hash, observed_resource_version, reason_digest, pep_policy_digest, pep_evidence_ref, status, attempts, next_attempt_at, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'DISPATCHED',1,now() + interval '2 minutes',now(),now()) ON CONFLICT DO NOTHING",
             tenantId, key, digest, intent.caseId(), actor, intent.decision(),
-            intent.observedActionHash(), intent.observedResourceVersion(), sha256(intent.reason()));
-        ApprovalRow row = jdbc.queryForObject("SELECT intent_digest, status, evidence_ref, attempts FROM enterprise_approval_intents WHERE tenant_id=? AND idempotency_key=? FOR UPDATE",
+            intent.observedActionHash(), intent.observedResourceVersion(), sha256(intent.reason()),
+            pepDecision.policyDigest(), pepDecision.evidenceRef());
+        ApprovalRow row = jdbc.queryForObject("SELECT intent_digest, status, response_payload::text, evidence_ref, pep_policy_digest, pep_evidence_ref, attempts FROM enterprise_approval_intents WHERE tenant_id=? AND idempotency_key=? FOR UPDATE",
             (result, ignored) -> new ApprovalRow(result.getString(1), result.getString(2),
-                result.getString(3), result.getInt(4)),
+                parseJson(result.getString(3)), result.getString(4), result.getString(5),
+                result.getString(6), result.getInt(7)),
             tenantId, key);
-        if (row == null || !digest.equals(row.intentDigest()) || "FAILED".equals(row.status())) {
+        if (row == null || !digest.equals(row.intentDigest()) || "FAILED".equals(row.status())
+            || !pepDecision.policyDigest().equals(row.pepPolicyDigest())
+            || !pepDecision.evidenceRef().equals(row.pepEvidenceRef())) {
             throw new ConflictException("CONTROL_IDEMPOTENCY_CONFLICT");
         }
         if (inserted == 1) {
-            return new ApprovalReservation(true, false, 1, null);
+            return new ApprovalReservation(true, false, 1, row.pepPolicyDigest(),
+                row.pepEvidenceRef(), null, null);
         }
         if ("COMPLETED".equals(row.status())) {
-            return new ApprovalReservation(false, true, row.attempt(), row.evidenceRef());
+            return new ApprovalReservation(false, true, row.attempt(), row.pepPolicyDigest(),
+                row.pepEvidenceRef(), row.responsePayload(), row.evidenceRef());
         }
         int claimed = jdbc.update("UPDATE enterprise_approval_intents SET status='DISPATCHED', attempts=attempts+1, next_attempt_at=now() + interval '2 minutes', last_error_code=NULL, updated_at=now() WHERE tenant_id=? AND idempotency_key=? AND (status IN ('PENDING','UNKNOWN') OR (status='DISPATCHED' AND next_attempt_at <= now()))",
             tenantId, key);
         return new ApprovalReservation(claimed == 1, false,
-            claimed == 1 ? row.attempt() + 1 : row.attempt(), null);
+            claimed == 1 ? row.attempt() + 1 : row.attempt(), row.pepPolicyDigest(),
+            row.pepEvidenceRef(), null, null);
     }
 
     public void finishApprovalIntent(UUID tenantId, String key, int attempt, String status,
-                                     String evidenceRef) {
-        finishApprovalIntent(tenantId, key, attempt, status, evidenceRef, null);
+                                     Object response, String evidenceRef) {
+        finishApprovalIntent(tenantId, key, attempt, status, response, evidenceRef, null);
     }
 
     public void finishApprovalIntent(UUID tenantId, String key, int attempt, String status,
-                                     String evidenceRef, String lastErrorCode) {
+                                     Object response, String evidenceRef,
+                                     String lastErrorCode) {
+        boolean completed = "COMPLETED".equals(status);
         if (!Set.of("COMPLETED", "UNKNOWN", "FAILED").contains(status)
-            || jdbc.update("UPDATE enterprise_approval_intents SET status=?, evidence_ref=?, last_error_code=?, next_attempt_at=CASE WHEN ?='UNKNOWN' THEN now() ELSE NULL END, updated_at=now() WHERE tenant_id=? AND idempotency_key=? AND status='DISPATCHED' AND attempts=?",
-                status, evidenceRef, lastErrorCode, status, tenantId, key, attempt) != 1) {
+            || completed != (response != null && evidenceRef != null && !evidenceRef.isBlank())
+            || !completed && evidenceRef != null
+            || jdbc.update("UPDATE enterprise_approval_intents SET status=?, response_payload=CAST(? AS jsonb), evidence_ref=?, last_error_code=?, next_attempt_at=CASE WHEN ?='UNKNOWN' THEN now() ELSE NULL END, updated_at=now() WHERE tenant_id=? AND idempotency_key=? AND status='DISPATCHED' AND attempts=?",
+                status, response == null ? null : json(response), evidenceRef, lastErrorCode,
+                status, tenantId, key, attempt) != 1) {
             throw new ConflictException("CONTROL_APPROVAL_INTENT_STATE_CONFLICT");
         }
     }
@@ -121,10 +138,13 @@ public final class EnterpriseRepository {
     public record RemoteReservation(boolean created, boolean dispatch, boolean completed,
                                     int attempt, JsonNode responsePayload, String evidenceRef) {}
     public record ApprovalReservation(boolean dispatch, boolean completed, int attempt,
-                                      String evidenceRef) {}
+                                      String pepPolicyDigest, String pepEvidenceRef,
+                                      JsonNode responsePayload, String evidenceRef) {}
     private record RemoteActionRow(String requestDigest, String status, JsonNode responsePayload,
                                    String evidenceRef, int attempt) {}
-    private record ApprovalRow(String intentDigest, String status, String evidenceRef, int attempt) {}
+    private record ApprovalRow(String intentDigest, String status, JsonNode responsePayload,
+                               String evidenceRef, String pepPolicyDigest, String pepEvidenceRef,
+                               int attempt) {}
 
     private static String sha256(String value) {
         try {

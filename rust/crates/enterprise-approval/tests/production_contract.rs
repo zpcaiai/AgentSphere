@@ -27,7 +27,18 @@ const MIGRATION: &str =
 const REVIEW_EVIDENCE_MIGRATION: &str = include_str!(
     "../../../../migrations/enterprise-approval/0036_01_25_approval_review_evidence_v2.sql"
 );
+const DECISION_EVIDENCE_MIGRATION: &str = include_str!(
+    "../../../../migrations/enterprise-approval/0036_01_26_approval_decision_evidence.sql"
+);
 const OPENAPI: &str = include_str!("../../../../schemas/openapi/approval-v1.yaml");
+const DECISION_EVIDENCE_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/decision-evidence.schema.json");
+const DECISION_RESULT_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/decision-result.schema.json");
+const DECISION_KEYRING_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/decision-evidence-keyring.schema.json");
+const DECISION_REQUEST_BINDING_SCHEMA: &str =
+    include_str!("../../../../schemas/approval/decision-request-binding.schema.json");
 const TOKEN_BINDINGS_SCHEMA: &str =
     include_str!("../../../../schemas/approval/token-bindings.schema.json");
 const PRINCIPAL_ASSERTION_SCHEMA: &str =
@@ -43,6 +54,7 @@ const APPROVAL_SERVER: &str = include_str!("../src/server.rs");
 const APPROVAL_STORE: &str = include_str!("../src/postgres.rs");
 const APPROVAL_PRINCIPAL_SOURCE: &str = include_str!("../src/principal.rs");
 const APPROVAL_REVIEW_EVIDENCE_SOURCE: &str = include_str!("../src/review_evidence.rs");
+const APPROVAL_EVIDENCE_DELIVERY_SOURCE: &str = include_str!("../src/evidence_delivery.rs");
 const APPROVAL_BINARY: &str = include_str!("../src/bin/agenttrust-approval-service.rs");
 
 #[test]
@@ -327,6 +339,147 @@ fn authoritative_review_facts_are_signed_exact_and_migrated_atomically() {
         APPROVAL_STORE.contains("review_evidence_covers"),
         "readiness must require active review-evidence key coverage"
     );
+}
+
+#[test]
+fn approval_decisions_commit_an_immutable_signed_receipt_and_outbox_atomically() {
+    assert_eq!(OPENAPI.matches("x-agenttrust-max-utf8-bytes: 4096").count(), 4);
+    assert!(DECISION_REQUEST_BINDING_SCHEMA.contains(
+        "\"x-agenttrust-max-utf8-bytes\": 4096"
+    ));
+    assert!(APPROVAL_STORE.contains("!valid_approval_human_text(&envelope.reason)"));
+    for invariant in [
+        "agenttrust.approval-decision-result.v1",
+        "agenttrust.approval-decision-evidence.v1",
+        "principal_assertion_request_digest",
+        "approval_case_digest",
+        "authority_request_digest",
+        "evidence_outbox_ref",
+        "APPROVAL_DECISION_EVIDENCE",
+    ] {
+        assert!(OPENAPI.contains(invariant), "missing OpenAPI {invariant}");
+        assert!(
+            DECISION_EVIDENCE_SCHEMA.contains(invariant)
+                || DECISION_RESULT_SCHEMA.contains(invariant),
+            "missing JSON Schema {invariant}"
+        );
+    }
+    assert!(OPENAPI.contains("$ref: '#/components/schemas/ApprovalDecisionResult'"));
+    assert!(DECISION_EVIDENCE_SCHEMA.contains(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    ));
+    assert!(!DECISION_EVIDENCE_SCHEMA.contains("[1-5][0-9a-f]{3}"));
+
+    for invariant in [
+        "approval_decision_evidence_receipts",
+        "approval_decision_evidence_outbox",
+        "CREATE CONSTRAINT TRIGGER approval_decision_requires_evidence",
+        "DEFERRABLE INITIALLY DEFERRED",
+        "FORCE ROW LEVEL SECURITY",
+        "lease_owner",
+        "signed_authority_receipt ?& ARRAY[",
+        "signed_authority_receipt - ARRAY[",
+        "IS DISTINCT FROM",
+    ] {
+        assert!(
+            DECISION_EVIDENCE_MIGRATION.contains(invariant),
+            "missing decision migration invariant {invariant}"
+        );
+    }
+    assert!(!DECISION_EVIDENCE_MIGRATION.contains("jsonb_object_length"));
+    assert!(APPROVAL_STORE.contains("FOR UPDATE SKIP LOCKED"));
+    assert!(APPROVAL_STORE.contains(".bind(&receipt.decision_digest)"));
+}
+
+#[test]
+fn decision_receipt_rotation_and_delivery_are_real_fail_closed_runtime_paths() {
+    for invariant in [
+        "agenttrust.approval-decision-evidence-keyring.v1",
+        "ACTIVE",
+        "VERIFY_ONLY",
+        "Ed25519",
+        "half-open interval [not_before, expires_at)",
+    ] {
+        assert!(
+            DECISION_KEYRING_SCHEMA.contains(invariant),
+            "missing decision keyring invariant {invariant}"
+        );
+    }
+    for variable in [
+        "AGENT_TRUST_APPROVAL_DECISION_EVIDENCE_KEYRING_FILE",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_RECEIPT_KEYRING_FILE",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_SOURCE_IDENTITY",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_ENDPOINT",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN_FILE",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_CA_FILE",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_CERTIFICATE_FILE",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_PRIVATE_KEY_FILE",
+        "AGENT_TRUST_APPROVAL_EVIDENCE_READINESS_SCHEMA",
+    ] {
+        assert!(APPROVAL_BINARY.contains(variable), "missing startup {variable}");
+    }
+    assert!(APPROVAL_BINARY.contains(
+        "ApprovalApiState::production(store.clone(), authorizer, principal_keyring)"
+    ));
+    assert!(!APPROVAL_BINARY.contains(
+        "decision_evidence_outbox_ready(&delivery_tenants"
+    ));
+    assert!(APPROVAL_BINARY.contains("validate_certificate_identity_file("));
+    for invariant in [
+        "delivery_evidence_keyring",
+        "covers_source_tenant_at",
+        "verify_authority_delivery",
+        "claim_decision_evidence(tenant, worker_id, 1",
+        "start_index = (start_index + 1) % tenants.len()",
+        "OUTCOME_UNKNOWN",
+        "decision_evidence_outbox_ready",
+        "last_error_code IN ('CONFIGURATION_INVALID','RECEIPT_INVALID')",
+        "agenttrust.approval-evidence-delivery-alert.v1",
+        "MARK_DELIVERED_FAILED",
+        "RELEASE_RETRY_FAILED",
+        "BATCH_FAILED",
+    ] {
+        assert!(
+            APPROVAL_STORE.contains(invariant)
+                || APPROVAL_REVIEW_EVIDENCE_SOURCE.contains(invariant)
+                || APPROVAL_EVIDENCE_DELIVERY_SOURCE.contains(invariant),
+            "missing delivery invariant {invariant}"
+        );
+    }
+    assert!(!APPROVAL_STORE.contains(".await\n                .unwrap_or(0)"));
+    for invariant in [
+        ".min_tls_version(reqwest::tls::Version::TLS_1_3)",
+        ".tls_built_in_root_certs(false)",
+        ".redirect(Policy::none())",
+        "x-agenttrust-authority-event-id",
+        "x-agenttrust-payload-digest",
+        "database_ready",
+        "worm_ready",
+        "canonical_ed25519_signature",
+    ] {
+        assert!(
+            APPROVAL_EVIDENCE_DELIVERY_SOURCE.contains(invariant),
+            "missing publisher invariant {invariant}"
+        );
+    }
+    for column in [
+        "delivery_attempts",
+        "next_attempt_at",
+        "lease_owner",
+        "lease_expires_at",
+        "last_attempt_at",
+        "last_error_code",
+        "signed_authority_receipt",
+        "delivered_at",
+    ] {
+        let privilege = format!(
+            "has_column_privilege(current_user,'public.approval_decision_evidence_outbox','{column}','UPDATE')"
+        );
+        assert!(
+            APPROVAL_BINARY.contains(&privilege),
+            "startup misses mutable delivery column {column}"
+        );
+    }
 }
 
 #[test]

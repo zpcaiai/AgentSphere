@@ -17,7 +17,8 @@ final class ApprovalTestProperties {
             signingKey.toAbsolutePath(),
             ApprovalIntegrationProperties.PrincipalSigningKeyFormat.RAW_BASE64URL,
             "enterprise-idp", "agenttrust-approval", "idp-key-1",
-            "URI:spiffe://agenttrust/approval-bff", "approval-bff", 300,
+            "URI:spiffe://agenttrust/approval-bff", "approval-bff",
+            root.resolve("approval-authority-verification-keyring.json"), 300,
             Set.of("urn:agenttrust:acr:mfa"), 900);
     }
 }

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval/decision-result.schema.json",
+  "title": "Approval decision result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "approval_case", "evidence_receipt"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.approval-decision-result.v1"},
+    "approval_case": {"$ref": "approval-case.schema.json"},
+    "evidence_receipt": {"$ref": "decision-evidence.schema.json"}
+  }
+}

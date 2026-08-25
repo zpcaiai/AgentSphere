@@ -7,6 +7,7 @@ import { INCIDENT_OPERATIONS } from "./incident-command";
 import { marketplaceResource, validateMarketplaceTypedCommand } from "./marketplace-command";
 import type {
   AgentInventoryItem,
+  ApprovalIntentReceipt,
   ApiKeyIssueRequest,
   AuthorityPage,
   CostUsageRequest,
@@ -32,8 +33,12 @@ import type {
 } from "./enterprise-api-types";
 
 const MAX_JSON_BYTES = 5_000_000;
+const MAX_SAFE_ERROR_BYTES = 16_384;
 const DIGEST = /^[a-f0-9]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const CANONICAL_UUID_TEXT = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const UTC_INSTANT = /^([0-9]{4})-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9])(?:\.[0-9]{1,9})?Z$/;
 const ENTERPRISE_RECEIPT_FIELDS = [
   "schema_version", "action_id", "task_id", "accepted", "start_requested",
   "execution_pending", "ingress_digest", "evidence_ref", "evidence_digest",
@@ -50,6 +55,12 @@ const AGENT_ITEM_FIELDS = [
 ].sort();
 const AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/;
 const CURSOR = /^[A-Za-z0-9_-]{1,5462}$/;
+const APPROVAL_RECEIPT_FIELDS = [
+  "schema_version", "tenant_id", "case_id", "decision", "action_hash",
+  "resource_version", "case_status", "decided_at", "evidence_ref", "evidence_digest",
+  "authority_issuer", "authority_key_id",
+].sort();
+const SAFE_ERROR_FIELDS = ["schema_version", "code", "trace_id", "occurred_at"].sort();
 
 export class ControlApiError extends Error {
   constructor(readonly code: string, readonly status: number | null = null) {
@@ -75,6 +86,10 @@ export interface SessionContext {
 
 export class ControlApiClient {
   private readonly origin: string;
+  private readonly responseDeadlines = new WeakMap<Response, {
+    signal: AbortSignal;
+    clear: () => void;
+  }>();
 
   constructor(private readonly baseUrl: string, private readonly timeoutMs = 10_000) {
     let parsed: URL;
@@ -388,8 +403,18 @@ export class ControlApiClient {
   }
 
   async submitApprovalIntent(tenantId: string, value: ApprovalIntent, csrfToken: string,
-    idempotencyKey: string): Promise<void> {
-    if (!csrfToken || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.case_id)) {
+    idempotencyKey: string): Promise<ApprovalIntentReceipt> {
+    if (!CANONICAL_UUID.test(tenantId) || !csrfToken || csrfToken.length > 4_096
+      || value.schema_version !== "agenttrust.approval-intent.v1"
+      || !CANONICAL_UUID.test(value.case_id) || !DIGEST.test(value.observed_action_hash)
+      || !["APPROVE", "REJECT"].includes(value.decision)
+      || !value.reason.trim() || Array.from(value.reason).length > 2_000
+      || value.reason.includes("\0")
+      || new TextEncoder().encode(value.reason).byteLength > 4_096
+      || !value.observed_resource_version
+      || Array.from(value.observed_resource_version).length > 512
+      || /[\u0000\r\n]/.test(value.observed_resource_version)
+      || !/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
       throw new ControlApiError("CONTROL_APPROVAL_INTENT_INVALID");
     }
     const response = await this.fetchWithTimeout(
@@ -398,12 +423,34 @@ export class ControlApiClient {
         ...this.jsonRequest("POST", { approval_intent: value }),
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
           "Idempotency-Key": idempotencyKey,
           "X-XSRF-TOKEN": csrfToken,
         },
       },
     );
-    await this.requireStatus(response, [202]);
+    const result = await this.parseJson<ApprovalIntentReceipt>(response, [202], 16_384);
+    const expectedStatuses = value.decision === "REJECT"
+      ? ["REJECTED"] : ["PENDING", "APPROVED", "POST_REVIEW_REQUIRED"];
+    const expectedEvidence = new RegExp(
+      `^urn:agenttrust:approval-decision:${tenantId}:${value.case_id}:`
+        + `${CANONICAL_UUID_TEXT}$`,
+    );
+    if (!result || typeof result !== "object"
+      || JSON.stringify(Object.keys(result).sort()) !== JSON.stringify(APPROVAL_RECEIPT_FIELDS)
+      || result.schema_version !== "agenttrust.approval-intent-receipt.v1"
+      || result.tenant_id !== tenantId || result.case_id !== value.case_id
+      || result.decision !== value.decision || result.action_hash !== value.observed_action_hash
+      || result.resource_version !== value.observed_resource_version
+      || !expectedStatuses.includes(result.case_status)
+      || typeof result.decided_at !== "string" || result.decided_at.length > 64
+      || !isUtcInstant(result.decided_at)
+      || !expectedEvidence.test(result.evidence_ref) || !DIGEST.test(result.evidence_digest)
+      || !/^[A-Za-z0-9_.:/@-]{1,256}$/.test(result.authority_issuer)
+      || !/^[A-Za-z0-9_.-]{1,128}$/.test(result.authority_key_id)) {
+      throw new ControlApiError("CONTROL_APPROVAL_RECEIPT_INVALID");
+    }
+    return result;
   }
 
   private async governedMutation(path: string, field: string | null, value: unknown,
@@ -470,18 +517,12 @@ export class ControlApiClient {
   }
 
   private async parseJson<T>(response: Response, expected: number[], maximumBytes: number): Promise<T> {
-    await this.requireStatus(response, expected);
+    await this.requireStatus(response, expected, true);
     if (!response.headers.get("Content-Type")?.toLocaleLowerCase().includes("application/json")) {
+      await this.cancelResponse(response);
       throw new ControlApiError("CONTROL_API_CONTENT_TYPE_INVALID", response.status);
     }
-    const contentLength = Number(response.headers.get("Content-Length") ?? 0);
-    if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
-      throw new ControlApiError("CONTROL_API_RESPONSE_TOO_LARGE", response.status);
-    }
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > maximumBytes) {
-      throw new ControlApiError("CONTROL_API_RESPONSE_TOO_LARGE", response.status);
-    }
+    const text = await this.readTextBounded(response, maximumBytes);
     try {
       return JSON.parse(text) as T;
     } catch {
@@ -489,24 +530,86 @@ export class ControlApiClient {
     }
   }
 
-  private async requireStatus(response: Response, expected: number[]): Promise<void> {
+  private async requireStatus(response: Response, expected: number[], bodyExpected = false): Promise<void> {
     if (!expected.includes(response.status)) {
       const contentType = response.headers.get("Content-Type")?.toLocaleLowerCase() ?? "";
       if (contentType.includes("application/json")) {
         try {
-          const body = await response.clone().json() as unknown;
-          if (typeof body === "object" && body !== null
-            && (body as Record<string, unknown>).schema_version === "agenttrust.safe-error.v1"
-            && typeof (body as Record<string, unknown>).code === "string"
-            && /^CONTROL_[A-Z0-9_]{3,120}$/.test((body as Record<string, unknown>).code as string)) {
-            throw new ControlApiError((body as Record<string, unknown>).code as string,
-              response.status);
+          const body = JSON.parse(await this.readTextBounded(
+            response, MAX_SAFE_ERROR_BYTES)) as unknown;
+          if (typeof body === "object" && body !== null) {
+            const error = body as Record<string, unknown>;
+            if (JSON.stringify(Object.keys(error).sort()) === JSON.stringify(SAFE_ERROR_FIELDS)
+              && error.schema_version === "agenttrust.safe-error.v1"
+              && typeof error.code === "string"
+              && /^CONTROL_[A-Z0-9_]{3,120}$/.test(error.code)
+              && typeof error.trace_id === "string" && UUID.test(error.trace_id)
+              && typeof error.occurred_at === "string" && isUtcInstant(error.occurred_at)) {
+              throw new ControlApiError(error.code, response.status);
+            }
           }
         } catch (error) {
           if (error instanceof ControlApiError) throw error;
         }
       }
+      await this.cancelResponse(response);
       throw new ControlApiError(`CONTROL_API_REJECTED_${response.status}`, response.status);
+    }
+    if (!bodyExpected) await this.cancelResponse(response);
+  }
+
+  private async readTextBounded(response: Response, maximumBytes: number): Promise<string> {
+    const declared = response.headers.get("Content-Length");
+    if (declared !== null
+      && (!/^(0|[1-9][0-9]*)$/.test(declared) || Number(declared) > maximumBytes)) {
+      await this.cancelResponse(response);
+      throw new ControlApiError("CONTROL_API_RESPONSE_TOO_LARGE", response.status);
+    }
+    if (response.body === null) {
+      this.releaseResponseDeadline(response);
+      return "";
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const chunks: string[] = [];
+    let received = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        received += value.byteLength;
+        if (received > maximumBytes) {
+          try { await reader.cancel(); } catch { /* response is already rejected */ }
+          throw new ControlApiError("CONTROL_API_RESPONSE_TOO_LARGE", response.status);
+        }
+        chunks.push(decoder.decode(value, { stream: true }));
+      }
+      chunks.push(decoder.decode());
+      return chunks.join("");
+    } catch (error) {
+      if (error instanceof ControlApiError) throw error;
+      if (this.responseDeadlines.get(response)?.signal.aborted) {
+        throw new ControlApiError("CONTROL_API_TIMEOUT", response.status);
+      }
+      throw new ControlApiError("CONTROL_API_JSON_INVALID", response.status);
+    } finally {
+      reader.releaseLock();
+      this.releaseResponseDeadline(response);
+    }
+  }
+
+  private async cancelResponse(response: Response): Promise<void> {
+    try {
+      if (response.body !== null && !response.body.locked) await response.body.cancel();
+    } catch { /* cancellation is best-effort after the response is rejected */ }
+    this.releaseResponseDeadline(response);
+  }
+
+  private releaseResponseDeadline(response: Response): void {
+    const deadline = this.responseDeadlines.get(response);
+    if (deadline !== undefined) {
+      this.responseDeadlines.delete(response);
+      deadline.clear();
     }
   }
 
@@ -516,15 +619,33 @@ export class ControlApiClient {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      return await fetch(target, { ...init, signal: controller.signal });
+      const response = await fetch(target, { ...init, signal: controller.signal });
+      this.responseDeadlines.set(response, {
+        signal: controller.signal,
+        clear: () => window.clearTimeout(timeout),
+      });
+      return response;
     } catch (error) {
+      window.clearTimeout(timeout);
       if (error instanceof ControlApiError) throw error;
       throw new ControlApiError(error instanceof DOMException && error.name === "AbortError"
         ? "CONTROL_API_TIMEOUT" : "CONTROL_API_UNAVAILABLE");
-    } finally {
-      window.clearTimeout(timeout);
     }
   }
+}
+
+function isUtcInstant(value: string): boolean {
+  const match = UTC_INSTANT.exec(value);
+  if (!match || match[1] === "0000") return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const date = new Date(parsed);
+  return date.getUTCFullYear() === Number(match[1])
+    && date.getUTCMonth() + 1 === Number(match[2])
+    && date.getUTCDate() === Number(match[3])
+    && date.getUTCHours() === Number(match[4])
+    && date.getUTCMinutes() === Number(match[5])
+    && date.getUTCSeconds() === Number(match[6]);
 }
 
 function incidentResourceBinding(operation: IncidentCommand["operation"], resourceId: string): boolean {

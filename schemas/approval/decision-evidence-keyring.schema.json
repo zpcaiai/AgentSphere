@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval/decision-evidence-keyring.schema.json",
+  "title": "Approval decision evidence receipt verification keyring",
+  "description": "Exactly one ACTIVE Ed25519 key must match the configured Approval signer. VERIFY_ONLY keys verify historical receipts. Every key is valid on the half-open interval [not_before, expires_at).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "issuer", "keys"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.approval-decision-evidence-keyring.v1"},
+    "issuer": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9_.:/@-]+$"
+    },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key_id", "algorithm", "public_key_base64url", "status",
+          "not_before", "expires_at"
+        ],
+        "properties": {
+          "key_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "algorithm": {"const": "Ed25519"},
+          "public_key_base64url": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "status": {"enum": ["ACTIVE", "VERIFY_ONLY"]},
+          "not_before": {"type": "string", "format": "date-time"},
+          "expires_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    }
+  }
+}

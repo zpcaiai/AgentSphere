@@ -3,8 +3,10 @@ package com.agenttrust.control;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -13,30 +15,28 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 final class ApiErrors {
-    record ErrorBody(String schemaVersion, String code, String traceId, Instant occurredAt) {}
-
     @ExceptionHandler(ControlDeniedException.class)
-    ResponseEntity<ErrorBody> denied(ControlDeniedException error) {
+    ResponseEntity<SafeErrorBody> denied(ControlDeniedException error) {
         return response(HttpStatus.FORBIDDEN, error.getMessage());
     }
 
     @ExceptionHandler(ConflictException.class)
-    ResponseEntity<ErrorBody> conflict(ConflictException error) {
+    ResponseEntity<SafeErrorBody> conflict(ConflictException error) {
         return response(HttpStatus.CONFLICT, error.getMessage());
     }
 
     @ExceptionHandler(CapacityException.class)
-    ResponseEntity<ErrorBody> capacity(CapacityException error) {
+    ResponseEntity<SafeErrorBody> capacity(CapacityException error) {
         return response(HttpStatus.TOO_MANY_REQUESTS, error.getMessage());
     }
 
     @ExceptionHandler(ControlUnavailableException.class)
-    ResponseEntity<ErrorBody> unavailable(ControlUnavailableException error) {
+    ResponseEntity<SafeErrorBody> unavailable(ControlUnavailableException error) {
         return response(HttpStatus.SERVICE_UNAVAILABLE, error.getMessage());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    ResponseEntity<ErrorBody> unreadable(HttpMessageNotReadableException error) {
+    ResponseEntity<SafeErrorBody> unreadable(HttpMessageNotReadableException error) {
         Throwable current = error;
         while (current != null) {
             if (current instanceof RequestBodyLimitFilter.RequestBodyTooLargeException) {
@@ -49,18 +49,28 @@ final class ApiErrors {
 
     @ExceptionHandler({MethodArgumentNotValidException.class,
         MissingRequestHeaderException.class, MethodArgumentTypeMismatchException.class})
-    ResponseEntity<ErrorBody> invalidRequest(Exception ignored) {
+    ResponseEntity<SafeErrorBody> invalidRequest(Exception ignored) {
         return response(HttpStatus.BAD_REQUEST, "CONTROL_REQUEST_INVALID");
     }
 
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<SafeErrorBody> unsupportedMediaType(
+        HttpMediaTypeNotSupportedException ignored) {
+        return response(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "CONTROL_UNSUPPORTED_MEDIA_TYPE");
+    }
+
     @ExceptionHandler(Exception.class)
-    ResponseEntity<ErrorBody> unexpected(Exception ignored) {
+    ResponseEntity<SafeErrorBody> unexpected(Exception ignored) {
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "CONTROL_INTERNAL_ERROR");
     }
 
-    private static ResponseEntity<ErrorBody> response(HttpStatus status, String code) {
+    private static ResponseEntity<SafeErrorBody> response(HttpStatus status, String code) {
         String trace = UUID.randomUUID().toString();
-        return ResponseEntity.status(status).header("X-Trace-Id", trace)
-            .body(new ErrorBody("agenttrust.safe-error.v1", code, trace, Instant.now()));
+        String safeCode = SafeErrorBody.validCode(code) ? code : "CONTROL_INTERNAL_ERROR";
+        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON)
+            .header("X-Trace-Id", trace)
+            .header("Cache-Control", "no-store")
+            .body(new SafeErrorBody(
+                SafeErrorBody.SCHEMA_VERSION, safeCode, trace, Instant.now().toString()));
     }
 }

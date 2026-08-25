@@ -3,7 +3,8 @@
 use super::{ApprovalError, ApprovalRequest};
 use agent_trust_contracts::{
     APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
-    AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceSourceKind,
+    AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceEventRequest,
+    AuthorityEvidenceSourceKind,
 };
 pub use agent_trust_contracts::{
     APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION, APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION,
@@ -137,9 +138,25 @@ impl ApprovalReviewEvidenceKeyring {
                 && verification.tenant_ids.contains(tenant)
                 && verification.not_before <= now
                 && verification.expires_at
-                    >= now
+                    > now
                         + Duration::seconds(APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS)
         })
+    }
+
+    pub fn covers_source_tenant_at(
+        &self,
+        tenant: &str,
+        source_service: &str,
+        now: DateTime<Utc>,
+    ) -> bool {
+        source_identity(source_service)
+            && self.keys.values().any(|verification| {
+                verification.active
+                    && verification.tenant_ids.contains(tenant)
+                    && verification.source_services.contains(source_service)
+                    && verification.not_before <= now
+                    && verification.expires_at > now
+            })
     }
 
     pub fn verify_request(
@@ -156,6 +173,54 @@ impl ApprovalReviewEvidenceKeyring {
         case_created_at: DateTime<Utc>,
     ) -> Result<(), ApprovalError> {
         self.verify_at(request, case_created_at, false)
+    }
+
+    /// Verifies an exact generic Evidence Authority delivery for the Approval
+    /// decision outbox. RETIRED keys remain valid for receipts persisted inside
+    /// their configured validity interval so idempotent delivery survives key
+    /// rotation; no key is accepted outside `[not_before, expires_at)`.
+    pub fn verify_authority_delivery(
+        &self,
+        authority_request: &AuthorityEvidenceEventRequest,
+        receipt: &agent_trust_contracts::SignedAuthorityEvidenceReceipt,
+        now: DateTime<Utc>,
+    ) -> Result<(), ApprovalError> {
+        let verification = self
+            .keys
+            .get(&(receipt.issuer.clone(), receipt.key_id.clone()))
+            .ok_or(ApprovalError::GrantInvalid)?;
+        let expected_request_digest = authority_request
+            .request_digest()
+            .map_err(|_| ApprovalError::GrantInvalid)?;
+        if !verification
+            .tenant_ids
+            .contains(&authority_request.tenant_id.0)
+            || !verification
+                .source_services
+                .contains(&authority_request.event.source_service)
+            || verification.not_before > authority_request.event.occurred_at
+            || verification.expires_at <= receipt.persisted_at
+        {
+            return Err(ApprovalError::GrantInvalid);
+        }
+        receipt
+            .verify(&verification.key, now)
+            .map_err(|_| ApprovalError::GrantInvalid)?;
+        if receipt.schema_version != AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION
+            || receipt.key_usage != AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE
+            || receipt.tenant_id != authority_request.tenant_id
+            || receipt.task_id != authority_request.task_id
+            || receipt.authority_event_id != authority_request.authority_event_id
+            || receipt.idempotency_key != authority_request.idempotency_key
+            || receipt.source_kind != authority_request.source_kind
+            || receipt.request_digest != expected_request_digest
+            || receipt.payload_digest != authority_request.event.payload_hash
+            || receipt.event.draft != authority_request.event
+            || receipt.persisted_at < authority_request.requested_at
+        {
+            return Err(ApprovalError::GrantInvalid);
+        }
+        Ok(())
     }
 
     fn verify_at(
@@ -184,7 +249,7 @@ impl ApprovalReviewEvidenceKeyring {
                 .source_services
                 .contains(&authority_request.event.source_service)
             || verification.not_before > authority_request.event.occurred_at
-            || verification.expires_at < receipt.persisted_at
+            || verification.expires_at <= receipt.persisted_at
         {
             return Err(ApprovalError::RequestInvalid);
         }

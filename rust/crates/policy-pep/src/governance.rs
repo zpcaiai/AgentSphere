@@ -232,6 +232,7 @@ struct HumanPrincipalKey {
     tenant_ids: BTreeSet<String>,
     not_before: DateTime<Utc>,
     expires_at: DateTime<Utc>,
+    status: HumanPrincipalKeyStatus,
 }
 
 #[derive(Clone)]
@@ -294,7 +295,8 @@ impl HumanPrincipalVerifier {
         let key = keyring
             .get(&(assertion.issuer.clone(), assertion.key_id.clone()))
             .ok_or(PepAuthorityError::AuthorizationDenied)?;
-        if !key.tenant_ids.contains(&tenant.0)
+        if !fresh_human_principal_key_status(key.status)
+            || !key.tenant_ids.contains(&tenant.0)
             || now < key.not_before
             || now >= key.expires_at
             || assertion.issued_at < key.not_before
@@ -397,6 +399,7 @@ impl HumanPrincipalVerifier {
                         tenant_ids: document.tenant_ids,
                         not_before: document.not_before,
                         expires_at: document.expires_at,
+                        status: document.status,
                     },
                 )
                 .is_some()
@@ -431,13 +434,9 @@ impl PepAuthority {
         if action.schema_version != "agenttrust.approval-intent.v1"
             || !canonical_uuid(&action.case_id)
             || !matches!(action.decision.as_str(), "APPROVE" | "REJECT")
-            || action.reason.is_empty()
-            || action.reason.len() > 2_000
-            || unsafe_text(&action.reason)
+            || !valid_approval_reason(&action.reason)
             || !digest(&action.observed_action_hash)
-            || action.observed_resource_version.is_empty()
-            || action.observed_resource_version.len() > 512
-            || unsafe_text(&action.observed_resource_version)
+            || !valid_approval_resource_version(&action.observed_resource_version)
             || !assertion.approval_ids.contains(&action.case_id)
         {
             return Err(PepAuthorityError::AuthorizationDenied);
@@ -947,6 +946,21 @@ fn unsafe_text(value: &str) -> bool {
     value.contains(['\0', '\r', '\n'])
 }
 
+fn valid_approval_reason(value: &str) -> bool {
+    !value.trim().is_empty()
+        && value.chars().count() <= 2_000
+        && value.len() <= 4_096
+        && !value.contains('\0')
+}
+
+fn valid_approval_resource_version(value: &str) -> bool {
+    !value.is_empty() && value.chars().count() <= 512 && !unsafe_text(value)
+}
+
+fn fresh_human_principal_key_status(status: HumanPrincipalKeyStatus) -> bool {
+    matches!(status, HumanPrincipalKeyStatus::Active)
+}
+
 fn canonical_uuid(value: &str) -> bool {
     Uuid::parse_str(value).is_ok_and(|parsed| parsed.to_string() == value)
 }
@@ -977,6 +991,20 @@ mod tests {
         assert!(operation("VIEW_ENTERPRISE_DASHBOARD"));
         assert!(!operation("view-dashboard"));
         assert!(canonical_uuid("00000000-0000-4000-8000-000000000001"));
+    }
+
+    #[test]
+    fn approval_human_text_matches_the_public_unicode_contract() {
+        assert!(valid_approval_reason(&("😀".repeat(1_001) + "\n")));
+        assert!(!valid_approval_reason(&"界".repeat(1_366)));
+        assert!(!valid_approval_reason("bad\0reason"));
+        assert!(valid_approval_resource_version(&"😀".repeat(512)));
+        assert!(!valid_approval_resource_version(&"😀".repeat(513)));
+        assert!(!valid_approval_resource_version("version\none"));
+        assert!(fresh_human_principal_key_status(HumanPrincipalKeyStatus::Active));
+        assert!(!fresh_human_principal_key_status(
+            HumanPrincipalKeyStatus::VerifyOnly
+        ));
     }
 
     #[test]

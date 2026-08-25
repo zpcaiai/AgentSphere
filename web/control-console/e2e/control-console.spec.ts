@@ -53,7 +53,8 @@ async function installAuthority(page: Page): Promise<void> {
     }
     if (url.pathname.endsWith("/intents")) {
       await route.fulfill({ status: 503, json: { schema_version: "agenttrust.safe-error.v1",
-        code: "CONTROL_APPROVAL_EVIDENCE_PENDING", trace_id: "trace-e2e",
+        code: "CONTROL_APPROVAL_OUTCOME_UNKNOWN",
+        trace_id: "40000000-0000-4000-8000-000000000001",
         occurred_at: "2026-08-13T00:00:00Z" } });
       return;
     }
@@ -132,13 +133,14 @@ test("submits an approval intent but keeps status unknown without immutable evid
   await page.route("https://control.e2e.invalid/v1/tenants/*/approvals/*/intents", async (route) => {
     captured = { headers: route.request().headers(), body: route.request().postDataJSON() };
     await route.fulfill({ status: 503, json: { schema_version: "agenttrust.safe-error.v1",
-      code: "CONTROL_APPROVAL_EVIDENCE_PENDING", trace_id: "trace-e2e",
+      code: "CONTROL_APPROVAL_OUTCOME_UNKNOWN",
+      trace_id: "40000000-0000-4000-8000-000000000001",
       occurred_at: "2026-08-13T00:00:00Z" } });
   });
   await page.goto("/#/modules/approvals");
   await page.getByLabel("Decision reason").fill("independent review complete");
   await page.getByRole("button", { name: "Submit approval intent" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "CONTROL_APPROVAL_EVIDENCE_PENDING" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "CONTROL_APPROVAL_OUTCOME_UNKNOWN" })).toBeVisible();
   expect(captured).not.toBeNull();
   expect(captured!.headers["x-xsrf-token"]).toBe("e2e-csrf");
   expect(JSON.stringify(captured!.body)).toContain("approval_intent");

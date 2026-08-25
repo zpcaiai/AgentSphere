@@ -25,6 +25,7 @@ public record ApprovalIntegrationProperties(
     @NotBlank String principalKeyId,
     @NotBlank String clientIdentity,
     @NotBlank String serviceSubject,
+    Path authorityVerificationKeyringFile,
     int assertionTtlSeconds,
     @NotEmpty Set<String> acceptedStrongAuthAcrs,
     int maximumAuthenticationAgeSeconds
@@ -41,6 +42,12 @@ public record ApprovalIntegrationProperties(
         if (principalSigningKeyFile == null || !principalSigningKeyFile.isAbsolute()
             || tokenPaths.contains(principalSigningKeyFile) || principalSigningKeyFormat == null) {
             throw new IllegalArgumentException("CONTROL_APPROVAL_SIGNING_KEY_INVALID");
+        }
+        if (authorityVerificationKeyringFile == null
+            || !authorityVerificationKeyringFile.isAbsolute()
+            || tokenPaths.contains(authorityVerificationKeyringFile)
+            || authorityVerificationKeyringFile.equals(principalSigningKeyFile)) {
+            throw new IllegalArgumentException("CONTROL_APPROVAL_AUTHORITY_KEYRING_INVALID");
         }
         if (!boundedIdentifier(principalIssuer, 256)
             || principalAudience == null || principalAudience.isBlank()

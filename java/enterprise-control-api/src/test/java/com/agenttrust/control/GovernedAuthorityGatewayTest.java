@@ -99,6 +99,61 @@ class GovernedAuthorityGatewayTest {
             GovernedAuthorityGateway.approvalDecisionBody(intent));
     }
 
+    @Test
+    void approvalHumanTextAllowsMultilineButRejectsNulAndUtf8Overflow() {
+        ObjectNode value = MAPPER.createObjectNode();
+        value.put("reason", "exact reason\nkept");
+        assertEquals(true, GovernedAuthorityGateway.validApprovalHumanText(
+            value, "reason", 4_096));
+        value.put("reason", "bad\0reason");
+        assertEquals(false, GovernedAuthorityGateway.validApprovalHumanText(
+            value, "reason", 4_096));
+        value.put("reason", "界".repeat(1_366));
+        assertEquals(false, GovernedAuthorityGateway.validApprovalHumanText(
+            value, "reason", 4_096));
+    }
+
+    @Test
+    void approvalReplayRequiresThePersistedFullAuthorityResponseAndEvidenceReference() {
+        ObjectNode response = MAPPER.createObjectNode();
+        response.put("schema_version", "agenttrust.approval-decision-result.v1");
+        var completed = new EnterpriseService.ApprovalAuthorization(TENANT_ID,
+            "approval-key-1", false, true, 1, "a".repeat(64),
+            "urn:agenttrust:pep-evidence:approval-one", response,
+            "urn:agenttrust:approval-decision:tenant:case:receipt");
+        assertEquals(response, GovernedAuthorityGateway.requireCompletedApprovalPayload(completed));
+
+        var legacy = new EnterpriseService.ApprovalAuthorization(TENANT_ID,
+            "approval-key-1", false, true, 1, "a".repeat(64),
+            "urn:agenttrust:pep-evidence:approval-one", null,
+            "urn:agenttrust:approval-decision:tenant:case:receipt");
+        assertThrows(ControlUnavailableException.class,
+            () -> GovernedAuthorityGateway.requireCompletedApprovalPayload(legacy));
+        var missingEvidence = new EnterpriseService.ApprovalAuthorization(TENANT_ID,
+            "approval-key-1", false, true, 1, "a".repeat(64),
+            "urn:agenttrust:pep-evidence:approval-one", response, null);
+        assertThrows(ControlUnavailableException.class,
+            () -> GovernedAuthorityGateway.requireCompletedApprovalPayload(missingEvidence));
+        var missingPep = new EnterpriseService.ApprovalAuthorization(TENANT_ID,
+            "approval-key-1", false, true, 1, null, null, response,
+            "urn:agenttrust:approval-decision:tenant:case:receipt");
+        assertThrows(ControlUnavailableException.class,
+            () -> GovernedAuthorityGateway.requireCompletedApprovalPayload(missingPep));
+    }
+
+    @Test
+    void lostApprovalResponseDetectsTheAuthorityStableReplayPath() {
+        ObjectNode approvalCase = MAPPER.createObjectNode();
+        approvalCase.putArray("decisions")
+            .addObject().put("approver_subject", "approver:one")
+            .put("decision", "APPROVE");
+
+        assertEquals(true, GovernedAuthorityGateway.containsApprover(
+            approvalCase.path("decisions"), "approver:one"));
+        assertEquals(false, GovernedAuthorityGateway.containsApprover(
+            approvalCase.path("decisions"), "approver:other"));
+    }
+
     private static void assertInvalid(ObjectNode receipt) {
         assertThrows(ControlUnavailableException.class,
             () -> GovernedAuthorityGateway.requiredCommandAcceptanceEvidence(

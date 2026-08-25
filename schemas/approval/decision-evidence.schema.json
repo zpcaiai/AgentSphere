@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval/decision-evidence.schema.json",
+  "title": "Immutable Approval authority decision evidence receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "receipt_id", "tenant_id", "case_id", "task_id", "decision",
+    "decision_reason_digest", "request_digest", "decision_digest", "idempotency_key_digest",
+    "actor_subject", "principal_assertion_jti", "principal_assertion_request_digest",
+    "principal_assertion_digest", "approval_case_digest", "action_hash", "step_id",
+    "plan_hash", "parameter_hash", "resource", "resource_version", "policy_version",
+    "environment", "risk", "case_status", "decided_at", "evidence_ref",
+    "evidence_digest", "authority_request_digest", "evidence_outbox_ref", "issuer",
+    "key_id", "key_usage", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.approval-decision-evidence.v1"},
+    "receipt_id": {"$ref": "#/$defs/uuid"},
+    "tenant_id": {"$ref": "#/$defs/uuid"},
+    "case_id": {"$ref": "#/$defs/uuid"},
+    "task_id": {"$ref": "#/$defs/uuid"},
+    "decision": {"enum": ["APPROVE", "REJECT", "POST_REVIEWED"]},
+    "decision_reason_digest": {"$ref": "#/$defs/digest"},
+    "request_digest": {"$ref": "#/$defs/digest"},
+    "decision_digest": {"$ref": "#/$defs/digest"},
+    "idempotency_key_digest": {"$ref": "#/$defs/digest"},
+    "actor_subject": {"$ref": "#/$defs/identifier"},
+    "principal_assertion_jti": {"$ref": "#/$defs/uuid"},
+    "principal_assertion_request_digest": {"$ref": "#/$defs/digest"},
+    "principal_assertion_digest": {"$ref": "#/$defs/digest"},
+    "approval_case_digest": {"$ref": "#/$defs/digest"},
+    "action_hash": {"$ref": "#/$defs/digest"},
+    "step_id": {"$ref": "#/$defs/uuid"},
+    "plan_hash": {"$ref": "#/$defs/digest"},
+    "parameter_hash": {"$ref": "#/$defs/digest"},
+    "resource": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "resource_version": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "policy_version": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "environment": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "risk": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+    "case_status": {"enum": ["PENDING", "APPROVED", "REJECTED", "POST_REVIEW_REQUIRED"]},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "evidence_ref": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^urn:agenttrust:approval-decision:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "evidence_digest": {"$ref": "#/$defs/digest"},
+    "authority_request_digest": {"$ref": "#/$defs/digest"},
+    "evidence_outbox_ref": {
+      "type": "string",
+      "maxLength": 2048,
+      "pattern": "^outbox://approval-decision-evidence/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/sha256:[a-f0-9]{64}$"
+    },
+    "issuer": {"$ref": "#/$defs/identifier"},
+    "key_id": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "key_usage": {"const": "APPROVAL_DECISION_EVIDENCE"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"decision": {"const": "REJECT"}}, "required": ["decision"]},
+      "then": {"properties": {"case_status": {"const": "REJECTED"}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "POST_REVIEWED"}}, "required": ["decision"]},
+      "then": {"properties": {"case_status": {"const": "APPROVED"}}}
+    },
+    {
+      "if": {"properties": {"decision": {"const": "APPROVE"}}, "required": ["decision"]},
+      "then": {"properties": {"case_status": {"enum": ["PENDING", "APPROVED", "POST_REVIEW_REQUIRED"]}}}
+    }
+  ],
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "identifier": {
+      "type": "string", "minLength": 1, "maxLength": 256,
+      "pattern": "^[A-Za-z0-9_.:/@-]+$"
+    }
+  }
+}

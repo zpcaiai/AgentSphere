@@ -1,14 +1,17 @@
 package com.agenttrust.control;
 
 import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
@@ -23,20 +26,30 @@ public class SecurityConfiguration {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, ControlProperties properties,
         RestClientAuthorizationCodeTokenResponseClient tokenClient,
-        OidcUserService oidcUserService)
+        OidcUserService oidcUserService, SafeApiErrorWriter safeWriter)
         throws Exception {
         var csrf = new CookieCsrfTokenRepository();
         csrf.setCookieName("__Host-XSRF-TOKEN");
         csrf.setHeaderName("X-XSRF-TOKEN");
         csrf.setCookiePath("/");
         csrf.setCookieCustomizer(cookie -> cookie.sameSite("None").secure(true).httpOnly(true));
+        var apiRequests = PathPatternRequestMatcher.withDefaults().matcher("/v1/**");
+        var apiErrors = new ApiSecurityErrorHandlers(apiRequests, safeWriter);
+        var csrfDenied = apiErrors.accessDeniedHandler(new AccessDeniedHandlerImpl());
         return http
             // The console obtains the raw token from /v1/session and returns it in this header.
             // Use the plain handler explicitly; Spring's default XOR handler expects a masked
             // browser form value and would reject this JSON API contract in production.
             .csrf(value -> value
                 .csrfTokenRepository(csrf)
-                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+                .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+                .withObjectPostProcessor(new ObjectPostProcessor<CsrfFilter>() {
+                    @Override
+                    public <O extends CsrfFilter> O postProcess(O filter) {
+                        filter.setAccessDeniedHandler(csrfDenied);
+                        return filter;
+                    }
+                }))
             .cors(Customizer.withDefaults())
             .headers(headers -> headers
                 .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none'"))
@@ -46,15 +59,20 @@ public class SecurityConfiguration {
                     .permitAll()
                 .requestMatchers("/oauth2/**", "/login/**").permitAll()
                 .anyRequest().authenticated())
-            .exceptionHandling(errors -> errors.defaultAuthenticationEntryPointFor(
-                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
-                PathPatternRequestMatcher.withDefaults().matcher("/v1/**")))
+            .exceptionHandling(errors -> errors
+                .defaultAuthenticationEntryPointFor(safeWriter, apiRequests)
+                .defaultAccessDeniedHandlerFor(safeWriter, apiRequests))
             .oauth2Login(oauth -> oauth
                 .tokenEndpoint(token -> token.accessTokenResponseClient(tokenClient))
                 .userInfoEndpoint(user -> user.oidcUserService(oidcUserService))
                 .successHandler(new SimpleUrlAuthenticationSuccessHandler(
                     properties.consoleOrigins().getFirst())))
-            .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
+            .oauth2ResourceServer(oauth -> oauth
+                .jwt(Customizer.withDefaults())
+                .authenticationEntryPoint(apiErrors.authenticationEntryPoint(
+                    new BearerTokenAuthenticationEntryPoint()))
+                .accessDeniedHandler(apiErrors.accessDeniedHandler(
+                    new BearerTokenAccessDeniedHandler())))
             .build();
     }
 

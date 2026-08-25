@@ -26,6 +26,13 @@ pub const APPROVAL_DECISION_SCHEMA_VERSION: &str = "agenttrust.approval-decision
 pub const APPROVAL_GRANT_REQUEST_SCHEMA_VERSION: &str = "agenttrust.approval-grant-request.v1";
 pub const APPROVAL_GRANT_RECEIPT_SCHEMA_VERSION: &str = "agenttrust.approval-grant-receipt.v1";
 pub const APPROVAL_CONSUMPTION_SCHEMA_VERSION: &str = "agenttrust.approval-consumption.v1";
+pub const MAX_APPROVAL_HUMAN_TEXT_UTF8_BYTES: usize = 4_096;
+
+pub(crate) fn valid_approval_human_text(value: &str) -> bool {
+    !value.trim().is_empty()
+        && !value.contains('\0')
+        && value.len() <= MAX_APPROVAL_HUMAN_TEXT_UTF8_BYTES
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -661,7 +668,7 @@ fn validate_request(
         || request_is_industrial(request) != request.review_context.industrial()
         || request.requester_subject.is_empty()
         || request.agent_owner_subject.is_empty()
-        || request.justification.is_empty()
+        || !valid_approval_human_text(&request.justification)
         || request.requested_ttl_seconds == 0
         || request.requested_ttl_seconds > policy.maximum_ttl_seconds
         || request.requested_uses == 0
@@ -786,14 +793,19 @@ impl From<ContractError> for ApprovalError {
     }
 }
 
+pub mod evidence_delivery;
 pub mod postgres;
 pub mod principal;
 pub mod review_evidence;
 pub mod server;
 pub use postgres::{
-    APPROVAL_CASE_VIEW_SCHEMA_VERSION, AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION,
+    APPROVAL_CASE_VIEW_SCHEMA_VERSION, APPROVAL_DECISION_EVIDENCE_KEY_USAGE,
+    APPROVAL_DECISION_EVIDENCE_KEYRING_SCHEMA_VERSION,
+    APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION, APPROVAL_DECISION_RESULT_SCHEMA_VERSION,
+    APPROVAL_DECISION_REQUEST_BINDING_SCHEMA_VERSION, AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION,
     ApprovalCaseCreateEnvelope, ApprovalCaseDomain, ApprovalCaseView, ApprovalCaseViewStatus,
-    ApprovalDecision, ApprovalDecisionEnvelope, ApprovalGrantIssueRequest,
+    ApprovalDecision, ApprovalDecisionEnvelope, ApprovalDecisionEvidenceKeyring,
+    ApprovalDecisionEvidenceReceipt, ApprovalDecisionResult, ApprovalGrantIssueRequest,
     ApprovalGrantRevocationReceipt, ApprovalGrantRevocationRequest, ApprovalPrincipal,
     ApprovalSigner, AuthoritativeApprovalPage, PostgresApprovalStore,
 };
@@ -826,6 +838,17 @@ mod tests {
         fn send(&self, _: &ApprovalNotification) -> Result<String, ApprovalError> {
             Err(ApprovalError::NotificationFailed)
         }
+    }
+
+    #[test]
+    fn human_text_limit_is_measured_in_utf8_bytes() {
+        assert!(valid_approval_human_text(&"界".repeat(1_365)));
+        assert!(!valid_approval_human_text(&"界".repeat(1_366)));
+        assert!(valid_approval_human_text(&"a".repeat(4_096)));
+        assert!(!valid_approval_human_text(&"a".repeat(4_097)));
+        assert!(valid_approval_human_text("line one\nline two"));
+        assert!(!valid_approval_human_text("bad\0reason"));
+        assert!(!valid_approval_human_text("  \n\t"));
     }
 
     fn review_signing_key() -> SigningKey {

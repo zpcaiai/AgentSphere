@@ -50,7 +50,16 @@ and embedded newlines, and allow at most one trailing line ending.
 | `AGENT_TRUST_APPROVAL_TOKEN_BINDINGS_FILE` | `agenttrust.approval-token-bindings.v1` document. Each raw token digest is bound to one mTLS identity, tenant, service subject, and scope. A digest cannot be reused across scopes or subjects. |
 | `AGENT_TRUST_APPROVAL_PRINCIPAL_KEYS_FILE` | Independent `agenttrust.approval-principal-keyring.v1` Ed25519 public keyring for human principal assertions. Every key has an explicit canonical tenant allow-list. |
 | `AGENT_TRUST_APPROVAL_PRINCIPAL_AUDIENCE` | Expected audience, which must exactly match the keyring and every assertion. |
-| `AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE` | Public-only `AUTHORITY_EVIDENCE_RECEIPT` trust policy for the Evidence Authority issuer/key and allowlisted independent review-fact source SANs. Approval never mounts an Evidence Authority private key or an `evidence:authority-event` producer token. |
+| `AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE` | Public-only `AUTHORITY_EVIDENCE_RECEIPT` trust policy for the Evidence Authority issuer/key and allowlisted independent review-fact source SANs. Approval never mounts an Evidence Authority private key. |
+| `AGENT_TRUST_APPROVAL_DECISION_EVIDENCE_KEYRING_FILE` | `agenttrust.approval-decision-evidence-keyring.v1` public keyring. Exactly one `ACTIVE` Ed25519 entry must match the configured Approval signer; `VERIFY_ONLY` entries validate historical receipts at their original `decided_at`. Key validity is half-open `[not_before, expires_at)`. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_RECEIPT_KEYRING_FILE` | Public-only `agenttrust.approval-review-evidence-keyring.v2` trust policy used to verify Evidence Authority delivery receipts. Every configured tenant and the exact decision publisher source identity require an `ACTIVE` key entry. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_SOURCE_IDENTITY` | Exact `DNS:` or `URI:` SAN on the outbound client certificate. It must also be the subject/client identity of the dedicated Evidence token binding and an active `source_services` member in the receipt keyring. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_ENDPOINT` | Exact HTTPS origin of the Evidence Authority; base paths, query strings, userinfo, redirects, non-TLS endpoints, and system trust are rejected. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_READINESS_SCHEMA` | Must be `agenttrust.evidence-readiness.v1`; Approval readiness requires `ready`, `database_ready`, and `worm_ready` all true. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN_FILE` | Dedicated rotating `evidence:authority-event` scope token. The file is re-read before every readiness and delivery request. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_CA_FILE` | Pinned Evidence Authority server CA bundle. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_CERTIFICATE_FILE` | Outbound mTLS certificate whose single SAN is the configured Evidence source identity. |
+| `AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_PRIVATE_KEY_FILE` | Private outbound mTLS key; must be an absolute single-link private regular file. |
 | `AGENT_TRUST_APPROVAL_TLS_CA_FILE` | Client-certificate CA bundle. |
 | `AGENT_TRUST_APPROVAL_TLS_CERTIFICATE_FILE` | Server certificate chain. |
 | `AGENT_TRUST_APPROVAL_TLS_PRIVATE_KEY_FILE` | Server private key secret file. |
@@ -106,6 +115,9 @@ The four human mutations and exact service scopes are:
 `required_roles`, `prohibit_requester`, `prohibit_agent_owner`,
 `require_resource_owner`, `maximum_ttl_seconds`, `maximum_uses`, and
 `maximum_risk`. Unknown fields are rejected.
+Human justification, decision-reason and revocation-reason limits are measured over their UTF-8
+encoding and may not exceed 4096 bytes; the OpenAPI and JSON Schemas expose the required
+`x-agenttrust-max-utf8-bytes` keyword, and production handlers enforce it before persistence.
 
 RFC 8785 JCS sorts every JSON object member lexicographically, so wire object
 member order is irrelevant to the request digest. Arrays retain their order;
@@ -140,6 +152,34 @@ any legacy case remains mutable or any unrevoked single-use grant still derives 
 request. Terminal legacy rows are retained as audit history but are excluded from the approval
 inbox because the service will not invent their missing review facts. The approval Deployment uses
 `Recreate`, preventing v1 and v2 request/response contracts from serving concurrently.
+
+Apply `0036_01_26_approval_decision_evidence.sql` next. Every human decision, its immutable
+`agenttrust.approval-decision-evidence.v1` receipt, and one independent Evidence Authority request
+commit in one tenant-scoped transaction. A deferred reverse constraint prevents a decision without
+both receipt and outbox row. The signed receipt binds tenant, case, task, decision, reason digest,
+stable request/idempotency digests, actor, principal request binding, action/plan/parameter/resource
+versions, final case status, and the exact outbox request. Retrying the same idempotency key with a
+fresh assertion JTI returns the first receipt only when the stable actor and assertion request digest
+still match; a changed semantic request fails closed.
+
+The delivery worker claims one row at a time with `FOR UPDATE SKIP LOCKED`, a lease longer than the
+bounded TLS request, tenant round-robin fairness, and capped exponential retry. Network errors,
+timeouts, non-success responses, malformed bodies, invalid signatures, and uncertain outcomes stay
+pending as `OUTCOME_UNKNOWN`/`RECEIPT_INVALID`; they never fabricate successful Evidence delivery.
+Only a strictly verified `agenttrust.signed-authority-evidence-receipt.v1` can atomically set the
+delivery columns. The application role needs UPDATE on exactly `delivery_attempts`,
+`next_attempt_at`, `lease_owner`, `lease_expires_at`, `last_attempt_at`, `last_error_code`,
+`signed_authority_receipt`, and `delivered_at`; startup rejects a missing delivery privilege and
+also rejects DELETE or immutable payload replacement privileges.
+
+Both readiness endpoints query every configured tenant under its RLS context. Any undelivered row
+with `CONFIGURATION_INVALID` or `RECEIPT_INVALID` fails readiness immediately; an
+`OUTCOME_UNKNOWN` backlog older than five minutes also fails readiness. Publish retries and every
+mark/release/batch database failure emit bounded structured
+`agenttrust.approval-evidence-delivery-alert.v1` records, while database mutations propagate errors
+instead of being silently treated as an empty batch. Backlog health does not terminate startup:
+the Pod remains out of service through readiness while its worker retries old rows, then becomes
+Ready automatically after the corrected Evidence configuration drains the queue.
 
 Grant consumption selects and locks the exact tenant/action/plan/parameter/
 resource-version/policy/environment binding, verifies the stored Ed25519 grant,

@@ -11,6 +11,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import org.springframework.http.HttpStatus;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -21,18 +23,25 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public final class RequestBodyLimitFilter extends OncePerRequestFilter {
     static final long MAXIMUM_REQUEST_BODY_BYTES = 1024L * 1024L;
+    private final SafeApiErrorWriter errorWriter;
+
+    RequestBodyLimitFilter(SafeApiErrorWriter errorWriter) {
+        this.errorWriter = Objects.requireNonNull(errorWriter, "errorWriter");
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         long declared = request.getContentLengthLong();
         if (declared > MAXIMUM_REQUEST_BODY_BYTES) {
-            response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE);
+            errorWriter.write(response, HttpStatus.PAYLOAD_TOO_LARGE,
+                "CONTROL_REQUEST_BODY_TOO_LARGE");
             return;
         }
         String encoding = request.getHeader("Content-Encoding");
         if (encoding != null && !encoding.isBlank() && !"identity".equalsIgnoreCase(encoding)) {
-            response.setStatus(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+            errorWriter.write(response, HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "CONTROL_CONTENT_ENCODING_UNSUPPORTED");
             return;
         }
         chain.doFilter(new BoundedRequest(request), response);

@@ -11,6 +11,7 @@ import com.agenttrust.control.AdminModels.ProjectRequest;
 import com.agenttrust.control.AdminModels.QuotaConsumeRequest;
 import com.agenttrust.control.AdminModels.TenantRequest;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
+import com.agenttrust.control.AdminModels.ApprovalIntentReceipt;
 import com.agenttrust.control.AdminModels.PolicyCommandRequest;
 import com.agenttrust.control.AdminModels.TaskCommand;
 import com.agenttrust.control.IncidentModels.IncidentCommandRequest;
@@ -246,14 +247,16 @@ public final class EnterpriseController {
     }
 
     @PostMapping("/approvals/{caseId}/intents")
-    ResponseEntity<Void> submitApprovalIntent(Authentication authentication,
+    ResponseEntity<ApprovalIntentReceipt> submitApprovalIntent(Authentication authentication,
         @PathVariable UUID tenantId, @PathVariable UUID caseId,
         @RequestHeader("Idempotency-Key") String key,
         @Valid @RequestBody ApprovalIntentEnvelope request) {
         requireIdempotencyKey(key);
-        authorities.submitApprovalIntent(principals.resolve(authentication, tenantId), caseId,
+        ApprovalIntentReceipt receipt = authorities.submitApprovalIntent(
+            principals.resolve(authentication, tenantId), caseId,
             request.approvalIntent(), key);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).build();
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .header("Cache-Control", "no-store").header("Pragma", "no-cache").body(receipt);
     }
 
     @GetMapping("/tasks/{taskId}/agui/events")

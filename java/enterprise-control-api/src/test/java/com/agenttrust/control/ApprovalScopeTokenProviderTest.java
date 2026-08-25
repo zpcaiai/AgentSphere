@@ -28,6 +28,8 @@ class ApprovalScopeTokenProviderTest {
         assertEquals("decide-token-value-0003",
             provider.token(ApprovalScopeTokenProvider.Scope.DECIDE));
 
+        Files.setPosixFilePermissions(properties.decideTokenFile(),
+            Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
         write(properties.decideTokenFile(), "read-token-value-0001");
         assertThrows(IllegalStateException.class,
             () -> provider.token(ApprovalScopeTokenProvider.Scope.DECIDE));

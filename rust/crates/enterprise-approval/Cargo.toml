@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+agent-trust-bounded-http = { path = "../bounded-http" }
 agent-trust-contracts = { path = "../contracts" }
 axum.workspace = true
 axum-server = { version = "0.8.0", default-features = false, features = ["tls-rustls-no-provider"] }
@@ -15,6 +16,7 @@ ed25519-dalek.workspace = true
 hex.workspace = true
 nix = { workspace = true, features = ["user"] }
 parking_lot.workspace = true
+reqwest.workspace = true
 ring.workspace = true
 rustls = { version = "0.23.32", default-features = false, features = ["ring", "std"] }
 rustls-pemfile = "2.2.0"

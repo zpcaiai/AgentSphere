@@ -11,6 +11,7 @@ import com.agenttrust.control.AdminModels.ProjectRequest;
 import com.agenttrust.control.AdminModels.QuotaConsumeRequest;
 import com.agenttrust.control.AdminModels.TenantRequest;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -207,27 +208,29 @@ public final class EnterpriseService {
             || !principal.roles().contains("approver")) {
             throw new ControlDeniedException("CONTROL_APPROVAL_DENIED");
         }
-        var decision = pep.authorizeApproval(principal, intent, key);
+        var pepDecision = pep.authorizeApproval(principal, intent, key);
         String digest = canonicalDigest.digest(Map.of("tenant_id", principal.tenantId(),
             "actor", principal.subject(), "approval_intent", intent));
         var reservation = transactions.execute(status -> {
             repository.enterTenant(principal.tenantId());
             return repository.reserveApprovalIntent(principal.tenantId(), key, digest,
-                principal.subject(), intent);
+                principal.subject(), intent, pepDecision);
         });
         if (reservation == null) {
             throw new ConflictException("CONTROL_TRANSACTION_FAILED");
         }
         return new ApprovalAuthorization(principal.tenantId(), key, reservation.dispatch(),
-            reservation.completed(), reservation.attempt(), decision.evidenceRef(),
+            reservation.completed(), reservation.attempt(), reservation.pepPolicyDigest(),
+            reservation.pepEvidenceRef(), reservation.responsePayload(),
             reservation.evidenceRef());
     }
 
-    public void completeApprovalIntent(ApprovalAuthorization authorization, String evidenceRef) {
+    public void completeApprovalIntent(ApprovalAuthorization authorization, JsonNode response,
+                                       String evidenceRef) {
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(authorization.tenantId());
             repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
-                authorization.attempt(), "COMPLETED", evidenceRef);
+                authorization.attempt(), "COMPLETED", response, evidenceRef);
         });
     }
 
@@ -235,21 +238,8 @@ public final class EnterpriseService {
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(authorization.tenantId());
             repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
-                authorization.attempt(), "UNKNOWN", authorization.pepEvidenceRef(),
+                authorization.attempt(), "UNKNOWN", null, null,
                 "CONTROL_APPROVAL_OUTCOME_UNKNOWN");
-        });
-    }
-
-    /**
-     * The Approval authority currently returns a case snapshot, not an immutable Evidence receipt.
-     * Keep the remote outcome retryable and do not substitute the earlier PEP decision evidence.
-     */
-    public void markApprovalEvidencePending(ApprovalAuthorization authorization) {
-        transactions.executeWithoutResult(status -> {
-            repository.enterTenant(authorization.tenantId());
-            repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
-                authorization.attempt(), "UNKNOWN", null,
-                "CONTROL_APPROVAL_EVIDENCE_PENDING");
         });
     }
 
@@ -257,7 +247,7 @@ public final class EnterpriseService {
         transactions.executeWithoutResult(status -> {
             repository.enterTenant(authorization.tenantId());
             repository.finishApprovalIntent(authorization.tenantId(), authorization.key(),
-                authorization.attempt(), "FAILED", null, reasonCode);
+                authorization.attempt(), "FAILED", null, null, reasonCode);
         });
     }
 
@@ -266,7 +256,8 @@ public final class EnterpriseService {
                                       com.fasterxml.jackson.databind.JsonNode completedResponse,
                                       String completedEvidenceRef) {}
     public record ApprovalAuthorization(UUID tenantId, String key, boolean dispatch,
-                                        boolean completed, int attempt, String pepEvidenceRef,
+                                        boolean completed, int attempt, String pepPolicyDigest,
+                                        String pepEvidenceRef, JsonNode completedResponse,
                                         String completedEvidenceRef) {}
 
     private String requestDigest(AdminIntent intent, String reason, Object request) {

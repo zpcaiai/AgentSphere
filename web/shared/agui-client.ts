@@ -299,11 +299,21 @@ export interface ApprovalIntent {
 }
 
 // This object is deliberately an intent, never an authorization or approval grant.
+export function validApprovalReason(reason: string): boolean {
+  const trimmed = reason.trim();
+  return trimmed.length > 0
+    && Array.from(trimmed).length <= 2_000
+    && !trimmed.includes("\0")
+    && new TextEncoder().encode(trimmed).byteLength <= 4_096;
+}
+
 export function buildApprovalIntent(caseId: string, decision: "APPROVE" | "REJECT", reason: string,
   actionHash: string, resourceVersion: string): ApprovalIntent {
   const trimmed = reason.trim();
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(caseId)
-    || !trimmed || trimmed.length > 2_000 || !/^[a-f0-9]{64}$/.test(actionHash) || !resourceVersion) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(caseId)
+    || !validApprovalReason(trimmed) || !/^[a-f0-9]{64}$/.test(actionHash)
+    || !resourceVersion || Array.from(resourceVersion).length > 512
+    || /[\u0000\r\n]/.test(resourceVersion)) {
     throw new Error("APPROVAL_INTENT_INVALID");
   }
   return {

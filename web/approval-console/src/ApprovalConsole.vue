@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { createDecisionIntent, type ApprovalCaseView } from "./approval-state";
+import { validApprovalReason } from "../../shared/agui-client";
 
 const props = withDefaults(defineProps<{
   approvalCase: ApprovalCaseView;
@@ -11,6 +12,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{ intent: [ReturnType<typeof createDecisionIntent>] }>();
 const reason = ref("");
 const pending = computed(() => props.approvalCase.status === "PENDING");
+const reasonValid = computed(() => validApprovalReason(reason.value));
 const labels = computed(() => props.locale === "en-US" ? {
   title: "High-risk action approval", summary: "Safe summary", resource: "Resource",
   policy: "Policy", risk: "Risk", diff: "Diff evidence", command: "Command summary",
@@ -60,10 +62,11 @@ function submit(decision: "APPROVE" | "REJECT"): void {
       <dd><ul><li v-for="reference in approvalCase.evidence_refs" :key="reference">{{ reference }}</li></ul></dd>
     </dl>
     <label :for="`reason-${approvalCase.case_id}`">{{ labels.reason }}</label>
-    <textarea :id="`reason-${approvalCase.case_id}`" v-model="reason" maxlength="2000" autocomplete="off" />
+    <textarea :id="`reason-${approvalCase.case_id}`" v-model="reason"
+      :aria-invalid="reason.length > 0 && !reasonValid" autocomplete="off" />
     <div class="button-row">
-      <button type="button" :disabled="!pending || !strongAuth || !reason.trim() || busy" @click="submit('APPROVE')">{{ labels.approve }}</button>
-      <button type="button" class="danger" :disabled="!pending || !strongAuth || !reason.trim() || busy" @click="submit('REJECT')">{{ labels.reject }}</button>
+      <button type="button" :disabled="!pending || !strongAuth || !reasonValid || busy" @click="submit('APPROVE')">{{ labels.approve }}</button>
+      <button type="button" class="danger" :disabled="!pending || !strongAuth || !reasonValid || busy" @click="submit('REJECT')">{{ labels.reject }}</button>
     </div>
     <p v-if="!strongAuth" role="alert">{{ labels.strongAuth }}</p>
     <p role="status">{{ labels.authority }}</p>

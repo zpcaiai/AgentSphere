@@ -85,27 +85,177 @@ describe("ControlApiClient", () => {
   });
 
   it("submits approval as an intent and not a grant", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(response(null, 202));
     const intent = { schema_version: "agenttrust.approval-intent.v1" as const, case_id: "20000000-0000-4000-8000-000000000001",
       decision: "APPROVE" as const, reason: "reviewed", observed_action_hash: "b".repeat(64),
       observed_resource_version: "v1" };
-    await new ControlApiClient("https://control.example").submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001");
+    const receipt = { schema_version: "agenttrust.approval-intent-receipt.v1" as const,
+      tenant_id: tenantId, case_id: intent.case_id, decision: intent.decision,
+      action_hash: intent.observed_action_hash, resource_version: intent.observed_resource_version,
+      case_status: "APPROVED" as const, decided_at: "2030-01-02T03:04:05Z",
+      evidence_ref: `urn:agenttrust:approval-decision:${tenantId}:${intent.case_id}:30000000-0000-4000-8000-000000000001`,
+      evidence_digest: "c".repeat(64), authority_issuer: "agenttrust-approval",
+      authority_key_id: "approval-key-1" };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(response(receipt, 202));
+    await expect(new ControlApiClient("https://control.example").submitApprovalIntent(
+      tenantId, intent, "csrf", "retry-key-0000001")).resolves.toEqual(receipt);
     const [, init] = fetchSpy.mock.calls[0]!;
     expect(JSON.parse(String(init?.body))).toEqual({ approval_intent: intent });
     expect(String(init?.body)).not.toContain("grant");
+    expect(new Headers(init?.headers).get("Accept")).toBe("application/json");
   });
 
-  it("preserves the fail-closed evidence-pending error instead of reporting approval success", async () => {
+  it("rejects an approval reason beyond the authority UTF-8 byte limit", async () => {
+    const intent = { schema_version: "agenttrust.approval-intent.v1" as const,
+      case_id: "20000000-0000-4000-8000-000000000001", decision: "APPROVE" as const,
+      reason: "界".repeat(1_366), observed_action_hash: "b".repeat(64),
+      observed_resource_version: "v1" };
+    await expect(new ControlApiClient("https://control.example").submitApprovalIntent(
+      tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_APPROVAL_INTENT_INVALID");
+  });
+
+  it("rejects noncanonical uppercase approval UUIDs before dispatch", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const intent = { schema_version: "agenttrust.approval-intent.v1" as const,
+      case_id: "20000000-0000-4000-8000-00000000000A", decision: "APPROVE" as const,
+      reason: "reviewed", observed_action_hash: "b".repeat(64),
+      observed_resource_version: "v1" };
+    await expect(new ControlApiClient("https://control.example").submitApprovalIntent(
+      tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_APPROVAL_INTENT_INVALID");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("allows multiline astral approval reasons but rejects NUL", async () => {
+    const base = { schema_version: "agenttrust.approval-intent.v1" as const,
+      case_id: "20000000-0000-4000-8000-000000000001", decision: "APPROVE" as const,
+      observed_action_hash: "b".repeat(64), observed_resource_version: "v1" };
     vi.spyOn(globalThis, "fetch").mockResolvedValue(response({
-      schema_version: "agenttrust.safe-error.v1", code: "CONTROL_APPROVAL_EVIDENCE_PENDING",
-      trace_id: "trace", occurred_at: "2030-01-02T03:04:05Z",
+      schema_version: "agenttrust.approval-intent-receipt.v1", tenant_id: tenantId,
+      case_id: base.case_id, decision: base.decision, action_hash: base.observed_action_hash,
+      resource_version: base.observed_resource_version, case_status: "APPROVED",
+      decided_at: "2030-01-02T03:04:05Z",
+      evidence_ref: `urn:agenttrust:approval-decision:${tenantId}:${base.case_id}:30000000-0000-4000-8000-000000000001`,
+      evidence_digest: "c".repeat(64), authority_issuer: "agenttrust-approval",
+      authority_key_id: "approval-key-1" }, 202));
+    await expect(new ControlApiClient("https://control.example").submitApprovalIntent(
+      tenantId, { ...base, reason: "😀".repeat(1_001) + "\n" }, "csrf",
+      "retry-key-0000001"))
+      .resolves.toMatchObject({ decision: "APPROVE" });
+    await expect(new ControlApiClient("https://control.example").submitApprovalIntent(
+      tenantId, { ...base, reason: "bad\0reason" }, "csrf", "retry-key-0000002"))
+      .rejects.toThrow("CONTROL_APPROVAL_INTENT_INVALID");
+  });
+
+  it("rejects approval receipts with extensions or broken request bindings", async () => {
+    const intent = { schema_version: "agenttrust.approval-intent.v1" as const,
+      case_id: "20000000-0000-4000-8000-000000000001", decision: "REJECT" as const,
+      reason: "unsafe change", observed_action_hash: "b".repeat(64), observed_resource_version: "v1" };
+    const receipt = { schema_version: "agenttrust.approval-intent-receipt.v1",
+      tenant_id: tenantId, case_id: intent.case_id, decision: intent.decision,
+      action_hash: intent.observed_action_hash, resource_version: intent.observed_resource_version,
+      case_status: "REJECTED", decided_at: "2030-01-02T03:04:05Z",
+      evidence_ref: `urn:agenttrust:approval-decision:${tenantId}:${intent.case_id}:30000000-0000-4000-8000-000000000001`,
+      evidence_digest: "c".repeat(64), authority_issuer: "agenttrust-approval",
+      authority_key_id: "approval-key-1" };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response({ ...receipt,
+      untrusted_complete: true }, 202)).mockResolvedValueOnce(response({ ...receipt,
+      action_hash: "d".repeat(64) }, 202));
+    const client = new ControlApiClient("https://control.example");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_APPROVAL_RECEIPT_INVALID");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_APPROVAL_RECEIPT_INVALID");
+  });
+
+  it("preserves a fail-closed unknown outcome instead of reporting approval success", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response({
+      schema_version: "agenttrust.safe-error.v1", code: "CONTROL_APPROVAL_OUTCOME_UNKNOWN",
+      trace_id: "40000000-0000-4000-8000-000000000001",
+      occurred_at: "2030-01-02T03:04:05Z",
     }, 503));
     const intent = { schema_version: "agenttrust.approval-intent.v1" as const,
       case_id: "20000000-0000-4000-8000-000000000001", decision: "REJECT" as const,
       reason: "unsafe change", observed_action_hash: "b".repeat(64), observed_resource_version: "v1" };
     await expect(new ControlApiClient("https://control.example").submitApprovalIntent(
       tenantId, intent, "csrf", "retry-key-0000001"))
-      .rejects.toThrow("CONTROL_APPROVAL_EVIDENCE_PENDING");
+      .rejects.toThrow("CONTROL_APPROVAL_OUTCOME_UNKNOWN");
+  });
+
+  it("preserves exact approval conflict and capacity error contracts", async () => {
+    const intent = { schema_version: "agenttrust.approval-intent.v1" as const,
+      case_id: "20000000-0000-4000-8000-000000000001", decision: "REJECT" as const,
+      reason: "unsafe change", observed_action_hash: "b".repeat(64), observed_resource_version: "v1" };
+    const safeError = (code: string) => ({ schema_version: "agenttrust.safe-error.v1",
+      code, trace_id: "40000000-0000-4000-8000-000000000001",
+      occurred_at: "2030-01-02T03:04:05.123456Z" });
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(response(safeError("CONTROL_IDEMPOTENCY_CONFLICT"), 409))
+      .mockResolvedValueOnce(response(safeError("CONTROL_AUTHORITY_CAPACITY"), 429));
+    const client = new ControlApiClient("https://control.example");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toMatchObject({ code: "CONTROL_IDEMPOTENCY_CONFLICT", status: 409 });
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toMatchObject({ code: "CONTROL_AUTHORITY_CAPACITY", status: 429 });
+  });
+
+  it("cancels oversized error bodies before parsing them", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response({
+      schema_version: "agenttrust.safe-error.v1", code: "CONTROL_AUTHORITY_CAPACITY",
+      trace_id: "40000000-0000-4000-8000-000000000001",
+      occurred_at: "2030-01-02T03:04:05Z", padding: "x".repeat(20_000),
+    }, 503));
+    await expect(new ControlApiClient("https://control.example").session())
+      .rejects.toMatchObject({ code: "CONTROL_API_RESPONSE_TOO_LARGE", status: 503 });
+  });
+
+  it("keeps the request deadline active while the response body is streaming", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      let bodyController: ReadableStreamDefaultController<Uint8Array> | undefined;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          bodyController = controller;
+          controller.enqueue(new TextEncoder().encode('{"schema_version":'));
+        },
+      });
+      init?.signal?.addEventListener("abort", () => bodyController?.error(
+        new DOMException("deadline", "AbortError")), { once: true });
+      return new Response(body, { status: 200,
+        headers: { "Content-Type": "application/json" } });
+    });
+    await expect(new ControlApiClient("https://control.example", 100).session())
+      .rejects.toMatchObject({ code: "CONTROL_API_TIMEOUT", status: 200 });
+  });
+
+  it("rejects noncanonical approval evidence, timestamps and unsafe error extensions", async () => {
+    const intent = { schema_version: "agenttrust.approval-intent.v1" as const,
+      case_id: "20000000-0000-4000-8000-000000000001", decision: "APPROVE" as const,
+      reason: "reviewed", observed_action_hash: "b".repeat(64), observed_resource_version: "v1" };
+    const receipt = { schema_version: "agenttrust.approval-intent-receipt.v1",
+      tenant_id: tenantId, case_id: intent.case_id, decision: intent.decision,
+      action_hash: intent.observed_action_hash, resource_version: intent.observed_resource_version,
+      case_status: "POST_REVIEW_REQUIRED", decided_at: "2030-01-02T03:04:05Z",
+      evidence_ref: `urn:agenttrust:approval-decision:${tenantId}:${intent.case_id}:30000000-0000-4000-8000-000000000001`,
+      evidence_digest: "c".repeat(64), authority_issuer: ".approval/authority",
+      authority_key_id: ".approval-key-1" };
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(response({ ...receipt,
+        evidence_ref: receipt.evidence_ref.toUpperCase() }, 202))
+      .mockResolvedValueOnce(response({ ...receipt, decided_at: "2030-02-30T03:04:05Z" }, 202))
+      .mockResolvedValueOnce(response({ schema_version: "agenttrust.safe-error.v1",
+        code: "CONTROL_APPROVAL_OUTCOME_UNKNOWN",
+        trace_id: "40000000-0000-4000-8000-000000000001",
+        occurred_at: "2030-01-02T03:04:05Z", leaked_reason: "secret" }, 503))
+      .mockResolvedValueOnce(response(receipt, 202));
+    const client = new ControlApiClient("https://control.example");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_APPROVAL_RECEIPT_INVALID");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_APPROVAL_RECEIPT_INVALID");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .rejects.toThrow("CONTROL_API_REJECTED_503");
+    await expect(client.submitApprovalIntent(tenantId, intent, "csrf", "retry-key-0000001"))
+      .resolves.toEqual(receipt);
   });
 
   it("accepts only the exact authoritative Agent Registry inventory wire", async () => {

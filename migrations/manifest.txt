@@ -65,4 +65,6 @@ domain-packs/0036_01_22_production_sensitive_pack.sql
 evidence/0036_01_23_production_authority_evidence.sql
 orchestrator/0036_01_24_production_orchestrator_hardening.sql
 enterprise-approval/0036_01_25_approval_review_evidence_v2.sql
+enterprise-approval/0036_01_26_approval_decision_evidence.sql
+enterprise-control/0036_01_27_approval_intent_receipt.sql
 production-closure/0036_02_global_tenant_isolation.sql

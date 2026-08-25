@@ -969,7 +969,7 @@ def render(
     approval_authority = require_mapping(
         authorities["approval"], "approval_authority",
         {
-            "client_identities", "issuer", "key_id", "principal_audience",
+            "client_identities", "evidence_source_identity", "issuer", "key_id", "principal_audience",
             "principal_issuer", "principal_key_id", "principal_signing_key_format",
             "service_subject", "assertion_ttl_seconds", "accepted_strong_auth_acrs",
             "maximum_authentication_age_seconds",
@@ -1033,6 +1033,12 @@ def render(
             raise RenderError(
                 f"PRODUCTION_STACK_{authority_name.upper()}_EXECUTION_IDENTITY_MISSING"
             )
+    approval_evidence_source_identity = require_client_identity(
+        approval_authority["evidence_source_identity"],
+        "PRODUCTION_STACK_APPROVAL_EVIDENCE_SOURCE_IDENTITY_INVALID",
+    )
+    if approval_evidence_source_identity not in authority_client_identities["evidence"]:
+        raise RenderError("PRODUCTION_STACK_APPROVAL_EVIDENCE_IDENTITY_MISSING")
     tool_proxy_identity = require_client_identity(
         identity_authority["tool_proxy_client_identity"],
         "PRODUCTION_STACK_IDENTITY_TOOL_PROXY_CLIENT_IDENTITY_INVALID",
@@ -1345,8 +1351,9 @@ def render(
     workload_identities = authority_outbound_identities | {
         execution_outbound_identity, pep_outbound_identity,
         enterprise_approval_identity, tool_proxy_identity,
+        approval_evidence_source_identity,
     }
-    if len(workload_identities) != 8:
+    if len(workload_identities) != 9:
         raise RenderError("PRODUCTION_STACK_WORKLOAD_IDENTITIES_NOT_DISTINCT")
     if enterprise_approval_identity not in agent_registry_client_identities:
         raise RenderError("PRODUCTION_STACK_AGENT_REGISTRY_ENTERPRISE_IDENTITY_MISSING")
@@ -1687,6 +1694,7 @@ def render(
         "ORCHESTRATOR_BFF_CLIENT_IDENTITIES": ",".join(bff_client_identities),
         "AGENT_REGISTRY_ENDPOINT": authorities["agents"],
         "APPROVAL_AUTHORITY_ENDPOINT": authorities["approvals"],
+        "APPROVAL_EVIDENCE_SOURCE_IDENTITY": approval_evidence_source_identity,
         "EVIDENCE_AUTHORITY_ENDPOINT": authorities["evidence"],
         "INCIDENT_AUTHORITY_ENDPOINT": authorities["incidents"],
         "POLICY_ADMIN_ENDPOINT": authorities["policies"],

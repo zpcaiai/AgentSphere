@@ -54,6 +54,7 @@ class ApprovalPrincipalAssertionSignerTest {
 
         assertEquals(golden.path("request_digest").textValue(), signed.requestDigest());
         assertEquals(golden.path("assertion_digest").textValue(), signed.assertionDigest());
+        assertEquals(golden.path("signed_assertion").path("jti").textValue(), signed.jti());
         assertEquals(golden.path("header_value_base64url").textValue(), signed.headerValue());
         JsonNode decoded = mapper.readTree(Base64.getUrlDecoder().decode(signed.headerValue()));
         assertEquals(golden.path("signed_assertion"), decoded);

@@ -2,12 +2,14 @@ package com.agenttrust.control;
 
 import com.agenttrust.control.AdminModels.AdminIntent;
 import com.agenttrust.control.AdminModels.ApprovalIntent;
+import com.agenttrust.control.AdminModels.ApprovalIntentReceipt;
 import com.agenttrust.control.AdminModels.PrincipalContext;
 import com.agenttrust.control.AdminModels.TaskCommand;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -56,6 +58,7 @@ public final class GovernedAuthorityGateway {
     private final AuthorityScopeTokenProvider authorityTokens;
     private final ApprovalScopeTokenProvider approvalTokens;
     private final ApprovalPrincipalAssertionSigner approvalAssertions;
+    private final ApprovalDecisionEvidenceVerifier approvalEvidence;
     private final EnterpriseService service;
     private final AuthoritativeBff responseValidator;
     private final PepAuthorizationClient pep;
@@ -66,6 +69,7 @@ public final class GovernedAuthorityGateway {
                                     AuthorityScopeTokenProvider authorityTokens,
                                     ApprovalScopeTokenProvider approvalTokens,
                                     ApprovalPrincipalAssertionSigner approvalAssertions,
+                                    ApprovalDecisionEvidenceVerifier approvalEvidence,
                                     EnterpriseService service, AuthoritativeBff responseValidator,
                                     PepAuthorizationClient pep,
                                     CanonicalDigest canonical, ObjectMapper mapper) {
@@ -74,6 +78,7 @@ public final class GovernedAuthorityGateway {
         this.authorityTokens = authorityTokens;
         this.approvalTokens = approvalTokens;
         this.approvalAssertions = approvalAssertions;
+        this.approvalEvidence = approvalEvidence;
         this.service = service;
         this.responseValidator = responseValidator;
         this.pep = pep;
@@ -124,8 +129,9 @@ public final class GovernedAuthorityGateway {
         }
     }
 
-    public void submitApprovalIntent(PrincipalContext principal, java.util.UUID caseId,
-                                     ApprovalIntent approval, String key) {
+    public ApprovalIntentReceipt submitApprovalIntent(PrincipalContext principal,
+                                                       java.util.UUID caseId,
+                                                       ApprovalIntent approval, String key) {
         if (!caseId.equals(approval.caseId())) {
             throw new ControlDeniedException("CONTROL_APPROVAL_BINDING_MISMATCH");
         }
@@ -135,31 +141,38 @@ public final class GovernedAuthorityGateway {
             ApprovalScopeTokenProvider.Scope.DECIDE, key, decision);
         var authorization = service.authorizeApprovalIntent(principal, approval, key);
         if (authorization.completed()) {
-            // Legacy completed rows have no independently verified Approval evidence receipt.
-            throw new ControlUnavailableException("CONTROL_APPROVAL_REPLAY_EVIDENCE_UNVERIFIED");
+            return requireCompletedApprovalReplay(authorization, principal, caseId, approval, key,
+                signedPrincipal);
         }
         requireDispatchLease(authorization.dispatch());
-        JsonNode response;
         try {
             JsonNode before = approvalGet(principal, approvalCasePath(caseId));
             ApprovalCaseBinding binding = requireApprovalCaseBinding(before, principal.tenantId(),
                 caseId, approval.observedActionHash(), approval.observedResourceVersion(),
                 APPROVAL_CASE_STATUSES);
-            if (containsApprover(before.path("decisions"), principal.subject())) {
-                // The earlier authority response may have been lost after its transaction
-                // committed. Re-validate the exact persisted decision and do not submit a
-                // second human mutation. It still is not an immutable Evidence receipt, so the
-                // local state remains UNKNOWN below.
-                requireApprovalDecisionResult(before, binding, principal, approval);
-                response = before;
+            boolean authorityReplay = containsApprover(
+                before.path("decisions"), principal.subject());
+            if (authorityReplay) {
+                // A lost response is recovered through the authority's stable mutation replay,
+                // never by treating this mutable GET snapshot as decision evidence.
+                requireApprovalDecisionRecord(before, principal, approval);
             } else {
                 if (!"PENDING".equals(before.path("status").textValue())) {
                     throw new ConflictException("CONTROL_APPROVAL_CASE_NOT_PENDING");
                 }
-                response = approvalPost(principal, path, decision, key,
-                    signedPrincipal.headerValue());
-                requireApprovalDecisionResult(response, binding, principal, approval);
             }
+            JsonNode response = approvalPost(principal, path, decision, key,
+                signedPrincipal.headerValue());
+            JsonNode approvalCase = response.path("approval_case");
+            JsonNode decisionRecord = requireApprovalDecisionResult(approvalCase, binding,
+                principal, approval);
+            ApprovalIntentReceipt receipt = authorityReplay
+                ? approvalEvidence.requireReplay(response, principal.tenantId(), caseId,
+                    approval, key, principal, signedPrincipal, decisionRecord)
+                : approvalEvidence.require(response, principal.tenantId(), caseId, approval,
+                    key, principal, signedPrincipal, decisionRecord);
+            service.completeApprovalIntent(authorization, response, receipt.evidenceRef());
+            return receipt;
         } catch (ControlDeniedException | ConflictException error) {
             try {
                 service.markApprovalFailed(authorization, "CONTROL_APPROVAL_REJECTED");
@@ -182,14 +195,6 @@ public final class GovernedAuthorityGateway {
             }
             throw new ControlUnavailableException("CONTROL_APPROVAL_OUTCOME_UNKNOWN", error);
         }
-        try {
-            service.markApprovalEvidencePending(authorization);
-        } catch (RuntimeException error) {
-            throw new ControlUnavailableException("CONTROL_APPROVAL_OUTCOME_UNKNOWN", error);
-        }
-        // A mutable case snapshot is not an immutable Evidence authority receipt. The decision was
-        // accepted remotely, but UI success remains fail-closed until that receipt is integrated.
-        throw new ControlUnavailableException("CONTROL_APPROVAL_EVIDENCE_PENDING");
     }
 
     static String approvalCasePath(UUID caseId) {
@@ -271,13 +276,53 @@ public final class GovernedAuthorityGateway {
             canonical.digest(request), canonical.digest(value.path("policy")));
     }
 
-    private void requireApprovalDecisionResult(JsonNode response, ApprovalCaseBinding before,
-                                               PrincipalContext principal,
-                                               ApprovalIntent approval) {
+    private ApprovalIntentReceipt requireCompletedApprovalReplay(
+        EnterpriseService.ApprovalAuthorization authorization, PrincipalContext principal,
+        UUID caseId, ApprovalIntent approval, String key,
+        ApprovalPrincipalAssertionSigner.SignedHeader signedPrincipal
+    ) {
+        JsonNode response = requireCompletedApprovalPayload(authorization);
+        JsonNode approvalCase = response.path("approval_case");
+        ApprovalCaseBinding binding = requireApprovalCaseBinding(approvalCase,
+            principal.tenantId(), caseId, approval.observedActionHash(),
+            approval.observedResourceVersion(), APPROVAL_CASE_STATUSES);
+        JsonNode decisionRecord = requireApprovalDecisionResult(approvalCase, binding, principal,
+            approval);
+        ApprovalIntentReceipt receipt = approvalEvidence.requirePersistedReplay(response,
+            principal.tenantId(), caseId, approval, key, principal, signedPrincipal,
+            decisionRecord);
+        if (!authorization.completedEvidenceRef().equals(receipt.evidenceRef())) {
+            throw new ControlUnavailableException(
+                "CONTROL_APPROVAL_REPLAY_EVIDENCE_UNVERIFIED");
+        }
+        return receipt;
+    }
+
+    static JsonNode requireCompletedApprovalPayload(
+        EnterpriseService.ApprovalAuthorization authorization
+    ) {
+        if (authorization == null || !authorization.completed()
+            || authorization.pepPolicyDigest() == null
+            || !authorization.pepPolicyDigest().matches("[a-f0-9]{64}")
+            || authorization.pepEvidenceRef() == null
+            || authorization.pepEvidenceRef().getBytes(StandardCharsets.UTF_8).length > 2_048
+            || !authorization.pepEvidenceRef()
+                .matches("[A-Za-z][A-Za-z0-9+.-]*:[^\\s]{1,2031}")
+            || authorization.completedResponse() == null
+            || authorization.completedEvidenceRef() == null
+            || authorization.completedEvidenceRef().isBlank()) {
+            throw new ControlUnavailableException(
+                "CONTROL_APPROVAL_REPLAY_EVIDENCE_UNVERIFIED");
+        }
+        return authorization.completedResponse();
+    }
+
+    private JsonNode requireApprovalDecisionResult(JsonNode response, ApprovalCaseBinding before,
+                                                   PrincipalContext principal,
+                                                   ApprovalIntent approval) {
         Set<String> statuses = "REJECT".equals(approval.decision())
             ? Set.of("REJECTED")
-            : Set.of("PENDING", "APPROVED", "POST_REVIEW_REQUIRED", "CONSUMED", "REVOKED",
-                "EXPIRED");
+            : Set.of("PENDING", "APPROVED", "POST_REVIEW_REQUIRED");
         ApprovalCaseBinding after;
         try {
             after = requireApprovalCaseBinding(response, before.tenantId(), before.caseId(),
@@ -290,27 +335,32 @@ public final class GovernedAuthorityGateway {
             || !before.policyDigest().equals(after.policyDigest())) {
             throw new ControlUnavailableException("CONTROL_APPROVAL_RESPONSE_BINDING_INVALID");
         }
+        return requireApprovalDecisionRecord(response, principal, approval);
+    }
+
+    private JsonNode requireApprovalDecisionRecord(JsonNode response, PrincipalContext principal,
+                                                    ApprovalIntent approval) {
         int matched = 0;
+        JsonNode matching = null;
         for (JsonNode decision : response.path("decisions")) {
             if (principal.subject().equals(decision.path("approver_subject").asText())) {
-                Set<String> roles = new java.util.TreeSet<>();
-                decision.path("roles").forEach(item -> roles.add(item.asText()));
                 if (!approval.decision().equals(decision.path("decision").asText())
                     || !approval.reason().equals(decision.path("reason").asText())
-                    || !decision.path("strong_auth").asBoolean(false)
-                    || !roles.equals(principal.roles())) {
+                    || !decision.path("strong_auth").asBoolean(false)) {
                     throw new ControlUnavailableException(
                         "CONTROL_APPROVAL_RESPONSE_BINDING_INVALID");
                 }
                 matched++;
+                matching = decision;
             }
         }
         if (matched != 1) {
             throw new ControlUnavailableException("CONTROL_APPROVAL_RESPONSE_BINDING_INVALID");
         }
+        return matching;
     }
 
-    private static boolean containsApprover(JsonNode decisions, String subject) {
+    static boolean containsApprover(JsonNode decisions, String subject) {
         for (JsonNode decision : decisions) {
             if (subject.equals(decision.path("approver_subject").asText())) {
                 return true;
@@ -349,7 +399,7 @@ public final class GovernedAuthorityGateway {
                 request, value.path("created_at"), canonical)
             || invalidBoundedText(request, "requester_subject", 256)
             || invalidBoundedText(request, "agent_owner_subject", 256)
-            || invalidBoundedText(request, "justification", 4096)
+            || !validApprovalHumanText(request, "justification", 4096)
             || !positiveInteger(request.path("requested_ttl_seconds"), 604_800)
             || !request.path("requested_uses").isIntegralNumber()
             || request.path("requested_uses").longValue() != 1) {
@@ -378,7 +428,7 @@ public final class GovernedAuthorityGateway {
                 || !stringArray(decision.path("roles"), 64, 256)
                 || !Set.of("APPROVE", "REJECT", "POST_REVIEWED")
                     .contains(text(decision, "decision", 32))
-                || invalidBoundedText(decision, "reason", 4096)
+                || !validApprovalHumanText(decision, "reason", 4096)
                 || !dateTime(decision.path("decided_at"))
                 || !decision.path("strong_auth").isBoolean()
                 || !decision.path("strong_auth").booleanValue()) {
@@ -416,6 +466,16 @@ public final class GovernedAuthorityGateway {
         } catch (ControlUnavailableException error) {
             return true;
         }
+    }
+
+    static boolean validApprovalHumanText(JsonNode object, String field, int maximumBytes) {
+        JsonNode value = object.path(field);
+        if (!value.isTextual()) {
+            return false;
+        }
+        String text = value.textValue();
+        return !text.isBlank() && text.indexOf('\0') < 0
+            && text.getBytes(StandardCharsets.UTF_8).length <= maximumBytes;
     }
 
     private static boolean containsControl(String value) {

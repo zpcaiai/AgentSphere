@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/approval/decision-request-binding.schema.json",
+  "title": "Approval decision stable idempotency request binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "case_id", "decision"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.approval-decision-request-binding.v1"},
+    "case_id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "decision", "reason"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.approval-decision.v1"},
+        "decision": {"enum": ["APPROVE", "REJECT", "POST_REVIEWED"]},
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^[^\\u0000]*$",
+          "description": "Human decision reason encoded as at most 4096 UTF-8 bytes",
+          "x-agenttrust-max-utf8-bytes": 4096
+        }
+      }
+    }
+  }
+}

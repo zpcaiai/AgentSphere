@@ -237,6 +237,7 @@ def values() -> dict[str, object]:
     execution_identity = "URI:spiffe://prod.test/execution"
     enterprise_identity = "URI:spiffe://prod.test/enterprise-control"
     enterprise_authority_identity = "URI:spiffe://prod.test/enterprise-authority"
+    approval_identity = "URI:spiffe://prod.test/approval"
     tool_proxy_identity = "URI:spiffe://prod.test/tool-proxy"
     pep_identity = "URI:spiffe://prod.test/pep"
     policy_admin_identity = "URI:spiffe://prod.test/policy-admin"
@@ -415,6 +416,7 @@ def values() -> dict[str, object]:
                 "client_identities": [
                     execution_identity, enterprise_identity, pep_identity,
                 ],
+                "evidence_source_identity": approval_identity,
                 "issuer": "agenttrust-approval",
                 "key_id": "approval-signing-2026-01",
                 "principal_audience": "agenttrust-approval",
@@ -448,7 +450,9 @@ def values() -> dict[str, object]:
             },
             "tool_proxy": {"client_identities": [execution_identity]},
             "evidence": {
-                "client_identities": [execution_identity, enterprise_identity],
+                "client_identities": [
+                    execution_identity, enterprise_identity, approval_identity,
+                ],
                 "issuer": "agenttrust-evidence",
                 "key_id": "evidence-signing-2026-01",
                 "worm_endpoint": "https://worm.prod.test",
@@ -942,6 +946,42 @@ class ProductionDeploymentTests(unittest.TestCase):
             RENDER.RenderError, "EXECUTION_OUTBOUND_CLIENT_IDENTITY_INVALID"
         ):
             RENDER.render("", unsafe, runtime_config())
+
+    def test_all_evidence_publishers_are_bidirectionally_peer_scoped(self) -> None:
+        template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
+        service_and_target_ports = (
+            "ports: [{protocol: TCP, port: 443}, {protocol: TCP, port: 8087}]"
+        )
+        publisher_policies = (
+            ("execution", "agenttrust-execution-network"),
+            ("enterprise-api", "agenttrust-enterprise-control-network"),
+            ("approval", "agenttrust-approval-network"),
+            ("domain-runtime", "agenttrust-domain-runtime-network"),
+            ("pack-supply-chain", "agenttrust-pack-supply-chain-network"),
+            ("security-evaluation", "agenttrust-security-evaluation-network"),
+            ("runtime-anomaly", "agenttrust-runtime-anomaly-network"),
+            ("context-governance", "agenttrust-context-governance-network"),
+            ("data-governance", "agenttrust-data-governance-network"),
+            ("platform-sre", "agenttrust-platform-sre-network"),
+            ("model-gateway", "agenttrust-model-gateway-network"),
+        )
+        for component, policy_name in publisher_policies:
+            with self.subTest(direction="egress", component=component):
+                policy = template.split(f"name: {policy_name}", 1)[1].split(
+                    "---", 1
+                )[0]
+                self.assertIn("app.kubernetes.io/component: evidence", policy)
+                self.assertIn(service_and_target_ports, policy)
+
+        evidence_policy = template.split(
+            "name: agenttrust-evidence-network", 1
+        )[1].split("---", 1)[0]
+        for component, _ in publisher_policies:
+            with self.subTest(direction="ingress", component=component):
+                self.assertIn(
+                    f"app.kubernetes.io/component: {component}", evidence_policy
+                )
+        self.assertIn(service_and_target_ports, evidence_policy)
 
     def test_execution_approval_authority_contract_is_deployed(self) -> None:
         template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
@@ -1854,6 +1894,68 @@ class ProductionDeploymentTests(unittest.TestCase):
         ).read_text()
         self.assertIn("APPROVAL_V2_LEGACY_MUTABLE_STATE_MUST_BE_DRAINED", migration)
         self.assertIn("approval_cases_review_evidence_v2_check", migration)
+
+    def test_approval_decision_evidence_publisher_identity_is_fail_closed(self) -> None:
+        candidate = values()
+        source_identity = candidate["authorities"]["approval"][
+            "evidence_source_identity"
+        ]
+        rendered = RENDER.render(
+            (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(),
+            candidate,
+            runtime_config(),
+        )
+        self.assertIn(
+            f'AGENT_TRUST_APPROVAL_EVIDENCE_SOURCE_IDENTITY, value: "{source_identity}"',
+            rendered,
+        )
+        self.assertNotIn("@@APPROVAL_EVIDENCE_SOURCE_IDENTITY@@", rendered)
+
+        missing = values()
+        del missing["authorities"]["approval"]["evidence_source_identity"]
+        with self.assertRaisesRegex(
+            RENDER.RenderError, "PRODUCTION_STACK_APPROVAL_AUTHORITY_INVALID"
+        ):
+            RENDER.render("", missing, runtime_config())
+
+        untrusted = values()
+        untrusted["authorities"]["approval"]["evidence_source_identity"] = (
+            "URI:spiffe://prod.test/untrusted-approval"
+        )
+        with self.assertRaisesRegex(
+            RENDER.RenderError, "PRODUCTION_STACK_APPROVAL_EVIDENCE_IDENTITY_MISSING"
+        ):
+            RENDER.render("", untrusted, runtime_config())
+
+        collision = values()
+        collision["authorities"]["approval"]["evidence_source_identity"] = collision[
+            "execution"
+        ]["outbound_client_identity"]
+        with self.assertRaisesRegex(
+            RENDER.RenderError, "PRODUCTION_STACK_WORKLOAD_IDENTITIES_NOT_DISTINCT"
+        ):
+            RENDER.render("", collision, runtime_config())
+
+    def test_enterprise_bff_pins_the_approval_authority_public_key(self) -> None:
+        template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
+        enterprise_secrets = template.split(
+            "kind: SecretProviderClass\nmetadata:\n  name: agenttrust-enterprise-control",
+            1,
+        )[1].split("---", 1)[0]
+        self.assertIn(
+            'objectName: "approval-authority-verification-keyring.json"',
+            enterprise_secrets,
+        )
+        self.assertIn(
+            'secretKey: "approval_authority_verification_keyring"',
+            enterprise_secrets,
+        )
+        self.assertIn("filePermission: 0o440", enterprise_secrets)
+        for required in (
+            "AGENT_TRUST_APPROVAL_AUTHORITY_VERIFICATION_KEYRING_FILE",
+            "/var/run/agenttrust/secrets/enterprise/approval-authority-verification-keyring.json",
+        ):
+            self.assertIn(required, template)
 
 
 if __name__ == "__main__":

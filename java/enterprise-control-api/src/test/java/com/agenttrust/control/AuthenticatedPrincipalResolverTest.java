@@ -77,7 +77,8 @@ class AuthenticatedPrincipalResolverTest {
             .claim("acr", "urn:agenttrust:acr:mfa")
             .claim("auth_time", NOW.minusSeconds(901).getEpochSecond())
             .build();
-        var principal = resolver.resolve(new JwtAuthenticationToken(token), tenant);
+        var principal = resolver.resolve(new JwtAuthenticationToken(token,
+            List.of(new SimpleGrantedAuthority("ROLE_USER"))), tenant);
         assertEquals(false, principal.strongAuth());
         assertEquals(java.util.Set.of(), principal.ownedResources());
     }

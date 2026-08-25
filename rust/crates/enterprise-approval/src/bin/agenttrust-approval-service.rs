@@ -1,9 +1,13 @@
 use agent_trust_enterprise_approval::{
     ApprovalPrincipalAssertionKeyring, ApprovalReviewEvidenceKeyring,
 };
-use agent_trust_enterprise_approval::postgres::{ApprovalSigner, PostgresApprovalStore};
+use agent_trust_enterprise_approval::evidence_delivery::ApprovalEvidencePublisher;
+use agent_trust_enterprise_approval::postgres::{
+    ApprovalDecisionEvidenceKeyring, ApprovalSigner, PostgresApprovalStore,
+};
 use agent_trust_enterprise_approval::server::{
     ApprovalApiState, ApprovalServerConfig, TokenBindingApprovalAuthorizer, serve,
+    validate_certificate_identity_file,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
@@ -55,11 +59,44 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE",
         false,
     )?)?;
+    let decision_evidence_keyring = ApprovalDecisionEvidenceKeyring::from_file(&required_file(
+        "AGENT_TRUST_APPROVAL_DECISION_EVIDENCE_KEYRING_FILE",
+        false,
+    )?)?;
+    let delivery_evidence_keyring = ApprovalReviewEvidenceKeyring::from_file(&required_file(
+        "AGENT_TRUST_APPROVAL_EVIDENCE_RECEIPT_KEYRING_FILE",
+        false,
+    )?)?;
+    let evidence_source_identity = required_env("AGENT_TRUST_APPROVAL_EVIDENCE_SOURCE_IDENTITY")?;
+    let evidence_client_certificate = required_file(
+        "AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_CERTIFICATE_FILE",
+        false,
+    )?;
+    validate_certificate_identity_file(
+        &evidence_client_certificate,
+        &evidence_source_identity,
+    )?;
+    let evidence_publisher = Arc::new(ApprovalEvidencePublisher::new(
+        url::Url::parse(&required_env("AGENT_TRUST_APPROVAL_EVIDENCE_ENDPOINT")?)?,
+        required_file("AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN_FILE", true)?,
+        &required_file("AGENT_TRUST_APPROVAL_EVIDENCE_CA_FILE", false)?,
+        &evidence_client_certificate,
+        &required_file(
+            "AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_PRIVATE_KEY_FILE",
+            true,
+        )?,
+        required_env("AGENT_TRUST_APPROVAL_EVIDENCE_READINESS_SCHEMA")?,
+        delivery_evidence_keyring.clone(),
+    )?);
     let store = Arc::new(PostgresApprovalStore::new(
         pool,
         signer,
         review_evidence_keyring,
-    ));
+        delivery_evidence_keyring,
+        decision_evidence_keyring,
+        evidence_source_identity,
+        evidence_publisher,
+    )?);
     if !store.ready().await {
         return Err("APPROVAL_DATABASE_NOT_READY".into());
     }
@@ -72,12 +109,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if authorizer.tenants().is_empty() {
         return Err("APPROVAL_TENANT_BINDINGS_REQUIRED".into());
     }
+    let delivery_tenants = authorizer.tenants().clone();
     let principal_keyring = Arc::new(ApprovalPrincipalAssertionKeyring::from_file(
         &required_file("AGENT_TRUST_APPROVAL_PRINCIPAL_KEYS_FILE", false)?,
         &required_audience("AGENT_TRUST_APPROVAL_PRINCIPAL_AUDIENCE")?,
     )?);
-    let state = ApprovalApiState::production(store, authorizer, principal_keyring)?;
-    serve(
+    let state = ApprovalApiState::production(store.clone(), authorizer, principal_keyring)?;
+    let server = serve(
         ApprovalServerConfig {
             data_address: arguments.data,
             management_address: arguments.management,
@@ -90,8 +128,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             client_identities: identities,
         },
         state,
-    )
-    .await?;
+    );
+    let delivery = store.run_decision_evidence_delivery(
+        delivery_tenants,
+        uuid::Uuid::new_v4().to_string(),
+    );
+    tokio::select! {
+        result = server => result?,
+        result = delivery => {
+            result?;
+            return Err("APPROVAL_EVIDENCE_DELIVERY_STOPPED".into());
+        }
+    }
     Ok(())
 }
 
@@ -149,7 +197,20 @@ async fn verify_database_posture(
                 has_table_privilege(current_user,'public.approval_cases','DELETE') AS can_delete_cases,\
                 has_table_privilege(current_user,'public.approval_consumptions','DELETE') AS can_delete_receipts,\
                 has_column_privilege(current_user,'public.approval_grants','signed_grant','UPDATE') AS can_replace_grant,\
-                has_column_privilege(current_user,'public.approval_grants','remaining_uses','UPDATE') AS can_consume_grant \
+                has_column_privilege(current_user,'public.approval_grants','remaining_uses','UPDATE') AS can_consume_grant,\
+                has_table_privilege(current_user,'public.approval_decision_evidence_receipts','DELETE') AS can_delete_decision_evidence,\
+                has_column_privilege(current_user,'public.approval_decision_evidence_receipts','signed_receipt','UPDATE') AS can_replace_decision_evidence,\
+                has_table_privilege(current_user,'public.approval_decision_evidence_outbox','DELETE') AS can_delete_decision_outbox,\
+                has_column_privilege(current_user,'public.approval_decision_evidence_outbox','authority_request','UPDATE') AS can_replace_decision_outbox,\
+                (has_column_privilege(current_user,'public.approval_decision_evidence_outbox','delivery_attempts','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','next_attempt_at','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','lease_owner','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','lease_expires_at','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','last_attempt_at','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','last_error_code','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','signed_authority_receipt','UPDATE')\
+                 AND has_column_privilege(current_user,'public.approval_decision_evidence_outbox','delivered_at','UPDATE'))\
+                   AS can_deliver_decision_outbox \
          FROM pg_roles WHERE rolname=current_user",
     )
     .fetch_one(pool)
@@ -163,7 +224,12 @@ async fn verify_database_posture(
         || row.try_get::<bool, _>("can_delete_cases")?
         || row.try_get::<bool, _>("can_delete_receipts")?
         || row.try_get::<bool, _>("can_replace_grant")?
+        || row.try_get::<bool, _>("can_delete_decision_evidence")?
+        || row.try_get::<bool, _>("can_replace_decision_evidence")?
+        || row.try_get::<bool, _>("can_delete_decision_outbox")?
+        || row.try_get::<bool, _>("can_replace_decision_outbox")?
         || !row.try_get::<bool, _>("can_consume_grant")?
+        || !row.try_get::<bool, _>("can_deliver_decision_outbox")?
         || row.try_get::<String, _>("search_path")? != "pg_catalog, public"
         || row.try_get::<String, _>("resolved_schemas")? != "{pg_catalog,public}"
         || row.try_get::<String, _>("row_security")? != "on"

@@ -242,6 +242,10 @@ impl ApprovalApiState {
                 .tenants
                 .iter()
                 .any(|tenant| !store.review_evidence_covers(tenant, Utc::now()))
+            || authorizer
+                .tenants
+                .iter()
+                .any(|tenant| !store.decision_evidence_delivery_covers(tenant, Utc::now()))
         {
             return Err(ApprovalError::ConfigurationInvalid);
         }
@@ -334,24 +338,36 @@ fn approval_router(state: ApprovalApiState) -> Router {
 }
 
 async fn data_ready(State(state): State<ApprovalApiState>) -> Response {
+    let now = Utc::now();
     let available = state.store.ready().await
         && principal_keys_ready(
             &state.principal_keyring,
             &state.authorizer.tenants,
-            Utc::now(),
+            now,
         )
         && review_evidence_keys_ready(
             &state.store,
             &state.authorizer.tenants,
-            Utc::now(),
-        );
+            now,
+        )
+        && decision_evidence_delivery_keys_ready(
+            &state.store,
+            &state.authorizer.tenants,
+            now,
+        )
+        && state.store.decision_evidence_outbox_ready(
+            &state.authorizer.tenants, now,
+        ).await;
     readiness_response(available)
 }
 
 async fn ready(State(state): State<ManagementState>) -> Response {
+    let now = Utc::now();
     let available = state.store.ready().await
-        && principal_keys_ready(&state.principal_keyring, &state.tenants, Utc::now())
-        && review_evidence_keys_ready(&state.store, &state.tenants, Utc::now());
+        && principal_keys_ready(&state.principal_keyring, &state.tenants, now)
+        && review_evidence_keys_ready(&state.store, &state.tenants, now)
+        && decision_evidence_delivery_keys_ready(&state.store, &state.tenants, now)
+        && state.store.decision_evidence_outbox_ready(&state.tenants, now).await;
     readiness_response(available)
 }
 
@@ -375,6 +391,17 @@ fn review_evidence_keys_ready(
         && tenants
             .iter()
             .all(|tenant| store.review_evidence_covers(tenant, now))
+}
+
+fn decision_evidence_delivery_keys_ready(
+    store: &PostgresApprovalStore,
+    tenants: &BTreeSet<TenantId>,
+    now: DateTime<Utc>,
+) -> bool {
+    !tenants.is_empty()
+        && tenants
+            .iter()
+            .all(|tenant| store.decision_evidence_delivery_covers(tenant, now))
 }
 
 fn readiness_response(available: bool) -> Response {
@@ -468,7 +495,7 @@ async fn decide(
     Extension(peer): Extension<ApprovalPeerIdentity>,
     headers: HeaderMap,
     Json(request): Json<ApprovalDecisionEnvelope>,
-) -> Result<Json<ApprovalCase>, ApprovalApiError> {
+) -> Result<Json<ApprovalDecisionResult>, ApprovalApiError> {
     let service = state
         .authorizer
         .authorize(&peer.0, &headers, "approvals:decide")?;
@@ -846,6 +873,29 @@ fn exact_certificate_identity(certificate: &[u8], allowed: &BTreeSet<String>) ->
     } else {
         None
     }
+}
+
+/// Pins the configured outbound Evidence source identity to the leaf
+/// certificate's single DNS/URI SAN before the service can become ready.
+pub fn validate_certificate_identity_file(
+    certificate_file: &Path,
+    expected_identity: &str,
+) -> Result<(), ApprovalError> {
+    let allowed = BTreeSet::from([expected_identity.to_string()]);
+    validate_client_identities(&allowed)?;
+    let mut reader = BufReader::new(
+        File::open(certificate_file).map_err(|_| ApprovalError::ConfigurationInvalid)?,
+    );
+    let certificates = rustls_pemfile::certs(&mut reader)
+        .collect::<Result<Vec<CertificateDer<'static>>, _>>()
+        .map_err(|_| ApprovalError::ConfigurationInvalid)?;
+    let leaf = certificates
+        .first()
+        .ok_or(ApprovalError::ConfigurationInvalid)?;
+    if exact_certificate_identity(leaf.as_ref(), &allowed).as_deref() != Some(expected_identity) {
+        return Err(ApprovalError::ConfigurationInvalid);
+    }
+    Ok(())
 }
 
 fn certificate_subject_alt_names(certificate: &[u8]) -> Result<Vec<String>, ()> {

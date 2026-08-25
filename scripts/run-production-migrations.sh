@@ -945,7 +945,8 @@ GRANT SELECT, INSERT ON TABLE public.enterprise_remote_actions,
 GRANT UPDATE (status, response_payload, evidence_ref, attempts, next_attempt_at,
               last_error_code, updated_at)
 ON TABLE public.enterprise_remote_actions TO $enterprise_application_role;
-GRANT UPDATE (status, evidence_ref, attempts, next_attempt_at, last_error_code, updated_at)
+GRANT UPDATE (status, response_payload, evidence_ref, attempts, next_attempt_at,
+              last_error_code, updated_at)
 ON TABLE public.enterprise_approval_intents TO $enterprise_application_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.spring_session,
   public.spring_session_attributes TO $enterprise_application_role;
@@ -1267,7 +1268,9 @@ REVOKE ALL ON TABLE
   public.approval_consumptions,
   public.approval_mutation_receipts,
   public.approval_principal_assertion_uses,
-  public.approval_events
+  public.approval_events,
+  public.approval_decision_evidence_receipts,
+  public.approval_decision_evidence_outbox
 FROM $approval_application_role;
 GRANT SELECT, INSERT ON TABLE
   public.approval_cases,
@@ -1277,13 +1280,18 @@ GRANT SELECT, INSERT ON TABLE
   public.approval_consumptions,
   public.approval_mutation_receipts,
   public.approval_principal_assertion_uses,
-  public.approval_events
+  public.approval_events,
+  public.approval_decision_evidence_receipts,
+  public.approval_decision_evidence_outbox
 TO $approval_application_role;
 GRANT UPDATE (status, updated_at) ON TABLE public.approval_cases
 TO $approval_application_role;
 GRANT UPDATE (remaining_uses, revoked_at, revoked_by, revocation_reason_digest,
               revocation_receipt, last_consumed_at)
 ON TABLE public.approval_grants TO $approval_application_role;
+GRANT UPDATE (delivery_attempts, next_attempt_at, lease_owner, lease_expires_at,
+              last_attempt_at, last_error_code, signed_authority_receipt, delivered_at)
+ON TABLE public.approval_decision_evidence_outbox TO $approval_application_role;
 REVOKE ALL ON TABLE
   public.agent_principals,
   public.credential_profiles,
@@ -1640,7 +1648,8 @@ DECLARE
   approval_tables constant text[] := ARRAY[
     'approval_cases', 'approval_decisions', 'approval_grants',
     'approval_notification_outbox', 'approval_consumptions',
-    'approval_mutation_receipts', 'approval_principal_assertion_uses', 'approval_events'
+    'approval_mutation_receipts', 'approval_principal_assertion_uses', 'approval_events',
+    'approval_decision_evidence_receipts', 'approval_decision_evidence_outbox'
   ];
   pep_tables constant text[] := ARRAY[
     'pep_authorization_requests', 'pep_policy_decisions',
@@ -1711,7 +1720,8 @@ BEGIN
     END IF;
   END LOOP;
   FOREACH column_name IN ARRAY ARRAY[
-    'status','evidence_ref','attempts','next_attempt_at','last_error_code','updated_at'
+    'status','response_payload','evidence_ref','attempts','next_attempt_at',
+    'last_error_code','updated_at'
   ] LOOP
     IF NOT has_column_privilege(
       '$enterprise_application_role', 'public.enterprise_approval_intents', column_name, 'UPDATE'
@@ -1732,7 +1742,8 @@ BEGIN
          )) OR
          (column_grant.table_name='enterprise_approval_intents'
           AND column_grant.column_name NOT IN (
-           'status','evidence_ref','attempts','next_attempt_at','last_error_code','updated_at'
+           'status','response_payload','evidence_ref','attempts','next_attempt_at',
+           'last_error_code','updated_at'
          )) OR
          column_grant.table_name NOT IN (
            'enterprise_remote_actions','enterprise_approval_intents',
@@ -1989,6 +2000,18 @@ BEGIN
       RAISE EXCEPTION 'MIGRATION_APPROVAL_GRANT_UPDATE_GRANT_MISSING:%', column_name;
     END IF;
   END LOOP;
+  FOREACH column_name IN ARRAY ARRAY[
+    'delivery_attempts', 'next_attempt_at', 'lease_owner', 'lease_expires_at',
+    'last_attempt_at', 'last_error_code', 'signed_authority_receipt', 'delivered_at'
+  ] LOOP
+    IF NOT has_column_privilege(
+      '$approval_application_role', 'public.approval_decision_evidence_outbox',
+      column_name, 'UPDATE'
+    ) THEN
+      RAISE EXCEPTION 'MIGRATION_APPROVAL_EVIDENCE_OUTBOX_UPDATE_GRANT_MISSING:%',
+        column_name;
+    END IF;
+  END LOOP;
   IF EXISTS (
     SELECT 1
       FROM information_schema.columns AS columns
@@ -2002,6 +2025,12 @@ BEGIN
           AND columns.column_name = ANY (ARRAY[
             'remaining_uses', 'revoked_at', 'revoked_by', 'revocation_reason_digest',
             'revocation_receipt', 'last_consumed_at'
+          ]))
+         OR
+         (columns.table_name = 'approval_decision_evidence_outbox'
+          AND columns.column_name = ANY (ARRAY[
+            'delivery_attempts', 'next_attempt_at', 'lease_owner', 'lease_expires_at',
+            'last_attempt_at', 'last_error_code', 'signed_authority_receipt', 'delivered_at'
           ]))
        )
        AND has_column_privilege(

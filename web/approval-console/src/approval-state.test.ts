@@ -48,6 +48,10 @@ describe("authoritative approval inbox", () => {
       observed_action_hash: item.action_hash,
       observed_resource_version: item.resource_version,
     });
+    expect(createDecisionIntent(cases[0]!, "APPROVE", "😀".repeat(1_001)).reason)
+      .toBe("😀".repeat(1_001));
+    expect(() => createDecisionIntent(cases[0]!, "APPROVE", "界".repeat(1_366)))
+      .toThrow("APPROVAL_INTENT_INVALID");
   });
 
   it("rejects cross-tenant pages and additional unsafe case fields", () => {

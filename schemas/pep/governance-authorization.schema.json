@@ -31,9 +31,17 @@
         "schema_version": {"const": "agenttrust.approval-intent.v1"},
         "case_id": {"type": "string", "format": "uuid"},
         "decision": {"enum": ["APPROVE", "REJECT"]},
-        "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "reason": {
+          "type": "string", "minLength": 1, "maxLength": 2000,
+          "pattern": "^[^\\u0000]*$",
+          "description": "Human reason encoded as at most 4096 UTF-8 bytes",
+          "x-agenttrust-max-utf8-bytes": 4096
+        },
         "observed_action_hash": {"$ref": "#/$defs/digest"},
-        "observed_resource_version": {"type": "string", "minLength": 1, "maxLength": 512}
+        "observed_resource_version": {
+          "type": "string", "minLength": 1, "maxLength": 512,
+          "pattern": "^[^\\u0000\\r\\n]*$"
+        }
       }
     },
     "queryAction": {

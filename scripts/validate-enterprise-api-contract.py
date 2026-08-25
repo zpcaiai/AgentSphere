@@ -63,6 +63,12 @@ assert set(declared) == set(operations), (
 )
 
 shared_agui = (root / "web/shared/agui-client.ts").read_text(encoding="utf-8")
+pep_governance = (root / "rust/crates/policy-pep/src/governance.rs").read_text(
+    encoding="utf-8"
+)
+pep_governance_schema = json.loads(
+    (root / "schemas/pep/governance-authorization.schema.json").read_text(encoding="utf-8")
+)
 for operation, (java_method, typescript_method, schema) in operations.items():
     assert java_method in java_controller, f"Java handler missing: {operation}"
     assert typescript_method in typescript_client or typescript_method in shared_agui, (
@@ -71,6 +77,17 @@ for operation, (java_method, typescript_method, schema) in operations.items():
     if schema is not None:
         assert f"        {schema}:" in generated, f"generated schema missing: {schema}"
     assert f'operations["{operation}"]' in generated, f"generated operation missing: {operation}"
+
+pep_approval = pep_governance_schema["$defs"]["approvalAction"]["properties"]
+assert pep_approval["reason"]["maxLength"] == 2000
+assert pep_approval["reason"]["x-agenttrust-max-utf8-bytes"] == 4096
+assert pep_approval["reason"]["pattern"] == r"^[^\u0000]*$"
+assert pep_approval["observed_resource_version"]["maxLength"] == 512
+assert pep_approval["observed_resource_version"]["pattern"] == r"^[^\u0000\r\n]*$"
+for marker in ("valid_approval_reason", "value.chars().count() <= 2_000",
+               "value.len() <= 4_096", "valid_approval_resource_version",
+               "fresh_human_principal_key_status(key.status)"):
+    assert marker in pep_governance, f"PEP approval Unicode contract missing {marker}"
 
 for java_type in (
     "TenantRequest", "OrganizationRequest", "ProjectRequest", "IntegrationRequest",
@@ -87,7 +104,7 @@ for generated_type in (
     "PolicyCommand", "PolicyActionReceipt", "PolicyPage", "PolicyArtifactPage",
     "Incident", "IncidentPage", "IncidentCommand", "IncidentActionReceipt",
     "PackRelease", "PackInstallation", "PackPage", "MarketplaceTypedCommand",
-    "MarketplaceCommand", "MarketplaceActionReceipt",
+    "MarketplaceCommand", "MarketplaceActionReceipt", "ApprovalIntentReceipt",
 ):
     assert f'Schemas["{generated_type}"]' in typescript_models, (
         f"browser model does not consume generated contract: {generated_type}"
@@ -119,6 +136,13 @@ for operation in set(operations) - {
     assert "#/components/parameters/CsrfToken" in by_operation[operation], (
         f"CSRF contract missing: {operation}"
     )
+
+approval_intent_operation = by_operation["submitApprovalIntent"]
+for status in ("400", "401", "403", "409", "413", "415", "429", "500", "503"):
+    assert f"'{status}':" in approval_intent_operation, (
+        f"approval safe-error response missing: {status}"
+    )
+assert approval_intent_operation.count("#/components/schemas/SafeError") == 9
 
 assert '"generate:api"' in package_json and "openapi-typescript" in package_json
 assert "name: Idempotency-Key" in openapi and "name: X-XSRF-TOKEN" in openapi
@@ -359,6 +383,11 @@ approval_openapi = (root / "schemas/openapi/approval-v1.yaml").read_text(encodin
 approval_schema = json.loads(
     (root / "schemas/approval/approval-case.schema.json").read_text(encoding="utf-8")
 )
+decision_request_binding_schema = json.loads(
+    (root / "schemas/approval/decision-request-binding.schema.json").read_text(
+        encoding="utf-8"
+    )
+)
 review_keyring_schema = json.loads(
     (root / "schemas/approval/review-evidence-keyring.schema.json").read_text(encoding="utf-8")
 )
@@ -390,6 +419,23 @@ domain_token_schema = json.loads(
 approval_gateway = (
     root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/GovernedAuthorityGateway.java"
 ).read_text(encoding="utf-8")
+approval_decision_verifier = (
+    root
+    / "java/enterprise-control-api/src/main/java/com/agenttrust/control/ApprovalDecisionEvidenceVerifier.java"
+).read_text(encoding="utf-8")
+approval_signature_verifier = (
+    root
+    / "java/enterprise-control-api/src/main/java/com/agenttrust/control/ApprovalAuthoritySignatureVerifier.java"
+).read_text(encoding="utf-8")
+approval_repository = (
+    root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/EnterpriseRepository.java"
+).read_text(encoding="utf-8")
+approval_service = (
+    root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/EnterpriseService.java"
+).read_text(encoding="utf-8")
+approval_intent_migration = (
+    root / "migrations/enterprise-control/0036_01_27_approval_intent_receipt.sql"
+).read_text(encoding="utf-8")
 approval_json = (
     root / "java/enterprise-control-api/src/main/java/com/agenttrust/control/AuthorityJson.java"
 ).read_text(encoding="utf-8")
@@ -408,6 +454,13 @@ assert approval_schema["properties"]["request"]["additionalProperties"] is False
 assert approval_schema["properties"]["schema_version"]["const"] == (
     "agenttrust.enterprise-approval-case.v2"
 )
+assert approval_schema["properties"]["request"]["properties"]["justification"][
+    "x-agenttrust-max-utf8-bytes"
+] == 4096
+assert decision_request_binding_schema["properties"]["decision"]["properties"][
+    "reason"
+]["x-agenttrust-max-utf8-bytes"] == 4096
+assert approval_openapi.count("x-agenttrust-max-utf8-bytes: 4096") == 4
 assert review_keyring_schema["properties"]["schema_version"]["const"] == (
     "agenttrust.approval-review-evidence-keyring.v2"
 )
@@ -472,6 +525,63 @@ for marker in (
 ):
     assert marker in approval_gateway, f"Java approval v2 binding missing: {marker}"
 for marker in (
+    "agenttrust.approval-decision-result.v1",
+    "agenttrust.approval-decision-evidence.v1",
+    "agenttrust.approval-decision-request-binding.v1",
+    "APPROVAL_DECISION_EVIDENCE",
+    "authority_request_digest",
+    "approval_case_digest",
+    "signatures.verifyFresh(",
+    "signatures.verifyPersisted(",
+    "requirePersistedReplay(",
+):
+    assert marker in approval_decision_verifier, (
+        f"Java approval decision receipt verification missing: {marker}"
+    )
+for marker in (
+    "agenttrust.approval-decision-evidence-keyring.v1",
+    "ACTIVE", "VERIFY_ONLY", "Signature.getInstance(\"Ed25519\")",
+    "!persistedReplay && !\"ACTIVE\".equals(selected.status())",
+):
+    assert marker in approval_signature_verifier, (
+        f"Java approval authority keyring missing: {marker}"
+    )
+for marker in (
+    "response_payload::text", "response_payload=CAST(? AS jsonb)",
+    "pep_policy_digest", "pep_evidence_ref",
+):
+    assert marker in approval_repository, f"approval replay payload persistence missing: {marker}"
+for marker in (
+    "pep_policy_digest", "pep_evidence_ref",
+    "enterprise_approval_intent_pep_evidence_check", "NOT VALID",
+    "'{evidence_receipt,actor_subject}' = actor_subject",
+    "'{evidence_receipt,decision_reason_digest}'",
+    "= reason_digest::text",
+):
+    assert marker in approval_intent_migration, (
+        f"approval PEP evidence migration binding missing: {marker}"
+    )
+assert re.search(
+    r"enterprise_approval_intent_pep_evidence_check.*?CHECK\s*\(\s*COALESCE\s*\(",
+    approval_intent_migration,
+    flags=re.DOTALL,
+), "approval PEP evidence CHECK must fail closed on SQL NULL"
+for marker in ("var pepDecision = pep.authorizeApproval", "intent, pepDecision"):
+    assert marker in approval_service, f"approval PEP evidence persistence missing: {marker}"
+assert "x-agenttrust-max-utf8-bytes: 4096" in openapi
+assert "new TextEncoder().encode(value.reason).byteLength > 4_096" in typescript_client
+assert "reason.getBytes(StandardCharsets.UTF_8).length > 4_096" in java_models
+assert "markApprovalEvidencePending" not in approval_gateway
+for marker in (
+    "ApprovalIntentReceipt", "agenttrust.approval-intent-receipt.v1",
+    "CONTROL_APPROVAL_RECEIPT_INVALID", "agenttrust.safe-error.v1",
+    "SAFE_ERROR_FIELDS", "UTC_INSTANT",
+):
+    assert marker in openapi or marker in typescript_client or marker in generated, (
+        f"browser approval receipt closure missing: {marker}"
+    )
+assert "        SafeError:" in generated
+for marker in (
     "Character::isISOControl", "AUTHORITY_EVIDENCE_RECEIPT", "expectedReference",
     "agenttrust.signed-authority-evidence-receipt.v1",
 ):
@@ -492,8 +602,8 @@ approval_deployment = deployment.split(
 )[1].split("---", 1)[0]
 assert "strategy: {type: Recreate}" in approval_deployment
 assert "AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE" in approval_deployment
-assert "AGENT_TRUST_APPROVAL_EVIDENCE_PRIVATE_KEY" not in approval_deployment
-assert "AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN" not in approval_deployment
+assert "name: AGENT_TRUST_APPROVAL_EVIDENCE_PRIVATE_KEY," not in approval_deployment
+assert "name: AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN," not in approval_deployment
 assert "enterprise-approval/0036_01_25_approval_review_evidence_v2.sql" in (
     root / "migrations/manifest.txt"
 ).read_text(encoding="utf-8")

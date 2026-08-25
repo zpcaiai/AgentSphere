@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: "jsdom",
       setupFiles: ["./src/test/setup.ts"],
-      include: ["src/**/*.test.ts"],
+      include: ["src/**/*.test.ts", "../approval-console/src/**/*.test.ts"],
       coverage: { reporter: ["text", "json-summary"] },
     },
   };

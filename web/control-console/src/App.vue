@@ -144,10 +144,12 @@ async function submitApproval(value: ApprovalIntent): Promise<void> {
       context.value!.requestedBy,
       value,
     );
-    await client.value!.submitApprovalIntent(context.value!.tenantId, value, context.value!.csrfToken, retryKey);
+    const receipt = await client.value!.submitApprovalIntent(
+      context.value!.tenantId, value, context.value!.csrfToken, retryKey,
+    );
     operationMessage.value = locale.value === "en-US"
-      ? "Approval intent accepted; status remains unchanged until a signed authority event arrives."
-      : "审批意图已接收；在签名权威事件到达前状态保持不变。";
+      ? `Approval decision receipt verified (${receipt.case_status}); downstream action execution is not implied.`
+      : `审批决定回执已验证（${receipt.case_status}）；这不代表下游动作已经执行。`;
     await refreshDashboardWithoutBusyReset();
   }, (code) => { moduleError.value = code; });
 }

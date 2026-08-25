@@ -11,6 +11,7 @@ export type QuotaUsage = Schemas["QuotaUsage"];
 export type CostUsageRequest = Schemas["CostUsageRequest"];
 export type ApiKeyIssueRequest = Schemas["ApiKeyIssueRequest"];
 export type EnterpriseActionReceipt = Schemas["EnterpriseActionReceipt"];
+export type ApprovalIntentReceipt = Schemas["ApprovalIntentReceipt"];
 
 export type AuthorityPage<T> = Omit<Schemas["AgentInventoryPage"], "items"> & { items: T[] };
 export type AgentInventoryItem = Schemas["AgentInventoryItem"];

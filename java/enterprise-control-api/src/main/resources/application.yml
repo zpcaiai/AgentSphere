@@ -178,6 +178,9 @@ agenttrust.control:
     client-identity: ${AGENT_TRUST_APPROVAL_CLIENT_IDENTITY}
     # Must exactly equal the subject in the approvals:decide token binding.
     service-subject: ${AGENT_TRUST_APPROVAL_SERVICE_SUBJECT}
+    # Public-only Ed25519 keyring. Exactly one currently valid ACTIVE key is required; retained
+    # VERIFY_ONLY keys keep immutable decision receipts verifiable after signer rotation.
+    authority-verification-keyring-file: ${AGENT_TRUST_APPROVAL_AUTHORITY_VERIFICATION_KEYRING_FILE}
     assertion-ttl-seconds: ${AGENT_TRUST_APPROVAL_ASSERTION_TTL_SECONDS:300}
     accepted-strong-auth-acrs: ${AGENT_TRUST_APPROVAL_ACCEPTED_STRONG_AUTH_ACRS}
     maximum-authentication-age-seconds: ${AGENT_TRUST_APPROVAL_MAX_AUTH_AGE_SECONDS:900}

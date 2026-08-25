@@ -424,14 +424,42 @@ paths:
       responses:
         '202':
           description: >-
-            Intent accepted only after an independently verified immutable Evidence authority
-            receipt. A mutable ApprovalCase decision response alone never produces this status.
-        '403': {description: 'Approver authorization, binding, or SoD denial'}
+            Intent accepted only after the BFF cryptographically verifies and durably stores the
+            immutable Approval authority decision receipt. Independent Evidence authority delivery
+            remains represented by the receipt-bound transactional outbox and is not claimed here.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ApprovalIntentReceipt'}
+        '400':
+          description: Malformed or contract-invalid approval intent
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '401':
+          description: Authenticated enterprise session or bearer identity required
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '403':
+          description: Approver authorization, binding, or SoD denial
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '409':
+          description: Idempotency, case-state, or approval binding conflict
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '413':
+          description: Approval request body exceeds the bounded server limit
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '415':
+          description: Compressed content encoding or an unsupported request media type is rejected
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '429':
+          description: Approval authority capacity is temporarily exhausted
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
+        '500':
+          description: Fail-closed internal error with no decision-success claim
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
         '503':
           description: >-
             Approval outcome remains UNKNOWN and the same Idempotency-Key is safe to retry. This
-            includes CONTROL_APPROVAL_EVIDENCE_PENDING after the remote authority accepted the
-            decision but did not return an immutable evidence receipt.
+            includes any response whose immutable authority receipt cannot be cryptographically
+            verified or durably stored after the remote decision may have committed.
+          content: {application/json: {schema: {$ref: '#/components/schemas/SafeError'}}}
   /tenants/{tenantId}/tasks/{taskId}/agui/events:
     get:
       operationId: resumeTaskEvents
@@ -1420,15 +1448,60 @@ components:
         schema_version: {const: agenttrust.approval-intent.v1}
         case_id: {type: string, format: uuid}
         decision: {enum: [APPROVE, REJECT]}
-        reason: {type: string, minLength: 1, maxLength: 2000}
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: '^[^\u0000]*$'
+          description: Human reason encoded as at most 4096 UTF-8 bytes
+          x-agenttrust-max-utf8-bytes: 4096
         observed_action_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
-        observed_resource_version: {type: string, minLength: 1, maxLength: 512}
+        observed_resource_version:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: '^[^\u0000\r\n]*$'
     ApprovalIntentEnvelope:
       type: object
       additionalProperties: false
       required: [approval_intent]
       properties:
         approval_intent: {$ref: '#/components/schemas/ApprovalIntent'}
+    ApprovalIntentReceipt:
+      type: object
+      additionalProperties: false
+      required: [schema_version, tenant_id, case_id, decision, action_hash, resource_version, case_status, decided_at, evidence_ref, evidence_digest, authority_issuer, authority_key_id]
+      properties:
+        schema_version: {const: agenttrust.approval-intent-receipt.v1}
+        tenant_id: {type: string, format: uuid}
+        case_id: {type: string, format: uuid}
+        decision: {enum: [APPROVE, REJECT]}
+        action_hash: {$ref: '#/components/schemas/IncidentDigest'}
+        resource_version: {type: string, minLength: 1, maxLength: 512}
+        case_status: {enum: [PENDING, APPROVED, REJECTED, POST_REVIEW_REQUIRED]}
+        decided_at:
+          type: string
+          format: date-time
+          pattern: '^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?Z$'
+        evidence_ref:
+          type: string
+          maxLength: 2048
+          pattern: '^urn:agenttrust:approval-decision:[0-9a-f-]{36}:[0-9a-f-]{36}:[0-9a-f-]{36}$'
+        evidence_digest: {$ref: '#/components/schemas/IncidentDigest'}
+        authority_issuer: {type: string, minLength: 1, maxLength: 256, pattern: '^[A-Za-z0-9_.:/@-]+$'}
+        authority_key_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_.-]+$'}
+    SafeError:
+      type: object
+      additionalProperties: false
+      required: [schema_version, code, trace_id, occurred_at]
+      properties:
+        schema_version: {const: agenttrust.safe-error.v1}
+        code: {type: string, pattern: '^CONTROL_[A-Z0-9_]{3,120}$'}
+        trace_id: {type: string, format: uuid}
+        occurred_at:
+          type: string
+          format: date-time
+          pattern: '^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?Z$'
     AuthorityPayload:
       type: object
       minProperties: 1

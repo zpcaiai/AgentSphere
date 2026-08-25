@@ -738,12 +738,42 @@ export interface components {
             case_id: string;
             /** @enum {unknown} */
             decision: "APPROVE" | "REJECT";
+            /** @description Human reason encoded as at most 4096 UTF-8 bytes */
             reason: string;
             observed_action_hash: string;
             observed_resource_version: string;
         };
         ApprovalIntentEnvelope: {
             approval_intent: components["schemas"]["ApprovalIntent"];
+        };
+        ApprovalIntentReceipt: {
+            /** @constant */
+            schema_version: "agenttrust.approval-intent-receipt.v1";
+            /** Format: uuid */
+            tenant_id: string;
+            /** Format: uuid */
+            case_id: string;
+            /** @enum {unknown} */
+            decision: "APPROVE" | "REJECT";
+            action_hash: string;
+            resource_version: string;
+            /** @enum {unknown} */
+            case_status: "PENDING" | "APPROVED" | "REJECTED" | "POST_REVIEW_REQUIRED";
+            /** Format: date-time */
+            decided_at: string;
+            evidence_ref: string;
+            evidence_digest: string;
+            authority_issuer: string;
+            authority_key_id: string;
+        };
+        SafeError: {
+            /** @constant */
+            schema_version: "agenttrust.safe-error.v1";
+            code: string;
+            /** Format: uuid */
+            trace_id: string;
+            /** Format: date-time */
+            occurred_at: string;
         };
         AuthorityPayload: {
             [key: string]: unknown;
@@ -1577,26 +1607,95 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Intent accepted only after an independently verified immutable Evidence authority receipt. A mutable ApprovalCase decision response alone never produces this status. */
+            /** @description Intent accepted only after the BFF cryptographically verifies and durably stores the immutable Approval authority decision receipt. Independent Evidence authority delivery remains represented by the receipt-bound transactional outbox and is not claimed here. */
             202: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ApprovalIntentReceipt"];
+                };
             };
-            /** @description Approver authorization */
+            /** @description Malformed or contract-invalid approval intent */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Authenticated enterprise session or bearer identity required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Approver authorization, binding, or SoD denial */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
             };
-            /** @description Approval outcome remains UNKNOWN and the same Idempotency-Key is safe to retry. This includes CONTROL_APPROVAL_EVIDENCE_PENDING after the remote authority accepted the decision but did not return an immutable evidence receipt. */
+            /** @description Idempotency, case-state, or approval binding conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Approval request body exceeds the bounded server limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Compressed content encoding or an unsupported request media type is rejected */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Approval authority capacity is temporarily exhausted */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Fail-closed internal error with no decision-success claim */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
+            };
+            /** @description Approval outcome remains UNKNOWN and the same Idempotency-Key is safe to retry. This includes any response whose immutable authority receipt cannot be cryptographically verified or durably stored after the remote decision may have committed. */
             503: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["SafeError"];
+                };
             };
         };
     };

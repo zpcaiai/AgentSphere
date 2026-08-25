@@ -1,22 +1,48 @@
 //! Durable, tenant-isolated production approval state and atomic grant consumption.
 
 use super::*;
+use crate::evidence_delivery::{
+    ApprovalEvidenceDeliveryError, ApprovalEvidencePublisher, EVIDENCE_REQUEST_TIMEOUT_SECONDS,
+};
+use agent_trust_contracts::{
+    AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ArtifactRef, AuthorityEvidenceEventRequest,
+    AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
+    EvidenceEventType, IdempotencyKey,
+};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Row, Transaction};
+use std::path::Path;
 use std::sync::Arc;
 
-const MAX_REASON_BYTES: usize = 4_096;
 const MAX_TEXT_BYTES: usize = 2_048;
 const MAX_APPROVAL_TTL_SECONDS: u64 = 604_800;
 const MAX_AUTHORITATIVE_PAGE_SIZE: u16 = 100;
 const AUTHORITATIVE_CURSOR_TTL_SECONDS: i64 = 900;
+const DECISION_EVIDENCE_DELIVERY_BATCH_SIZE: usize = 32;
+const DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS: i64 = 60;
+const DECISION_EVIDENCE_DELIVERY_MAX_BACKOFF_SECONDS: i64 = 900;
+const DECISION_EVIDENCE_MAX_PENDING_AGE_SECONDS: i64 = 300;
+const _: () = assert!(
+    DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS > EVIDENCE_REQUEST_TIMEOUT_SECONDS as i64
+);
 
 pub const APPROVAL_CASE_VIEW_SCHEMA_VERSION: &str = "agenttrust.approval-case-view.v1";
 pub const AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION: &str =
     "agenttrust.authoritative-approval-page.v1";
+pub const APPROVAL_DECISION_RESULT_SCHEMA_VERSION: &str =
+    "agenttrust.approval-decision-result.v1";
+pub const APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION: &str =
+    "agenttrust.approval-decision-evidence.v1";
+pub const APPROVAL_DECISION_EVIDENCE_KEY_USAGE: &str = "APPROVAL_DECISION_EVIDENCE";
+pub const APPROVAL_DECISION_REQUEST_BINDING_SCHEMA_VERSION: &str =
+    "agenttrust.approval-decision-request-binding.v1";
+pub const APPROVAL_DECISION_EVIDENCE_KEYRING_SCHEMA_VERSION: &str =
+    "agenttrust.approval-decision-evidence-keyring.v1";
 const AUTHORITATIVE_APPROVAL_CURSOR_SCHEMA_VERSION: &str =
     "agenttrust.authoritative-approval-cursor.v1";
+const MAX_DECISION_EVIDENCE_KEYRING_BYTES: usize = 1_048_576;
+const MAX_DECISION_EVIDENCE_KEYS: usize = 128;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -144,8 +170,7 @@ impl LegacyApprovalRequestV0 {
             )
             && bounded(&self.requester_subject)
             && bounded(&self.agent_owner_subject)
-            && !self.justification.trim().is_empty()
-            && self.justification.len() <= MAX_REASON_BYTES
+            && valid_approval_human_text(&self.justification)
             && !self.justification.chars().any(char::is_control)
             && (1..=MAX_APPROVAL_TTL_SECONDS).contains(&self.requested_ttl_seconds)
             && self.requested_uses > 0
@@ -174,6 +199,219 @@ pub struct ApprovalDecisionEnvelope {
     pub schema_version: String,
     pub decision: ApprovalDecision,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalDecisionEvidenceReceipt {
+    pub schema_version: String,
+    pub receipt_id: String,
+    pub tenant_id: String,
+    pub case_id: String,
+    pub task_id: String,
+    pub decision: ApprovalDecision,
+    pub decision_reason_digest: String,
+    pub request_digest: String,
+    pub decision_digest: String,
+    pub idempotency_key_digest: String,
+    pub actor_subject: String,
+    pub principal_assertion_jti: String,
+    pub principal_assertion_request_digest: String,
+    pub principal_assertion_digest: String,
+    pub approval_case_digest: String,
+    pub action_hash: String,
+    pub step_id: String,
+    pub plan_hash: String,
+    pub parameter_hash: String,
+    pub resource: String,
+    pub resource_version: String,
+    pub policy_version: String,
+    pub environment: String,
+    pub risk: RiskLevel,
+    pub case_status: ApprovalStatus,
+    pub decided_at: DateTime<Utc>,
+    pub evidence_ref: String,
+    pub evidence_digest: String,
+    pub authority_request_digest: String,
+    pub evidence_outbox_ref: String,
+    pub issuer: String,
+    pub key_id: String,
+    pub key_usage: String,
+    pub signature: String,
+}
+
+#[derive(Serialize)]
+struct ApprovalDecisionEvidenceMaterial<'a> {
+    schema_version: &'a str,
+    tenant_id: &'a str,
+    case_id: &'a str,
+    task_id: &'a str,
+    decision: ApprovalDecision,
+    decision_reason_digest: &'a str,
+    request_digest: &'a str,
+    idempotency_key_digest: &'a str,
+    actor_subject: &'a str,
+    principal_assertion_jti: &'a str,
+    principal_assertion_request_digest: &'a str,
+    principal_assertion_digest: &'a str,
+    approval_case_digest: &'a str,
+    action_hash: &'a str,
+    step_id: &'a str,
+    plan_hash: &'a str,
+    parameter_hash: &'a str,
+    resource: &'a str,
+    resource_version: &'a str,
+    policy_version: &'a str,
+    environment: &'a str,
+    risk: RiskLevel,
+    case_status: ApprovalStatus,
+    decided_at: DateTime<Utc>,
+}
+
+impl ApprovalDecisionEvidenceReceipt {
+    fn decision_material(&self) -> ApprovalDecisionEvidenceMaterial<'_> {
+        ApprovalDecisionEvidenceMaterial {
+            schema_version: APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION,
+            tenant_id: &self.tenant_id,
+            case_id: &self.case_id,
+            task_id: &self.task_id,
+            decision: self.decision,
+            decision_reason_digest: &self.decision_reason_digest,
+            request_digest: &self.request_digest,
+            idempotency_key_digest: &self.idempotency_key_digest,
+            actor_subject: &self.actor_subject,
+            principal_assertion_jti: &self.principal_assertion_jti,
+            principal_assertion_request_digest: &self.principal_assertion_request_digest,
+            principal_assertion_digest: &self.principal_assertion_digest,
+            approval_case_digest: &self.approval_case_digest,
+            action_hash: &self.action_hash,
+            step_id: &self.step_id,
+            plan_hash: &self.plan_hash,
+            parameter_hash: &self.parameter_hash,
+            resource: &self.resource,
+            resource_version: &self.resource_version,
+            policy_version: &self.policy_version,
+            environment: &self.environment,
+            risk: self.risk,
+            case_status: self.case_status,
+            decided_at: self.decided_at,
+        }
+    }
+
+    fn signing_bytes(&self) -> Result<Vec<u8>, ApprovalError> {
+        let mut material = self.clone();
+        material.evidence_digest.clear();
+        material.signature.clear();
+        serde_jcs::to_vec(&material).map_err(|_| ApprovalError::RequestInvalid)
+    }
+
+    fn expected_decision_digest(&self) -> Result<String, ApprovalError> {
+        canonical_digest(&self.decision_material())
+    }
+
+    fn expected_evidence_ref(&self) -> String {
+        format!(
+            "urn:agenttrust:approval-decision:{}:{}:{}",
+            self.tenant_id, self.case_id, self.receipt_id
+        )
+    }
+
+    fn expected_evidence_outbox_ref(&self) -> String {
+        format!(
+            "outbox://approval-decision-evidence/{}/{}/sha256:{}",
+            self.tenant_id, self.receipt_id, self.authority_request_digest
+        )
+    }
+
+    fn expected_evidence_digest(&self) -> Result<String, ApprovalError> {
+        Ok(hex(Sha256::digest(self.signing_bytes()?)))
+    }
+
+    pub fn verify(
+        &self,
+        issuer: &str,
+        key_id: &str,
+        key: &VerifyingKey,
+        now: DateTime<Utc>,
+    ) -> Result<(), ApprovalError> {
+        if self.schema_version != APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION
+            || self.issuer != issuer
+            || self.key_id != key_id
+            || self.key_usage != APPROVAL_DECISION_EVIDENCE_KEY_USAGE
+            || !canonical_uuid(&self.receipt_id)
+            || !canonical_uuid(&self.tenant_id)
+            || !canonical_uuid(&self.case_id)
+            || !canonical_uuid(&self.task_id)
+            || !is_digest(&self.decision_reason_digest)
+            || !is_digest(&self.request_digest)
+            || !is_digest(&self.decision_digest)
+            || !is_digest(&self.idempotency_key_digest)
+            || !identifier(&self.actor_subject)
+            || !canonical_uuid(&self.principal_assertion_jti)
+            || !is_digest(&self.principal_assertion_request_digest)
+            || !is_digest(&self.principal_assertion_digest)
+            || !is_digest(&self.approval_case_digest)
+            || !is_digest(&self.action_hash)
+            || !canonical_uuid(&self.step_id)
+            || !is_digest(&self.plan_hash)
+            || !is_digest(&self.parameter_hash)
+            || !bounded(&self.resource)
+            || !bounded(&self.resource_version)
+            || !bounded(&self.policy_version)
+            || !bounded(&self.environment)
+            || !decision_status_valid(self.decision, self.case_status)
+            || self.decided_at > now + chrono::Duration::seconds(30)
+            || self.decision_digest != self.expected_decision_digest()?
+            || self.evidence_ref != self.expected_evidence_ref()
+            || !is_digest(&self.authority_request_digest)
+            || self.evidence_outbox_ref != self.expected_evidence_outbox_ref()
+            || self.evidence_digest != self.expected_evidence_digest()?
+        {
+            return Err(ApprovalError::GrantInvalid);
+        }
+        let signature = decode_signature(&self.signature)?;
+        key.verify(self.evidence_digest.as_bytes(), &signature)
+            .map_err(|_| ApprovalError::GrantInvalid)
+    }
+}
+
+fn decision_status_valid(decision: ApprovalDecision, status: ApprovalStatus) -> bool {
+    match decision {
+        ApprovalDecision::Reject => status == ApprovalStatus::Rejected,
+        ApprovalDecision::PostReviewed => status == ApprovalStatus::Approved,
+        ApprovalDecision::Approve => matches!(
+            status,
+            ApprovalStatus::Pending
+                | ApprovalStatus::Approved
+                | ApprovalStatus::PostReviewRequired
+        ),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ApprovalDecisionResult {
+    pub schema_version: String,
+    pub approval_case: ApprovalCase,
+    pub evidence_receipt: ApprovalDecisionEvidenceReceipt,
+}
+
+#[derive(Serialize)]
+struct ApprovalDecisionRequestBinding<'a> {
+    schema_version: &'a str,
+    case_id: &'a str,
+    decision: &'a ApprovalDecisionEnvelope,
+}
+
+fn approval_decision_request_digest(
+    case_id: &str,
+    decision: &ApprovalDecisionEnvelope,
+) -> Result<String, ApprovalError> {
+    canonical_digest(&ApprovalDecisionRequestBinding {
+        schema_version: APPROVAL_DECISION_REQUEST_BINDING_SCHEMA_VERSION,
+        case_id,
+        decision,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -323,6 +561,16 @@ impl ApprovalSigner {
         Ok(())
     }
 
+    fn sign_decision_evidence(
+        &self,
+        receipt: &mut ApprovalDecisionEvidenceReceipt,
+    ) -> Result<(), ApprovalError> {
+        receipt.evidence_digest = receipt.expected_evidence_digest()?;
+        receipt.signature =
+            URL_SAFE_NO_PAD.encode(self.key.sign(receipt.evidence_digest.as_bytes()).to_bytes());
+        Ok(())
+    }
+
     fn sign_authoritative_cursor(
         &self,
         cursor: &mut AuthoritativeApprovalCursor,
@@ -333,11 +581,173 @@ impl ApprovalSigner {
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalDecisionEvidenceKeyringDocument {
+    schema_version: String,
+    issuer: String,
+    keys: Vec<ApprovalDecisionEvidenceVerificationKeyDocument>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalDecisionEvidenceVerificationKeyDocument {
+    key_id: String,
+    algorithm: String,
+    public_key_base64url: String,
+    status: String,
+    not_before: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct ApprovalDecisionEvidenceVerificationKey {
+    key: VerifyingKey,
+    active: bool,
+    not_before: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+}
+
+/// Public-only verification material for current and historical decision receipts.
+///
+/// Exactly one key is ACTIVE. Historical VERIFY_ONLY keys remain usable only for
+/// receipts whose `decided_at` falls inside that key's validity interval; their
+/// current wall-clock expiry does not invalidate an already persisted receipt.
+#[derive(Clone)]
+pub struct ApprovalDecisionEvidenceKeyring {
+    issuer: String,
+    active_key_id: String,
+    keys: BTreeMap<String, ApprovalDecisionEvidenceVerificationKey>,
+}
+
+impl ApprovalDecisionEvidenceKeyring {
+    pub fn from_file(path: &Path) -> Result<Self, ApprovalError> {
+        let raw = std::fs::read(path).map_err(|_| ApprovalError::ConfigurationInvalid)?;
+        Self::from_json(&raw)
+    }
+
+    pub fn from_json(raw: &[u8]) -> Result<Self, ApprovalError> {
+        if raw.is_empty() || raw.len() > MAX_DECISION_EVIDENCE_KEYRING_BYTES {
+            return Err(ApprovalError::ConfigurationInvalid);
+        }
+        let document: ApprovalDecisionEvidenceKeyringDocument =
+            serde_json::from_slice(raw).map_err(|_| ApprovalError::ConfigurationInvalid)?;
+        if document.schema_version != APPROVAL_DECISION_EVIDENCE_KEYRING_SCHEMA_VERSION
+            || !identifier(&document.issuer)
+            || document.keys.is_empty()
+            || document.keys.len() > MAX_DECISION_EVIDENCE_KEYS
+        {
+            return Err(ApprovalError::ConfigurationInvalid);
+        }
+        let mut keys = BTreeMap::new();
+        let mut active_key_id = None;
+        for entry in document.keys {
+            if !key_identifier(&entry.key_id)
+                || entry.algorithm != "Ed25519"
+                || !matches!(entry.status.as_str(), "ACTIVE" | "VERIFY_ONLY")
+                || entry.not_before >= entry.expires_at
+                || entry.public_key_base64url.len() != 43
+            {
+                return Err(ApprovalError::ConfigurationInvalid);
+            }
+            let key_bytes = URL_SAFE_NO_PAD
+                .decode(&entry.public_key_base64url)
+                .map_err(|_| ApprovalError::ConfigurationInvalid)?;
+            let key_bytes: [u8; 32] = key_bytes
+                .try_into()
+                .map_err(|_| ApprovalError::ConfigurationInvalid)?;
+            if URL_SAFE_NO_PAD.encode(key_bytes) != entry.public_key_base64url {
+                return Err(ApprovalError::ConfigurationInvalid);
+            }
+            let key = VerifyingKey::from_bytes(&key_bytes)
+                .map_err(|_| ApprovalError::ConfigurationInvalid)?;
+            let active = entry.status == "ACTIVE";
+            if active && active_key_id.replace(entry.key_id.clone()).is_some() {
+                return Err(ApprovalError::ConfigurationInvalid);
+            }
+            if keys
+                .insert(
+                    entry.key_id,
+                    ApprovalDecisionEvidenceVerificationKey {
+                        key,
+                        active,
+                        not_before: entry.not_before,
+                        expires_at: entry.expires_at,
+                    },
+                )
+                .is_some()
+            {
+                return Err(ApprovalError::ConfigurationInvalid);
+            }
+        }
+        let active_key_id = active_key_id.ok_or(ApprovalError::ConfigurationInvalid)?;
+        Ok(Self {
+            issuer: document.issuer,
+            active_key_id,
+            keys,
+        })
+    }
+
+    fn matches_signer(&self, signer: &ApprovalSigner) -> bool {
+        self.issuer == signer.issuer()
+            && self.active_key_id == signer.key_id()
+            && self.keys.get(&self.active_key_id).is_some_and(|verification| {
+                verification.active
+                    && verification.key.to_bytes() == signer.verifying_key().to_bytes()
+            })
+    }
+
+    fn covers_active_signer_at(&self, signer: &ApprovalSigner, at: DateTime<Utc>) -> bool {
+        self.matches_signer(signer)
+            && self.keys.get(&self.active_key_id).is_some_and(|verification| {
+                verification.not_before <= at && verification.expires_at > at
+            })
+    }
+
+    fn verify_receipt(
+        &self,
+        receipt: &ApprovalDecisionEvidenceReceipt,
+        now: DateTime<Utc>,
+    ) -> Result<(), ApprovalError> {
+        if receipt.issuer != self.issuer {
+            return Err(ApprovalError::GrantInvalid);
+        }
+        let verification = self
+            .keys
+            .get(&receipt.key_id)
+            .ok_or(ApprovalError::GrantInvalid)?;
+        if verification.not_before > receipt.decided_at
+            || verification.expires_at <= receipt.decided_at
+        {
+            return Err(ApprovalError::GrantInvalid);
+        }
+        receipt.verify(
+            &self.issuer,
+            &receipt.key_id,
+            &verification.key,
+            now,
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct PostgresApprovalStore {
     pool: PgPool,
     signer: ApprovalSigner,
     review_evidence_keyring: ApprovalReviewEvidenceKeyring,
+    delivery_evidence_keyring: ApprovalReviewEvidenceKeyring,
+    decision_evidence_keyring: ApprovalDecisionEvidenceKeyring,
+    evidence_source_identity: String,
+    evidence_publisher: Arc<ApprovalEvidencePublisher>,
+}
+
+struct PendingApprovalDecisionEvidence {
+    tenant_id: TenantId,
+    authority_event_id: String,
+    request_digest: String,
+    payload_digest: String,
+    authority_request: AuthorityEvidenceEventRequest,
+    delivery_attempts: i32,
 }
 
 impl PostgresApprovalStore {
@@ -345,12 +755,25 @@ impl PostgresApprovalStore {
         pool: PgPool,
         signer: ApprovalSigner,
         review_evidence_keyring: ApprovalReviewEvidenceKeyring,
-    ) -> Self {
-        Self {
+        delivery_evidence_keyring: ApprovalReviewEvidenceKeyring,
+        decision_evidence_keyring: ApprovalDecisionEvidenceKeyring,
+        evidence_source_identity: String,
+        evidence_publisher: Arc<ApprovalEvidencePublisher>,
+    ) -> Result<Self, ApprovalError> {
+        if !service_client_identity(&evidence_source_identity)
+            || !decision_evidence_keyring.matches_signer(&signer)
+        {
+            return Err(ApprovalError::ConfigurationInvalid);
+        }
+        Ok(Self {
             pool,
             signer,
             review_evidence_keyring,
-        }
+            delivery_evidence_keyring,
+            decision_evidence_keyring,
+            evidence_source_identity,
+            evidence_publisher,
+        })
     }
 
     pub fn signer(&self) -> &ApprovalSigner {
@@ -361,7 +784,28 @@ impl PostgresApprovalStore {
         self.review_evidence_keyring.covers_tenant_at(&tenant.0, now)
     }
 
+    pub fn decision_evidence_delivery_covers(
+        &self,
+        tenant: &TenantId,
+        now: DateTime<Utc>,
+    ) -> bool {
+        self.delivery_evidence_keyring.covers_source_tenant_at(
+            &tenant.0,
+            &self.evidence_source_identity,
+            now,
+        )
+    }
+
     pub async fn ready(&self) -> bool {
+        if !self
+            .decision_evidence_keyring
+            .covers_active_signer_at(&self.signer, Utc::now())
+        {
+            return false;
+        }
+        if !self.evidence_publisher.ready().await {
+            return false;
+        }
         sqlx::query(
             "SELECT NOT pg_is_in_recovery() \
              AND to_regclass('public.approval_cases') IS NOT NULL \
@@ -372,15 +816,19 @@ impl PostgresApprovalStore {
              AND to_regclass('public.approval_mutation_receipts') IS NOT NULL \
              AND to_regclass('public.approval_principal_assertion_uses') IS NOT NULL \
              AND to_regclass('public.approval_events') IS NOT NULL \
-             AND (SELECT count(*) = 8 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
+             AND to_regclass('public.approval_decision_evidence_receipts') IS NOT NULL \
+             AND to_regclass('public.approval_decision_evidence_outbox') IS NOT NULL \
+             AND (SELECT count(*) = 10 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace \
                   WHERE n.nspname='public' AND c.relname::text = ANY(ARRAY[\
                     'approval_cases','approval_decisions','approval_grants','approval_notification_outbox',\
-                    'approval_consumptions','approval_mutation_receipts','approval_principal_assertion_uses','approval_events'\
+                    'approval_consumptions','approval_mutation_receipts','approval_principal_assertion_uses','approval_events',\
+                    'approval_decision_evidence_receipts','approval_decision_evidence_outbox'\
                   ]) AND c.relrowsecurity AND c.relforcerowsecurity) \
-             AND (SELECT count(*) = 8 FROM pg_policies WHERE schemaname='public' \
+             AND (SELECT count(*) = 10 FROM pg_policies WHERE schemaname='public' \
                   AND tablename::text = ANY(ARRAY[\
                     'approval_cases','approval_decisions','approval_grants','approval_notification_outbox',\
-                    'approval_consumptions','approval_mutation_receipts','approval_principal_assertion_uses','approval_events'\
+                    'approval_consumptions','approval_mutation_receipts','approval_principal_assertion_uses','approval_events',\
+                    'approval_decision_evidence_receipts','approval_decision_evidence_outbox'\
                   ]) AND policyname='tenant_isolation' AND roles=ARRAY['public']::name[]) AS ready",
         )
         .fetch_one(&self.pool)
@@ -388,6 +836,367 @@ impl PostgresApprovalStore {
         .ok()
         .and_then(|row| row.try_get::<bool, _>("ready").ok())
         .unwrap_or(false)
+    }
+
+    pub async fn decision_evidence_outbox_ready(
+        &self,
+        tenants: &BTreeSet<TenantId>,
+        now: DateTime<Utc>,
+    ) -> bool {
+        if tenants.is_empty() {
+            return false;
+        }
+        let stale_before = now
+            .checked_sub_signed(chrono::Duration::seconds(
+                DECISION_EVIDENCE_MAX_PENDING_AGE_SECONDS,
+            ))
+            .unwrap_or(DateTime::<Utc>::MIN_UTC);
+        for tenant in tenants {
+            let mut transaction = match self.begin_tenant(tenant).await {
+                Ok(transaction) => transaction,
+                Err(error) => {
+                    decision_evidence_delivery_alert(
+                        "READINESS_QUERY_FAILED", Some(tenant), None,
+                        &error.to_string(), None,
+                    );
+                    return false;
+                }
+            };
+            let healthy = match sqlx::query(
+                "SELECT NOT EXISTS (\
+                   SELECT 1 FROM approval_decision_evidence_outbox \
+                    WHERE tenant_id=$1::uuid AND delivered_at IS NULL \
+                      AND (last_error_code IN ('CONFIGURATION_INVALID','RECEIPT_INVALID') \
+                           OR created_at < $2)\
+                 ) AS healthy",
+            )
+            .bind(&tenant.0)
+            .bind(stale_before)
+            .fetch_one(&mut *transaction)
+            .await
+            {
+                Ok(row) => match row.try_get::<bool, _>("healthy") {
+                    Ok(healthy) => healthy,
+                    Err(_) => {
+                        decision_evidence_delivery_alert(
+                            "READINESS_RESULT_INVALID", Some(tenant), None,
+                            "APPROVAL_DATABASE_UNAVAILABLE", None,
+                        );
+                        return false;
+                    }
+                },
+                Err(_) => {
+                    decision_evidence_delivery_alert(
+                        "READINESS_QUERY_FAILED", Some(tenant), None,
+                        "APPROVAL_DATABASE_UNAVAILABLE", None,
+                    );
+                    return false;
+                }
+            };
+            if transaction.commit().await.is_err() {
+                decision_evidence_delivery_alert(
+                    "READINESS_COMMIT_FAILED", Some(tenant), None,
+                    "APPROVAL_DATABASE_UNAVAILABLE", None,
+                );
+                return false;
+            }
+            if !healthy {
+                decision_evidence_delivery_alert(
+                    "BACKLOG_UNHEALTHY", Some(tenant), None,
+                    "FATAL_OR_STALE_BACKLOG", None,
+                );
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Delivers at most one globally bounded batch. Every row is first leased
+    /// in the same tenant/RLS scope. A network timeout or any response whose
+    /// signed receipt cannot be proven exact remains pending with bounded
+    /// exponential backoff; no uncertain outcome is promoted to DELIVERED.
+    pub async fn deliver_decision_evidence_once(
+        &self,
+        tenants: &BTreeSet<TenantId>,
+        worker_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<usize, ApprovalError> {
+        self.deliver_decision_evidence_once_from(tenants, worker_id, now, 0)
+            .await
+    }
+
+    async fn deliver_decision_evidence_once_from(
+        &self,
+        tenants: &BTreeSet<TenantId>,
+        worker_id: &str,
+        now: DateTime<Utc>,
+        start_index: usize,
+    ) -> Result<usize, ApprovalError> {
+        require_uuid(worker_id)?;
+        if tenants.is_empty() {
+            return Err(ApprovalError::ConfigurationInvalid);
+        }
+        let mut remaining = DECISION_EVIDENCE_DELIVERY_BATCH_SIZE;
+        let mut delivered = 0_usize;
+        let ordered_tenants = decision_evidence_tenant_order(tenants, start_index);
+        let mut processed = 0_usize;
+        while remaining > 0 {
+            let mut progressed = false;
+            for tenant in &ordered_tenants {
+                if remaining == 0 {
+                    break;
+                }
+                let claim_time = if processed == 0 { now } else { Utc::now() };
+                let mut pending = self
+                    .claim_decision_evidence(tenant, worker_id, 1, claim_time)
+                    .await?;
+                let Some(item) = pending.pop() else {
+                    continue;
+                };
+                progressed = true;
+                processed = processed.saturating_add(1);
+                remaining = remaining.saturating_sub(1);
+                let binding_valid = item.authority_request.tenant_id == item.tenant_id
+                    && item.authority_request.authority_event_id == item.authority_event_id
+                    && item.authority_request.event.payload_hash == item.payload_digest
+                    && item
+                        .authority_request
+                        .request_digest()
+                        .is_ok_and(|digest| digest == item.request_digest);
+                let outcome = if binding_valid {
+                    self.evidence_publisher.publish(&item.authority_request).await
+                } else {
+                    Err(ApprovalEvidenceDeliveryError::ReceiptInvalid)
+                };
+                match outcome {
+                    Ok(receipt) => {
+                        if let Err(error) = self
+                            .mark_decision_evidence_delivered(
+                                &item, worker_id, &receipt, Utc::now(),
+                            )
+                            .await
+                        {
+                            decision_evidence_delivery_alert(
+                                "MARK_DELIVERED_FAILED", Some(&item.tenant_id),
+                                Some(&item.authority_event_id), &error.to_string(),
+                                Some(item.delivery_attempts),
+                            );
+                            return Err(error);
+                        }
+                        delivered = delivered.saturating_add(1);
+                    }
+                    Err(error) => {
+                        let retry_code = error.retry_code();
+                        if let Err(release_error) = self
+                            .release_decision_evidence_for_retry(
+                                &item,
+                                worker_id,
+                                retry_code,
+                                Utc::now(),
+                            )
+                            .await
+                        {
+                            decision_evidence_delivery_alert(
+                                "RELEASE_RETRY_FAILED", Some(&item.tenant_id),
+                                Some(&item.authority_event_id), &release_error.to_string(),
+                                Some(item.delivery_attempts),
+                            );
+                            return Err(release_error);
+                        }
+                        decision_evidence_delivery_alert(
+                            "PUBLISH_RETRY", Some(&item.tenant_id),
+                            Some(&item.authority_event_id), retry_code,
+                            Some(item.delivery_attempts),
+                        );
+                    }
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+        Ok(delivered)
+    }
+
+    pub async fn run_decision_evidence_delivery(
+        self: Arc<Self>,
+        tenants: BTreeSet<TenantId>,
+        worker_id: String,
+    ) -> Result<(), ApprovalError> {
+        require_uuid(&worker_id)?;
+        if tenants.is_empty() {
+            return Err(ApprovalError::ConfigurationInvalid);
+        }
+        let mut start_index = 0_usize;
+        loop {
+            let delivered = match self
+                .deliver_decision_evidence_once_from(
+                    &tenants,
+                    &worker_id,
+                    Utc::now(),
+                    start_index,
+                )
+                .await
+            {
+                Ok(delivered) => delivered,
+                Err(error) => {
+                    decision_evidence_delivery_alert(
+                        "BATCH_FAILED", None, None, &error.to_string(), None,
+                    );
+                    0
+                }
+            };
+            start_index = (start_index + 1) % tenants.len();
+            tokio::time::sleep(if delivered == 0 {
+                std::time::Duration::from_secs(2)
+            } else {
+                std::time::Duration::from_millis(100)
+            })
+            .await;
+        }
+    }
+
+    async fn claim_decision_evidence(
+        &self,
+        tenant: &TenantId,
+        worker_id: &str,
+        limit: usize,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<PendingApprovalDecisionEvidence>, ApprovalError> {
+        if limit == 0 || limit > DECISION_EVIDENCE_DELIVERY_BATCH_SIZE {
+            return Err(ApprovalError::RequestInvalid);
+        }
+        let limit = i64::try_from(limit).map_err(|_| ApprovalError::RequestInvalid)?;
+        let lease_expires_at = now
+            + chrono::Duration::seconds(DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS);
+        let mut transaction = self.begin_tenant(tenant).await?;
+        let rows = sqlx::query(
+            "WITH candidates AS MATERIALIZED (\
+               SELECT tenant_id,authority_event_id \
+                 FROM approval_decision_evidence_outbox \
+                WHERE tenant_id=$1::uuid AND delivered_at IS NULL \
+                  AND next_attempt_at <= $3 \
+                  AND (lease_expires_at IS NULL OR lease_expires_at <= $3) \
+                ORDER BY next_attempt_at,created_at,authority_event_id \
+                FOR UPDATE SKIP LOCKED LIMIT $5\
+             ) \
+             UPDATE approval_decision_evidence_outbox o \
+                SET lease_owner=$2::uuid,lease_expires_at=$4,\
+                    delivery_attempts=o.delivery_attempts+1,last_attempt_at=$3,\
+                    last_error_code=NULL \
+               FROM candidates c \
+              WHERE o.tenant_id=c.tenant_id AND o.authority_event_id=c.authority_event_id \
+             RETURNING o.authority_event_id::text,o.request_digest::text,\
+                       o.payload_digest::text,o.authority_request,o.delivery_attempts",
+        )
+        .bind(&tenant.0)
+        .bind(worker_id)
+        .bind(now)
+        .bind(lease_expires_at)
+        .bind(limit)
+        .fetch_all(&mut *transaction)
+        .await
+        .map_err(database)?;
+        let mut pending = Vec::with_capacity(rows.len());
+        for row in rows {
+            let authority_request = serde_json::from_value::<AuthorityEvidenceEventRequest>(
+                row.try_get("authority_request").map_err(database)?,
+            )
+            .map_err(|_| ApprovalError::DatabaseUnavailable)?;
+            pending.push(PendingApprovalDecisionEvidence {
+                tenant_id: tenant.clone(),
+                authority_event_id: row.try_get("authority_event_id").map_err(database)?,
+                request_digest: row.try_get("request_digest").map_err(database)?,
+                payload_digest: row.try_get("payload_digest").map_err(database)?,
+                authority_request,
+                delivery_attempts: row.try_get("delivery_attempts").map_err(database)?,
+            });
+        }
+        transaction.commit().await.map_err(database)?;
+        Ok(pending)
+    }
+
+    async fn mark_decision_evidence_delivered(
+        &self,
+        pending: &PendingApprovalDecisionEvidence,
+        worker_id: &str,
+        receipt: &agent_trust_contracts::SignedAuthorityEvidenceReceipt,
+        delivered_at: DateTime<Utc>,
+    ) -> Result<(), ApprovalError> {
+        self.delivery_evidence_keyring.verify_authority_delivery(
+            &pending.authority_request,
+            receipt,
+            delivered_at,
+        )?;
+        let receipt_value =
+            serde_json::to_value(receipt).map_err(|_| ApprovalError::GrantInvalid)?;
+        let mut transaction = self.begin_tenant(&pending.tenant_id).await?;
+        let affected = sqlx::query(
+            "UPDATE approval_decision_evidence_outbox \
+                SET signed_authority_receipt=$6,delivered_at=$7,lease_owner=NULL,\
+                    lease_expires_at=NULL,last_error_code=NULL,next_attempt_at=$7 \
+              WHERE tenant_id=$1::uuid AND authority_event_id=$2::uuid \
+                AND request_digest=$3 AND payload_digest=$4 AND lease_owner=$5::uuid \
+                AND delivered_at IS NULL AND lease_expires_at > $7",
+        )
+        .bind(&pending.tenant_id.0)
+        .bind(&pending.authority_event_id)
+        .bind(&pending.request_digest)
+        .bind(&pending.payload_digest)
+        .bind(worker_id)
+        .bind(receipt_value)
+        .bind(delivered_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(database)?
+        .rows_affected();
+        if affected != 1 {
+            return Err(ApprovalError::ConcurrentMutation);
+        }
+        transaction.commit().await.map_err(database)?;
+        Ok(())
+    }
+
+    async fn release_decision_evidence_for_retry(
+        &self,
+        pending: &PendingApprovalDecisionEvidence,
+        worker_id: &str,
+        failure_code: &str,
+        failed_at: DateTime<Utc>,
+    ) -> Result<(), ApprovalError> {
+        if !matches!(
+            failure_code,
+            "CONFIGURATION_INVALID" | "OUTCOME_UNKNOWN" | "RECEIPT_INVALID"
+        ) {
+            return Err(ApprovalError::RequestInvalid);
+        }
+        let next_attempt_at = failed_at
+            + chrono::Duration::seconds(decision_evidence_retry_seconds(
+                pending.delivery_attempts,
+            ));
+        let mut transaction = self.begin_tenant(&pending.tenant_id).await?;
+        let affected = sqlx::query(
+            "UPDATE approval_decision_evidence_outbox \
+                SET lease_owner=NULL,lease_expires_at=NULL,last_error_code=$5,\
+                    next_attempt_at=$6 \
+              WHERE tenant_id=$1::uuid AND authority_event_id=$2::uuid \
+                AND request_digest=$3 AND lease_owner=$4::uuid AND delivered_at IS NULL",
+        )
+        .bind(&pending.tenant_id.0)
+        .bind(&pending.authority_event_id)
+        .bind(&pending.request_digest)
+        .bind(worker_id)
+        .bind(failure_code)
+        .bind(next_attempt_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(database)?
+        .rows_affected();
+        if affected != 1 {
+            return Err(ApprovalError::ConcurrentMutation);
+        }
+        transaction.commit().await.map_err(database)?;
+        Ok(())
     }
 
     pub async fn create_case(
@@ -669,17 +1478,16 @@ impl PostgresApprovalStore {
         principal: &ApprovalPrincipal,
         idempotency_key: &str,
         now: DateTime<Utc>,
-    ) -> Result<ApprovalCase, ApprovalError> {
+    ) -> Result<ApprovalDecisionResult, ApprovalError> {
         require_uuid(case_id)?;
         if envelope.schema_version != APPROVAL_DECISION_SCHEMA_VERSION
-            || envelope.reason.trim().is_empty()
-            || envelope.reason.len() > MAX_REASON_BYTES
+            || !valid_approval_human_text(&envelope.reason)
         {
             return Err(ApprovalError::RequestInvalid);
         }
         validate_principal(principal, now)?;
         validate_idempotency_key(idempotency_key)?;
-        let request_digest = canonical_digest(&(case_id, envelope))?;
+        let request_digest = approval_decision_request_digest(case_id, envelope)?;
         let scope = format!("case:decision:{case_id}:{}", principal.subject);
         let mut transaction = self.begin_tenant(&principal.tenant_id).await?;
         lock_idempotency(
@@ -690,7 +1498,7 @@ impl PostgresApprovalStore {
         )
         .await?;
         register_principal_assertion(&mut transaction, principal, "approvals:decide", now).await?;
-        if let Some(replay) = replay::<ApprovalCase>(
+        if let Some(replay) = replay::<ApprovalDecisionResult>(
             &mut transaction,
             &principal.tenant_id,
             &scope,
@@ -699,12 +1507,16 @@ impl PostgresApprovalStore {
         )
         .await?
         {
-            if replay.schema_version != APPROVAL_CASE_SCHEMA_VERSION
-                || replay.case_id != case_id
-                || replay.request.tenant_id != principal.tenant_id
-            {
-                return Err(ApprovalError::DatabaseUnavailable);
-            }
+            validate_decision_result_replay(
+                &replay,
+                case_id,
+                envelope,
+                principal,
+                idempotency_key,
+                &request_digest,
+                &self.decision_evidence_keyring,
+                now,
+            )?;
             transaction.commit().await.map_err(database)?;
             return Ok(replay);
         }
@@ -791,6 +1603,11 @@ impl PostgresApprovalStore {
             decided_at: now,
             strong_auth: principal.strong_auth,
         });
+        case.decisions.sort_by(|left, right| {
+            left.decided_at
+                .cmp(&right.decided_at)
+                .then_with(|| left.approver_subject.cmp(&right.approver_subject))
+        });
         let next_status = match envelope.decision {
             ApprovalDecision::Reject => ApprovalStatus::Rejected,
             ApprovalDecision::PostReviewed => ApprovalStatus::Approved,
@@ -832,18 +1649,108 @@ impl PostgresApprovalStore {
             now,
         )
         .await?;
+        let (evidence_receipt, authority_request) = self.decision_evidence_receipt(
+            &case,
+            envelope,
+            principal,
+            idempotency_key,
+            &request_digest,
+            now,
+        )?;
+        persist_decision_evidence(
+            &mut transaction,
+            &principal.tenant_id,
+            &case,
+            &evidence_receipt,
+            &authority_request,
+            now,
+        )
+        .await?;
+        let result = ApprovalDecisionResult {
+            schema_version: APPROVAL_DECISION_RESULT_SCHEMA_VERSION.into(),
+            approval_case: case,
+            evidence_receipt,
+        };
         save_replay(
             &mut transaction,
             &principal.tenant_id,
             &scope,
             idempotency_key,
             &request_digest,
-            &case,
+            &result,
             now,
         )
         .await?;
         transaction.commit().await.map_err(database)?;
-        Ok(case)
+        Ok(result)
+    }
+
+    fn decision_evidence_receipt(
+        &self,
+        case: &ApprovalCase,
+        envelope: &ApprovalDecisionEnvelope,
+        principal: &ApprovalPrincipal,
+        idempotency_key: &str,
+        request_digest: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(ApprovalDecisionEvidenceReceipt, AuthorityEvidenceEventRequest), ApprovalError> {
+        if !self
+            .decision_evidence_keyring
+            .covers_active_signer_at(&self.signer, now)
+        {
+            return Err(ApprovalError::ConfigurationInvalid);
+        }
+        let mut receipt = ApprovalDecisionEvidenceReceipt {
+            schema_version: APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION.into(),
+            receipt_id: Uuid::new_v4().to_string(),
+            tenant_id: principal.tenant_id.0.clone(),
+            case_id: case.case_id.clone(),
+            task_id: case.request.task_id.0.clone(),
+            decision: envelope.decision,
+            decision_reason_digest: hex(Sha256::digest(envelope.reason.as_bytes())),
+            request_digest: request_digest.into(),
+            decision_digest: String::new(),
+            idempotency_key_digest: hex(Sha256::digest(idempotency_key.as_bytes())),
+            actor_subject: principal.subject.clone(),
+            principal_assertion_jti: principal.assertion_jti.clone(),
+            principal_assertion_request_digest: principal.assertion_request_digest.clone(),
+            principal_assertion_digest: principal.assertion_digest.clone(),
+            approval_case_digest: canonical_digest(case)?,
+            action_hash: case.request.action_hash.0.clone(),
+            step_id: case.request.step_id.0.clone(),
+            plan_hash: case.request.plan_hash.clone(),
+            parameter_hash: case.request.parameter_hash.clone(),
+            resource: case.request.resource.clone(),
+            resource_version: case.request.resource_version.0.clone(),
+            policy_version: case.request.policy_version.0.clone(),
+            environment: case.request.environment.clone(),
+            risk: case.request.risk,
+            case_status: case.status,
+            decided_at: now,
+            evidence_ref: String::new(),
+            evidence_digest: String::new(),
+            authority_request_digest: String::new(),
+            evidence_outbox_ref: String::new(),
+            issuer: self.signer.issuer().into(),
+            key_id: self.signer.key_id().into(),
+            key_usage: APPROVAL_DECISION_EVIDENCE_KEY_USAGE.into(),
+            signature: String::new(),
+        };
+        receipt.decision_digest = receipt.expected_decision_digest()?;
+        receipt.evidence_ref = receipt.expected_evidence_ref();
+        let authority_request = decision_authority_evidence_request(
+            &receipt,
+            case,
+            &self.evidence_source_identity,
+        )?;
+        receipt.authority_request_digest = authority_request
+            .request_digest()
+            .map_err(|_| ApprovalError::RequestInvalid)?;
+        receipt.evidence_outbox_ref = receipt.expected_evidence_outbox_ref();
+        self.signer.sign_decision_evidence(&mut receipt)?;
+        self.decision_evidence_keyring
+            .verify_receipt(&receipt, now)?;
+        Ok((receipt, authority_request))
     }
 
     pub async fn issue_grant(
@@ -1016,8 +1923,7 @@ impl PostgresApprovalStore {
     ) -> Result<ApprovalGrantRevocationReceipt, ApprovalError> {
         require_uuid(grant_id)?;
         if request.schema_version != APPROVAL_SCHEMA_VERSION
-            || request.reason.trim().is_empty()
-            || request.reason.len() > MAX_REASON_BYTES
+            || !valid_approval_human_text(&request.reason)
         {
             return Err(ApprovalError::RequestInvalid);
         }
@@ -1554,6 +2460,217 @@ async fn grant_exists(
     .map_err(database)
 }
 
+fn decision_authority_evidence_request(
+    receipt: &ApprovalDecisionEvidenceReceipt,
+    case: &ApprovalCase,
+    evidence_source_identity: &str,
+) -> Result<AuthorityEvidenceEventRequest, ApprovalError> {
+    if !service_client_identity(evidence_source_identity) {
+        return Err(ApprovalError::ConfigurationInvalid);
+    }
+    let request = AuthorityEvidenceEventRequest {
+        schema_version: AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION.into(),
+        tenant_id: case.request.tenant_id.clone(),
+        task_id: case.request.task_id.clone(),
+        authority_event_id: receipt.receipt_id.clone(),
+        idempotency_key: IdempotencyKey(format!("approval-decision:{}", receipt.receipt_id)),
+        source_kind: AuthorityEvidenceSourceKind::AuthenticatedEvent,
+        control_binding: None,
+        event: EvidenceEventDraft {
+            schema_version: EVIDENCE_EVENT_SCHEMA_VERSION.into(),
+            tenant_id: case.request.tenant_id.clone(),
+            task_id: case.request.task_id.clone(),
+            event_type: EvidenceEventType::ApprovalDecision,
+            actor_subject: receipt.actor_subject.clone(),
+            source_service: evidence_source_identity.into(),
+            trace_id: receipt.principal_assertion_jti.clone(),
+            span_id: receipt.receipt_id.clone(),
+            payload_hash: receipt.decision_digest.clone(),
+            safe_summary: "Enterprise approval decision persisted".into(),
+            artifact_refs: vec![ArtifactRef(receipt.evidence_ref.clone())],
+            occurred_at: receipt.decided_at,
+        },
+        requested_at: receipt.decided_at,
+    };
+    request
+        .request_digest()
+        .map_err(|_| ApprovalError::RequestInvalid)?;
+    Ok(request)
+}
+
+async fn persist_decision_evidence(
+    transaction: &mut Transaction<'_, Postgres>,
+    tenant: &TenantId,
+    case: &ApprovalCase,
+    receipt: &ApprovalDecisionEvidenceReceipt,
+    authority_request: &AuthorityEvidenceEventRequest,
+    now: DateTime<Utc>,
+) -> Result<(), ApprovalError> {
+    let authority_request_digest = authority_request
+        .request_digest()
+        .map_err(|_| ApprovalError::RequestInvalid)?;
+    let signed_receipt = serde_json::to_value(receipt).map_err(|_| ApprovalError::RequestInvalid)?;
+    let request_value =
+        serde_json::to_value(authority_request).map_err(|_| ApprovalError::RequestInvalid)?;
+    sqlx::query(
+        "INSERT INTO approval_decision_evidence_receipts \
+         (tenant_id,receipt_id,case_id,approver_subject,decision,decision_digest,evidence_ref,\
+          evidence_digest,signed_receipt,authority_request_digest,created_at) \
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,$11)",
+    )
+    .bind(&tenant.0)
+    .bind(&receipt.receipt_id)
+    .bind(&case.case_id)
+    .bind(&receipt.actor_subject)
+    .bind(approval_decision_text(receipt.decision))
+    .bind(&receipt.decision_digest)
+    .bind(&receipt.evidence_ref)
+    .bind(&receipt.evidence_digest)
+    .bind(&signed_receipt)
+    .bind(&authority_request_digest)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(map_decision_evidence_insert)?;
+    sqlx::query(
+        "INSERT INTO approval_decision_evidence_outbox \
+         (tenant_id,authority_event_id,receipt_id,case_id,idempotency_key,request_digest,\
+          payload_digest,evidence_ref,authority_request,created_at,next_attempt_at) \
+         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,$6,$7,$8,$9,$10,$10)",
+    )
+    .bind(&tenant.0)
+    .bind(&authority_request.authority_event_id)
+    .bind(&receipt.receipt_id)
+    .bind(&case.case_id)
+    .bind(&authority_request.idempotency_key.0)
+    .bind(&authority_request_digest)
+    .bind(&receipt.decision_digest)
+    .bind(&receipt.evidence_ref)
+    .bind(&request_value)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await
+    .map_err(map_decision_evidence_insert)?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_decision_result_replay(
+    result: &ApprovalDecisionResult,
+    case_id: &str,
+    envelope: &ApprovalDecisionEnvelope,
+    principal: &ApprovalPrincipal,
+    idempotency_key: &str,
+    request_digest: &str,
+    decision_evidence_keyring: &ApprovalDecisionEvidenceKeyring,
+    now: DateTime<Utc>,
+) -> Result<(), ApprovalError> {
+    let case = &result.approval_case;
+    let receipt = &result.evidence_receipt;
+    decision_evidence_keyring.verify_receipt(receipt, now)?;
+    let matching_decision = case.decisions.iter().any(|decision| {
+        decision.approver_subject == receipt.actor_subject
+            && decision.decision == approval_decision_text(receipt.decision)
+            && hex(Sha256::digest(decision.reason.as_bytes())) == receipt.decision_reason_digest
+            && decision.decided_at == receipt.decided_at
+            && decision.strong_auth
+    });
+    if result.schema_version != APPROVAL_DECISION_RESULT_SCHEMA_VERSION
+        || case.schema_version != APPROVAL_CASE_SCHEMA_VERSION
+        || case.case_id != case_id
+        || case.request.tenant_id != principal.tenant_id
+        || receipt.tenant_id != principal.tenant_id.0
+        || receipt.case_id != case.case_id
+        || receipt.task_id != case.request.task_id.0
+        || receipt.decision != envelope.decision
+        || receipt.request_digest != request_digest
+        || receipt.idempotency_key_digest != hex(Sha256::digest(idempotency_key.as_bytes()))
+        || !replay_principal_binding_matches(
+            &receipt.actor_subject,
+            &receipt.principal_assertion_request_digest,
+            principal,
+        )
+        || receipt.approval_case_digest != canonical_digest(case)?
+        || receipt.action_hash != case.request.action_hash.0
+        || receipt.step_id != case.request.step_id.0
+        || receipt.plan_hash != case.request.plan_hash
+        || receipt.parameter_hash != case.request.parameter_hash
+        || receipt.resource != case.request.resource
+        || receipt.resource_version != case.request.resource_version.0
+        || receipt.policy_version != case.request.policy_version.0
+        || receipt.environment != case.request.environment
+        || receipt.risk != case.request.risk
+        || receipt.case_status != case.status
+        || !matching_decision
+    {
+        return Err(ApprovalError::DatabaseUnavailable);
+    }
+    Ok(())
+}
+
+fn approval_decision_text(decision: ApprovalDecision) -> &'static str {
+    match decision {
+        ApprovalDecision::Approve => "APPROVE",
+        ApprovalDecision::Reject => "REJECT",
+        ApprovalDecision::PostReviewed => "POST_REVIEWED",
+    }
+}
+
+fn replay_principal_binding_matches(
+    receipt_actor_subject: &str,
+    receipt_assertion_request_digest: &str,
+    principal: &ApprovalPrincipal,
+) -> bool {
+    receipt_actor_subject == principal.subject
+        && receipt_assertion_request_digest == principal.assertion_request_digest
+}
+
+fn decision_evidence_tenant_order(
+    tenants: &BTreeSet<TenantId>,
+    start_index: usize,
+) -> Vec<&TenantId> {
+    if tenants.is_empty() {
+        return Vec::new();
+    }
+    tenants
+        .iter()
+        .cycle()
+        .skip(start_index % tenants.len())
+        .take(tenants.len())
+        .collect()
+}
+
+fn decision_evidence_retry_seconds(delivery_attempts: i32) -> i64 {
+    let shift = u32::try_from(delivery_attempts.clamp(1, 20)).unwrap_or(20);
+    1_i64
+        .checked_shl(shift)
+        .unwrap_or(DECISION_EVIDENCE_DELIVERY_MAX_BACKOFF_SECONDS)
+        .min(DECISION_EVIDENCE_DELIVERY_MAX_BACKOFF_SECONDS)
+}
+
+fn decision_evidence_delivery_alert(
+    stage: &str,
+    tenant: Option<&TenantId>,
+    authority_event_id: Option<&str>,
+    code: &str,
+    delivery_attempts: Option<i32>,
+) {
+    let severity = if code == "OUTCOME_UNKNOWN" { "WARN" } else { "ERROR" };
+    eprintln!(
+        "{}",
+        serde_json::json!({
+            "schema_version": "agenttrust.approval-evidence-delivery-alert.v1",
+            "severity": severity,
+            "stage": stage,
+            "tenant_id": tenant.map(|value| value.0.as_str()),
+            "authority_event_id": authority_event_id,
+            "code": code,
+            "delivery_attempts": delivery_attempts,
+            "occurred_at": Utc::now(),
+        })
+    );
+}
+
 async fn update_case_status(
     transaction: &mut Transaction<'_, Postgres>,
     tenant: &TenantId,
@@ -1767,7 +2884,7 @@ fn validate_create(envelope: &ApprovalCaseCreateEnvelope) -> Result<(), Approval
         || !bounded(&envelope.request.environment)
         || !identifier(&envelope.request.requester_subject)
         || !identifier(&envelope.request.agent_owner_subject)
-        || envelope.request.justification.len() > MAX_REASON_BYTES
+        || !valid_approval_human_text(&envelope.request.justification)
     {
         return Err(ApprovalError::RequestInvalid);
     }
@@ -1902,12 +3019,13 @@ fn canonical_digest<T: Serialize + ?Sized>(value: &T) -> Result<String, Approval
 }
 
 fn decode_signature(value: &str) -> Result<Signature, ApprovalError> {
-    Signature::from_slice(
-        &URL_SAFE_NO_PAD
-            .decode(value)
-            .map_err(|_| ApprovalError::GrantInvalid)?,
-    )
-    .map_err(|_| ApprovalError::GrantInvalid)
+    let raw = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| ApprovalError::GrantInvalid)?;
+    if raw.len() != 64 || URL_SAFE_NO_PAD.encode(&raw) != value {
+        return Err(ApprovalError::GrantInvalid);
+    }
+    Signature::from_slice(&raw).map_err(|_| ApprovalError::GrantInvalid)
 }
 
 fn consumption_reference(
@@ -2259,6 +3377,17 @@ fn map_decision_insert(error: sqlx::Error) -> ApprovalError {
     }
 }
 
+fn map_decision_evidence_insert(error: sqlx::Error) -> ApprovalError {
+    if error
+        .as_database_error()
+        .is_some_and(|database| database.is_unique_violation())
+    {
+        ApprovalError::ConcurrentMutation
+    } else {
+        database(error)
+    }
+}
+
 fn map_grant_insert(error: sqlx::Error) -> ApprovalError {
     if error
         .as_database_error()
@@ -2295,6 +3424,28 @@ fn map_consumption_insert(error: sqlx::Error) -> ApprovalError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn instant(value: &str) -> DateTime<Utc> {
+        DateTime::parse_from_rfc3339(value)
+            .unwrap_or_else(|_| panic!("test timestamp"))
+            .with_timezone(&Utc)
+    }
+
+    fn test_principal() -> ApprovalPrincipal {
+        ApprovalPrincipal {
+            tenant_id: TenantId("01900000-0000-7000-8000-000000000001".into()),
+            subject: "operator:one".into(),
+            roles: BTreeSet::from(["approver".into()]),
+            owned_resources: BTreeSet::new(),
+            strong_auth: true,
+            assertion_issuer: "enterprise-control".into(),
+            assertion_jti: "01900000-0000-7000-8000-000000000002".into(),
+            assertion_request_digest: "a".repeat(64),
+            assertion_digest: "b".repeat(64),
+            assertion_document: serde_json::json!({}),
+            assertion_expires_at: instant("2030-01-01T00:00:00Z"),
+        }
+    }
 
     #[test]
     fn production_idempotency_keys_are_bounded_and_unambiguous() {
@@ -2378,5 +3529,119 @@ mod tests {
             parse_authoritative_request(partial_upgrade, &tenant),
             Err(ApprovalError::DatabaseUnavailable)
         );
+    }
+
+    #[test]
+    fn decision_evidence_lease_covers_one_bounded_http_attempt_and_backoff_is_capped() {
+        assert!(
+            DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS
+                > i64::try_from(EVIDENCE_REQUEST_TIMEOUT_SECONDS)
+                    .unwrap_or_else(|_| panic!("timeout fits i64"))
+        );
+        assert_eq!(decision_evidence_retry_seconds(1), 2);
+        assert_eq!(decision_evidence_retry_seconds(2), 4);
+        assert_eq!(
+            decision_evidence_retry_seconds(20),
+            DECISION_EVIDENCE_DELIVERY_MAX_BACKOFF_SECONDS
+        );
+    }
+
+    #[test]
+    fn tenant_delivery_order_rotates_even_when_the_first_tenant_has_a_full_batch() {
+        let tenants = BTreeSet::from([
+            TenantId("01900000-0000-7000-8000-000000000001".into()),
+            TenantId("01900000-0000-7000-8000-000000000002".into()),
+        ]);
+        let first = decision_evidence_tenant_order(&tenants, 0);
+        let second = decision_evidence_tenant_order(&tenants, 1);
+        assert_eq!(first.len(), 2);
+        assert_eq!(second.len(), 2);
+        assert_ne!(first[0], second[0]);
+        assert_eq!(first[0], second[1]);
+        assert_eq!(first[1], second[0]);
+    }
+
+    #[test]
+    fn replay_accepts_a_fresh_assertion_jti_but_not_a_new_request_binding() {
+        let original = test_principal();
+        let mut retry = original.clone();
+        retry.assertion_jti = "01900000-0000-7000-8000-000000000003".into();
+        retry.assertion_digest = "c".repeat(64);
+        assert_ne!(original.assertion_jti, retry.assertion_jti);
+        assert_ne!(original.assertion_digest, retry.assertion_digest);
+        assert!(replay_principal_binding_matches(
+            &original.subject,
+            &original.assertion_request_digest,
+            &retry,
+        ));
+        retry.assertion_request_digest = "d".repeat(64);
+        assert!(!replay_principal_binding_matches(
+            &original.subject,
+            &original.assertion_request_digest,
+            &retry,
+        ));
+        assert!(!replay_principal_binding_matches(
+            "operator:two",
+            &original.assertion_request_digest,
+            &original,
+        ));
+    }
+
+    #[test]
+    fn decision_receipt_key_validity_is_half_open_and_matches_the_signer() {
+        let signer = ApprovalSigner::new(
+            "approval-authority".into(),
+            "decision-2026-01".into(),
+            SigningKey::from_bytes(&[7_u8; 32]),
+        )
+        .unwrap_or_else(|_| panic!("test signer"));
+        let keyring = ApprovalDecisionEvidenceKeyring::from_json(
+            serde_json::to_string(&serde_json::json!({
+                "schema_version": APPROVAL_DECISION_EVIDENCE_KEYRING_SCHEMA_VERSION,
+                "issuer": "approval-authority",
+                "keys": [{
+                    "key_id": "decision-2026-01",
+                    "algorithm": "Ed25519",
+                    "public_key_base64url": URL_SAFE_NO_PAD.encode(signer.verifying_key().to_bytes()),
+                    "status": "ACTIVE",
+                    "not_before": "2026-01-01T00:00:00Z",
+                    "expires_at": "2027-01-01T00:00:00Z"
+                }]
+            }))
+            .unwrap_or_else(|_| panic!("keyring JSON"))
+            .as_bytes(),
+        )
+        .unwrap_or_else(|_| panic!("keyring"));
+        assert!(keyring.covers_active_signer_at(
+            &signer,
+            instant("2026-01-01T00:00:00Z")
+        ));
+        assert!(!keyring.covers_active_signer_at(
+            &signer,
+            instant("2027-01-01T00:00:00Z")
+        ));
+    }
+
+    #[test]
+    fn signature_decoder_rejects_every_noncanonical_wire_alias() {
+        let raw = [0_u8; 64];
+        let canonical = URL_SAFE_NO_PAD.encode(raw);
+        assert!(decode_signature(&canonical).is_ok());
+        for replacement in b'A'..=b'z' {
+            let mut alias = canonical.as_bytes().to_vec();
+            let last = alias.len().saturating_sub(1);
+            alias[last] = replacement;
+            let Ok(alias) = String::from_utf8(alias) else {
+                continue;
+            };
+            if alias != canonical
+                && URL_SAFE_NO_PAD
+                    .decode(&alias)
+                    .is_ok_and(|decoded| decoded == raw)
+            {
+                assert!(decode_signature(&alias).is_err());
+            }
+        }
+        assert!(decode_signature(&(canonical + "=")).is_err());
     }
 }
