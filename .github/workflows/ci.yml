@@ -1,21 +1,36 @@
 name: control-plane-ci
 on: [push, pull_request]
+permissions:
+  contents: read
 
 jobs:
   contracts-and-rust:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with: {toolchain: "1.89.0", components: "rustfmt,clippy"}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with: {python-version: "3.14"}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with: {distribution: "temurin", java-version: "21"}
-      - uses: actions/setup-node@v4
-        with: {node-version: "24"}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "24.19.0"
+          cache: npm
+          cache-dependency-path: web/control-console/package-lock.json
+      - name: Verify the pinned Node and npm toolchain
+        run: |
+          test "$(node --version)" = "v24.19.0"
+          test "$(npm --version)" = "11.17.0"
       - run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - run: python3 -m pip install --disable-pip-version-check -r requirements-ci.txt
+      - name: Validate and install checksum-locked Node dependencies
+        run: |
+          python3 scripts/validate-node-supply-chain.py
+          npm --prefix web/control-console ci --no-audit --no-fund --registry=https://registry.npmjs.org
+          echo "$GITHUB_WORKSPACE/web/control-console/node_modules/.bin" >> "$GITHUB_PATH"
       - name: Validate every public OpenAPI contract
         run: |
           for specification in schemas/openapi/*.yaml; do
@@ -27,7 +42,6 @@ jobs:
       - name: Reject unbounded Rust production HTTP reads
         run: python3 scripts/validate-rust-http-bounds.py
       - run: protoc -I schemas/proto --descriptor_set_out=/tmp/agenttrust.pb --include_imports schemas/proto/agenttrust/v1/contracts.proto schemas/proto/agenttrust/v1/gateway.proto
-      - run: npm install --global typescript@5.8.3
       - run: ./scripts/run-contract-conformance.sh
       - run: mkdir -p /tmp/domain-pack-sdk && javac -d /tmp/domain-pack-sdk $(find java/domain-pack-sdk/src/main/java java/domain-pack-sdk/src/test/java -name '*.java' -print) && java -cp /tmp/domain-pack-sdk com.agenttrust.pack.PackSdkSmokeTest
       - run: mvn -q -f java/enterprise-control-api/pom.xml test
@@ -41,14 +55,21 @@ jobs:
       - name: Verify the offline non-certificate evidence bundle
         run: python3 scripts/verify-evidence-bundle.py
       - run: |
-          npm --prefix web/control-console ci --no-audit --no-fund
           npm --prefix web/control-console run check:api
           npm --prefix web/control-console run test
           if env -u VITE_CONTROL_API_URL npm --prefix web/control-console run build >/tmp/control-console-negative.log 2>&1; then
             echo "unsafe production build unexpectedly succeeded" >&2
             exit 1
           fi
-          grep -q "VITE_CONTROL_API_URL must be an absolute HTTPS URL" /tmp/control-console-negative.log
+          if ! grep -Fq "VITE_CONTROL_API_URL must be an absolute HTTPS URL" /tmp/control-console-negative.log; then
+            echo "::error title=Control console negative build failed early::Expected the production configuration gate, but another error stopped the build first." >&2
+            echo "Bounded tail of control-console-negative.log (at most 200 lines and 32 KiB):" >&2
+            stop_token="$(openssl rand -hex 32)"
+            echo "::stop-commands::${stop_token}" >&2
+            tail -n 200 /tmp/control-console-negative.log | tail -c 28672 | sed 's/^/negative-build: /' >&2
+            echo "::${stop_token}::" >&2
+            exit 1
+          fi
           npm --prefix web/control-console run build
         env:
           VITE_CONTROL_API_URL: https://control-api.invalid
@@ -61,14 +82,41 @@ jobs:
   policy:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - run: |
-          curl -fsSLO https://openpolicyagent.org/downloads/v1.19.0/opa_linux_amd64_static
-          curl -fsSLO https://openpolicyagent.org/downloads/v1.19.0/opa_linux_amd64_static.sha256
-          shasum -a 256 -c opa_linux_amd64_static.sha256
-          chmod 755 opa_linux_amd64_static
-          sudo mv opa_linux_amd64_static /usr/local/bin/opa
-      - run: opa version && opa test policies -v
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with: {persist-credentials: false}
+      - name: Install checksum-pinned OPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          readonly opa_version="1.19.0"
+          readonly expected_sha256="1dd5c5591ff856f5e20a1d66bafae9511ddf3c5552ed3b5070c70b2b6580ee3f"
+          readonly opa_binary="${RUNNER_TEMP}/opa_linux_amd64_static"
+          readonly urls=(
+            "https://github.com/open-policy-agent/opa/releases/download/v${opa_version}/opa_linux_amd64_static"
+            "https://openpolicyagent.org/downloads/v${opa_version}/opa_linux_amd64_static"
+          )
+          downloaded=false
+          for url in "${urls[@]}"; do
+            rm -f "${opa_binary}.partial"
+            if curl --fail --silent --show-error --location \
+              --retry 5 --retry-all-errors --retry-delay 2 \
+              --connect-timeout 15 --max-time 180 \
+              --output "${opa_binary}.partial" "${url}"; then
+              mv "${opa_binary}.partial" "${opa_binary}"
+              downloaded=true
+              break
+            fi
+          done
+          if [[ "${downloaded}" != true ]]; then
+            echo "OPA download failed from every approved source" >&2
+            exit 1
+          fi
+          printf '%s  %s\n' "${expected_sha256}" "${opa_binary}" | sha256sum --check --strict -
+          sudo install -m 0755 "${opa_binary}" /usr/local/bin/opa
+      - name: Test Rego policy with the pinned OPA version
+        run: |
+          opa version | grep -F "Version: 1.19.0"
+          opa test policies -v
 
   migrations:
     runs-on: ubuntu-24.04
@@ -109,8 +157,9 @@ jobs:
       AGENT_TRUST_DOMAIN_RUNTIME_APPLICATION_ROLE: agenttrust_domain_runtime_ci
       AGENT_TRUST_PLATFORM_SRE_APPLICATION_ROLE: agenttrust_platform_sre_ci
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with: {toolchain: "1.89.0"}
       - name: Validate production migration entrypoint syntax
         run: sh -n scripts/run-production-migrations.sh

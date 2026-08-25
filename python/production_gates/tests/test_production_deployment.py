@@ -1755,6 +1755,50 @@ class ProductionDeploymentTests(unittest.TestCase):
             runner,
         )
 
+    def test_ci_dependencies_are_immutable_and_opa_is_checksum_pinned(self) -> None:
+        expected_actions = {
+            ("actions/checkout", "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09"),
+            ("actions/setup-java", "b6effb05e454b25005698d916606bdc6ffcbf961"),
+            ("actions/setup-node", "a0853c24544627f65ddf259abe73b1d18a591444"),
+            ("actions/setup-python", "ece7cb06caefa5fff74198d8649806c4678c61a1"),
+            ("actions/upload-artifact", "ea165f8d65b6e75b540449e92b4886f43607fa02"),
+            ("dtolnay/rust-toolchain", "4360b52568e2003a75bf9bc1d59f33a8e3fc893c"),
+        }
+        observed_actions: set[tuple[str, str]] = set()
+        for path in sorted((ROOT / ".github/workflows").glob("*.y*ml")):
+            workflow = path.read_text(encoding="utf-8")
+            for action, revision in re.findall(
+                r"uses:\s*([^@\s]+)@([0-9A-Za-z._-]+)", workflow
+            ):
+                self.assertRegex(revision, r"^[0-9a-f]{40}$", msg=str(path))
+                observed_actions.add((action, revision))
+        self.assertEqual(observed_actions, expected_actions)
+
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        linux_workflow = (ROOT / ".github/workflows/linux-isolation.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("permissions:\n  contents: read", workflow)
+        self.assertIn("permissions:\n  contents: read", linux_workflow)
+        self.assertEqual(workflow.count("persist-credentials: false"), 3)
+        self.assertEqual(linux_workflow.count("persist-credentials: false"), 1)
+        self.assertIn("actions-runner-2-327-1", linux_workflow)
+        self.assertIn('node-version: "24.19.0"', workflow)
+        self.assertIn('test "$(node --version)" = "v24.19.0"', workflow)
+        self.assertIn('test "$(npm --version)" = "11.17.0"', workflow)
+        self.assertIn('readonly opa_version="1.19.0"', workflow)
+        self.assertIn(
+            'readonly expected_sha256="1dd5c5591ff856f5e20a1d66bafae9511ddf3c5552ed3b5070c70b2b6580ee3f"',
+            workflow,
+        )
+        self.assertIn("github.com/open-policy-agent/opa/releases/download", workflow)
+        self.assertIn("openpolicyagent.org/downloads", workflow)
+        self.assertIn("--retry-all-errors", workflow)
+        self.assertIn("sha256sum --check --strict", workflow)
+        self.assertIn('stop_token="$(openssl rand -hex 32)"', workflow)
+        self.assertIn('echo "::stop-commands::${stop_token}"', workflow)
+        self.assertIn('echo "::${stop_token}::"', workflow)
+
     def test_ci_executes_tls_runner_replay_and_atomic_failure_probe(self) -> None:
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("Enable verify-full TLS on the PostgreSQL service", workflow)

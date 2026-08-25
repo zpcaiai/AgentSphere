@@ -51,7 +51,7 @@ HEAVY_READINESS_GATES = {
     "postgresql_rust_persistence", "current_rego_run",
 }
 REQUIRED_BLOCKING_REASONS = {
-    "BATCH_01_35_NOT_EVIDENCE_VERIFIED",
+    "BATCH_01_36_NOT_EVIDENCE_VERIFIED",
     "REAL_SUPPLY_CHAIN_GATE_NOT_RUN",
     "REAL_MULTITENANT_GATE_NOT_RUN",
     "REAL_DOMAIN_GATES_NOT_RUN",
@@ -162,6 +162,9 @@ def verify_non_certificate_truth(manifest: dict[str, object]) -> None:
         or readiness.get("eligible") is not False
         or readiness.get("production_closure_certificate") != "NOT_ISSUED"
         or not isinstance(local_code_gates, dict)
+        or not str(local_code_gates.get("postgresql_migrations", "")).startswith(
+            "PASS_STATIC_MANIFEST_68_"
+        )
         or not HEAVY_READINESS_GATES.issubset(local_code_gates)
         or any(
             not isinstance(local_code_gates.get(gate), str)
@@ -339,6 +342,8 @@ def main() -> int:
         *(f"evidence/batch-{batch:02}/IMPLEMENTATION_STATUS.json" for batch in range(1, 37)),
         *production_migration_required_items(),
         ".github/workflows/ci.yml",
+        ".github/workflows/linux-isolation.yml",
+        "docs/sandbox/production-requirements.md",
         "config/production-runtime/conditions.json",
         "requirements-ci.txt",
         "python/durable_worker/requirements.production.txt",
@@ -391,6 +396,7 @@ def main() -> int:
         "rust/crates/model-gateway/src/adapters.rs",
         "rust/crates/model-gateway/src/server.rs",
         "rust/crates/policy-pep/Cargo.toml",
+        "rust/crates/policy-pep/src/authority.rs",
         "rust/crates/policy-pep/src/governance.rs",
         "rust/crates/policy-pep/src/server.rs",
         "schemas/pep/governance-authorization.schema.json",
@@ -467,6 +473,9 @@ def main() -> int:
         "java/enterprise-control-api/src/test/java/com/agenttrust/control/SafeErrorTestSupport.java",
         "java/enterprise-control-api/src/test/java/com/agenttrust/control/SecretFilePolicyTest.java",
         "scripts/validate-enterprise-api-contract.py",
+        "scripts/validate-node-supply-chain.py",
+        "python/production_gates/tests/test_node_supply_chain.py",
+        "web/control-console/.npmrc",
         "web/control-console/package.json",
         "web/control-console/package-lock.json",
         "web/control-console/tsconfig.json",
@@ -476,6 +485,8 @@ def main() -> int:
         "web/control-console/src/api-client.ts",
         "web/control-console/src/api-client.test.ts",
         "web/control-console/src/agui-client.test.ts",
+        "web/control-console/src/components/PolicyStudio.test.ts",
+        "web/control-console/src/components/PolicyStudio.vue",
         "web/control-console/src/enterprise-api-types.ts",
         "web/control-console/src/generated/control-plane-v1.d.ts",
         "web/shared/agui-client.ts",

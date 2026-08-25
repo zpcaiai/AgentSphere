@@ -122,6 +122,16 @@ class EvidenceBundleVerifierTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "READINESS_TRUTH_MISMATCH"):
             self.verify(documents)
 
+        documents = self.documents()
+        readiness = documents[
+            ROOT / "evidence/production-closure/production-readiness-report.json"
+        ]
+        local = readiness["local_code_gates"]
+        assert isinstance(local, dict)
+        local["postgresql_migrations"] = "PASS_STATIC_MANIFEST_66_STALE"
+        with self.assertRaisesRegex(RuntimeError, "READINESS_TRUTH_MISMATCH"):
+            self.verify(documents)
+
     def test_denial_reasons_cannot_be_silently_removed(self) -> None:
         documents = self.documents()
         denial = documents[

@@ -342,20 +342,6 @@ enum DataOperation {
     CompleteExport,
 }
 
-impl DataOperation {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::RegisterLabel => "REGISTER_LABEL",
-            Self::RecordPolicyDecision => "RECORD_POLICY_DECISION",
-            Self::RecordDlpScan => "RECORD_DLP_SCAN",
-            Self::RecordTransformReceipt => "RECORD_TRANSFORM_RECEIPT",
-            Self::ConsumeCrossDomainGrant => "CONSUME_CROSS_DOMAIN_GRANT",
-            Self::AuthorizeExport => "AUTHORIZE_EXPORT",
-            Self::CompleteExport => "COMPLETE_EXPORT",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DataCommandRequest {

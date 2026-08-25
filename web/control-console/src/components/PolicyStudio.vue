@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { isRecord, isUuid, sha256Canonical } from "../control-state";
 import type {
-  PolicyAction, PolicyArtifactPage, PolicyArtifactType, PolicyCommand, PolicyOperation,
+  PolicyAction, PolicyArtifact, PolicyArtifactPage, PolicyArtifactType, PolicyCommand, PolicyOperation,
   PolicyPage, PolicyRule, PolicyActionReceipt,
 } from "../enterprise-api-types";
 
@@ -71,8 +71,9 @@ const labels = computed(() => props.locale === "en-US" ? {
 const artifactRows = computed(() => (props.artifactPage?.items ?? []).map(safeArtifactSummary));
 const separation = computed(() => {
   if (props.artifactPage?.artifact_type !== "REVIEWS") return null;
-  const reviewers = new Set(props.artifactPage.items.filter(isRecord)
-    .map((item) => String(item.reviewer_subject ?? "")).filter(Boolean));
+  const reviewers = new Set(props.artifactPage.items.filter(isPolicyReview)
+    .filter((item) => item.decision === "APPROVE")
+    .map((item) => item.reviewer_subject).filter(Boolean));
   const author = props.page?.items.find((item) => item.policy_id === props.artifactPage?.policy_id)?.author_subject;
   return { reviewers: reviewers.size, authorExcluded: author ? !reviewers.has(author) : false,
     signingReady: reviewers.size >= 2 && Boolean(author) && !reviewers.has(String(author)) };
@@ -185,6 +186,22 @@ function lines(value: string, maximum: number, length: number): string[] {
 function requireDigest(value: string): string {
   if (!/^[a-f0-9]{64}$/.test(value)) throw new Error("CONTROL_POLICY_DIGEST_INVALID");
   return value;
+}
+type PolicyReviewArtifact = Extract<PolicyArtifact, { reviewer_subject: string }>;
+function isPolicyReview(value: PolicyArtifact): value is PolicyReviewArtifact {
+  if (!isRecord(value)) return false;
+  const fields = new Set(["review_id", "revision", "reviewer_subject", "decision", "review_digest", "reviewed_at"]);
+  const keys = Object.keys(value);
+  return keys.length === fields.size && keys.every((key) => fields.has(key))
+    && typeof value.review_id === "string" && isUuid(value.review_id)
+    && Number.isSafeInteger(value.revision) && Number(value.revision) >= 1
+    && typeof value.reviewer_subject === "string" && value.reviewer_subject.length >= 1
+    && value.reviewer_subject.length <= 256
+    && (value.decision === "APPROVE" || value.decision === "REJECT")
+    && typeof value.review_digest === "string" && /^[a-f0-9]{64}$/.test(value.review_digest)
+    && typeof value.reviewed_at === "string" && value.reviewed_at.length <= 64
+    && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value.reviewed_at)
+    && Number.isFinite(Date.parse(value.reviewed_at));
 }
 function safeArtifactSummary(value: unknown): { id: string; details: string[] } {
   if (!isRecord(value)) return { id: "INVALID", details: ["CONTROL_POLICY_ARTIFACT_INVALID"] };

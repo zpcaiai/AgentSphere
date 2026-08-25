@@ -5,8 +5,7 @@ use crate::activation::PolicyBundleKeyring;
 use crate::postgres::{PepClaimResult, PostgresPepStore, canonical_digest};
 use crate::{
     EnforcementOutcome, EnforcementRequest, ExecutionAuthorizationContext, MinimalApprovalKernel,
-    POLICY_SCHEMA_VERSION, PolicyDecisionPointPort, PolicyEnforcementPoint, PolicyError,
-    validate_policy_decision,
+    PolicyDecisionPointPort, PolicyEnforcementPoint, PolicyError, validate_policy_decision,
 };
 use agent_trust_action_ir::{
     CanonicalAction, PolicyInput, RuntimeContext, TrajectoryRiskSnapshot, hash as action_hash,
@@ -36,7 +35,7 @@ use agent_trust_transaction_ledger::{CompensationPlan, CompensationStep};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use futures::future::try_join_all;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};

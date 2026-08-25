@@ -24,4 +24,13 @@ An approval-intent `202` is returned only after the BFF verifies the Approval Au
 
 The Vue console displays unavailable sections explicitly, sends intents only, and strictly validates the versioned Agent inventory, approval, task and policy response shapes. The eight production runtime views are first-class navigable modules backed only by their BFF authority sections; they do not call Rust services directly. Policy Studio reads the keyset-paginated `/policies` collection plus bounded sources, analyses, reviews, simulations, impact reports, promotions and exceptions. It submits only `POST /policies/actions`; the removed direct simulation and promotion POST routes must never be restored. The BFF binds the exact body, tenant, mTLS SAN, service subject, scope and idempotency key into a strong-auth Ed25519 assertion, then accepts only the exact Policy receipt with `execution_pending=true`. The UI computes and checks canonical source, simulation, impact and promotion digests with Web Crypto, shows SoD and exception compensation/expiry facts, and never converts HTTP `202` into lifecycle success. Production builds fail when the Control API or AG-UI verification key is missing or unsafe, and public source maps are disabled. Task completion is shown only when runtime state, ledger, evaluator, and Evidence agree.
 
+Console dependencies are installed only from the canonical npm registry using the checked-in
+SHA-512 lock under the exact Node 24.19.0/npm 11.17.0 toolchain. Direct versions are exact,
+unreviewed install scripts fail under strict npm
+enforcement, and the only required positive approval is the exact locked esbuild version;
+optional fsevents scripts are explicitly denied. `scripts/validate-node-supply-chain.py` checks
+the registry origin, integrity, lock/package parity, exact versions and complete install-script
+coverage before `npm ci`. Dependency or install-script changes must update that policy and pass
+the validator before generated API, type, unit and production-build gates run.
+
 Before production, connect enterprise IAM, provision tenant/organization/project ownership, run authenticated browser E2E including cross-tenant, IDOR, CSRF/XSS and sensitive-export negatives, exercise partial BFF failure, and validate live IAM/notification/ticketing/SIEM/Webhook adapters. These external gates remain `NOT_RUN`.

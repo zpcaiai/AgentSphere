@@ -14,7 +14,7 @@ use agent_trust_contracts::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeSeed};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -735,7 +735,6 @@ fn parse_strict_json(
     maximum_object_keys: usize,
     maximum_string_bytes: usize,
 ) -> Result<Value, PepAuthorityError> {
-    use serde::de::DeserializeSeed as _;
     let limits = StrictJsonLimits {
         maximum_depth,
         maximum_array_items,

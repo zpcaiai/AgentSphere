@@ -3,6 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "npm@11.17.0",
+  "engines": {
+    "node": "24.19.0",
+    "npm": "11.17.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true,
+    "fsevents": false
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "generate:api": "openapi-typescript ../../schemas/openapi/control-plane-v1.yaml -o src/generated/control-plane-v1.d.ts",
@@ -25,7 +34,7 @@
     "@vitejs/plugin-vue": "6.0.0",
     "@vue/test-utils": "2.4.6",
     "jsdom": "26.1.0",
-    "openapi-typescript": "^7.9.1",
+    "openapi-typescript": "7.9.1",
     "typescript": "5.8.3",
     "vite": "7.0.0",
     "vitest": "3.2.4",

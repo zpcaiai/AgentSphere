@@ -1853,7 +1853,10 @@ pub struct PepPreApprovalRequest<A, T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
+#[serde(
+    deny_unknown_fields,
+    bound(deserialize = "C: Deserialize<'de>")
+)]
 pub struct PepPreApprovalEnvelope<C> {
     pub schema_version: String,
     pub signed_outcome: SignedPreApprovalOutcome,

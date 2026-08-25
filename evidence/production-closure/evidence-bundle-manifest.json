@@ -1,11 +1,15 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T17:46:06Z",
+  "generated_at": "2026-08-25T18:23:11Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "46d21308788f10d166cb9c0a4ce5f1ada1266c52dcbc6d803a943ee112851e31"
+      "sha256": "451140c058018145e527c0ef5924c4a6cda9e845ab0d3bf6ebc4fde5f94f5f1c"
+    },
+    {
+      "path": ".github/workflows/linux-isolation.yml",
+      "sha256": "971eabc161db60af14cb10de8651b27d587be2164242b2481ab42e0c09303e7c"
     },
     {
       "path": "Cargo.lock",
@@ -33,11 +37,15 @@
     },
     {
       "path": "docs/enterprise/control-console-runbook.md",
-      "sha256": "7039936d0a7cb622be91a9a30cdf37f5039fa8cb0036fb6c4b344ae3c671a1dd"
+      "sha256": "0172c5aa7965a9740e2c3b9fa54e4352f4dc1f382149e376a7cf6155649fac30"
     },
     {
       "path": "docs/release/production-closure-runbook.md",
       "sha256": "d0bd9adeba6dde8523c65b4c031022922497071a97d80c731fe1fb3a21f8c4ae"
+    },
+    {
+      "path": "docs/sandbox/production-requirements.md",
+      "sha256": "16ace4f83e15f38befed1fa77eef5aaddbd9051a76069d79da99dbae6a195112"
     },
     {
       "path": "evidence/batch-01/IMPLEMENTATION_STATUS.json",
@@ -237,7 +245,7 @@
     },
     {
       "path": "evidence/production-closure/production-readiness-report.json",
-      "sha256": "72ded93a99016fb8d5a49ea7c7c135534761a795bf58ef7f1bd98d1d2eb31c83"
+      "sha256": "b14f58cd55d1bf23f63c12fca9cf4dd154811b8bd1e8805f0d563b73b94f55a7"
     },
     {
       "path": "evidence/production-closure/residual-risk-register.json",
@@ -801,7 +809,7 @@
     },
     {
       "path": "python/production_gates/tests/test_evidence_bundle_verifier.py",
-      "sha256": "0996bba343a3c1a78ff72a3c7278fa82f04d9abf15e7b8ff3a630040bb5d9505"
+      "sha256": "6dd21b73db1234ffe0d7f8f4af16feabf5564b903201aeb441882c89555cf821"
     },
     {
       "path": "python/production_gates/tests/test_git_provenance.py",
@@ -812,8 +820,12 @@
       "sha256": "62df7c0bbf42400f2ae73b8ad5a86b077130ae21e3328b3edae3d4e9920ab41d"
     },
     {
+      "path": "python/production_gates/tests/test_node_supply_chain.py",
+      "sha256": "2edae7a01b6e6ceb617600b150e7b1082eb0536384768b678cbc01d117bbb949"
+    },
+    {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "f3854b1638e17ba636696badb93121331284006f5529910a259a57b0ebf0ac53"
+      "sha256": "b12610f372add3d845b5fc500396a5ed759d4630df32bc45b9a8f3dc89a30595"
     },
     {
       "path": "python/production_gates/tests/test_release_binding.py",
@@ -845,7 +857,7 @@
     },
     {
       "path": "rust/crates/contracts/src/lib.rs",
-      "sha256": "4f1d952b722d54d0471fb8e575d06663818f09b1ff3982a6c43b0898b56b4c70"
+      "sha256": "03b81ebcff267a5f842fc9e4251c3037739d0aa7640507feea345a9efd2213a3"
     },
     {
       "path": "rust/crates/data-governance/src/authority.rs",
@@ -929,7 +941,7 @@
     },
     {
       "path": "rust/crates/model-gateway/src/adapters.rs",
-      "sha256": "b03c3b4d978fa94edb4a8793afca214c1917badfd3c4bbe683a19b00247276e3"
+      "sha256": "2a405957af6fd35c1a077ff0812123d9a161b14ea0cb344316b10f1fef6040da"
     },
     {
       "path": "rust/crates/model-gateway/src/lib.rs",
@@ -960,12 +972,16 @@
       "sha256": "518d1861d0521e94ef013b166f71586a5c07eff6ea144e4ca83cfff34ed879cb"
     },
     {
+      "path": "rust/crates/policy-pep/src/authority.rs",
+      "sha256": "a8c2c1c7cd596893bb927118283ead43e3d32afd201624f5135822731fe12c4a"
+    },
+    {
       "path": "rust/crates/policy-pep/src/governance.rs",
-      "sha256": "5a2bdecc7abe1525dc0c306453e9f9d6e36f090932577b57b03cc86ece1884df"
+      "sha256": "44eb52f7c2b159ba8d410ce1a5d50c471b8a98e1024bffcb1e7d517079c1d080"
     },
     {
       "path": "rust/crates/policy-pep/src/server.rs",
-      "sha256": "bc8fb3e7f33701b2d11e28a2b606a5c1992825ec81636b541a2f7a4ebe4310e4"
+      "sha256": "398c272d520f5e1ab7ffaef73c46759c5b6e9b8728925e6ca432471d34b83b1b"
     },
     {
       "path": "rust/crates/production-closure/src/bin/production-closure.rs",
@@ -1092,6 +1108,10 @@
       "sha256": "e39306b93ee2bdd4934aa7e44b76ee846a4f8285193919027f6e56599b8183b8"
     },
     {
+      "path": "scripts/validate-node-supply-chain.py",
+      "sha256": "6c7efda624f5049e466c8548129252ed6667f9b22a2b6ec471674b49bc88f9c3"
+    },
+    {
       "path": "scripts/validate-production-migrations.py",
       "sha256": "c287927b23d79875aad13a53847901aacdbaebfe698fca597b4c1b38b0ebfb75"
     },
@@ -1101,7 +1121,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "ddcf7188a0520ad813d90ff50fed43d548f4b7e2e261720e9bae33bbbd41cd74"
+      "sha256": "d7c80a8162709dc6b59335610dda62aa6bbddede4dd5dac0cd5297f6cf75042e"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",
@@ -1120,16 +1140,20 @@
       "sha256": "82ca2935ff00ae42008365eb99b9037bc682428384c62d1ec7e50f36c5f82304"
     },
     {
+      "path": "web/control-console/.npmrc",
+      "sha256": "89570b4333de5a4920e113d299e774c671b4e83ebfe34757ad27c3960a7bd269"
+    },
+    {
       "path": "web/control-console/e2e/control-console.spec.ts",
       "sha256": "ed71d5461699ce9d8987444c8c58be152b7745aab7f40b6d1e43705376ed431f"
     },
     {
       "path": "web/control-console/package-lock.json",
-      "sha256": "1fc4427cd1b694f16744499533eaed23453c4cd53310dcd87bbb3bbe207da0ff"
+      "sha256": "e03d59b9ff42990493f835869ef97a79b7751e35c8574452f7ffe83e5f54c1e4"
     },
     {
       "path": "web/control-console/package.json",
-      "sha256": "b209ae1fc9091792bac67b8c300084ef0454b1f15751529c56553216cd6dfac3"
+      "sha256": "6195f1292a8ed7903eb01d27fdac023b414c1c3722fb928ead75ba924b81505b"
     },
     {
       "path": "web/control-console/src/App.vue",
@@ -1146,6 +1170,14 @@
     {
       "path": "web/control-console/src/api-client.ts",
       "sha256": "4ccca9190075657b8431e7625cc17bc8cef4c477b2afd96e971312cfed784a21"
+    },
+    {
+      "path": "web/control-console/src/components/PolicyStudio.test.ts",
+      "sha256": "b049eb116fc852a3a334492515ccf94578961374ccca9e0335eb1c9f6dab13b9"
+    },
+    {
+      "path": "web/control-console/src/components/PolicyStudio.vue",
+      "sha256": "9ccc5eea5fc84599afbf446146e4a721b7338e24972e9284b35d4fa7efcba423"
     },
     {
       "path": "web/control-console/src/enterprise-api-types.ts",
