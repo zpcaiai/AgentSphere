@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T19:42:00Z",
+  "generated_at": "2026-08-25T19:49:59Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -845,7 +845,7 @@
     },
     {
       "path": "python/production_gates/tests/test_supply_domain_contract.py",
-      "sha256": "4bb92c67c4057c836e6cc99aad5f81dee2e2dc356b0a3b58a211dd02c6ffcf76"
+      "sha256": "bf993e9e861a865402ba6600967054e0a67fdecc3df4f06f0ec4fe76206c3cd8"
     },
     {
       "path": "requirements-ci.txt",

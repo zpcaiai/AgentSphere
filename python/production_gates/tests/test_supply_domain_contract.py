@@ -3,6 +3,8 @@ import importlib.util
 import unittest
 from pathlib import Path
 
+from scripts.rust_source_checks import rust_code_contains
+
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -78,14 +80,18 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
             self.assertIn(scope, server if scope in {"supply-chain:read", "supply-chain:recover"} else authority)
         self.assertNotIn("supply-chain:execute", server)
         self.assertIn("TLS13", server)
-        self.assertIn("identities.len()==1", server)
-        self.assertIn("body.command.operation.required_scope()", server)
-        self.assertIn("OutcomeUnknown", authority)
+        self.assertTrue(rust_code_contains(server, "identities.len()==1"))
+        self.assertTrue(
+            rust_code_contains(server, "body.command.operation.required_scope()")
+        )
+        self.assertTrue(rust_code_contains(authority, "OutcomeUnknown"))
         self.assertIn("SET state='UNKNOWN'", authority)
         self.assertIn("installation_receipt_digest", authority)
         self.assertIn("reconciliation_receipt_digest", authority)
         self.assertIn("PermissionDiff::compute", authority)
-        self.assertIn("permission_diff!=computed_diff", authority)
+        self.assertTrue(
+            rust_code_contains(authority, "permission_diff!=computed_diff")
+        )
         self.assertIn("preflight_external", authority)
         self.assertIn("SUPPLY_CHAIN_COMMIT_OUTCOME_UNKNOWN", authority)
         self.assertIn("rolbypassrls", binary)
@@ -179,10 +185,16 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
         stack = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(
             encoding="utf-8"
         )
-        self.assertIn('route("/live",get(management_live))', server)
-        self.assertIn('route("/ready",get(management_ready))', server)
-        self.assertIn(
-            '"schema_version":DOMAIN_READINESS_SCHEMA,"live":true', server
+        self.assertTrue(
+            rust_code_contains(server, 'route("/live",get(management_live))')
+        )
+        self.assertTrue(
+            rust_code_contains(server, 'route("/ready",get(management_ready))')
+        )
+        self.assertTrue(
+            rust_code_contains(
+                server, '"schema_version":DOMAIN_READINESS_SCHEMA,"live":true'
+            )
         )
         self.assertIn(
             "livenessProbe: {httpGet: {path: /live, port: management}", stack
@@ -198,14 +210,28 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
         platform = (ROOT / "rust/crates/platform-sre/src/server.rs").read_text(
             encoding="utf-8"
         )
-        self.assertIn('route("/live",get(management_live))', supply)
-        self.assertIn('route("/ready",get(management_ready))', supply)
-        self.assertIn(
-            '"schema_version":SUPPLY_READINESS_SCHEMA,"live":true', supply
+        self.assertTrue(
+            rust_code_contains(supply, 'route("/live",get(management_live))')
         )
-        self.assertIn('.route("/live", get(management_health))', platform)
-        self.assertIn('.route("/ready", get(management_ready))', platform)
-        self.assertIn('"schema_version": "agenttrust.sre-liveness.v1"', platform)
+        self.assertTrue(
+            rust_code_contains(supply, 'route("/ready",get(management_ready))')
+        )
+        self.assertTrue(
+            rust_code_contains(
+                supply, '"schema_version":SUPPLY_READINESS_SCHEMA,"live":true'
+            )
+        )
+        self.assertTrue(
+            rust_code_contains(platform, '.route("/live",get(management_health))')
+        )
+        self.assertTrue(
+            rust_code_contains(platform, '.route("/ready",get(management_ready))')
+        )
+        self.assertTrue(
+            rust_code_contains(
+                platform, '"schema_version":"agenttrust.sre-liveness.v1"'
+            )
+        )
 
     def test_data_management_binding_accepts_kubernetes_probe_address(self) -> None:
         server = (ROOT / "rust/crates/data-governance/src/server.rs").read_text(
@@ -214,9 +240,15 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
         stack = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(
             encoding="utf-8"
         )
-        self.assertIn("config.data_address.ip().is_loopback()", server)
-        self.assertIn("config.management_address.ip().is_loopback()", server)
-        self.assertIn("config.management_address.ip().is_unspecified()", server)
+        self.assertTrue(
+            rust_code_contains(server, "config.data_address.ip().is_loopback()")
+        )
+        self.assertTrue(
+            rust_code_contains(server, "config.management_address.ip().is_loopback()")
+        )
+        self.assertTrue(
+            rust_code_contains(server, "config.management_address.ip().is_unspecified()")
+        )
         self.assertIn(
             "AGENT_TRUST_DATA_MANAGEMENT_LISTEN_ADDRESS, value: 0.0.0.0", stack
         )
@@ -232,11 +264,27 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
             self.assertIn("count(DISTINCT reviewer_subject)", migration)
             self.assertIn("reviewer_subject<>supervision.supervisor_subject", migration)
             self.assertIn("consumed_by_execution_id=NEW.execution_id", migration)
-        self.assertIn("validate_approvals(envelope,now,2)", plugin)
-        self.assertIn("approval.reviewer_subject==supervision.supervisor_subject", plugin)
+        self.assertTrue(
+            rust_code_contains(plugin, "validate_approvals(envelope,now,2)")
+        )
+        self.assertTrue(
+            rust_code_contains(
+                plugin, "approval.reviewer_subject==supervision.supervisor_subject"
+            )
+        )
         authority = (ROOT / "rust/crates/domain-risk-packs/authority.rs").read_text(encoding="utf-8")
-        self.assertIn('row.get::<String,_>("reviewer_role")!=approval.reviewer_role', authority)
-        self.assertIn('row.get::<String,_>("evidence_digest")!=approval.evidence_digest', authority)
+        self.assertTrue(
+            rust_code_contains(
+                authority,
+                'row.get::<String,_>("reviewer_role")!=approval.reviewer_role',
+            )
+        )
+        self.assertTrue(
+            rust_code_contains(
+                authority,
+                'row.get::<String,_>("evidence_digest")!=approval.evidence_digest',
+            )
+        )
 
     def test_authoritative_pages_digest_the_final_response_shape(self) -> None:
         supply = (ROOT / "rust/crates/pack-supply-chain/src/production.rs").read_text(encoding="utf-8")
@@ -246,18 +294,24 @@ class SupplyDomainProductionContractTest(unittest.TestCase):
             (domain, "DOMAIN_STATE_SCHEMA"),
         ]:
             digest_block = source[source.index("The digest covers the exact response object"):]
-            self.assertIn(f'"schema_version":{schema}', digest_block)
-            self.assertIn('"authoritative":true', digest_block)
-            self.assertIn('"items":&items', digest_block)
-            self.assertIn('"next_cursor":&next_cursor', digest_block)
+            self.assertTrue(
+                rust_code_contains(digest_block, f'"schema_version":{schema}')
+            )
+            self.assertTrue(rust_code_contains(digest_block, '"authoritative":true'))
+            self.assertTrue(rust_code_contains(digest_block, '"items":&items'))
+            self.assertTrue(
+                rust_code_contains(digest_block, '"next_cursor":&next_cursor')
+            )
 
     def test_domain_receipt_has_typed_effect_and_evaluator_contracts(self) -> None:
         authority = (ROOT / "rust/crates/domain-risk-packs/authority.rs").read_text(encoding="utf-8")
         self.assertIn("TypedDomainEffectReceipt", authority)
         self.assertIn("TypedDomainEvaluatorResult", authority)
         self.assertIn("DOMAIN_RUNTIME_COMMIT_OUTCOME_UNKNOWN", authority)
-        self.assertIn("actual_checks!=expected_checks", authority)
-        self.assertIn("!all_pass", authority)
+        self.assertTrue(
+            rust_code_contains(authority, "actual_checks!=expected_checks")
+        )
+        self.assertTrue(rust_code_contains(authority, "!all_pass"))
         plugin = (ROOT / "rust/crates/domain-risk-packs/production.rs").read_text(encoding="utf-8")
         self.assertIn("x-domain-pack-manifest-digest", plugin)
         self.assertIn("x-domain-before-digest", plugin)
