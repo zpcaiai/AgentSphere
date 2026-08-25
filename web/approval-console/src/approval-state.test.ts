@@ -58,8 +58,8 @@ describe("authoritative approval inbox", () => {
     expect(() => parseApprovalCases(page(), "33333333-3333-4333-8333-333333333333"))
       .toThrow("APPROVAL_AUTHORITY_PAGE_INVALID");
     const unsafe = page();
-    unsafe.items = [{ ...item, raw_payload: "must not reach the browser" }]
-      as unknown as typeof unsafe.items;
+    const unsafeItems: unknown = [{ ...item, raw_payload: "must not reach the browser" }];
+    unsafe.items = unsafeItems as typeof unsafe.items;
     expect(() => parseApprovalCases(unsafe, tenantId)).toThrow("APPROVAL_CASE_INVALID");
   });
 
