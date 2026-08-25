@@ -7,18 +7,15 @@ const OPENAPI: &str = include_str!("../../../../schemas/openapi/security-evaluat
 const COMMAND_SCHEMA: &str = include_str!(
     "../../../../schemas/security-evaluation/security-evaluation-command-v1.schema.json"
 );
-const SCENARIO_SCHEMA: &str = include_str!(
-    "../../../../schemas/security-evaluation/attack-scenario-v1.schema.json"
-);
-const DATASET_SCHEMA: &str = include_str!(
-    "../../../../schemas/security-evaluation/attack-dataset-manifest-v1.schema.json"
-);
+const SCENARIO_SCHEMA: &str =
+    include_str!("../../../../schemas/security-evaluation/attack-scenario-v1.schema.json");
+const DATASET_SCHEMA: &str =
+    include_str!("../../../../schemas/security-evaluation/attack-dataset-manifest-v1.schema.json");
 const REPORT_SCHEMA: &str = include_str!(
     "../../../../schemas/security-evaluation/security-evaluation-report-v1.schema.json"
 );
-const RUNNER_SCHEMA: &str = include_str!(
-    "../../../../schemas/security-evaluation/isolated-runner-receipt-v1.schema.json"
-);
+const RUNNER_SCHEMA: &str =
+    include_str!("../../../../schemas/security-evaluation/isolated-runner-receipt-v1.schema.json");
 const AUTHORITY: &str = include_str!("../src/authority.rs");
 const SERVER: &str = include_str!("../src/server.rs");
 const BINARY: &str = include_str!("../src/bin/agenttrust-security-evaluation-authority.rs");
@@ -35,7 +32,10 @@ fn json_contracts_are_strict_and_parseable() {
     ] {
         let schema: Value =
             serde_json::from_str(source).unwrap_or_else(|error| panic!("schema: {error}"));
-        assert_eq!(schema.get("additionalProperties"), Some(&Value::Bool(false)));
+        assert_eq!(
+            schema.get("additionalProperties"),
+            Some(&Value::Bool(false))
+        );
         assert!(schema.get("required").is_some());
     }
     assert!(REPORT_SCHEMA.contains("\"production_certified\": {\"const\": false}"));
@@ -58,7 +58,11 @@ fn public_executor_contract_requires_the_whole_control_path() {
         "X-AgentTrust-Authorization-Evidence-Digest",
     ] {
         assert!(OPENAPI.contains(header), "missing {header}");
-        assert!(SERVER.to_ascii_lowercase().contains(&header.to_ascii_lowercase()));
+        assert!(
+            SERVER
+                .to_ascii_lowercase()
+                .contains(&header.to_ascii_lowercase())
+        );
     }
     assert!(AUTHORITY.contains("CANONICAL_ACTION_IR->PEP->LEDGER->FENCE->EVIDENCE"));
     assert!(AUTHORITY.contains("security_eval_evidence_events"));

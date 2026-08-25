@@ -122,7 +122,9 @@ impl SreOperation {
             Self::ConfigureSlo | Self::RecordSli | Self::UpdateBurnAlert | Self::LinkIncident => {
                 "sre-operator"
             }
-            Self::RegisterTopology | Self::RecordZoneHealth | Self::RecordCostCapacity
+            Self::RegisterTopology
+            | Self::RecordZoneHealth
+            | Self::RecordCostCapacity
             | Self::RecordObservability => "platform-operator",
             Self::CreateBackup | Self::VerifyRestore | Self::PlanDr => "recovery-operator",
             Self::Failover | Self::Failback => "recovery-commander",
@@ -134,7 +136,9 @@ impl SreOperation {
 
     fn risk(self) -> RiskLevel {
         match self {
-            Self::RecordSli | Self::RecordZoneHealth | Self::RecordCostCapacity
+            Self::RecordSli
+            | Self::RecordZoneHealth
+            | Self::RecordCostCapacity
             | Self::RecordObservability => RiskLevel::High,
             _ => RiskLevel::Critical,
         }
@@ -142,10 +146,17 @@ impl SreOperation {
 
     fn minimum_approvals(self) -> usize {
         match self {
-            Self::Failover | Self::Failback | Self::ExecuteChaos | Self::ExecuteLoad
-            | Self::PlanUpgrade | Self::RollbackUpgrade => 2,
-            Self::CreateBackup | Self::VerifyRestore | Self::RegisterTopology
-            | Self::PlanChaos | Self::PlanLoad => 1,
+            Self::Failover
+            | Self::Failback
+            | Self::ExecuteChaos
+            | Self::ExecuteLoad
+            | Self::PlanUpgrade
+            | Self::RollbackUpgrade => 2,
+            Self::CreateBackup
+            | Self::VerifyRestore
+            | Self::RegisterTopology
+            | Self::PlanChaos
+            | Self::PlanLoad => 1,
             _ => 0,
         }
     }
@@ -463,9 +474,7 @@ impl PostgresSreAuthorityStore {
         after: Option<&str>,
         limit: i64,
     ) -> Result<SreResourcePage, SreAuthorityError> {
-        if !(1..=200).contains(&limit)
-            || after.is_some_and(|value| !resource_identifier(value))
-        {
+        if !(1..=200).contains(&limit) || after.is_some_and(|value| !resource_identifier(value)) {
             return Err(SreAuthorityError::RequestInvalid);
         }
         let mut tx = self.begin_tenant(tenant).await?;
@@ -575,8 +584,10 @@ async fn apply_operation(
                 .bind(bool_value(payload, "release_blocking")?)
                 .bind(string_value(payload, "status")?)
                 .bind(next)
-                .bind(i64::try_from(request.command.expected_resource_version)
-                    .map_err(|_| SreAuthorityError::StateConflict)?)
+                .bind(
+                    i64::try_from(request.command.expected_resource_version)
+                        .map_err(|_| SreAuthorityError::StateConflict)?,
+                )
                 .execute(&mut **tx)
                 .await
                 .map_err(|_| SreAuthorityError::StateConflict)?;
@@ -632,8 +643,7 @@ async fn apply_operation(
             let achieved = if total == 0 {
                 0
             } else {
-                u128::try_from(good).map_err(|_| SreAuthorityError::StateConflict)?
-                    * 1_000_000
+                u128::try_from(good).map_err(|_| SreAuthorityError::StateConflict)? * 1_000_000
                     / u128::try_from(total).map_err(|_| SreAuthorityError::StateConflict)?
             };
             let error_budget = 1_000_000_u128.saturating_sub(target).max(1);
@@ -675,8 +685,10 @@ async fn apply_operation(
             .bind(tenant)
             .bind(slo_id)
             .bind(next)
-            .bind(i64::try_from(request.command.expected_resource_version)
-                .map_err(|_| SreAuthorityError::StateConflict)?)
+            .bind(
+                i64::try_from(request.command.expected_resource_version)
+                    .map_err(|_| SreAuthorityError::StateConflict)?,
+            )
             .execute(&mut **tx)
             .await
             .map_err(|_| SreAuthorityError::StateConflict)?;
@@ -754,8 +766,10 @@ async fn apply_operation(
             .bind(tenant)
             .bind(alert_id)
             .bind(next)
-            .bind(i64::try_from(request.command.expected_resource_version)
-                .map_err(|_| SreAuthorityError::StateConflict)?)
+            .bind(
+                i64::try_from(request.command.expected_resource_version)
+                    .map_err(|_| SreAuthorityError::StateConflict)?,
+            )
             .execute(&mut **tx)
             .await
             .map_err(|_| SreAuthorityError::StateConflict)?;
@@ -823,12 +837,12 @@ async fn apply_operation(
             let components = json_value(observed, "component_health")?;
             let dependencies = json_value(observed, "dependency_health")?;
             let healthy = ready >= required
-                && components
-                    .as_object()
-                    .is_some_and(|value| !value.is_empty() && value.values().all(|item| item == &Value::Bool(true)))
-                && dependencies
-                    .as_object()
-                    .is_some_and(|value| !value.is_empty() && value.values().all(|item| item == &Value::Bool(true)));
+                && components.as_object().is_some_and(|value| {
+                    !value.is_empty() && value.values().all(|item| item == &Value::Bool(true))
+                })
+                && dependencies.as_object().is_some_and(|value| {
+                    !value.is_empty() && value.values().all(|item| item == &Value::Bool(true))
+                });
             sqlx::query(
                 "INSERT INTO sre_zone_health_observations \
                  (tenant_id,observation_id,topology_id,zone,component_health,dependency_health,\
@@ -867,23 +881,52 @@ async fn apply_operation(
             Ok(status.into())
         }
         SreOperation::CreateBackup => {
-            apply_backup(tx, tenant, request, payload, external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?, next).await
+            apply_backup(
+                tx,
+                tenant,
+                request,
+                payload,
+                external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?,
+                next,
+            )
+            .await
         }
         SreOperation::VerifyRestore => {
-            apply_restore(tx, tenant, request, payload, external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?, next).await
+            apply_restore(
+                tx,
+                tenant,
+                request,
+                payload,
+                external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?,
+                next,
+            )
+            .await
         }
         SreOperation::RecordZoneHealth => {
-            exact_keys(value, &[
-                "component_health","dependency_health","ready_replicas","required_replicas",
-                "topology_probe_digest","probe_spec_digest","observed_at",
-            ])
-                && value.get("component_health").and_then(Value::as_object)
-                    .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
-                && value.get("dependency_health").and_then(Value::as_object)
+            exact_keys(
+                value,
+                &[
+                    "component_health",
+                    "dependency_health",
+                    "ready_replicas",
+                    "required_replicas",
+                    "topology_probe_digest",
+                    "probe_spec_digest",
+                    "observed_at",
+                ],
+            ) && value
+                .get("component_health")
+                .and_then(Value::as_object)
+                .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
+                && value
+                    .get("dependency_health")
+                    .and_then(Value::as_object)
                     .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
                 && u64_field(value, "ready_replicas")
                     .zip(u64_field(value, "required_replicas"))
-                    .is_some_and(|(ready,required)| required > 0 && ready <= 1_000_000 && required <= 1_000_000)
+                    .is_some_and(|(ready, required)| {
+                        required > 0 && ready <= 1_000_000 && required <= 1_000_000
+                    })
                 && digest_field(value, "topology_probe_digest")
                 && digest_field(value, "probe_spec_digest")
                 && time_field(value, "observed_at")
@@ -913,7 +956,15 @@ async fn apply_operation(
             Ok("READY".into())
         }
         SreOperation::Failover | SreOperation::Failback => {
-            apply_dr_event(tx, tenant, request, payload, external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?, next).await
+            apply_dr_event(
+                tx,
+                tenant,
+                request,
+                payload,
+                external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?,
+                next,
+            )
+            .await
         }
         SreOperation::PlanChaos => {
             sqlx::query(
@@ -938,7 +989,15 @@ async fn apply_operation(
             Ok("APPROVED".into())
         }
         SreOperation::ExecuteChaos => {
-            apply_chaos_result(tx, tenant, request, payload, external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?, next).await
+            apply_chaos_result(
+                tx,
+                tenant,
+                request,
+                payload,
+                external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?,
+                next,
+            )
+            .await
         }
         SreOperation::PlanLoad => {
             sqlx::query(
@@ -964,7 +1023,15 @@ async fn apply_operation(
             Ok("APPROVED".into())
         }
         SreOperation::ExecuteLoad => {
-            apply_load_result(tx, tenant, request, payload, external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?, next).await
+            apply_load_result(
+                tx,
+                tenant,
+                request,
+                payload,
+                external.ok_or(SreAuthorityError::ExternalReceiptInvalid)?,
+                next,
+            )
+            .await
         }
         SreOperation::PlanUpgrade => {
             sqlx::query(
@@ -1201,7 +1268,12 @@ async fn apply_restore(
     .execute(&mut **tx)
     .await
     .map_err(|_| SreAuthorityError::StateConflict)?;
-    Ok(if passed { "RESTORE_VERIFIED" } else { "RESTORE_FAILED" }.into())
+    Ok(if passed {
+        "RESTORE_VERIFIED"
+    } else {
+        "RESTORE_FAILED"
+    }
+    .into())
 }
 
 async fn apply_dr_event(
@@ -1274,8 +1346,10 @@ async fn apply_dr_event(
     .bind(state)
     .bind(next)
     .bind(expected_state)
-    .bind(i64::try_from(request.command.expected_resource_version)
-        .map_err(|_| SreAuthorityError::StateConflict)?)
+    .bind(
+        i64::try_from(request.command.expected_resource_version)
+            .map_err(|_| SreAuthorityError::StateConflict)?,
+    )
     .execute(&mut **tx)
     .await
     .map_err(|_| SreAuthorityError::StateConflict)?;
@@ -1350,8 +1424,10 @@ async fn apply_chaos_result(
     .bind(campaign_id)
     .bind(state)
     .bind(next)
-    .bind(i64::try_from(request.command.expected_resource_version)
-        .map_err(|_| SreAuthorityError::StateConflict)?)
+    .bind(
+        i64::try_from(request.command.expected_resource_version)
+            .map_err(|_| SreAuthorityError::StateConflict)?,
+    )
     .execute(&mut **tx)
     .await
     .map_err(|_| SreAuthorityError::StateConflict)?;
@@ -1422,8 +1498,10 @@ async fn apply_load_result(
     .bind(campaign_id)
     .bind(completed_state)
     .bind(next)
-    .bind(i64::try_from(request.command.expected_resource_version)
-        .map_err(|_| SreAuthorityError::StateConflict)?)
+    .bind(
+        i64::try_from(request.command.expected_resource_version)
+            .map_err(|_| SreAuthorityError::StateConflict)?,
+    )
     .execute(&mut **tx)
     .await
     .map_err(|_| SreAuthorityError::StateConflict)?;
@@ -1449,7 +1527,10 @@ async fn apply_canary(
     .await
     .map_err(|_| SreAuthorityError::DependencyUnavailable)?
     .ok_or(SreAuthorityError::NotFound)?;
-    if !matches!(rollout.get::<String, _>("status").as_str(), "PLANNED" | "CANARY") {
+    if !matches!(
+        rollout.get::<String, _>("status").as_str(),
+        "PLANNED" | "CANARY"
+    ) {
         return Err(SreAuthorityError::StateConflict);
     }
     let percent = i32_value(payload, "canary_percent")?;
@@ -1459,7 +1540,7 @@ async fn apply_canary(
         return Err(SreAuthorityError::StateConflict);
     }
     let regression = i32_value(payload, "error_rate_millionths")?
-            > rollout.get::<i32, _>("maximum_error_rate_millionths")
+        > rollout.get::<i32, _>("maximum_error_rate_millionths")
         || i64_value(payload, "unsafe_allow_count")? > 0
         || i64_value(payload, "evidence_gap_count")? > 0;
     sqlx::query(
@@ -1514,44 +1595,114 @@ fn external_fact_shape(operation: SreOperation, facts: &Value) -> bool {
     };
     match operation {
         SreOperation::CreateBackup => {
-            exact_keys(value, &[
-                "database_lsn","database_artifact_digest","object_manifest_digest",
-                "ledger_head_digest","worm_retention_until","key_recovery_evidence_ref",
-                "record_counts","manifest_digest","signature_key_id","signature","artifacts",
-            ])
-                && identifier_field(value, "database_lsn", 256)
-                && ["database_artifact_digest","object_manifest_digest","ledger_head_digest","manifest_digest"]
-                    .iter().all(|field| digest_field(value, field))
+            exact_keys(
+                value,
+                &[
+                    "database_lsn",
+                    "database_artifact_digest",
+                    "object_manifest_digest",
+                    "ledger_head_digest",
+                    "worm_retention_until",
+                    "key_recovery_evidence_ref",
+                    "record_counts",
+                    "manifest_digest",
+                    "signature_key_id",
+                    "signature",
+                    "artifacts",
+                ],
+            ) && identifier_field(value, "database_lsn", 256)
+                && [
+                    "database_artifact_digest",
+                    "object_manifest_digest",
+                    "ledger_head_digest",
+                    "manifest_digest",
+                ]
+                .iter()
+                .all(|field| digest_field(value, field))
                 && time_field(value, "worm_retention_until")
                 && evidence_reference_field(value, "key_recovery_evidence_ref")
                 && value.get("record_counts").is_some_and(Value::is_object)
                 && identifier_field(value, "signature_key_id", 128)
-                && string_field(value, "signature").is_some_and(|item| (64..=1024).contains(&item.len()))
-                && value.get("artifacts").and_then(Value::as_array).is_some_and(|artifacts| {
-                    artifacts.len() == 4
-                        && artifacts.iter().all(|artifact| artifact.as_object().is_some_and(|item| {
-                            exact_keys(item, &["artifact_id","artifact_kind","immutable_ref","artifact_digest","size_bytes","encryption_key_version","worm_locked","evidence_ref"])
-                                && uuid_field(item, "artifact_id")
-                                && matches!(string_field(item, "artifact_kind"), Some("DATABASE" | "OBJECT_MANIFEST" | "LEDGER_HEAD" | "KEY_RECOVERY"))
-                                && resource_identifier(string_field(item, "immutable_ref").unwrap_or(""))
-                                && digest_field(item, "artifact_digest")
-                                && u64_field(item, "size_bytes").is_some()
-                                && identifier_field(item, "encryption_key_version", 128)
-                                && item.get("worm_locked") == Some(&Value::Bool(true))
-                                && evidence_reference_field(item, "evidence_ref")
-                        }))
-                        && artifacts.iter().filter_map(|item| item.get("artifact_kind").and_then(Value::as_str)).collect::<BTreeSet<_>>().len() == 4
-                })
+                && string_field(value, "signature")
+                    .is_some_and(|item| (64..=1024).contains(&item.len()))
+                && value
+                    .get("artifacts")
+                    .and_then(Value::as_array)
+                    .is_some_and(|artifacts| {
+                        artifacts.len() == 4
+                            && artifacts.iter().all(|artifact| {
+                                artifact.as_object().is_some_and(|item| {
+                                    exact_keys(
+                                        item,
+                                        &[
+                                            "artifact_id",
+                                            "artifact_kind",
+                                            "immutable_ref",
+                                            "artifact_digest",
+                                            "size_bytes",
+                                            "encryption_key_version",
+                                            "worm_locked",
+                                            "evidence_ref",
+                                        ],
+                                    ) && uuid_field(item, "artifact_id")
+                                        && matches!(
+                                            string_field(item, "artifact_kind"),
+                                            Some(
+                                                "DATABASE"
+                                                    | "OBJECT_MANIFEST"
+                                                    | "LEDGER_HEAD"
+                                                    | "KEY_RECOVERY"
+                                            )
+                                        )
+                                        && resource_identifier(
+                                            string_field(item, "immutable_ref").unwrap_or(""),
+                                        )
+                                        && digest_field(item, "artifact_digest")
+                                        && u64_field(item, "size_bytes").is_some()
+                                        && identifier_field(item, "encryption_key_version", 128)
+                                        && item.get("worm_locked") == Some(&Value::Bool(true))
+                                        && evidence_reference_field(item, "evidence_ref")
+                                })
+                            })
+                            && artifacts
+                                .iter()
+                                .filter_map(|item| {
+                                    item.get("artifact_kind").and_then(Value::as_str)
+                                })
+                                .collect::<BTreeSet<_>>()
+                                .len()
+                                == 4
+                    })
         }
         SreOperation::VerifyRestore => {
-            exact_keys(value, &[
-                "expected_record_counts","restored_record_counts","object_integrity_passed",
-                "ledger_reconciled","key_recovery_passed","measured_rto_seconds",
-                "measured_rpo_seconds","report_digest","command_digest","started_at","completed_at",
-            ])
-                && value.get("expected_record_counts").is_some_and(Value::is_object)
-                && value.get("restored_record_counts").is_some_and(Value::is_object)
-                && ["object_integrity_passed","ledger_reconciled","key_recovery_passed"].iter().all(|field| boolean_field(value, field))
+            exact_keys(
+                value,
+                &[
+                    "expected_record_counts",
+                    "restored_record_counts",
+                    "object_integrity_passed",
+                    "ledger_reconciled",
+                    "key_recovery_passed",
+                    "measured_rto_seconds",
+                    "measured_rpo_seconds",
+                    "report_digest",
+                    "command_digest",
+                    "started_at",
+                    "completed_at",
+                ],
+            ) && value
+                .get("expected_record_counts")
+                .is_some_and(Value::is_object)
+                && value
+                    .get("restored_record_counts")
+                    .is_some_and(Value::is_object)
+                && [
+                    "object_integrity_passed",
+                    "ledger_reconciled",
+                    "key_recovery_passed",
+                ]
+                .iter()
+                .all(|field| boolean_field(value, field))
                 && u64_field(value, "measured_rto_seconds").is_some()
                 && u64_field(value, "measured_rpo_seconds").is_some()
                 && digest_field(value, "report_digest")
@@ -1559,38 +1710,71 @@ fn external_fact_shape(operation: SreOperation, facts: &Value) -> bool {
                 && time_order(value, "started_at", "completed_at")
         }
         SreOperation::Failover | SreOperation::Failback => {
-            exact_keys(value, &["adapter_receipt_digest","health_evidence_ref","measured_rto_seconds","measured_rpo_seconds","succeeded"])
-                && digest_field(value, "adapter_receipt_digest")
+            exact_keys(
+                value,
+                &[
+                    "adapter_receipt_digest",
+                    "health_evidence_ref",
+                    "measured_rto_seconds",
+                    "measured_rpo_seconds",
+                    "succeeded",
+                ],
+            ) && digest_field(value, "adapter_receipt_digest")
                 && evidence_reference_field(value, "health_evidence_ref")
                 && u64_field(value, "measured_rto_seconds").is_some()
                 && u64_field(value, "measured_rpo_seconds").is_some()
                 && boolean_field(value, "succeeded")
         }
         SreOperation::ExecuteChaos => {
-            exact_keys(value, &[
-                "started_at","completed_at","safety_abort_triggered","cleanup_verified",
-                "dependency_failure_semantics_verified","emergency_stop_verified","command_digest",
-                "report_digest","evidence_refs",
-            ])
-                && time_order(value, "started_at", "completed_at")
-                && ["safety_abort_triggered","cleanup_verified","dependency_failure_semantics_verified","emergency_stop_verified"]
-                    .iter().all(|field| boolean_field(value, field))
+            exact_keys(
+                value,
+                &[
+                    "started_at",
+                    "completed_at",
+                    "safety_abort_triggered",
+                    "cleanup_verified",
+                    "dependency_failure_semantics_verified",
+                    "emergency_stop_verified",
+                    "command_digest",
+                    "report_digest",
+                    "evidence_refs",
+                ],
+            ) && time_order(value, "started_at", "completed_at")
+                && [
+                    "safety_abort_triggered",
+                    "cleanup_verified",
+                    "dependency_failure_semantics_verified",
+                    "emergency_stop_verified",
+                ]
+                .iter()
+                .all(|field| boolean_field(value, field))
                 && digest_field(value, "command_digest")
                 && digest_field(value, "report_digest")
                 && string_array(value, "evidence_refs", 1, 128, evidence_reference)
         }
         SreOperation::ExecuteLoad => {
-            exact_keys(value, &[
-                "requests","success_millionths","p50_milliseconds","p95_milliseconds",
-                "p99_milliseconds","throughput_millionths","backpressure_rejections",
-                "noisy_neighbor_isolation_passed","report_digest","evidence_refs","started_at","completed_at",
-            ])
-                && u64_range(value, "requests", 1, 10_000_000_000)
+            exact_keys(
+                value,
+                &[
+                    "requests",
+                    "success_millionths",
+                    "p50_milliseconds",
+                    "p95_milliseconds",
+                    "p99_milliseconds",
+                    "throughput_millionths",
+                    "backpressure_rejections",
+                    "noisy_neighbor_isolation_passed",
+                    "report_digest",
+                    "evidence_refs",
+                    "started_at",
+                    "completed_at",
+                ],
+            ) && u64_range(value, "requests", 1, 10_000_000_000)
                 && u64_range(value, "success_millionths", 0, 1_000_000)
                 && u64_field(value, "p50_milliseconds")
                     .zip(u64_field(value, "p95_milliseconds"))
                     .zip(u64_field(value, "p99_milliseconds"))
-                    .is_some_and(|((p50,p95),p99)| p50 <= p95 && p95 <= p99)
+                    .is_some_and(|((p50, p95), p99)| p50 <= p95 && p95 <= p99)
                 && u64_field(value, "throughput_millionths").is_some()
                 && u64_field(value, "backpressure_rejections").is_some()
                 && boolean_field(value, "noisy_neighbor_isolation_passed")
@@ -1599,7 +1783,7 @@ fn external_fact_shape(operation: SreOperation, facts: &Value) -> bool {
                 && time_order(value, "started_at", "completed_at")
         }
         SreOperation::RollbackUpgrade => {
-            exact_keys(value, &["rollback_artifact_digest","succeeded"])
+            exact_keys(value, &["rollback_artifact_digest", "succeeded"])
                 && digest_field(value, "rollback_artifact_digest")
                 && boolean_field(value, "succeeded")
         }
@@ -1704,10 +1888,7 @@ fn time_field(value: &Map<String, Value>, field: &str) -> bool {
     string_field(value, field).is_some_and(|item| item.parse::<DateTime<Utc>>().is_ok())
 }
 
-fn time_value(
-    value: &Map<String, Value>,
-    field: &str,
-) -> Result<DateTime<Utc>, SreAuthorityError> {
+fn time_value(value: &Map<String, Value>, field: &str) -> Result<DateTime<Utc>, SreAuthorityError> {
     string_value(value, field)?
         .parse()
         .map_err(|_| SreAuthorityError::RequestInvalid)
@@ -1733,7 +1914,10 @@ fn identifier_field(value: &Map<String, Value>, field: &str, maximum: usize) -> 
 }
 
 fn evidence_status_field(value: &Map<String, Value>, field: &str) -> bool {
-    matches!(string_field(value, field), Some("NOT_RUN" | "OBSERVED" | "VERIFIED"))
+    matches!(
+        string_field(value, field),
+        Some("NOT_RUN" | "OBSERVED" | "VERIFIED")
+    )
 }
 
 fn string_array(
@@ -1743,14 +1927,21 @@ fn string_array(
     maximum: usize,
     validator: impl Fn(&str) -> bool,
 ) -> bool {
-    value.get(field).and_then(Value::as_array).is_some_and(|items| {
-        (minimum..=maximum).contains(&items.len())
-            && items
-                .iter()
-                .all(|item| item.as_str().is_some_and(|value| validator(value)))
-            && items.iter().filter_map(Value::as_str).collect::<BTreeSet<_>>().len()
-                == items.len()
-    })
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            (minimum..=maximum).contains(&items.len())
+                && items
+                    .iter()
+                    .all(|item| item.as_str().is_some_and(|value| validator(value)))
+                && items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    == items.len()
+        })
 }
 
 fn string_vec(value: &Map<String, Value>, field: &str) -> Result<Vec<String>, SreAuthorityError> {
@@ -1775,14 +1966,19 @@ fn u64_array(
     minimum: u64,
     maximum: u64,
 ) -> bool {
-    value.get(field).and_then(Value::as_array).is_some_and(|items| {
-        (minimum_items..=maximum_items).contains(&items.len())
-            && items.iter().all(|item| {
-                item.as_u64()
-                    .is_some_and(|item| (minimum..=maximum).contains(&item))
-            })
-            && items.windows(2).all(|pair| pair[0].as_u64() < pair[1].as_u64())
-    })
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            (minimum_items..=maximum_items).contains(&items.len())
+                && items.iter().all(|item| {
+                    item.as_u64()
+                        .is_some_and(|item| (minimum..=maximum).contains(&item))
+                })
+                && items
+                    .windows(2)
+                    .all(|pair| pair[0].as_u64() < pair[1].as_u64())
+        })
 }
 
 fn i32_vec(value: &Map<String, Value>, field: &str) -> Result<Vec<i32>, SreAuthorityError> {
@@ -1842,9 +2038,10 @@ fn allowed_fault(value: &str) -> bool {
 
 fn isolated_environment(value: &str) -> bool {
     resource_identifier(value)
-        && !value.to_ascii_lowercase().split(['/', ':', '-']).any(|part| {
-            matches!(part, "prod" | "production")
-        })
+        && !value
+            .to_ascii_lowercase()
+            .split(['/', ':', '-'])
+            .any(|part| matches!(part, "prod" | "production"))
 }
 
 fn canonical_digest(value: &impl Serialize) -> Result<String, SreAuthorityError> {
@@ -1883,8 +2080,7 @@ fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'.' | b'_' | b':' | b'/' | b'@' | b'-')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'@' | b'-')
         })
 }
 
@@ -1979,7 +2175,10 @@ mod tests {
         };
         assert!(report.engine_report_only);
         assert!(!report.production_certification);
-        assert_eq!(report.external_evidence_status, ExternalEvidenceStatus::NotRun);
+        assert_eq!(
+            report.external_evidence_status,
+            ExternalEvidenceStatus::NotRun
+        );
     }
 
     #[test]
@@ -2039,12 +2238,21 @@ impl SreIngressAuthority {
         let envelope = canonical_sre_action(principal, &request, &self.config)?;
         let prepared = self
             .store
-            .prepare_ingress(principal, &request, request_digest, idempotency_key, envelope)
+            .prepare_ingress(
+                principal,
+                &request,
+                request_digest,
+                idempotency_key,
+                envelope,
+            )
             .await?;
         if let Some(receipt) = prepared.receipt {
             return Ok(receipt);
         }
-        let receipt = self.orchestrator.submit(&tenant, &prepared.envelope).await?;
+        let receipt = self
+            .orchestrator
+            .submit(&tenant, &prepared.envelope)
+            .await?;
         self.store
             .complete_ingress(&tenant, idempotency_key, &receipt)
             .await
@@ -2081,10 +2289,10 @@ impl PostgresSreAuthorityStore {
     ) -> Result<PreparedIngress, SreAuthorityError> {
         envelope.idempotency_key = Some(idempotency_key.to_string());
         let tenant = request.tenant_id;
-        let envelope_value = serde_json::to_value(&envelope)
-            .map_err(|_| SreAuthorityError::RequestInvalid)?;
-        let jti = Uuid::parse_str(&principal.jti)
-            .map_err(|_| SreAuthorityError::PrincipalDenied)?;
+        let envelope_value =
+            serde_json::to_value(&envelope).map_err(|_| SreAuthorityError::RequestInvalid)?;
+        let jti =
+            Uuid::parse_str(&principal.jti).map_err(|_| SreAuthorityError::PrincipalDenied)?;
         let mut tx = self.begin_tenant(&principal.tenant_id).await?;
         sqlx::query(
             "INSERT INTO sre_principal_assertion_replay \
@@ -2150,8 +2358,7 @@ impl PostgresSreAuthorityStore {
             || row.get::<String, _>("resource") != request.resource
             || row.get::<String, _>("operation") != request.operation.as_str()
             || row.get::<String, _>("principal_subject") != principal.subject
-            || row.get::<String, _>("principal_assertion_digest")
-                != principal.assertion_digest
+            || row.get::<String, _>("principal_assertion_digest") != principal.assertion_digest
             || row.get::<Value, _>("envelope") != envelope_value
         {
             return Err(SreAuthorityError::IdempotencyConflict);
@@ -2185,8 +2392,8 @@ impl PostgresSreAuthorityStore {
             return Err(SreAuthorityError::DependencyUnavailable);
         }
         let tenant_uuid = parse_tenant(tenant)?;
-        let value = serde_json::to_value(receipt)
-            .map_err(|_| SreAuthorityError::DependencyUnavailable)?;
+        let value =
+            serde_json::to_value(receipt).map_err(|_| SreAuthorityError::DependencyUnavailable)?;
         let mut tx = self.begin_tenant(tenant).await?;
         let row = sqlx::query(
             "SELECT action_id,task_id,state,receipt FROM sre_action_ingress \
@@ -2263,46 +2470,84 @@ fn payload_shape(request: &SreCommandRequest) -> bool {
     };
     match request.operation {
         SreOperation::ConfigureSlo => {
-            exact_keys(payload, &[
-                "slo_id","service","sli_kind","window_seconds","target_millionths",
-                "minimum_samples","fast_burn_threshold_millionths",
-                "slow_burn_threshold_millionths","release_blocking","status",
-            ])
-                && uuid_field(payload, "slo_id")
+            exact_keys(
+                payload,
+                &[
+                    "slo_id",
+                    "service",
+                    "sli_kind",
+                    "window_seconds",
+                    "target_millionths",
+                    "minimum_samples",
+                    "fast_burn_threshold_millionths",
+                    "slow_burn_threshold_millionths",
+                    "release_blocking",
+                    "status",
+                ],
+            ) && uuid_field(payload, "slo_id")
                 && identifier_field(payload, "service", 128)
-                && matches!(string_field(payload, "sli_kind"), Some(
-                    "AVAILABILITY" | "AUTHORIZATION_LATENCY" | "UNSAFE_ALLOW"
-                    | "EVIDENCE_COMPLETENESS" | "RECOVERY_TIME" | "RECOVERY_POINT"
-                    | "BACKPRESSURE_REJECTION"
-                ))
+                && matches!(
+                    string_field(payload, "sli_kind"),
+                    Some(
+                        "AVAILABILITY"
+                            | "AUTHORIZATION_LATENCY"
+                            | "UNSAFE_ALLOW"
+                            | "EVIDENCE_COMPLETENESS"
+                            | "RECOVERY_TIME"
+                            | "RECOVERY_POINT"
+                            | "BACKPRESSURE_REJECTION"
+                    )
+                )
                 && u64_range(payload, "window_seconds", 60, 2_592_000)
                 && u64_range(payload, "target_millionths", 1, 1_000_000)
                 && u64_range(payload, "minimum_samples", 1, 1_000_000_000)
                 && u64_range(payload, "fast_burn_threshold_millionths", 1, 1_000_000_000)
                 && u64_range(payload, "slow_burn_threshold_millionths", 1, 1_000_000_000)
                 && boolean_field(payload, "release_blocking")
-                && matches!(string_field(payload, "status"), Some("ACTIVE" | "PAUSED" | "RETIRED"))
+                && matches!(
+                    string_field(payload, "status"),
+                    Some("ACTIVE" | "PAUSED" | "RETIRED")
+                )
         }
         SreOperation::RecordSli => {
-            exact_keys(payload, &[
-                "observation_id","slo_id","release_digest","good_events","total_events",
-                "window_started_at","window_ended_at","trace_evidence_ref",
-                "metrics_evidence_ref","logs_evidence_ref","evidence_digest","alert_id",
-            ])
-                && uuid_field(payload, "observation_id")
+            exact_keys(
+                payload,
+                &[
+                    "observation_id",
+                    "slo_id",
+                    "release_digest",
+                    "good_events",
+                    "total_events",
+                    "window_started_at",
+                    "window_ended_at",
+                    "trace_evidence_ref",
+                    "metrics_evidence_ref",
+                    "logs_evidence_ref",
+                    "evidence_digest",
+                    "alert_id",
+                ],
+            ) && uuid_field(payload, "observation_id")
                 && uuid_field(payload, "slo_id")
                 && digest_field(payload, "release_digest")
-                && u64_field(payload, "good_events").zip(u64_field(payload, "total_events"))
-                    .is_some_and(|(good,total)| good <= total)
+                && u64_field(payload, "good_events")
+                    .zip(u64_field(payload, "total_events"))
+                    .is_some_and(|(good, total)| good <= total)
                 && time_order(payload, "window_started_at", "window_ended_at")
-                && ["trace_evidence_ref","metrics_evidence_ref","logs_evidence_ref"]
-                    .iter().all(|field| evidence_reference_field(payload, field))
+                && [
+                    "trace_evidence_ref",
+                    "metrics_evidence_ref",
+                    "logs_evidence_ref",
+                ]
+                .iter()
+                .all(|field| evidence_reference_field(payload, field))
                 && digest_field(payload, "evidence_digest")
                 && optional_uuid_field_valid(payload, "alert_id")
         }
         SreOperation::UpdateBurnAlert => {
-            exact_keys(payload, &["alert_id", "state", "owner_subject", "resolved_at"])
-                && uuid_field(payload, "alert_id")
+            exact_keys(
+                payload,
+                &["alert_id", "state", "owner_subject", "resolved_at"],
+            ) && uuid_field(payload, "alert_id")
                 && matches!(
                     string_field(payload, "state"),
                     Some("ACKNOWLEDGED" | "MITIGATING" | "RESOLVED")
@@ -2315,107 +2560,210 @@ fn payload_shape(request: &SreCommandRequest) -> bool {
                 }
         }
         SreOperation::LinkIncident => {
-            exact_keys(payload, &["link_id","alert_id","incident_id","incident_evidence_ref"])
-                && ["link_id","alert_id","incident_id"].iter().all(|field| uuid_field(payload, field))
+            exact_keys(
+                payload,
+                &[
+                    "link_id",
+                    "alert_id",
+                    "incident_id",
+                    "incident_evidence_ref",
+                ],
+            ) && ["link_id", "alert_id", "incident_id"]
+                .iter()
+                .all(|field| uuid_field(payload, field))
                 && evidence_reference_field(payload, "incident_evidence_ref")
         }
         SreOperation::RegisterTopology => {
-            exact_keys(payload, &[
-                "topology_id","deployment_mode","release_digest","topology_digest","zones",
-                "components","quorum_rules","disruption_budgets","immutable_image_digests","status",
-            ])
-                && uuid_field(payload, "topology_id")
-                && matches!(string_field(payload, "deployment_mode"), Some("SAAS" | "PRIVATE" | "OFFLINE" | "EDGE_HYBRID"))
+            exact_keys(
+                payload,
+                &[
+                    "topology_id",
+                    "deployment_mode",
+                    "release_digest",
+                    "topology_digest",
+                    "zones",
+                    "components",
+                    "quorum_rules",
+                    "disruption_budgets",
+                    "immutable_image_digests",
+                    "status",
+                ],
+            ) && uuid_field(payload, "topology_id")
+                && matches!(
+                    string_field(payload, "deployment_mode"),
+                    Some("SAAS" | "PRIVATE" | "OFFLINE" | "EDGE_HYBRID")
+                )
                 && digest_field(payload, "release_digest")
                 && digest_field(payload, "topology_digest")
                 && string_array(payload, "zones", 1, 32, |value| identifier(value, 128))
-                && ["components","quorum_rules","disruption_budgets","immutable_image_digests"]
-                    .iter().all(|field| payload.get(*field).is_some_and(Value::is_object))
-                && matches!(string_field(payload, "status"), Some("REGISTERED" | "HEALTHY" | "DEGRADED" | "FAILED" | "RETIRED"))
+                && [
+                    "components",
+                    "quorum_rules",
+                    "disruption_budgets",
+                    "immutable_image_digests",
+                ]
+                .iter()
+                .all(|field| payload.get(*field).is_some_and(Value::is_object))
+                && matches!(
+                    string_field(payload, "status"),
+                    Some("REGISTERED" | "HEALTHY" | "DEGRADED" | "FAILED" | "RETIRED")
+                )
         }
         SreOperation::RecordZoneHealth => {
-            exact_keys(payload, &[
-                "observation_id","topology_id","zone","probe_spec_digest",
-            ])
-                && uuid_field(payload, "observation_id")
+            exact_keys(
+                payload,
+                &["observation_id", "topology_id", "zone", "probe_spec_digest"],
+            ) && uuid_field(payload, "observation_id")
                 && uuid_field(payload, "topology_id")
                 && identifier_field(payload, "zone", 128)
                 && digest_field(payload, "probe_spec_digest")
         }
         SreOperation::CreateBackup => {
-            exact_keys(payload, &[
-                "backup_id","topology_id","release_digest","scope","scope_digest",
-                "key_version","minimum_worm_retention_seconds",
-            ])
-                && uuid_field(payload, "backup_id")
+            exact_keys(
+                payload,
+                &[
+                    "backup_id",
+                    "topology_id",
+                    "release_digest",
+                    "scope",
+                    "scope_digest",
+                    "key_version",
+                    "minimum_worm_retention_seconds",
+                ],
+            ) && uuid_field(payload, "backup_id")
                 && uuid_field(payload, "topology_id")
                 && digest_field(payload, "release_digest")
                 && string_array(payload, "scope", 1, 64, |value| identifier(value, 128))
                 && digest_field(payload, "scope_digest")
                 && identifier_field(payload, "key_version", 128)
-                && u64_range(payload, "minimum_worm_retention_seconds", 86_400, 315_360_000)
+                && u64_range(
+                    payload,
+                    "minimum_worm_retention_seconds",
+                    86_400,
+                    315_360_000,
+                )
         }
         SreOperation::VerifyRestore => {
-            exact_keys(payload, &[
-                "drill_id","backup_id","topology_id","isolated_environment_ref",
-                "maximum_rto_seconds","maximum_rpo_seconds","restore_target_digest",
-            ])
-                && ["drill_id","backup_id","topology_id"].iter().all(|field| uuid_field(payload, field))
-                && string_field(payload, "isolated_environment_ref").is_some_and(isolated_environment)
+            exact_keys(
+                payload,
+                &[
+                    "drill_id",
+                    "backup_id",
+                    "topology_id",
+                    "isolated_environment_ref",
+                    "maximum_rto_seconds",
+                    "maximum_rpo_seconds",
+                    "restore_target_digest",
+                ],
+            ) && ["drill_id", "backup_id", "topology_id"]
+                .iter()
+                .all(|field| uuid_field(payload, field))
+                && string_field(payload, "isolated_environment_ref")
+                    .is_some_and(isolated_environment)
                 && u64_range(payload, "maximum_rto_seconds", 1, 604_800)
                 && u64_range(payload, "maximum_rpo_seconds", 0, 604_800)
                 && digest_field(payload, "restore_target_digest")
         }
         SreOperation::PlanDr => {
-            exact_keys(payload, &[
-                "plan_id","topology_id","recovery_drill_id","source_zones","target_zones",
-                "maximum_rto_seconds","maximum_rpo_seconds","failover_steps","failback_steps",
-                "health_checks",
-            ])
-                && ["plan_id","topology_id","recovery_drill_id"].iter().all(|field| uuid_field(payload, field))
+            exact_keys(
+                payload,
+                &[
+                    "plan_id",
+                    "topology_id",
+                    "recovery_drill_id",
+                    "source_zones",
+                    "target_zones",
+                    "maximum_rto_seconds",
+                    "maximum_rpo_seconds",
+                    "failover_steps",
+                    "failback_steps",
+                    "health_checks",
+                ],
+            ) && ["plan_id", "topology_id", "recovery_drill_id"]
+                .iter()
+                .all(|field| uuid_field(payload, field))
                 && disjoint_string_arrays(payload, "source_zones", "target_zones")
                 && u64_range(payload, "maximum_rto_seconds", 1, 604_800)
                 && u64_range(payload, "maximum_rpo_seconds", 0, 604_800)
-                && ["failover_steps","failback_steps","health_checks"].iter().all(|field| {
-                    payload.get(*field).and_then(Value::as_array).is_some_and(|value| !value.is_empty() && value.len() <= 256)
-                })
+                && ["failover_steps", "failback_steps", "health_checks"]
+                    .iter()
+                    .all(|field| {
+                        payload
+                            .get(*field)
+                            .and_then(Value::as_array)
+                            .is_some_and(|value| !value.is_empty() && value.len() <= 256)
+                    })
         }
         SreOperation::Failover | SreOperation::Failback => {
-            exact_keys(payload, &["event_id","plan_id","reason_digest","expected_health_digest"])
-                && uuid_field(payload, "event_id")
+            exact_keys(
+                payload,
+                &[
+                    "event_id",
+                    "plan_id",
+                    "reason_digest",
+                    "expected_health_digest",
+                ],
+            ) && uuid_field(payload, "event_id")
                 && uuid_field(payload, "plan_id")
                 && digest_field(payload, "reason_digest")
                 && digest_field(payload, "expected_health_digest")
         }
         SreOperation::PlanChaos => {
-            exact_keys(payload, &[
-                "campaign_id","topology_id","environment_ref","fault_types",
-                "fault_budget_seconds","blast_radius","abort_conditions","cleanup_plan_digest",
-                "production_target_allowed",
-            ])
-                && uuid_field(payload, "campaign_id")
+            exact_keys(
+                payload,
+                &[
+                    "campaign_id",
+                    "topology_id",
+                    "environment_ref",
+                    "fault_types",
+                    "fault_budget_seconds",
+                    "blast_radius",
+                    "abort_conditions",
+                    "cleanup_plan_digest",
+                    "production_target_allowed",
+                ],
+            ) && uuid_field(payload, "campaign_id")
                 && uuid_field(payload, "topology_id")
                 && string_field(payload, "environment_ref").is_some_and(isolated_environment)
                 && string_array(payload, "fault_types", 1, 16, allowed_fault)
                 && u64_range(payload, "fault_budget_seconds", 1, 3_600)
                 && payload.get("blast_radius").is_some_and(Value::is_object)
-                && payload.get("abort_conditions").and_then(Value::as_array).is_some_and(|value| !value.is_empty() && value.len() <= 128)
+                && payload
+                    .get("abort_conditions")
+                    .and_then(Value::as_array)
+                    .is_some_and(|value| !value.is_empty() && value.len() <= 128)
                 && digest_field(payload, "cleanup_plan_digest")
                 && payload.get("production_target_allowed") == Some(&Value::Bool(false))
         }
         SreOperation::ExecuteChaos => {
-            exact_keys(payload, &["result_id","campaign_id","fault_type","execution_authorization_digest"])
-                && uuid_field(payload, "result_id")
+            exact_keys(
+                payload,
+                &[
+                    "result_id",
+                    "campaign_id",
+                    "fault_type",
+                    "execution_authorization_digest",
+                ],
+            ) && uuid_field(payload, "result_id")
                 && uuid_field(payload, "campaign_id")
                 && string_field(payload, "fault_type").is_some_and(allowed_fault)
                 && digest_field(payload, "execution_authorization_digest")
         }
         SreOperation::PlanLoad => {
-            exact_keys(payload, &[
-                "campaign_id","topology_id","release_digest","workload_digest",
-                "duration_seconds","concurrency","maximum_requests","tenant_quota","stop_conditions",
-            ])
-                && uuid_field(payload, "campaign_id")
+            exact_keys(
+                payload,
+                &[
+                    "campaign_id",
+                    "topology_id",
+                    "release_digest",
+                    "workload_digest",
+                    "duration_seconds",
+                    "concurrency",
+                    "maximum_requests",
+                    "tenant_quota",
+                    "stop_conditions",
+                ],
+            ) && uuid_field(payload, "campaign_id")
                 && uuid_field(payload, "topology_id")
                 && digest_field(payload, "release_digest")
                 && digest_field(payload, "workload_digest")
@@ -2423,36 +2771,74 @@ fn payload_shape(request: &SreCommandRequest) -> bool {
                 && u64_range(payload, "concurrency", 1, 1_000_000)
                 && u64_range(payload, "maximum_requests", 1, 10_000_000_000)
                 && payload.get("tenant_quota").is_some_and(Value::is_object)
-                && payload.get("stop_conditions").and_then(Value::as_array).is_some_and(|value| !value.is_empty() && value.len() <= 128)
+                && payload
+                    .get("stop_conditions")
+                    .and_then(Value::as_array)
+                    .is_some_and(|value| !value.is_empty() && value.len() <= 128)
         }
         SreOperation::ExecuteLoad => {
-            exact_keys(payload, &["result_id","campaign_id","execution_authorization_digest"])
-                && uuid_field(payload, "result_id")
+            exact_keys(
+                payload,
+                &["result_id", "campaign_id", "execution_authorization_digest"],
+            ) && uuid_field(payload, "result_id")
                 && uuid_field(payload, "campaign_id")
                 && digest_field(payload, "execution_authorization_digest")
         }
         SreOperation::PlanUpgrade => {
-            exact_keys(payload, &[
-                "rollout_id","topology_id","from_release_digest","to_release_digest",
-                "schema_compatible","api_compatible","policy_compatible","pack_compatible",
-                "migration_digest","rollback_digest","canary_steps","maximum_error_rate_millionths",
-            ])
-                && uuid_field(payload, "rollout_id")
+            exact_keys(
+                payload,
+                &[
+                    "rollout_id",
+                    "topology_id",
+                    "from_release_digest",
+                    "to_release_digest",
+                    "schema_compatible",
+                    "api_compatible",
+                    "policy_compatible",
+                    "pack_compatible",
+                    "migration_digest",
+                    "rollback_digest",
+                    "canary_steps",
+                    "maximum_error_rate_millionths",
+                ],
+            ) && uuid_field(payload, "rollout_id")
                 && uuid_field(payload, "topology_id")
-                && ["from_release_digest","to_release_digest","migration_digest","rollback_digest"]
-                    .iter().all(|field| digest_field(payload, field))
-                && string_field(payload, "from_release_digest") != string_field(payload, "to_release_digest")
-                && ["schema_compatible","api_compatible","policy_compatible","pack_compatible"]
-                    .iter().all(|field| payload.get(*field) == Some(&Value::Bool(true)))
+                && [
+                    "from_release_digest",
+                    "to_release_digest",
+                    "migration_digest",
+                    "rollback_digest",
+                ]
+                .iter()
+                .all(|field| digest_field(payload, field))
+                && string_field(payload, "from_release_digest")
+                    != string_field(payload, "to_release_digest")
+                && [
+                    "schema_compatible",
+                    "api_compatible",
+                    "policy_compatible",
+                    "pack_compatible",
+                ]
+                .iter()
+                .all(|field| payload.get(*field) == Some(&Value::Bool(true)))
                 && u64_array(payload, "canary_steps", 1, 20, 1, 100)
                 && u64_range(payload, "maximum_error_rate_millionths", 0, 1_000_000)
         }
         SreOperation::RecordCanary => {
-            exact_keys(payload, &[
-                "observation_id","rollout_id","canary_percent","error_rate_millionths",
-                "unsafe_allow_count","evidence_gap_count","metrics_digest","evidence_refs","observed_at",
-            ])
-                && uuid_field(payload, "observation_id")
+            exact_keys(
+                payload,
+                &[
+                    "observation_id",
+                    "rollout_id",
+                    "canary_percent",
+                    "error_rate_millionths",
+                    "unsafe_allow_count",
+                    "evidence_gap_count",
+                    "metrics_digest",
+                    "evidence_refs",
+                    "observed_at",
+                ],
+            ) && uuid_field(payload, "observation_id")
                 && uuid_field(payload, "rollout_id")
                 && u64_range(payload, "canary_percent", 1, 100)
                 && u64_range(payload, "error_rate_millionths", 0, 1_000_000)
@@ -2463,39 +2849,85 @@ fn payload_shape(request: &SreCommandRequest) -> bool {
                 && time_field(payload, "observed_at")
         }
         SreOperation::RollbackUpgrade => {
-            exact_keys(payload, &["rollout_id","reason_digest","rollback_artifact_digest"])
-                && uuid_field(payload, "rollout_id")
+            exact_keys(
+                payload,
+                &["rollout_id", "reason_digest", "rollback_artifact_digest"],
+            ) && uuid_field(payload, "rollout_id")
                 && digest_field(payload, "reason_digest")
                 && digest_field(payload, "rollback_artifact_digest")
         }
         SreOperation::RecordCostCapacity => {
-            exact_keys(payload, &[
-                "observation_id","topology_id","release_digest","period_started_at","period_ended_at",
-                "task_count","request_count","compute_microunits","storage_microunits",
-                "network_microunits","model_microunits","maximum_global_tasks",
-                "maximum_tasks_per_tenant","queue_capacity","connection_pool_capacity",
-                "evidence_buffer_capacity","source_digest",
-            ])
-                && uuid_field(payload, "observation_id")
+            exact_keys(
+                payload,
+                &[
+                    "observation_id",
+                    "topology_id",
+                    "release_digest",
+                    "period_started_at",
+                    "period_ended_at",
+                    "task_count",
+                    "request_count",
+                    "compute_microunits",
+                    "storage_microunits",
+                    "network_microunits",
+                    "model_microunits",
+                    "maximum_global_tasks",
+                    "maximum_tasks_per_tenant",
+                    "queue_capacity",
+                    "connection_pool_capacity",
+                    "evidence_buffer_capacity",
+                    "source_digest",
+                ],
+            ) && uuid_field(payload, "observation_id")
                 && uuid_field(payload, "topology_id")
                 && digest_field(payload, "release_digest")
                 && time_order(payload, "period_started_at", "period_ended_at")
-                && ["task_count","request_count","compute_microunits","storage_microunits","network_microunits","model_microunits"]
-                    .iter().all(|field| u64_field(payload, field).is_some())
-                && ["maximum_global_tasks","maximum_tasks_per_tenant","queue_capacity","connection_pool_capacity","evidence_buffer_capacity"]
-                    .iter().all(|field| u64_range(payload, field, 1, i64::MAX as u64))
-                && u64_field(payload, "maximum_tasks_per_tenant") <= u64_field(payload, "maximum_global_tasks")
+                && [
+                    "task_count",
+                    "request_count",
+                    "compute_microunits",
+                    "storage_microunits",
+                    "network_microunits",
+                    "model_microunits",
+                ]
+                .iter()
+                .all(|field| u64_field(payload, field).is_some())
+                && [
+                    "maximum_global_tasks",
+                    "maximum_tasks_per_tenant",
+                    "queue_capacity",
+                    "connection_pool_capacity",
+                    "evidence_buffer_capacity",
+                ]
+                .iter()
+                .all(|field| u64_range(payload, field, 1, i64::MAX as u64))
+                && u64_field(payload, "maximum_tasks_per_tenant")
+                    <= u64_field(payload, "maximum_global_tasks")
                 && digest_field(payload, "source_digest")
         }
         SreOperation::RecordObservability => {
-            exact_keys(payload, &[
-                "evidence_id","trace_id","trace_digest","log_digest","metrics_digest",
-                "redaction_policy_digest","immutable_refs","collected_at",
-            ])
-                && uuid_field(payload, "evidence_id")
+            exact_keys(
+                payload,
+                &[
+                    "evidence_id",
+                    "trace_id",
+                    "trace_digest",
+                    "log_digest",
+                    "metrics_digest",
+                    "redaction_policy_digest",
+                    "immutable_refs",
+                    "collected_at",
+                ],
+            ) && uuid_field(payload, "evidence_id")
                 && identifier_field(payload, "trace_id", 128)
-                && ["trace_digest","log_digest","metrics_digest","redaction_policy_digest"]
-                    .iter().all(|field| digest_field(payload, field))
+                && [
+                    "trace_digest",
+                    "log_digest",
+                    "metrics_digest",
+                    "redaction_policy_digest",
+                ]
+                .iter()
+                .all(|field| digest_field(payload, field))
                 && string_array(payload, "immutable_refs", 3, 128, evidence_reference)
                 && time_field(payload, "collected_at")
         }
@@ -2514,14 +2946,12 @@ fn resource_matches_payload(request: &SreCommandRequest) -> bool {
         }
         SreOperation::CreateBackup => ("backup", "backup_id"),
         SreOperation::VerifyRestore => ("restore", "drill_id"),
-        SreOperation::PlanDr | SreOperation::Failover | SreOperation::Failback => {
-            ("dr", "plan_id")
-        }
+        SreOperation::PlanDr | SreOperation::Failover | SreOperation::Failback => ("dr", "plan_id"),
         SreOperation::PlanChaos | SreOperation::ExecuteChaos => ("chaos", "campaign_id"),
         SreOperation::PlanLoad | SreOperation::ExecuteLoad => ("load", "campaign_id"),
-        SreOperation::PlanUpgrade
-        | SreOperation::RecordCanary
-        | SreOperation::RollbackUpgrade => ("rollout", "rollout_id"),
+        SreOperation::PlanUpgrade | SreOperation::RecordCanary | SreOperation::RollbackUpgrade => {
+            ("rollout", "rollout_id")
+        }
         SreOperation::RecordCostCapacity => ("cost-capacity", "observation_id"),
         SreOperation::RecordObservability => ("observability", "evidence_id"),
     };
@@ -2594,7 +3024,11 @@ fn canonical_sre_action(
             goal_hash: canonical_digest(request)?,
             operation: operation.clone(),
             justification_code: "PLATFORM_SRE_GOVERNANCE".into(),
-            safe_summary: Some(format!("{} {}", request.operation.as_str(), request.resource)),
+            safe_summary: Some(format!(
+                "{} {}",
+                request.operation.as_str(),
+                request.resource
+            )),
         },
         tool: ToolRef {
             tool_id: config.tool_id.clone(),
@@ -2616,8 +3050,11 @@ fn canonical_sre_action(
             deployment: "production".into(),
             region: config.region.clone(),
             zone: None,
-            simulation: matches!(request.operation, SreOperation::PlanChaos | SreOperation::ExecuteChaos)
-                && request.payload.get("production_target_allowed") != Some(&Value::Bool(true)),
+            simulation: matches!(
+                request.operation,
+                SreOperation::PlanChaos | SreOperation::ExecuteChaos
+            ) && request.payload.get("production_target_allowed")
+                != Some(&Value::Bool(true)),
         },
         current_state_version: Some(request.expected_resource_version.to_string()),
         risk: RiskContext {
@@ -2648,11 +3085,9 @@ fn canonical_sre_action(
     normalization
         .payload_types
         .register("platform.sre.mutation.v1", "1");
-    let action = normalize(draft, &normalization)
-        .map_err(|_| SreAuthorityError::RequestInvalid)?;
+    let action = normalize(draft, &normalization).map_err(|_| SreAuthorityError::RequestInvalid)?;
     action_hash(&action).map_err(|_| SreAuthorityError::RequestInvalid)?;
-    let payload = serde_json::to_vec(&action)
-        .map_err(|_| SreAuthorityError::RequestInvalid)?;
+    let payload = serde_json::to_vec(&action).map_err(|_| SreAuthorityError::RequestInvalid)?;
     Ok(InboundEnvelope {
         request_id: Uuid::new_v4().to_string(),
         trace_context: TraceContext {
@@ -2896,9 +3331,15 @@ fn validate_external_receipt(
         || canonical_digest(&receipt.facts)? != receipt.result_digest
         || receipt.immutable_evidence_refs.is_empty()
         || receipt.immutable_evidence_refs.len() > 128
-        || receipt.immutable_evidence_refs.iter().any(|value| !evidence_reference(value))
+        || receipt
+            .immutable_evidence_refs
+            .iter()
+            .any(|value| !evidence_reference(value))
         || receipt.immutable_evidence_digests.len() != receipt.immutable_evidence_refs.len()
-        || receipt.immutable_evidence_digests.iter().any(|value| !digest(value))
+        || receipt
+            .immutable_evidence_digests
+            .iter()
+            .any(|value| !digest(value))
         || receipt.facts.as_object().is_none()
         || receipt.production_evidence
             && receipt.external_evidence_status != ExternalEvidenceStatus::Verified
@@ -2933,8 +3374,8 @@ impl PostgresSreAuthorityStore {
     ) -> Result<ExecutionClaim, SreAuthorityError> {
         let tenant = parse_tenant(&binding.tenant_id)?;
         let request_digest = canonical_digest(request)?;
-        let request_value = serde_json::to_value(request)
-            .map_err(|_| SreAuthorityError::RequestInvalid)?;
+        let request_value =
+            serde_json::to_value(request).map_err(|_| SreAuthorityError::RequestInvalid)?;
         let expected_version = i64::try_from(binding.resource_version)
             .map_err(|_| SreAuthorityError::RequestInvalid)?;
         let owner = Uuid::new_v4();
@@ -2961,8 +3402,7 @@ impl PostgresSreAuthorityStore {
         let action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&envelope.payload)
                 .map_err(|_| SreAuthorityError::PrincipalDenied)?;
-        let admitted_hash = action_hash(&action)
-            .map_err(|_| SreAuthorityError::PrincipalDenied)?;
+        let admitted_hash = action_hash(&action).map_err(|_| SreAuthorityError::PrincipalDenied)?;
         let expected_action_version = request.command.expected_resource_version.to_string();
         if admitted_hash.0 != binding.action_hash
             || action.action_id.0 != request.command.command_id.to_string()
@@ -3189,7 +3629,9 @@ impl PostgresSreAuthorityStore {
         if current != expected {
             return Err(SreAuthorityError::StateConflict);
         }
-        let next = current.checked_add(1).ok_or(SreAuthorityError::StateConflict)?;
+        let next = current
+            .checked_add(1)
+            .ok_or(SreAuthorityError::StateConflict)?;
         let state = apply_operation(&mut tx, tenant, request, external.as_ref(), next).await?;
         sqlx::query(
             "INSERT INTO sre_resource_versions \
@@ -3241,9 +3683,8 @@ impl PostgresSreAuthorityStore {
             "recorded_at": Utc::now(),
         });
         let event_digest = canonical_digest(&event_payload)?;
-        let evidence_outbox_ref = format!(
-            "outbox://sre-evidence/{tenant}/{event_id}/sha256:{event_digest}"
-        );
+        let evidence_outbox_ref =
+            format!("outbox://sre-evidence/{tenant}/{event_id}/sha256:{event_digest}");
         sqlx::query(
             "INSERT INTO sre_evidence_outbox \
              (tenant_id,event_id,idempotency_key,action_id,execution_id,payload,payload_digest) \
@@ -3271,16 +3712,15 @@ impl PostgresSreAuthorityStore {
             command_id: request.command.command_id,
             resource: request.command.resource.clone(),
             operation: request.command.operation,
-            resource_version: u64::try_from(next)
-                .map_err(|_| SreAuthorityError::OutcomeUnknown)?,
+            resource_version: u64::try_from(next).map_err(|_| SreAuthorityError::OutcomeUnknown)?,
             state,
             result_digest,
             evidence_outbox_ref: evidence_outbox_ref.clone(),
             external_receipt: external.clone(),
             engine_report: report,
         };
-        let result_value = serde_json::to_value(&result)
-            .map_err(|_| SreAuthorityError::OutcomeUnknown)?;
+        let result_value =
+            serde_json::to_value(&result).map_err(|_| SreAuthorityError::OutcomeUnknown)?;
         let external_value = external
             .as_ref()
             .map(serde_json::to_value)
@@ -3339,7 +3779,10 @@ impl PostgresSreAuthorityStore {
         {
             return Err(SreAuthorityError::OutcomeUnknown);
         }
-        if outbox.get::<Option<DateTime<Utc>>, _>("delivered_at").is_none() {
+        if outbox
+            .get::<Option<DateTime<Utc>>, _>("delivered_at")
+            .is_none()
+        {
             let delivered = sqlx::query(
                 "UPDATE sre_evidence_outbox SET delivered_at=now(),delivery_attempts=delivery_attempts+1 \
                  WHERE tenant_id=$1 AND event_id=$2 AND delivered_at IS NULL",

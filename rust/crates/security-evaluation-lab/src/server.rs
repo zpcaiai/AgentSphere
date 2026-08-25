@@ -4,10 +4,9 @@ use crate::authority::*;
 use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
-    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
-    AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
-    EvidenceEventType, ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId,
-    TenantId,
+    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft, EvidenceEventType, ExecutionId,
+    IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId, TenantId,
 };
 use axum::extract::{DefaultBodyLimit, Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -114,8 +113,8 @@ impl SecurityEvalTokenAuthorizer {
         if !path.is_absolute() || !metadata.is_file() || metadata.len() > 1_048_576 {
             return Err(SecurityEvalAuthorityError::ConfigurationInvalid);
         }
-        let raw = std::fs::read(path)
-            .map_err(|_| SecurityEvalAuthorityError::ConfigurationInvalid)?;
+        let raw =
+            std::fs::read(path).map_err(|_| SecurityEvalAuthorityError::ConfigurationInvalid)?;
         let document: TokenBindingDocument = serde_json::from_slice(&raw)
             .map_err(|_| SecurityEvalAuthorityError::ConfigurationInvalid)?;
         if document.schema_version != "agenttrust.security-eval-token-bindings.v1"
@@ -210,7 +209,11 @@ pub fn data_router(
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(TimeoutLayer::new(Duration::from_secs(45)))
         .layer(ConcurrencyLimitLayer::new(maximum_concurrency))
-        .with_state(DataState { ingress, executor, tokens })
+        .with_state(DataState {
+            ingress,
+            executor,
+            tokens,
+        })
 }
 
 pub fn management_router(
@@ -226,9 +229,7 @@ pub fn management_router(
         .with_state(ManagementState { ingress, executor })
 }
 
-async fn data_ready(
-    State(state): State<DataState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+async fn data_ready(State(state): State<DataState>) -> Result<Json<serde_json::Value>, ApiError> {
     readiness(&state.ingress, &state.executor).await
 }
 
@@ -310,9 +311,10 @@ async fn execute_action(
     Json(body): Json<SecurityEvalExecutorRequest>,
 ) -> Result<Json<SecurityEvalMutationResult>, ApiError> {
     let tenant = exact_tenant_from_header(&headers)?;
-    let subject = state
-        .tokens
-        .authorize(&peer, &tenant.0, SECURITY_EVAL_EXECUTE_SCOPE, &headers)?;
+    let subject =
+        state
+            .tokens
+            .authorize(&peer, &tenant.0, SECURITY_EVAL_EXECUTE_SCOPE, &headers)?;
     if subject != peer {
         return Err(SecurityEvalAuthorityError::PrincipalDenied.into());
     }
@@ -329,11 +331,8 @@ async fn execute_action(
         idempotency_key: required_idempotency_key(&headers)?.into(),
         trace_id: required_header(&headers, "x-agenttrust-trace-id")?.into(),
         policy_decision_id: required_header(&headers, "x-agenttrust-policy-decision-id")?.into(),
-        policy_decision_digest: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-digest",
-        )?
-        .into(),
+        policy_decision_digest: required_header(&headers, "x-agenttrust-policy-decision-digest")?
+            .into(),
         authorization_evidence_ref: required_header(
             &headers,
             "x-agenttrust-authorization-evidence-ref",
@@ -409,7 +408,11 @@ impl HttpSecurityEvalOrchestrator {
             return Err(SecurityEvalAuthorityError::ConfigurationInvalid);
         }
         read_token(&token_file)?;
-        Ok(Self { client, endpoint, token_file })
+        Ok(Self {
+            client,
+            endpoint,
+            token_file,
+        })
     }
 }
 
@@ -468,7 +471,9 @@ impl SecurityEvalOrchestratorPort for HttpSecurityEvalOrchestrator {
             return Err(SecurityEvalAuthorityError::IdempotencyConflict);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|value| value > 65_536)
+            || response
+                .content_length()
+                .is_some_and(|value| value > 65_536)
         {
             return Err(SecurityEvalAuthorityError::DependencyUnavailable);
         }
@@ -633,10 +638,7 @@ impl SecurityEvalEvidencePort for HttpSecurityEvalEvidence {
                 ),
                 ledger_event_id: evidence_uuid_field(&record.payload, "ledger_event_id")?
                     .to_string(),
-                ledger_event_digest: evidence_digest_field(
-                    &record.payload,
-                    "ledger_event_digest",
-                )?,
+                ledger_event_digest: evidence_digest_field(&record.payload, "ledger_event_digest")?,
                 fence_digest: evidence_digest_field(&record.payload, "fence_digest")?,
                 policy_decision_id: evidence_string_field(
                     &record.payload,
@@ -701,10 +703,14 @@ impl SecurityEvalEvidencePort for HttpSecurityEvalEvidence {
             return Err(SecurityEvalAuthorityError::IdempotencyConflict);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|value| value > 65_536)
-            || response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|value| {
-                value.to_str().ok()
-            }) != Some("application/json")
+            || response
+                .content_length()
+                .is_some_and(|value| value > 65_536)
+            || response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                != Some("application/json")
         {
             return Err(SecurityEvalAuthorityError::DependencyUnavailable);
         }
@@ -823,7 +829,11 @@ impl HttpIsolatedRunner {
             return Err(SecurityEvalAuthorityError::ConfigurationInvalid);
         }
         read_token(&token_file)?;
-        Ok(Self { client, endpoint, token_file })
+        Ok(Self {
+            client,
+            endpoint,
+            token_file,
+        })
     }
 }
 
@@ -865,8 +875,14 @@ impl IsolatedRunnerPort for HttpIsolatedRunner {
                 "X-AgentTrust-Ledger-Execution-Id",
                 binding.ledger_execution_id.to_string(),
             )
-            .header("X-AgentTrust-Ledger-Entry-Id", binding.ledger_event_id.to_string())
-            .header("X-AgentTrust-Ledger-Entry-Digest", &binding.ledger_event_digest)
+            .header(
+                "X-AgentTrust-Ledger-Entry-Id",
+                binding.ledger_event_id.to_string(),
+            )
+            .header(
+                "X-AgentTrust-Ledger-Entry-Digest",
+                &binding.ledger_event_digest,
+            )
             .header("X-AgentTrust-Fence-Digest", &binding.fence_digest)
             .header(
                 "X-AgentTrust-Policy-Decision-Digest",
@@ -885,7 +901,9 @@ impl IsolatedRunnerPort for HttpIsolatedRunner {
             .await
             .map_err(|_| SecurityEvalAuthorityError::OutcomeUnknown)?;
         if !response.status().is_success()
-            || response.content_length().is_some_and(|value| value > 262_144)
+            || response
+                .content_length()
+                .is_some_and(|value| value > 262_144)
         {
             return Err(SecurityEvalAuthorityError::OutcomeUnknown);
         }
@@ -986,7 +1004,8 @@ where
 {
     type Stream = <RustlsAcceptor as Accept<I, S>>::Stream;
     type Service = AddExtension<S, SecurityEvalPeerIdentity>;
-    type Future = Pin<Box<dyn Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send>>;
+    type Future =
+        Pin<Box<dyn Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
         let inner = self.inner.clone();
@@ -1117,7 +1136,10 @@ fn exact_tenant_from_header(headers: &HeaderMap) -> Result<TenantId, SecurityEva
     Ok(TenantId(raw.into()))
 }
 
-fn uuid_header(headers: &HeaderMap, name: &'static str) -> Result<Uuid, SecurityEvalAuthorityError> {
+fn uuid_header(
+    headers: &HeaderMap,
+    name: &'static str,
+) -> Result<Uuid, SecurityEvalAuthorityError> {
     let raw = required_header(headers, name)?;
     Uuid::parse_str(raw)
         .ok()
@@ -1202,8 +1224,8 @@ fn request_digest<T: Serialize>(
 }
 
 fn read_token(path: &Path) -> Result<String, SecurityEvalAuthorityError> {
-    let metadata = std::fs::metadata(path)
-        .map_err(|_| SecurityEvalAuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        std::fs::metadata(path).map_err(|_| SecurityEvalAuthorityError::ConfigurationInvalid)?;
     if !path.is_absolute() || !metadata.is_file() || metadata.len() > 8_194 {
         return Err(SecurityEvalAuthorityError::ConfigurationInvalid);
     }
@@ -1220,7 +1242,10 @@ fn read_token(path: &Path) -> Result<String, SecurityEvalAuthorityError> {
 }
 
 fn constant_time_equal(first: &str, second: &str) -> bool {
-    let key = hmac::Key::new(hmac::HMAC_SHA256, b"agenttrust-security-eval-token-compare-v1");
+    let key = hmac::Key::new(
+        hmac::HMAC_SHA256,
+        b"agenttrust-security-eval-token-compare-v1",
+    );
     let tag = hmac::sign(&key, second.as_bytes());
     hmac::verify(&key, first.as_bytes(), tag.as_ref()).is_ok()
 }
@@ -1265,9 +1290,7 @@ fn validate_https_root(value: &url::Url) -> Result<(), SecurityEvalAuthorityErro
     Ok(())
 }
 
-fn validate_identities(
-    identities: &BTreeSet<String>,
-) -> Result<(), SecurityEvalAuthorityError> {
+fn validate_identities(identities: &BTreeSet<String>) -> Result<(), SecurityEvalAuthorityError> {
     if identities.is_empty()
         || identities.iter().any(|identity| {
             identity.len() > 512
@@ -1414,8 +1437,26 @@ mod server_unit_tests {
 
     #[test]
     fn only_https_dependency_roots_are_accepted() {
-        assert!(validate_https_root(&url::Url::parse("https://runner.internal/").unwrap_or_else(|error| panic!("url: {error}"))).is_ok());
-        assert!(validate_https_root(&url::Url::parse("https://runner.internal/v1").unwrap_or_else(|error| panic!("url: {error}"))).is_err());
-        assert!(validate_https_root(&url::Url::parse("http://runner.internal/").unwrap_or_else(|error| panic!("url: {error}"))).is_err());
+        assert!(
+            validate_https_root(
+                &url::Url::parse("https://runner.internal/")
+                    .unwrap_or_else(|error| panic!("url: {error}"))
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_https_root(
+                &url::Url::parse("https://runner.internal/v1")
+                    .unwrap_or_else(|error| panic!("url: {error}"))
+            )
+            .is_err()
+        );
+        assert!(
+            validate_https_root(
+                &url::Url::parse("http://runner.internal/")
+                    .unwrap_or_else(|error| panic!("url: {error}"))
+            )
+            .is_err()
+        );
     }
 }

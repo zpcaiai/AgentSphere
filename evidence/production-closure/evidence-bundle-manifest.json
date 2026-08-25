@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T18:44:08Z",
+  "generated_at": "2026-08-25T18:59:01Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -853,7 +853,31 @@
     },
     {
       "path": "rust/crates/bounded-http/src/lib.rs",
-      "sha256": "2010d95694b5607c4692b53b31957b9188f5e2a6ce3ab148a856173db7bf02bc"
+      "sha256": "a3bde609d7f13997cdf8b87f2338cf7d3bb11fb694535a04e5a9c81ebb0f76e0"
+    },
+    {
+      "path": "rust/crates/context-governance/src/adapters.rs",
+      "sha256": "d3e0590a5db7caebac9b910d2329fa5580ec57c687da0c189440e437447d0ce4"
+    },
+    {
+      "path": "rust/crates/context-governance/src/authority.rs",
+      "sha256": "fbd3a3292545ef628012d1e770532bb3c8e3ea617b1ecd6d9e717844414b41b4"
+    },
+    {
+      "path": "rust/crates/context-governance/src/bin/agenttrust-context-governance-service.rs",
+      "sha256": "5936d4a8dca1eeaad77b8e16efae1f9c3c7c1c5d6fee11d17e222c9725b5b65c"
+    },
+    {
+      "path": "rust/crates/context-governance/src/lib.rs",
+      "sha256": "00f299cbe666aff8604dc4314323d1ddd813c2c1138a085eb30c53a523d7259a"
+    },
+    {
+      "path": "rust/crates/context-governance/src/server.rs",
+      "sha256": "66cba8209dfc2ee69c58206a7f3a2c014c2e5c02a95bcdf5ee7116a7f62e1f61"
+    },
+    {
+      "path": "rust/crates/context-governance/tests/production_contract.rs",
+      "sha256": "a078ba9c9fa84db18876faeee388ec7abfd9aa6904b7dcc5b38d23c5f69af758"
     },
     {
       "path": "rust/crates/contracts/Cargo.toml",
@@ -861,31 +885,59 @@
     },
     {
       "path": "rust/crates/contracts/src/lib.rs",
-      "sha256": "03b81ebcff267a5f842fc9e4251c3037739d0aa7640507feea345a9efd2213a3"
+      "sha256": "473853c93b646e3526779906d03a591628da7680737f45d04a94e7550ac39bb4"
+    },
+    {
+      "path": "rust/crates/data-governance/src/adapters.rs",
+      "sha256": "0c7def6c1c06e2da5d9f6fb6f723df9a26eaf8843f96434887a2dd674c313bf2"
     },
     {
       "path": "rust/crates/data-governance/src/authority.rs",
-      "sha256": "8f44d73f52d5e09b90eedc18e5819132ca554113289933dbb59c3e09b8c501c9"
+      "sha256": "a25af04bc7bdfab5f9ebf7064ffa0e5c6d689b0d0001bdc520008dba0aa10bed"
+    },
+    {
+      "path": "rust/crates/data-governance/src/bin/agenttrust-data-governance-service.rs",
+      "sha256": "c5d28a64869580441e53f28e589a8c2a8a1fe7fa394119fafe98cf7bba1601dd"
+    },
+    {
+      "path": "rust/crates/data-governance/src/lib.rs",
+      "sha256": "e84f99c5cbc6542223b8599335aa6e9a70480d4230fc967056e19d4ee2a6d4ad"
     },
     {
       "path": "rust/crates/data-governance/src/server.rs",
-      "sha256": "17f5d3eb58c0c3b8303922142c30a4f2349ceb11a3dcfbe5c02de2d80689f25e"
+      "sha256": "bb515b1a5a3f50d2562043d8fd54d3f6756f7d84bea1038279a7a20dfa657de4"
     },
     {
       "path": "rust/crates/data-governance/src/service.rs",
-      "sha256": "6dddb66a43d08f47f527f980c7630cc9c793e8570608138d804705a4bca7620a"
+      "sha256": "41db8420385bdc2676b49a307422cea199f6e37f5627135bee514567cd40906c"
     },
     {
       "path": "rust/crates/data-governance/tests/production_contract.rs",
-      "sha256": "1f8e83e887d94d265b37fb6351c145aa69683827e8d9291629cf60304a512fbe"
+      "sha256": "d34bff441a8a6ddc825ce7d9b88668be39bf0eb006b966149940c6fac78936d3"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/authority.rs",
+      "sha256": "dcde4d987fa4c657f1dfc3b2d42886b0225b710d9393a2286f6a0016c46f3056"
     },
     {
       "path": "rust/crates/domain-risk-packs/server.rs",
       "sha256": "99eb18ffe741003677cb676d0882d44b605cfb55172b2752a55961c2fd07e2f3"
     },
     {
+      "path": "rust/crates/domain-risk-packs/src/bin/agenttrust-domain-runtime-authority.rs",
+      "sha256": "f29b2a5bfe576ee7ca6f029cd975f8adf8f3d3db8d5bc189a759a6127ca47732"
+    },
+    {
       "path": "rust/crates/domain-risk-packs/tests/production_contract.rs",
-      "sha256": "8423a78e98c85ad113b22c2ebddf0341b2a2e457e8e56d936e1f0397b083d47a"
+      "sha256": "d354cd848e683230c303b06fce2eceec48670ca8334708a745e14c716041ae68"
+    },
+    {
+      "path": "rust/crates/durable-orchestrator/src/facts.rs",
+      "sha256": "b3bd59c5031edf600ff82db119b9bda2c90e2bc42dade49b0c6b959294819f90"
+    },
+    {
+      "path": "rust/crates/durable-orchestrator/src/runtime.rs",
+      "sha256": "28ae0118c0e27d33e8d1b29d98fff31ab0f6af1e02f66988ef87d0c19d956a12"
     },
     {
       "path": "rust/crates/enterprise-approval/Cargo.toml",
@@ -897,19 +949,19 @@
     },
     {
       "path": "rust/crates/enterprise-approval/src/bin/agenttrust-approval-service.rs",
-      "sha256": "437c1dc1a5653bf524a311db742a105d32eb16cea241774ecaf63ffd550e665d"
+      "sha256": "12534293e028c8831971f36cfac66ba01ea4844891b44543be3c3b447cb12f13"
     },
     {
       "path": "rust/crates/enterprise-approval/src/evidence_delivery.rs",
-      "sha256": "c146e4e6dd66b04cd5a4c63a47f952ed979c1cac3705bb9729ac960fd6801d28"
+      "sha256": "4f05c170ff4a84a2f72778859370cda707678bf2ecaa5d329f25923954e1780e"
     },
     {
       "path": "rust/crates/enterprise-approval/src/lib.rs",
-      "sha256": "86916a1ab603800654433062d89c8f6a11d454d33cdd6ed17b36986e2b93ad26"
+      "sha256": "7edd1384faeef1f970a92c50f7bf4d263cba8312b4c43070dd77ace4ca6b69b7"
     },
     {
       "path": "rust/crates/enterprise-approval/src/postgres.rs",
-      "sha256": "4555ae3d4dbc87026b80d07758fca41a7f5bd895373202b10d873308bbf5d862"
+      "sha256": "6f45377d65c83974c0ad68cbd3c50dd17df173e4d85558d1fab1ca943d257cd8"
     },
     {
       "path": "rust/crates/enterprise-approval/src/principal.rs",
@@ -917,27 +969,31 @@
     },
     {
       "path": "rust/crates/enterprise-approval/src/review_evidence.rs",
-      "sha256": "9de236b770c67047922bca30aba043a95d3485224bb7fd55d37e3529a9da172e"
+      "sha256": "067ac400fb7a73cebc723dc00255ceee22e2957758f90e8015a40884f47e2fa7"
     },
     {
       "path": "rust/crates/enterprise-approval/src/server.rs",
-      "sha256": "c151c88f1284bfede521c5ac9bc82cf564d4934c814e5714e031abd54391e4bc"
+      "sha256": "8a05d366ae5b40739679f8070311005ae7ffac269145a031cce5824adb39a6eb"
     },
     {
       "path": "rust/crates/enterprise-approval/tests/production_contract.rs",
-      "sha256": "40e3fdaa015d778404dc56d8de0c502baeedcdee08c0277a4b95b7b53c14d6f1"
+      "sha256": "9accb8367797cd02890e665eb53e578d2d1e34069e631e5ffabc6ada32325bf5"
     },
     {
       "path": "rust/crates/evidence-evaluator/src/lib.rs",
-      "sha256": "823d2ea318c30f9739d0f177c3f111580f285bb611df09ecdcd442001ffd7da5"
+      "sha256": "e42f7e317dc8dcdf52df9fa2aab3ccf97486a8d5153280a8287da2327254c23d"
     },
     {
       "path": "rust/crates/evidence-evaluator/src/postgres.rs",
-      "sha256": "5b742d3dc3dc4085a4fed408693e8d4bb2576366ce68cbd2cfc2d0cb807ab47a"
+      "sha256": "f7a33ef46d208a62fdaa3eb1c116f0cef01a5016e913b9699ee479b7faf5e691"
     },
     {
       "path": "rust/crates/evidence-evaluator/src/server.rs",
       "sha256": "d91630571fedec8f49e24fe32ab263ad7c2feff6eacae9f17bef7f6bc933e81e"
+    },
+    {
+      "path": "rust/crates/evidence-evaluator/tests/authority_bridge_contract.rs",
+      "sha256": "d687953f2a9d4098c9377f68908a1dbcbf89c8ba4cd538ca82108ba4606f0979"
     },
     {
       "path": "rust/crates/identity/Cargo.toml",
@@ -949,39 +1005,75 @@
     },
     {
       "path": "rust/crates/identity/src/production.rs",
-      "sha256": "a634677be131b81533f739a14ad0508b99a22617b29196825509e9dfabe9d967"
+      "sha256": "8d50728ac4bf882d60f75594649e4bed87fe59618b23ba3d2319939860473643"
     },
     {
       "path": "rust/crates/identity/src/server.rs",
       "sha256": "cac9b660711fbd3790c9fc8c60d0e8427b4336a647ddb79824d5745d0254f1df"
     },
     {
+      "path": "rust/crates/incident-release-gate/src/authority.rs",
+      "sha256": "34d86fe298a83b4692cb8050ff8822350db77d4ecbd6fce680c29b904f6202cc"
+    },
+    {
+      "path": "rust/crates/incident-release-gate/src/bin/agenttrust-incident-release-authority.rs",
+      "sha256": "4919a950a8986d0d8d5170764feaab2d65e6ac88e04b027c96ee0b92656c8aec"
+    },
+    {
+      "path": "rust/crates/incident-release-gate/src/server.rs",
+      "sha256": "08a0d4437f03692b8d8b9e6fd4fa3873edd7087eb6d73c6e228f01a4f71991b4"
+    },
+    {
       "path": "rust/crates/model-gateway/src/adapters.rs",
-      "sha256": "f9a3bac7c851ae93e73cb1c23a49b82e287cb06de07df24970b67e4cb3405ed2"
+      "sha256": "137cb9907b1d9879188da68a55c2b08e79f4a777cbb545004c2f66f120b71f0d"
+    },
+    {
+      "path": "rust/crates/model-gateway/src/authority.rs",
+      "sha256": "d0d817a05246db6d09a46683a5cbe683600ae8ea4b80cd8c0a6e9ee08a1536ba"
+    },
+    {
+      "path": "rust/crates/model-gateway/src/bin/agenttrust-model-gateway-service.rs",
+      "sha256": "7dcb26c5fa5803a4d1e0bf64b276c9d441e72b96402ccf1c6f6b6a1fcf6a43bd"
     },
     {
       "path": "rust/crates/model-gateway/src/lib.rs",
-      "sha256": "16fe362c2958aba69b08df4995441e47d98435d36769a17a00e7d47d4f8f6d44"
+      "sha256": "ad1a43ad60374909c3a548d299a4e8dd2a293aea588e52dd45d2387f750b2938"
     },
     {
       "path": "rust/crates/model-gateway/src/server.rs",
-      "sha256": "20b0570c2a0083822bad57ec83a44764cc683ac27d79cb5b157b5d0d22db3583"
+      "sha256": "1cb1a4ceba214080039efbee65ab1d1af7d6e436e43002cc07cec7b123712c37"
+    },
+    {
+      "path": "rust/crates/pack-marketplace/src/bin/agenttrust-pack-marketplace-service.rs",
+      "sha256": "48325dc28f907b57f647dd693053cdfdebdc4e02894459711f28504e9b736ee0"
+    },
+    {
+      "path": "rust/crates/pack-supply-chain/src/bin/agenttrust-pack-supply-chain-authority.rs",
+      "sha256": "e29088407f139b2ac26e1a59b1a5f38bc7dbbf0bdf2b7c6522c84348f4fadb7c"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/server.rs",
-      "sha256": "65673ddd2ec6c208b7fcffc358ea2f329919326705989367f8e3a0e9b489965a"
+      "sha256": "9537cde1edf0c65a98703436835bb2231de1d416951ccd0cfd74446361b76a94"
     },
     {
       "path": "rust/crates/pack-supply-chain/tests/production_contract.rs",
-      "sha256": "fc773a9440f9df374e9b1c9ebd518c3693c1d4c0d796cc2aebf44bef8e98338a"
+      "sha256": "d90ef119a7012f13cbe0aca78fa314708fb3537306201f3b6546016b75ae223e"
+    },
+    {
+      "path": "rust/crates/platform-sre/src/authority.rs",
+      "sha256": "099d1b4c01b0c73c7ce10ea5f5b5a72a2ee968aad27d42cfb47179ed7d5d3dc6"
+    },
+    {
+      "path": "rust/crates/platform-sre/src/bin/agenttrust-platform-sre-service.rs",
+      "sha256": "84bc664fb431789e480025ea53e437f5630842f434a6c8df8f9a7043b753aeb4"
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "1154d1c06c2fc3cdcb83fb7034e6fe9d2f97913eefd3ec723715f9872f4ad0e2"
+      "sha256": "c4e548a0fec4042264640aedf4c1970724e85cde5a160be8b140fb27ff4d1e5b"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",
-      "sha256": "5185232ffedb61784ad8aa9ebec10de42743b98526fdbf26a6748f4237b5d346"
+      "sha256": "8f5f1972421141e7fefc0d0b768f91ae24952cf3f358aaad571f136f2ff9721f"
     },
     {
       "path": "rust/crates/policy-pep/Cargo.toml",
@@ -993,7 +1085,7 @@
     },
     {
       "path": "rust/crates/policy-pep/src/governance.rs",
-      "sha256": "44eb52f7c2b159ba8d410ce1a5d50c471b8a98e1024bffcb1e7d517079c1d080"
+      "sha256": "81c159367837b3e4a11a970cbeed67b377db7903f69977fbef1abf11fb4109cb"
     },
     {
       "path": "rust/crates/policy-pep/src/server.rs",
@@ -1008,8 +1100,64 @@
       "sha256": "a1c33cf45a9e6a0d282d3337c1f47ca4ff9e392da37916bf756d61a4e8f82a23"
     },
     {
+      "path": "rust/crates/production-runtime/tests/adapter_contracts.rs",
+      "sha256": "7b1eb4e02d91bfa4089d8253c8a01a9ea4f0c1e1c7ae79e21a85b40a7295ca06"
+    },
+    {
+      "path": "rust/crates/production-runtime/tests/execution_contract.rs",
+      "sha256": "365a4eafc7457f0181990c91977b791f8da6332488443706060777ea2a558679"
+    },
+    {
       "path": "rust/crates/registry/src/server.rs",
       "sha256": "db7cb1034bbfc64e4fa1c46be427092ec8d14ea87d1a1f198a41e8c98bb07f46"
+    },
+    {
+      "path": "rust/crates/runtime-anomaly/src/authority.rs",
+      "sha256": "76fb849b15382a093d68603f4a516bd6adcf7567fc3c46799d791419bde733ba"
+    },
+    {
+      "path": "rust/crates/runtime-anomaly/src/bin/agenttrust-runtime-anomaly-authority.rs",
+      "sha256": "7a1024696ac4383e91b5c3c273807d2baffb9161cf32af4b72284ae54eb6a82f"
+    },
+    {
+      "path": "rust/crates/runtime-anomaly/src/lib.rs",
+      "sha256": "dfe93eadc6e814cf044500af073ba13811f23046ec450428b19512750b2960b4"
+    },
+    {
+      "path": "rust/crates/runtime-anomaly/src/production.rs",
+      "sha256": "556f4fa84bf72be9a0ba5e7e187850f3bc285a5c0aa9d5a70e380ab0e6541632"
+    },
+    {
+      "path": "rust/crates/runtime-anomaly/src/server.rs",
+      "sha256": "9a5d77c20d1642fdd0256ea0a085ca7f6659c613d6cf34fad25e38d174c18ab0"
+    },
+    {
+      "path": "rust/crates/runtime-anomaly/tests/production_contract.rs",
+      "sha256": "dd56b0ce2f09c63add281062a56ea680a67567f5737ace174809c88c39541da8"
+    },
+    {
+      "path": "rust/crates/security-evaluation-lab/src/authority.rs",
+      "sha256": "42b3db12e752e8d88806425d3d69868701a78bc207b21d41da8980111fb89ea8"
+    },
+    {
+      "path": "rust/crates/security-evaluation-lab/src/bin/agenttrust-security-evaluation-authority.rs",
+      "sha256": "bb7eeb17ea4cf210a3acbc4717eaca396e3ba9c5b99ffde9aa067d332cf481d0"
+    },
+    {
+      "path": "rust/crates/security-evaluation-lab/src/production_harness.rs",
+      "sha256": "cbe1cd93f112a02914ed28d411deaebd2c31b9b1d54004c865151de07310bea9"
+    },
+    {
+      "path": "rust/crates/security-evaluation-lab/src/server.rs",
+      "sha256": "c2428ce157f87fbf14b468fa709221cf4482dc07c3241dbb9bac47ab2e59ff2c"
+    },
+    {
+      "path": "rust/crates/security-evaluation-lab/tests/production_contract.rs",
+      "sha256": "67ed138a4f4023f6961049e00797302c9da6822ad5fb59a46a5dac69ae10b47c"
+    },
+    {
+      "path": "rust/crates/tool-proxy/src/bin/agenttrust-tool-proxy-service.rs",
+      "sha256": "3984b07ed6e625034a4108106c9e788d3249f44d4dabcb9aacfa1c01aa7b7e45"
     },
     {
       "path": "rust/crates/tool-proxy/src/lib.rs",
@@ -1018,6 +1166,10 @@
     {
       "path": "rust/crates/tool-proxy/src/production.rs",
       "sha256": "2e244b826335beae0c6be68ec656f55d264562a0ee6fbafbd8bea018a8655984"
+    },
+    {
+      "path": "rust/crates/transaction-ledger/src/lib.rs",
+      "sha256": "1f35486f3fa537216110f6499cc60466b4023a7c989bdd77d7eeb70f74180090"
     },
     {
       "path": "schemas/approval/approval-case.schema.json",

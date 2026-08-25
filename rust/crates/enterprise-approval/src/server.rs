@@ -340,24 +340,13 @@ fn approval_router(state: ApprovalApiState) -> Router {
 async fn data_ready(State(state): State<ApprovalApiState>) -> Response {
     let now = Utc::now();
     let available = state.store.ready().await
-        && principal_keys_ready(
-            &state.principal_keyring,
-            &state.authorizer.tenants,
-            now,
-        )
-        && review_evidence_keys_ready(
-            &state.store,
-            &state.authorizer.tenants,
-            now,
-        )
-        && decision_evidence_delivery_keys_ready(
-            &state.store,
-            &state.authorizer.tenants,
-            now,
-        )
-        && state.store.decision_evidence_outbox_ready(
-            &state.authorizer.tenants, now,
-        ).await;
+        && principal_keys_ready(&state.principal_keyring, &state.authorizer.tenants, now)
+        && review_evidence_keys_ready(&state.store, &state.authorizer.tenants, now)
+        && decision_evidence_delivery_keys_ready(&state.store, &state.authorizer.tenants, now)
+        && state
+            .store
+            .decision_evidence_outbox_ready(&state.authorizer.tenants, now)
+            .await;
     readiness_response(available)
 }
 
@@ -367,7 +356,10 @@ async fn ready(State(state): State<ManagementState>) -> Response {
         && principal_keys_ready(&state.principal_keyring, &state.tenants, now)
         && review_evidence_keys_ready(&state.store, &state.tenants, now)
         && decision_evidence_delivery_keys_ready(&state.store, &state.tenants, now)
-        && state.store.decision_evidence_outbox_ready(&state.tenants, now).await;
+        && state
+            .store
+            .decision_evidence_outbox_ready(&state.tenants, now)
+            .await;
     readiness_response(available)
 }
 

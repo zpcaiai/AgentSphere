@@ -1853,10 +1853,7 @@ pub struct PepPreApprovalRequest<A, T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(
-    deny_unknown_fields,
-    bound(deserialize = "C: Deserialize<'de>")
-)]
+#[serde(deny_unknown_fields, bound(deserialize = "C: Deserialize<'de>"))]
 pub struct PepPreApprovalEnvelope<C> {
     pub schema_version: String,
     pub signed_outcome: SignedPreApprovalOutcome,
@@ -2132,7 +2129,8 @@ impl SignedAuthorityEvidenceReceipt {
 
     pub fn sign(&mut self, key: &SigningKey) -> Result<(), ContractError> {
         self.evidence_digest = self.expected_digest()?;
-        self.signature = URL_SAFE_NO_PAD.encode(key.sign(self.evidence_digest.as_bytes()).to_bytes());
+        self.signature =
+            URL_SAFE_NO_PAD.encode(key.sign(self.evidence_digest.as_bytes()).to_bytes());
         Ok(())
     }
 
@@ -2171,8 +2169,7 @@ impl SignedAuthorityEvidenceReceipt {
 
 pub const APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION: &str =
     "agenttrust.approval-review-evidence-binding.v1";
-pub const APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION: &str =
-    "agenttrust.approval-review-material.v1";
+pub const APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION: &str = "agenttrust.approval-review-material.v1";
 pub const APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION: &str =
     "agenttrust.approval-review-evidence-issue.v2";
 pub const APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS: i64 = 900;
@@ -2256,10 +2253,8 @@ pub struct ApprovalReviewMaterial {
 
 impl ApprovalReviewMaterial {
     pub fn validate(&self) -> Result<(), ContractError> {
-        let industrial_resource = approval_review_resource_is_industrial(
-            &self.resource,
-            &self.environment,
-        );
+        let industrial_resource =
+            approval_review_resource_is_industrial(&self.resource, &self.environment);
         if self.schema_version != APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION
             || !canonical_uuid(&self.tenant_id)
             || !canonical_uuid(&self.task_id)
@@ -2438,17 +2433,14 @@ fn approval_review_source_identity(value: &str) -> bool {
     value
         .strip_prefix("DNS:")
         .or_else(|| value.strip_prefix("URI:"))
-        .is_some_and(|identity| {
-            !identity.is_empty() && approval_review_identifier(value, 256)
-        })
+        .is_some_and(|identity| !identity.is_empty() && approval_review_identifier(value, 256))
 }
 
 fn approval_review_identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
         })
 }
 
@@ -3722,12 +3714,11 @@ mod tests {
             signature: String::new(),
             draft: request.event.clone(),
         };
-        event.event_hash = event.expected_hash().unwrap_or_else(|_| panic!("event hash"));
-        event.signature = URL_SAFE_NO_PAD.encode(
-            signing
-                .sign(event.event_hash.as_bytes())
-                .to_bytes(),
-        );
+        event.event_hash = event
+            .expected_hash()
+            .unwrap_or_else(|_| panic!("event hash"));
+        event.signature =
+            URL_SAFE_NO_PAD.encode(signing.sign(event.event_hash.as_bytes()).to_bytes());
         let mut receipt = SignedAuthorityEvidenceReceipt {
             schema_version: AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION.into(),
             tenant_id: tenant,

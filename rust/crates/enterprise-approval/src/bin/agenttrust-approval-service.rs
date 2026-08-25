@@ -1,6 +1,3 @@
-use agent_trust_enterprise_approval::{
-    ApprovalPrincipalAssertionKeyring, ApprovalReviewEvidenceKeyring,
-};
 use agent_trust_enterprise_approval::evidence_delivery::ApprovalEvidencePublisher;
 use agent_trust_enterprise_approval::postgres::{
     ApprovalDecisionEvidenceKeyring, ApprovalSigner, PostgresApprovalStore,
@@ -8,6 +5,9 @@ use agent_trust_enterprise_approval::postgres::{
 use agent_trust_enterprise_approval::server::{
     ApprovalApiState, ApprovalServerConfig, TokenBindingApprovalAuthorizer, serve,
     validate_certificate_identity_file,
+};
+use agent_trust_enterprise_approval::{
+    ApprovalPrincipalAssertionKeyring, ApprovalReviewEvidenceKeyring,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::SigningKey;
@@ -72,10 +72,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         "AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_CERTIFICATE_FILE",
         false,
     )?;
-    validate_certificate_identity_file(
-        &evidence_client_certificate,
-        &evidence_source_identity,
-    )?;
+    validate_certificate_identity_file(&evidence_client_certificate, &evidence_source_identity)?;
     let evidence_publisher = Arc::new(ApprovalEvidencePublisher::new(
         url::Url::parse(&required_env("AGENT_TRUST_APPROVAL_EVIDENCE_ENDPOINT")?)?,
         required_file("AGENT_TRUST_APPROVAL_EVIDENCE_TOKEN_FILE", true)?,
@@ -129,10 +126,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         },
         state,
     );
-    let delivery = store.run_decision_evidence_delivery(
-        delivery_tenants,
-        uuid::Uuid::new_v4().to_string(),
-    );
+    let delivery =
+        store.run_decision_evidence_delivery(delivery_tenants, uuid::Uuid::new_v4().to_string());
     tokio::select! {
         result = server => result?,
         result = delivery => {

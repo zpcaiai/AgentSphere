@@ -40,7 +40,8 @@ pub const SIGNED_SIGNAL_SCHEMA: &str = "agenttrust.signed-risk-signal.v1";
 pub const SIGNAL_RECEIPT_SCHEMA: &str = "agenttrust.risk-signal-receipt.v1";
 pub const ANOMALY_COMMAND_SCHEMA: &str = "agenttrust.runtime-anomaly-command.v1";
 pub const ANOMALY_EXECUTOR_REQUEST_SCHEMA: &str = "agenttrust.runtime-anomaly-executor-request.v1";
-pub const ANOMALY_EXECUTION_BINDING_SCHEMA: &str = "agenttrust.runtime-anomaly-execution-binding.v1";
+pub const ANOMALY_EXECUTION_BINDING_SCHEMA: &str =
+    "agenttrust.runtime-anomaly-execution-binding.v1";
 pub const ANOMALY_ACTION_RECEIPT_SCHEMA: &str = "agenttrust.runtime-anomaly-action-receipt.v1";
 pub const ANOMALY_MUTATION_RESULT_SCHEMA: &str = "agenttrust.runtime-anomaly-mutation-result.v1";
 pub const ANOMALY_RESPONSE_RECEIPT_SCHEMA: &str = "agenttrust.runtime-response-receipt.v1";
@@ -543,10 +544,8 @@ async fn load_recent_signals(
                 resource: row.get("resource"),
                 resource_class: row.get("resource_class"),
                 value: row.get("safe_features"),
-                confidence_millionths: u32::try_from(
-                    row.get::<i32, _>("confidence_millionths"),
-                )
-                .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?,
+                confidence_millionths: u32::try_from(row.get::<i32, _>("confidence_millionths"))
+                    .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?,
                 source_version: row.get("source_version"),
                 occurred_at: row.get("occurred_at"),
             })
@@ -584,8 +583,10 @@ async fn persist_findings(
         .bind(&finding.rule_version)
         .bind(risk_level_name(finding.severity))
         .bind(finding.deterministic)
-        .bind(i32::try_from(finding.confidence_millionths)
-            .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+        .bind(
+            i32::try_from(finding.confidence_millionths)
+                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+        )
         .bind(event_ids)
         .bind(&finding.safe_reason)
         .bind(finding_digest)
@@ -634,8 +635,10 @@ async fn persist_aggregate(
     .bind(aggregate_id)
     .bind(task_id)
     .bind(risk_level_name(aggregate.severity))
-    .bind(i32::try_from(aggregate.score_millionths)
-        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+    .bind(
+        i32::try_from(aggregate.score_millionths)
+            .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+    )
     .bind(finding_uuids)
     .bind(model_id)
     .bind(model_version)
@@ -1096,7 +1099,13 @@ impl RuntimeAnomalyAuthority {
             config.repeated_side_effect_limit,
         )
         .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
-        Ok(Self { store, orchestrator, effects, config, response_controller })
+        Ok(Self {
+            store,
+            orchestrator,
+            effects,
+            config,
+            response_controller,
+        })
     }
 
     pub async fn ready(&self) -> bool {
@@ -1147,12 +1156,15 @@ impl RuntimeAnomalyAuthority {
                 receipt
             } else {
                 match self.orchestrator.submit(&tenant, &prepared.envelope).await {
-                    Ok(receipt) => self
-                        .store
-                        .complete_ingress(&tenant, &idempotency_key, &receipt)
-                        .await?,
+                    Ok(receipt) => {
+                        self.store
+                            .complete_ingress(&tenant, &idempotency_key, &receipt)
+                            .await?
+                    }
                     Err(RuntimeAnomalyAuthorityError::OutcomeUnknown) => {
-                        self.store.mark_ingress_unknown(&tenant, &idempotency_key).await?;
+                        self.store
+                            .mark_ingress_unknown(&tenant, &idempotency_key)
+                            .await?;
                         return Err(RuntimeAnomalyAuthorityError::OutcomeUnknown);
                     }
                     Err(error) => return Err(error),
@@ -1184,7 +1196,9 @@ impl RuntimeAnomalyAuthority {
             )
             .await?;
         validate_signal_evidence_receipt(&pending, &receipt)?;
-        self.store.finalize_signal_evidence(tenant, pending, receipt).await
+        self.store
+            .finalize_signal_evidence(tenant, pending, receipt)
+            .await
     }
 
     pub async fn recover_signal_evidence(
@@ -1195,7 +1209,10 @@ impl RuntimeAnomalyAuthority {
         if !(1..=100).contains(&limit) {
             return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
         }
-        let refs = self.store.pending_signal_evidence_refs(tenant, limit).await?;
+        let refs = self
+            .store
+            .pending_signal_evidence_refs(tenant, limit)
+            .await?;
         let mut delivered = 0usize;
         for value in refs {
             self.deliver_signal_evidence(tenant, &value).await?;
@@ -1243,7 +1260,10 @@ impl RuntimeAnomalyAuthority {
         if let Some(receipt) = prepared.receipt {
             return Ok(receipt);
         }
-        let receipt = self.orchestrator.submit(&tenant, &prepared.envelope).await?;
+        let receipt = self
+            .orchestrator
+            .submit(&tenant, &prepared.envelope)
+            .await?;
         self.store
             .complete_ingress(&tenant, idempotency_key, &receipt)
             .await
@@ -1255,7 +1275,9 @@ impl RuntimeAnomalyAuthority {
         after: Option<&str>,
         limit: i64,
     ) -> Result<AuthoritativeTrajectoryPage, RuntimeAnomalyAuthorityError> {
-        self.store.authoritative_trajectories(tenant, after, limit).await
+        self.store
+            .authoritative_trajectories(tenant, after, limit)
+            .await
     }
 }
 
@@ -1310,15 +1332,13 @@ impl PostgresRuntimeAnomalyStore {
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
 
         let source = load_source(&mut tx, tenant_uuid, &envelope.source_id).await?;
-        verify_source_and_signature(
-            &source,
-            workload_identity,
-            envelope,
-            &payload_digest,
-        )?;
+        verify_source_and_signature(&source, workload_identity, envelope, &payload_digest)?;
         let mut trajectory = load_trajectory(&mut tx, tenant_uuid, task_uuid).await?;
         if trajectory.state.agent_instance_id != envelope.signal.agent_instance_id
-            || !matches!(trajectory.status.as_str(), "ACTIVE" | "APPROVAL_REQUIRED" | "PAUSED")
+            || !matches!(
+                trajectory.status.as_str(),
+                "ACTIVE" | "APPROVAL_REQUIRED" | "PAUSED"
+            )
         {
             return Err(RuntimeAnomalyAuthorityError::StateConflict);
         }
@@ -1351,8 +1371,10 @@ impl PostgresRuntimeAnomalyStore {
         .bind(&envelope.signal.resource)
         .bind(&envelope.signal.resource_class)
         .bind(&envelope.signal.value)
-        .bind(i32::try_from(envelope.signal.confidence_millionths)
-            .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+        .bind(
+            i32::try_from(envelope.signal.confidence_millionths)
+                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+        )
         .bind(&envelope.signal.source_version)
         .bind(envelope.signal.occurred_at)
         .bind(&payload_digest)
@@ -1377,8 +1399,8 @@ impl PostgresRuntimeAnomalyStore {
             if row.get::<String, _>("payload_digest") != payload_digest {
                 return Err(RuntimeAnomalyAuthorityError::IdempotencyConflict);
             }
-            let outbox = existing_signal_outbox(&mut tx, tenant_uuid, &envelope.signal.event_id)
-                .await?;
+            let outbox =
+                existing_signal_outbox(&mut tx, tenant_uuid, &envelope.signal.event_id).await?;
             tx.commit()
                 .await
                 .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -1401,15 +1423,20 @@ impl PostgresRuntimeAnomalyStore {
         }
 
         trajectory.state.event_count = trajectory.state.event_count.saturating_add(1);
-        trajectory.state.last_seen_at = trajectory.state.last_seen_at.max(envelope.signal.occurred_at);
+        trajectory.state.last_seen_at = trajectory
+            .state
+            .last_seen_at
+            .max(envelope.signal.occurred_at);
         sqlx::query(
             "UPDATE runtime_anomaly_trajectories SET event_count=$3,last_seen_at=$4,\
              resource_version=resource_version+1 WHERE tenant_id=$1 AND task_id=$2",
         )
         .bind(tenant_uuid)
         .bind(task_uuid)
-        .bind(i64::try_from(trajectory.state.event_count)
-            .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+        .bind(
+            i64::try_from(trajectory.state.event_count)
+                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+        )
         .bind(trajectory.state.last_seen_at)
         .execute(&mut *tx)
         .await
@@ -1469,8 +1496,10 @@ impl PostgresRuntimeAnomalyStore {
             .bind(tenant_uuid)
             .bind(task_uuid)
             .bind(next_status)
-            .bind(i64::try_from(response.new_revocation_epoch)
-                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+            .bind(
+                i64::try_from(response.new_revocation_epoch)
+                    .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+            )
             .execute(&mut *tx)
             .await
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -1599,8 +1628,9 @@ impl PostgresRuntimeAnomalyStore {
         .await
         .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?
         .ok_or(RuntimeAnomalyAuthorityError::IdempotencyConflict)?;
-        let stored_envelope: InboundEnvelope = serde_json::from_value(row.get("canonical_envelope"))
-            .map_err(|_| RuntimeAnomalyAuthorityError::IdempotencyConflict)?;
+        let stored_envelope: InboundEnvelope =
+            serde_json::from_value(row.get("canonical_envelope"))
+                .map_err(|_| RuntimeAnomalyAuthorityError::IdempotencyConflict)?;
         let stored_action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&stored_envelope.payload)
                 .map_err(|_| RuntimeAnomalyAuthorityError::IdempotencyConflict)?;
@@ -1624,7 +1654,10 @@ impl PostgresRuntimeAnomalyStore {
             || stored_envelope.payload_hash != sha256(&stored_envelope.payload)
             || stored_action.action_id.0 != request.command_id.to_string()
             || stored_action.task_id.0 != request.task_id.to_string()
-            || !matches!(row.get::<String, _>("state").as_str(), "PREPARED" | "ACCEPTED")
+            || !matches!(
+                row.get::<String, _>("state").as_str(),
+                "PREPARED" | "ACCEPTED"
+            )
         {
             return Err(RuntimeAnomalyAuthorityError::IdempotencyConflict);
         }
@@ -1636,7 +1669,10 @@ impl PostgresRuntimeAnomalyStore {
         tx.commit()
             .await
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
-        Ok(PreparedIngress { envelope: stored_envelope, receipt })
+        Ok(PreparedIngress {
+            envelope: stored_envelope,
+            receipt,
+        })
     }
 
     async fn complete_ingress(
@@ -1722,9 +1758,7 @@ impl PostgresRuntimeAnomalyStore {
         after: Option<&str>,
         limit: i64,
     ) -> Result<AuthoritativeTrajectoryPage, RuntimeAnomalyAuthorityError> {
-        if !(1..=200).contains(&limit)
-            || after.is_some_and(|value| !canonical_uuid(value))
-        {
+        if !(1..=200).contains(&limit) || after.is_some_and(|value| !canonical_uuid(value)) {
             return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
         }
         let tenant_uuid = parse_tenant(tenant)?;
@@ -1835,8 +1869,10 @@ impl PostgresRuntimeAnomalyStore {
         .bind(binding.ledger_event_id)
         .bind(&binding.ledger_event_digest)
         .bind(&binding.fence_digest)
-        .bind(i64::try_from(binding.resource_version)
-            .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+        .bind(
+            i64::try_from(binding.resource_version)
+                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+        )
         .bind(&binding.policy_decision_id)
         .bind(&binding.policy_decision_digest)
         .bind(&binding.authorization_evidence_ref)
@@ -1891,8 +1927,9 @@ impl PostgresRuntimeAnomalyStore {
             return Ok(ExecutionClaim::Completed(result));
         }
         if state == "MUTATED_PENDING_EVIDENCE" {
-            let pending = load_pending_for_execution(&mut tx, tenant_uuid, binding.ledger_execution_id)
-                .await?;
+            let pending =
+                load_pending_for_execution(&mut tx, tenant_uuid, binding.ledger_execution_id)
+                    .await?;
             tx.commit()
                 .await
                 .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -1906,13 +1943,12 @@ impl PostgresRuntimeAnomalyStore {
         if lease_until.is_some_and(|value| value > Utc::now()) && current_owner != Some(owner) {
             return Err(RuntimeAnomalyAuthorityError::StateConflict);
         }
-        let next_state = if request.command.operation
-            == RuntimeAnomalyOperation::ApplyContinuousAuthorization
-        {
-            "RESPONSE_PENDING"
-        } else {
-            "PREPARED"
-        };
+        let next_state =
+            if request.command.operation == RuntimeAnomalyOperation::ApplyContinuousAuthorization {
+                "RESPONSE_PENDING"
+            } else {
+                "PREPARED"
+            };
         sqlx::query(
             "UPDATE runtime_anomaly_authority_executions SET state=$3,execution_owner=$4,\
              execution_lease_until=now()+make_interval(secs=>$5),updated_at=now() \
@@ -1922,8 +1958,9 @@ impl PostgresRuntimeAnomalyStore {
         .bind(binding.ledger_execution_id)
         .bind(next_state)
         .bind(owner)
-        .bind(f64::from(i32::try_from(lease_seconds)
-            .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?))
+        .bind(f64::from(i32::try_from(lease_seconds).map_err(|_| {
+            RuntimeAnomalyAuthorityError::ConfigurationInvalid
+        })?))
         .execute(&mut *tx)
         .await
         .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -1971,13 +2008,12 @@ impl PostgresRuntimeAnomalyStore {
         .fetch_one(&mut *tx)
         .await
         .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
-        let expected_state = if request.command.operation
-            == RuntimeAnomalyOperation::ApplyContinuousAuthorization
-        {
-            "RESPONSE_PENDING"
-        } else {
-            "PREPARED"
-        };
+        let expected_state =
+            if request.command.operation == RuntimeAnomalyOperation::ApplyContinuousAuthorization {
+                "RESPONSE_PENDING"
+            } else {
+                "PREPARED"
+            };
         if execution_state != expected_state {
             return Err(RuntimeAnomalyAuthorityError::StateConflict);
         }
@@ -2013,7 +2049,11 @@ impl PostgresRuntimeAnomalyStore {
             &mut tx,
             tenant_uuid,
             binding.ledger_execution_id,
-            if response_receipt.is_some() { "RESPONSE_APPLIED" } else { "ADMIN_MUTATION" },
+            if response_receipt.is_some() {
+                "RESPONSE_APPLIED"
+            } else {
+                "ADMIN_MUTATION"
+            },
             &request.command.command_id.to_string(),
             &evidence_payload,
         )
@@ -2360,9 +2400,10 @@ async fn apply_admin_mutation(
                 || !digest(&payload.reason_digest)
                 || !evidence_reference(&payload.approval_evidence_ref)
                 || payload.approval_id.is_nil()
-                || payload.replacement_source_id.as_ref().is_some_and(|value| {
-                    value == &payload.source_id || !identifier(value, 128)
-                })
+                || payload
+                    .replacement_source_id
+                    .as_ref()
+                    .is_some_and(|value| value == &payload.source_id || !identifier(value, 128))
             {
                 return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
             }
@@ -2387,8 +2428,10 @@ async fn apply_admin_mutation(
             )
             .bind(tenant_id)
             .bind(&payload.source_id)
-            .bind(i64::try_from(command.expected_resource_version)
-                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+            .bind(
+                i64::try_from(command.expected_resource_version)
+                    .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+            )
             .execute(&mut **tx)
             .await
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -2422,8 +2465,10 @@ async fn apply_admin_mutation(
             .bind(payload.allowed_resource_prefixes)
             .bind(payload.allowed_network_destinations)
             .bind(payload.authorization_lease_id)
-            .bind(i64::try_from(payload.revocation_epoch)
-                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+            .bind(
+                i64::try_from(payload.revocation_epoch)
+                    .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+            )
             .bind(command.requested_at)
             .execute(&mut **tx)
             .await
@@ -2531,7 +2576,10 @@ async fn apply_admin_mutation(
             .ok_or(RuntimeAnomalyAuthorityError::NotFound)?;
             let task_id: Uuid = case.get("task_id");
             if task_id != command.task_id
-                || !matches!(case.get::<String, _>("status").as_str(), "PAUSED" | "CONTAINING")
+                || !matches!(
+                    case.get::<String, _>("status").as_str(),
+                    "PAUSED" | "CONTAINING"
+                )
             {
                 return Err(RuntimeAnomalyAuthorityError::StateConflict);
             }
@@ -2544,8 +2592,10 @@ async fn apply_admin_mutation(
             .bind(tenant_id)
             .bind(task_id)
             .bind(new_lease)
-            .bind(i64::try_from(command.expected_resource_version)
-                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+            .bind(
+                i64::try_from(command.expected_resource_version)
+                    .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+            )
             .execute(&mut **tx)
             .await
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -2576,8 +2626,10 @@ async fn apply_admin_mutation(
             )
             .bind(tenant_id)
             .bind(command.task_id)
-            .bind(i64::try_from(command.expected_resource_version)
-                .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?)
+            .bind(
+                i64::try_from(command.expected_resource_version)
+                    .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?,
+            )
             .execute(&mut **tx)
             .await
             .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
@@ -2611,8 +2663,7 @@ fn validate_signed_envelope(
         || envelope.signal.action.len() > 128
         || envelope.signal.resource.len() > 1024
         || envelope.signal.resource_class.len() > 128
-        || envelope.signal.occurred_at
-            < Utc::now() - Duration::days(30)
+        || envelope.signal.occurred_at < Utc::now() - Duration::days(30)
         || signed_envelope_bytes(envelope)?.len() > 1_048_576
         || !safe_json_document(&envelope.signal.value)
         || contains_secret_material(&envelope.signal.action)
@@ -2628,7 +2679,10 @@ fn validate_signed_envelope(
             || score.score_millionths > 1_000_000
             || score.confidence_millionths > 1_000_000
             || score.reason_codes.len() > 64
-            || score.reason_codes.iter().any(|value| !identifier(value, 128))
+            || score
+                .reason_codes
+                .iter()
+                .any(|value| !identifier(value, 128))
         {
             return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
         }
@@ -2707,7 +2761,9 @@ fn validate_admin_command(
         || !resource_identifier(&request.resource)
         || !digest(request_digest)
         || !(16..=256).contains(&idempotency_key.len())
-        || !idempotency_key.bytes().all(|value| value.is_ascii_graphic())
+        || !idempotency_key
+            .bytes()
+            .all(|value| value.is_ascii_graphic())
         || request.requested_at < Utc::now() - Duration::minutes(5)
         || request.requested_at > Utc::now() + Duration::minutes(2)
         || canonical_digest(request)? != request_digest
@@ -2736,9 +2792,10 @@ fn validate_operation_payload(
                 && digest(&payload.reason_digest)
                 && !payload.approval_id.is_nil()
                 && evidence_reference(&payload.approval_evidence_ref)
-                && payload.replacement_source_id.as_ref().is_none_or(|value| {
-                    value != &payload.source_id && identifier(value, 128)
-                })
+                && payload
+                    .replacement_source_id
+                    .as_ref()
+                    .is_none_or(|value| value != &payload.source_id && identifier(value, 128))
             {
                 Ok(())
             } else {
@@ -2811,7 +2868,10 @@ fn validate_execution(
         || !identifier(&request.actor_subject, 256)
         || !matches!(request.actor_kind.as_str(), "HUMAN" | "SERVICE")
         || request.approval_ids.len() > 16
-        || request.approval_ids.iter().any(|value| !canonical_uuid(value))
+        || request
+            .approval_ids
+            .iter()
+            .any(|value| !canonical_uuid(value))
     {
         return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
     }
@@ -2859,9 +2919,18 @@ fn validate_response_receipt(
         || receipt.adjustment != response.adjustment
         || receipt.command_digest != canonical_digest(response)?
         || !identifier(&receipt.safe_status, 128)
-        || receipt.supervisor_receipt_digest.as_ref().is_some_and(|value| !digest(value))
-        || receipt.credential_receipt_digest.as_ref().is_some_and(|value| !digest(value))
-        || receipt.incident_receipt_digest.as_ref().is_some_and(|value| !digest(value))
+        || receipt
+            .supervisor_receipt_digest
+            .as_ref()
+            .is_some_and(|value| !digest(value))
+        || receipt
+            .credential_receipt_digest
+            .as_ref()
+            .is_some_and(|value| !digest(value))
+        || receipt
+            .incident_receipt_digest
+            .as_ref()
+            .is_some_and(|value| !digest(value))
     {
         return Err(RuntimeAnomalyAuthorityError::DependencyUnavailable);
     }
@@ -2992,7 +3061,11 @@ fn canonical_runtime_action(
             goal_hash: canonical_digest(command)?,
             operation: operation.clone(),
             justification_code: "CONTINUOUS_AUTHORIZATION_AND_RUNTIME_SAFETY".into(),
-            safe_summary: Some(format!("{} {}", command.operation.as_str(), command.resource)),
+            safe_summary: Some(format!(
+                "{} {}",
+                command.operation.as_str(),
+                command.resource
+            )),
         },
         tool: ToolRef {
             tool_id: config.tool_id.clone(),
@@ -3053,8 +3126,8 @@ fn canonical_runtime_action(
     let action = normalize(draft, &normalization)
         .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
     action_hash(&action).map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
-    let payload = serde_json::to_vec(&action)
-        .map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
+    let payload =
+        serde_json::to_vec(&action).map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
     Ok(InboundEnvelope {
         request_id: Uuid::new_v4().to_string(),
         trace_context: TraceContext {
@@ -3097,9 +3170,10 @@ fn validate_register_source(
         && public_key.len() == 32
         && (1..=16).contains(&payload.allowed_signal_kinds.len())
         && allowed.len() == payload.allowed_signal_kinds.len()
-        && payload.allowed_signal_kinds.iter().all(|value| {
-            parse_signal_kind(value).is_ok()
-        })
+        && payload
+            .allowed_signal_kinds
+            .iter()
+            .all(|value| parse_signal_kind(value).is_ok())
         && (payload.workload_identity.starts_with("DNS:")
             || payload.workload_identity.starts_with("URI:"))
         && payload.workload_identity.len() <= 512
@@ -3123,13 +3197,18 @@ fn validate_start_trajectory(
         && payload.allowed_resource_prefixes.iter().all(|value| {
             !value.is_empty() && value.len() <= 1024 && !contains_secret_material(value)
         })
-        && payload.allowed_resource_prefixes.iter().collect::<BTreeSet<_>>().len()
+        && payload
+            .allowed_resource_prefixes
+            .iter()
+            .collect::<BTreeSet<_>>()
+            .len()
             == payload.allowed_resource_prefixes.len()
         && payload.allowed_network_destinations.len() <= 1024
         && payload.allowed_network_destinations.iter().all(|value| {
-            identifier(value, 253) && !value.parse::<std::net::IpAddr>().is_ok_and(|ip| {
-                ip.is_loopback() || ip.is_unspecified() || ip.is_multicast()
-            })
+            identifier(value, 253)
+                && !value
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback() || ip.is_unspecified() || ip.is_multicast())
         })
     {
         Ok(())
@@ -3194,7 +3273,9 @@ fn validate_case_transition(
         && !payload.approval_id.is_nil()
         && evidence_reference(&payload.approval_evidence_ref)
         && (recovery == payload.new_authorization_lease_id.is_some())
-        && payload.new_authorization_lease_id.is_none_or(|value| !value.is_nil())
+        && payload
+            .new_authorization_lease_id
+            .is_none_or(|value| !value.is_nil())
     {
         Ok(())
     } else {
@@ -3279,12 +3360,18 @@ fn safe_json(value: &Value, depth: usize, nodes: &mut usize) -> bool {
     match value {
         Value::Null | Value::Bool(_) | Value::Number(_) => true,
         Value::String(value) => value.len() <= 4096,
-        Value::Array(values) => values.len() <= 1024
-            && values.iter().all(|value| safe_json(value, depth + 1, nodes)),
-        Value::Object(values) => values.len() <= 1024
-            && values.iter().all(|(key, value)| {
-                identifier(key, 128) && safe_json(value, depth + 1, nodes)
-            }),
+        Value::Array(values) => {
+            values.len() <= 1024
+                && values
+                    .iter()
+                    .all(|value| safe_json(value, depth + 1, nodes))
+        }
+        Value::Object(values) => {
+            values.len() <= 1024
+                && values
+                    .iter()
+                    .all(|(key, value)| identifier(key, 128) && safe_json(value, depth + 1, nodes))
+        }
     }
 }
 

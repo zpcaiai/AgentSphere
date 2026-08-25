@@ -9,8 +9,8 @@ use crate::authority::{
     canonical_digest, digest, identifier, sha256,
 };
 use crate::{
-    ArtifactExportGuard, DataError, DataLabel, DataPolicyPortImpl, DeploymentPolicy,
-    DlpFinding, DlpFindingKind, DlpScanner, MAX_INSPECTION_BYTES, PromptGuard,
+    ArtifactExportGuard, DataError, DataLabel, DataPolicyPortImpl, DeploymentPolicy, DlpFinding,
+    DlpFindingKind, DlpScanner, MAX_INSPECTION_BYTES, PromptGuard,
 };
 use agent_trust_contracts::{DataClassification, DataPolicyDecision, DataPolicyRequest, TenantId};
 use async_trait::async_trait;
@@ -250,7 +250,9 @@ impl DataDecisionService {
         let policy = DataPolicyPortImpl::new(policy_version)
             .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
         for profile in profiles {
-            policy.deployments().register(profile)
+            policy
+                .deployments()
+                .register(profile)
                 .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
         }
         Ok(Self {
@@ -262,9 +264,7 @@ impl DataDecisionService {
     }
 
     pub async fn ready(&self) -> bool {
-        self.scanner.is_available()
-            && self.store.ready().await
-            && self.inspection.ready().await
+        self.scanner.is_available() && self.store.ready().await && self.inspection.ready().await
     }
 
     pub fn evaluate(
@@ -273,7 +273,9 @@ impl DataDecisionService {
     ) -> Result<PolicyEvaluationResult, DataAuthorityError> {
         validate_policy_evaluation(&request)?;
         let request_digest = canonical_digest(&request.request)?;
-        let decision = self.policy.evaluate_checked(&request.request)
+        let decision = self
+            .policy
+            .evaluate_checked(&request.request)
             .map_err(|_| DataAuthorityError::RequestInvalid)?;
         let decision_digest = canonical_digest(&decision)?;
         let record_payload = json!({
@@ -305,19 +307,23 @@ impl DataDecisionService {
         let tenant = TenantId(request.tenant_id.to_string());
         let content_digest = sha256(&bytes);
         let local = local_scan(&self.scanner, &request.media_type, &bytes)?;
-        let enterprise = self.inspection.inspect(
-            &tenant,
-            request.scan_id,
-            &content_digest,
-            &request.media_type,
-            &bytes,
-        ).await?;
+        let enterprise = self
+            .inspection
+            .inspect(
+                &tenant,
+                request.scan_id,
+                &content_digest,
+                &request.media_type,
+                &bytes,
+            )
+            .await?;
         validate_enterprise_dlp(&enterprise, &request, &content_digest, bytes.len())?;
         let mut counts = enterprise.finding_counts.clone();
         for finding in &local {
             let key = finding_kind(finding.kind.clone());
             let count = counts.entry(key.into()).or_default();
-            *count = count.checked_add(1)
+            *count = count
+                .checked_add(1)
                 .filter(|value| *value <= 1_000_000)
                 .ok_or(DataAuthorityError::DependencyUnavailable)?;
         }
@@ -326,10 +332,10 @@ impl DataDecisionService {
             "local_findings": local,
             "combined_counts": counts,
         }))?;
-        let blocking = dlp_receipt_blocks(&enterprise)
-            || local.iter().any(|finding| finding.blocking);
-        let size_bytes = u64::try_from(bytes.len())
-            .map_err(|_| DataAuthorityError::RequestInvalid)?;
+        let blocking =
+            dlp_receipt_blocks(&enterprise) || local.iter().any(|finding| finding.blocking);
+        let size_bytes =
+            u64::try_from(bytes.len()).map_err(|_| DataAuthorityError::RequestInvalid)?;
         let record_payload = json!({
             "scan_id": request.scan_id,
             "content_digest": content_digest,
@@ -365,18 +371,24 @@ impl DataDecisionService {
         validate_sanitization_request(&request)?;
         let bytes = decode_content(&request.content_base64, request.content_encoding)?;
         let local = local_scan(&self.scanner, &request.media_type, &bytes)?;
-        if local.iter().any(|finding| finding.kind != DlpFindingKind::PersonalData) {
+        if local
+            .iter()
+            .any(|finding| finding.kind != DlpFindingKind::PersonalData)
+        {
             return Err(DataAuthorityError::DlpDenied);
         }
         let tenant = TenantId(request.tenant_id.to_string());
         let input_digest = sha256(&bytes);
-        let enterprise = self.inspection.inspect(
-            &tenant,
-            request.dlp_scan_id,
-            &input_digest,
-            &request.media_type,
-            &bytes,
-        ).await?;
+        let enterprise = self
+            .inspection
+            .inspect(
+                &tenant,
+                request.dlp_scan_id,
+                &input_digest,
+                &request.media_type,
+                &bytes,
+            )
+            .await?;
         validate_enterprise_common(
             &enterprise,
             request.tenant_id,
@@ -408,7 +420,8 @@ impl DataDecisionService {
             "dlp_receipt_digest": enterprise.receipt_digest,
         });
         let transform_receipt_digest = canonical_digest(&record_payload)?;
-        record_payload.as_object_mut()
+        record_payload
+            .as_object_mut()
             .ok_or(DataAuthorityError::DependencyUnavailable)?
             .insert(
                 "transform_receipt_digest".into(),
@@ -445,13 +458,16 @@ impl DataDecisionService {
             return Err(DataAuthorityError::DlpDenied);
         }
         let tenant = TenantId(request.tenant_id.to_string());
-        let enterprise = self.inspection.inspect(
-            &tenant,
-            request.dlp_scan_id,
-            &request.object_digest,
-            &request.media_type,
-            &bytes,
-        ).await?;
+        let enterprise = self
+            .inspection
+            .inspect(
+                &tenant,
+                request.dlp_scan_id,
+                &request.object_digest,
+                &request.media_type,
+                &bytes,
+            )
+            .await?;
         validate_enterprise_common(
             &enterprise,
             request.tenant_id,
@@ -469,44 +485,54 @@ impl DataDecisionService {
             .map_err(|_| DataAuthorityError::DlpDenied)?;
         let decision_digest = canonical_digest(&decision)?;
         let policy_request_digest = canonical_digest(&request.policy_request)?;
-        self.store.verify_artifact_preflight(
-            &tenant,
-            &ArtifactDurablePreflight {
-                authorization_id: request.authorization_id,
-                object_ref: request.object_ref.clone(),
-                object_digest: request.object_digest.clone(),
-                label: serde_json::to_value(&request.label)
-                    .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
-                label_digest: request.label_digest.clone(),
-                policy_request: serde_json::to_value(&request.policy_request)
-                    .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
-                policy_request_digest: policy_request_digest.clone(),
-                decision_id: request.decision_id,
-                decision: serde_json::to_value(&decision)
-                    .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
-                decision_digest: decision_digest.clone(),
-                required_transformations: decision.required_transformations
-                    .iter().cloned().collect(),
-                dlp_scan_id: request.dlp_scan_id,
-                dlp_receipt_digest: request.dlp_receipt_digest.clone(),
-                transform_id: request.transform_id,
-                transform_receipt_digest: request.transform_receipt_digest.clone(),
-                cross_domain_grant_id: request.cross_domain_grant_id,
-                cross_domain_approval_id: request.policy_request.cross_domain_approval_id
-                    .as_ref()
-                    .and_then(|value| Uuid::parse_str(&value.0).ok()),
-                source_jurisdiction: request.policy_request.source_jurisdiction.clone(),
-                target_jurisdiction: request.policy_request.destination_jurisdiction.clone(),
-                classification: request.label.classification,
-            },
-        ).await?;
-        let object = self.inspection.authorize_object(
-            &tenant,
-            &request,
-            &decision_digest,
-            &policy_request_digest,
-            &enterprise.receipt_digest,
-        ).await?;
+        self.store
+            .verify_artifact_preflight(
+                &tenant,
+                &ArtifactDurablePreflight {
+                    authorization_id: request.authorization_id,
+                    object_ref: request.object_ref.clone(),
+                    object_digest: request.object_digest.clone(),
+                    label: serde_json::to_value(&request.label)
+                        .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
+                    label_digest: request.label_digest.clone(),
+                    policy_request: serde_json::to_value(&request.policy_request)
+                        .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
+                    policy_request_digest: policy_request_digest.clone(),
+                    decision_id: request.decision_id,
+                    decision: serde_json::to_value(&decision)
+                        .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
+                    decision_digest: decision_digest.clone(),
+                    required_transformations: decision
+                        .required_transformations
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    dlp_scan_id: request.dlp_scan_id,
+                    dlp_receipt_digest: request.dlp_receipt_digest.clone(),
+                    transform_id: request.transform_id,
+                    transform_receipt_digest: request.transform_receipt_digest.clone(),
+                    cross_domain_grant_id: request.cross_domain_grant_id,
+                    cross_domain_approval_id: request
+                        .policy_request
+                        .cross_domain_approval_id
+                        .as_ref()
+                        .and_then(|value| Uuid::parse_str(&value.0).ok()),
+                    source_jurisdiction: request.policy_request.source_jurisdiction.clone(),
+                    target_jurisdiction: request.policy_request.destination_jurisdiction.clone(),
+                    classification: request.label.classification,
+                },
+            )
+            .await?;
+        let object = self
+            .inspection
+            .authorize_object(
+                &tenant,
+                &request,
+                &decision_digest,
+                &policy_request_digest,
+                &enterprise.receipt_digest,
+            )
+            .await?;
         validate_object_receipt(
             &object,
             &request,
@@ -578,8 +604,7 @@ fn validate_sanitization_request(
         &request.content_base64,
         request.requested_at,
     )?;
-    crate::validate_data_label(&request.label)
-        .map_err(|_| DataAuthorityError::RequestInvalid)
+    crate::validate_data_label(&request.label).map_err(|_| DataAuthorityError::RequestInvalid)
 }
 
 fn validate_artifact_request(
@@ -592,21 +617,27 @@ fn validate_artifact_request(
         &request.content_base64,
         request.requested_at,
     )?;
-    if !(request.object_ref.starts_with("artifact://") || request.object_ref.starts_with("object://"))
+    if !(request.object_ref.starts_with("artifact://")
+        || request.object_ref.starts_with("object://"))
         || !identifier(&request.object_ref, 2048)
         || !digest(&request.object_digest)
         || !digest(&request.label_digest)
-        || canonical_digest(&request.label).ok().as_deref()
-            != Some(request.label_digest.as_str())
+        || canonical_digest(&request.label).ok().as_deref() != Some(request.label_digest.as_str())
         || !digest(&request.destination_digest)
         || !digest(&request.dlp_receipt_digest)
         || request.transform_id.is_some() != request.transform_receipt_digest.is_some()
-        || request.transform_receipt_digest.as_deref().is_some_and(|value| !digest(value))
+        || request
+            .transform_receipt_digest
+            .as_deref()
+            .is_some_and(|value| !digest(value))
         || request.policy_request.tenant_id.0 != request.tenant_id.to_string()
         || request.policy_request.classification != request.label.classification
         || request.policy_request.contains_secret != request.label.contains_secret
         || request.label.lineage.source_hash != request.object_digest
-        || !request.label.jurisdictions.contains(&request.policy_request.source_jurisdiction)
+        || !request
+            .label
+            .jurisdictions
+            .contains(&request.policy_request.source_jurisdiction)
         || !request.redirect_target_digests.is_empty()
         || request.cross_domain_grant_id.is_some()
             != request.policy_request.cross_domain_approval_id.is_some()
@@ -623,8 +654,8 @@ fn local_scan(
     bytes: &[u8],
 ) -> Result<Vec<DlpFinding>, DataAuthorityError> {
     if media_type == "application/json" {
-        let document: Value = serde_json::from_slice(bytes)
-            .map_err(|_| DataAuthorityError::RequestInvalid)?;
+        let document: Value =
+            serde_json::from_slice(bytes).map_err(|_| DataAuthorityError::RequestInvalid)?;
         scanner.scan_json(&document).map_err(local_scan_error)
     } else {
         scanner.scan_bytes(bytes).map_err(local_scan_error)
@@ -655,8 +686,11 @@ fn validate_content_request(
     if actual_schema != expected_schema
         || !matches!(
             media_type,
-            "text/plain" | "application/json" | "application/octet-stream"
-                | "application/pdf" | "text/csv"
+            "text/plain"
+                | "application/json"
+                | "application/octet-stream"
+                | "application/pdf"
+                | "text/csv"
         )
         || content_base64.is_empty()
         || content_base64.len() > maximum_encoded
@@ -672,7 +706,8 @@ fn decode_content(
     transport_base64: &str,
     encoding: ContentEncoding,
 ) -> Result<Vec<u8>, DataAuthorityError> {
-    let decoded = STANDARD.decode(transport_base64)
+    let decoded = STANDARD
+        .decode(transport_base64)
         .map_err(|_| DataAuthorityError::RequestInvalid)?;
     if decoded.is_empty() || decoded.len() > MAX_INSPECTION_BYTES {
         return Err(DataAuthorityError::RequestInvalid);
@@ -680,9 +715,10 @@ fn decode_content(
     match encoding {
         ContentEncoding::Identity => Ok(decoded),
         ContentEncoding::Base64 => {
-            let encoded = std::str::from_utf8(&decoded)
-                .map_err(|_| DataAuthorityError::RequestInvalid)?;
-            let nested = STANDARD.decode(encoded.trim())
+            let encoded =
+                std::str::from_utf8(&decoded).map_err(|_| DataAuthorityError::RequestInvalid)?;
+            let nested = STANDARD
+                .decode(encoded.trim())
                 .map_err(|_| DataAuthorityError::RequestInvalid)?;
             if nested.is_empty() || nested.len() > MAX_INSPECTION_BYTES {
                 return Err(DataAuthorityError::RequestInvalid);
@@ -725,16 +761,24 @@ fn validate_enterprise_common(
         || receipt.tenant_id != tenant
         || receipt.scan_id != scan_id
         || receipt.content_digest != content_digest
-        || receipt.size_bytes != u64::try_from(size).map_err(|_| DataAuthorityError::RequestInvalid)?
+        || receipt.size_bytes
+            != u64::try_from(size).map_err(|_| DataAuthorityError::RequestInvalid)?
         || receipt.finding_counts.len() > 32
         || receipt.finding_counts.keys().any(|key| {
             !matches!(
                 key.as_str(),
-                "SECRET" | "PERSONAL_DATA" | "INDUSTRIAL_SENSITIVE" | "ENCODED_PAYLOAD"
-                    | "COMPRESSED_PAYLOAD" | "UNKNOWN"
+                "SECRET"
+                    | "PERSONAL_DATA"
+                    | "INDUSTRIAL_SENSITIVE"
+                    | "ENCODED_PAYLOAD"
+                    | "COMPRESSED_PAYLOAD"
+                    | "UNKNOWN"
             )
         })
-        || receipt.finding_counts.values().any(|count| *count > 1_000_000)
+        || receipt
+            .finding_counts
+            .values()
+            .any(|count| *count > 1_000_000)
         || !digest(&receipt.findings_digest)
         || !identifier(&receipt.engine_revision, 256)
         || !adapter_reference(&receipt.receipt_ref)
@@ -751,8 +795,11 @@ fn dlp_receipt_blocks(receipt: &EnterpriseDlpReceipt) -> bool {
             *count > 0
                 && matches!(
                     kind.as_str(),
-                    "SECRET" | "INDUSTRIAL_SENSITIVE" | "ENCODED_PAYLOAD"
-                        | "COMPRESSED_PAYLOAD" | "UNKNOWN"
+                    "SECRET"
+                        | "INDUSTRIAL_SENSITIVE"
+                        | "ENCODED_PAYLOAD"
+                        | "COMPRESSED_PAYLOAD"
+                        | "UNKNOWN"
                 )
         })
 }
@@ -781,7 +828,11 @@ fn validate_object_receipt(
         || receipt.transform_receipt_digest != request.transform_receipt_digest
         || receipt.cross_domain_grant_id != request.cross_domain_grant_id
         || receipt.cross_domain_approval_id
-            != request.policy_request.cross_domain_approval_id.as_ref().map(|value| value.0.clone())
+            != request
+                .policy_request
+                .cross_domain_approval_id
+                .as_ref()
+                .map(|value| value.0.clone())
         || !receipt.worm_required
         || !receipt.receipt_ref.starts_with("object://")
         || !adapter_reference(&receipt.receipt_ref)

@@ -186,10 +186,7 @@ impl ModelTokenAuthorizer {
     }
 }
 
-pub fn router(
-    authority: ModelExecutionAuthority,
-    tokens: Arc<ModelTokenAuthorizer>,
-) -> Router {
+pub fn router(authority: ModelExecutionAuthority, tokens: Arc<ModelTokenAuthorizer>) -> Router {
     Router::new()
         .route("/ready", get(data_ready))
         .route("/v1/models/generate", post(generate))
@@ -314,12 +311,9 @@ async fn authoritative_executions(
 ) -> Result<Json<AuthoritativeModelExecutionsPage>, ApiError> {
     let query = parse_execution_list_query(&uri)?;
     let tenant = exact_tenant(&headers, query.tenant_id)?;
-    let _subject = state.tokens.authorize(
-        &peer,
-        &tenant.0,
-        EXECUTIONS_READ_SCOPE,
-        &headers,
-    )?;
+    let _subject = state
+        .tokens
+        .authorize(&peer, &tenant.0, EXECUTIONS_READ_SCOPE, &headers)?;
     let _trace_id = required_header(&headers, "x-agenttrust-trace-id")?;
     Ok(Json(state.authority.list_executions(query).await?))
 }
@@ -334,15 +328,24 @@ fn parse_execution_list_query(uri: &Uri) -> Result<ModelExecutionListQuery, Auth
         if value.is_empty()
             || value.len() > 512
             || value.bytes().any(|byte| byte.is_ascii_control())
-            || fields.insert(key.into_owned(), value.into_owned()).is_some()
+            || fields
+                .insert(key.into_owned(), value.into_owned())
+                .is_some()
         {
             return Err(AuthorityError::RequestInvalid);
         }
     }
-    if fields
-        .keys()
-        .any(|key| !matches!(key.as_str(), "tenant_id" | "state" | "operation" | "limit" | "cursor_created_at" | "cursor_request_id"))
-    {
+    if fields.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "tenant_id"
+                | "state"
+                | "operation"
+                | "limit"
+                | "cursor_created_at"
+                | "cursor_request_id"
+        )
+    }) {
         return Err(AuthorityError::RequestInvalid);
     }
     let tenant_raw = fields
@@ -354,7 +357,10 @@ fn parse_execution_list_query(uri: &Uri) -> Result<ModelExecutionListQuery, Auth
     }
     let state = fields.remove("state");
     if state.as_deref().is_some_and(|value| {
-        !matches!(value, "PREPARED" | "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN")
+        !matches!(
+            value,
+            "PREPARED" | "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN"
+        )
     }) {
         return Err(AuthorityError::RequestInvalid);
     }
@@ -437,17 +443,10 @@ fn binding_from_headers(
         tenant_id,
         action_hash: required_header(headers, "x-agenttrust-action-hash")?.into(),
         authorization_id: uuid_header(headers, "x-agenttrust-authorization-id")?,
-        authorization_digest: required_header(
-            headers,
-            "x-agenttrust-authorization-digest",
-        )?
-        .into(),
+        authorization_digest: required_header(headers, "x-agenttrust-authorization-digest")?.into(),
         policy_decision_id: required_header(headers, "x-agenttrust-policy-decision-id")?.into(),
-        policy_decision_digest: required_header(
-            headers,
-            "x-agenttrust-policy-decision-digest",
-        )?
-        .into(),
+        policy_decision_digest: required_header(headers, "x-agenttrust-policy-decision-digest")?
+            .into(),
         authorization_evidence_ref: required_header(
             headers,
             "x-agenttrust-authorization-evidence-ref",
@@ -460,11 +459,7 @@ fn binding_from_headers(
         .into(),
         ledger_execution_id: uuid_header(headers, "x-agenttrust-ledger-execution-id")?,
         ledger_event_id: uuid_header(headers, "x-agenttrust-ledger-entry-id")?,
-        ledger_event_digest: required_header(
-            headers,
-            "x-agenttrust-ledger-entry-digest",
-        )?
-        .into(),
+        ledger_event_digest: required_header(headers, "x-agenttrust-ledger-entry-digest")?.into(),
         fence_digest: required_header(headers, "x-agenttrust-fence-digest")?.into(),
         resource_version: required_header(headers, "x-agenttrust-resource-version")?.into(),
         idempotency_key: required_header(headers, "idempotency-key")?.into(),
@@ -503,9 +498,7 @@ pub async fn serve(
     let management = Router::new()
         .route(
             "/live",
-            get(|| async {
-                Json(json!({"schema_version": READINESS_SCHEMA, "live": true}))
-            }),
+            get(|| async { Json(json!({"schema_version": READINESS_SCHEMA, "live": true})) }),
         )
         .route(
             "/ready",
@@ -600,9 +593,8 @@ fn build_server_tls(
     certificate_file: &Path,
     private_key_file: &Path,
 ) -> Result<RustlsConfig, AuthorityError> {
-    let mut ca_reader = BufReader::new(
-        File::open(ca_file).map_err(|_| AuthorityError::ConfigurationInvalid)?,
-    );
+    let mut ca_reader =
+        BufReader::new(File::open(ca_file).map_err(|_| AuthorityError::ConfigurationInvalid)?);
     let ca_certificates = rustls_pemfile::certs(&mut ca_reader)
         .collect::<Result<Vec<CertificateDer<'static>>, _>>()
         .map_err(|_| AuthorityError::ConfigurationInvalid)?;
@@ -658,8 +650,9 @@ impl IntoResponse for ApiError {
             | AuthorityError::ProviderDenied
             | AuthorityError::StateConflict
             | AuthorityError::ProviderOutcomeUnknown => StatusCode::CONFLICT,
-            AuthorityError::DependencyUnavailable
-            | AuthorityError::ConfigurationInvalid => StatusCode::SERVICE_UNAVAILABLE,
+            AuthorityError::DependencyUnavailable | AuthorityError::ConfigurationInvalid => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
         };
         (
             status,
@@ -720,8 +713,8 @@ fn strict_json<T: DeserializeOwned>(raw: &[u8], maximum: usize) -> Result<T, Aut
 }
 
 pub fn validate_private_file(path: &Path, maximum: u64) -> Result<(), AuthorityError> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| AuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| AuthorityError::ConfigurationInvalid)?;
     if !path.is_absolute()
         || !metadata.file_type().is_file()
         || metadata.file_type().is_symlink()
@@ -736,8 +729,8 @@ pub fn validate_private_file(path: &Path, maximum: u64) -> Result<(), AuthorityE
 }
 
 fn validate_public_file(path: &Path, maximum: u64) -> Result<(), AuthorityError> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| AuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| AuthorityError::ConfigurationInvalid)?;
     if !path.is_absolute()
         || !metadata.file_type().is_file()
         || metadata.file_type().is_symlink()
@@ -920,16 +913,22 @@ mod server_tests {
     #[test]
     fn authoritative_query_is_tenant_bound_and_rejects_ambiguous_pagination() {
         let valid: Result<Uri, _> = "/v1/authoritative/models/executions?tenant_id=00000000-0000-4000-8000-000000000001&limit=50&state=SUCCEEDED".parse();
-        assert!(valid
-            .as_ref()
-            .is_ok_and(|uri| parse_execution_list_query(uri).is_ok()));
+        assert!(
+            valid
+                .as_ref()
+                .is_ok_and(|uri| parse_execution_list_query(uri).is_ok())
+        );
         let duplicate: Result<Uri, _> = "/v1/authoritative/models/executions?tenant_id=00000000-0000-4000-8000-000000000001&limit=5&limit=10".parse();
-        assert!(duplicate
-            .as_ref()
-            .is_ok_and(|uri| parse_execution_list_query(uri).is_err()));
+        assert!(
+            duplicate
+                .as_ref()
+                .is_ok_and(|uri| parse_execution_list_query(uri).is_err())
+        );
         let partial_cursor: Result<Uri, _> = "/v1/authoritative/models/executions?tenant_id=00000000-0000-4000-8000-000000000001&cursor_request_id=00000000-0000-4000-8000-000000000002".parse();
-        assert!(partial_cursor
-            .as_ref()
-            .is_ok_and(|uri| parse_execution_list_query(uri).is_err()));
+        assert!(
+            partial_cursor
+                .as_ref()
+                .is_ok_and(|uri| parse_execution_list_query(uri).is_err())
+        );
     }
 }

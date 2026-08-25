@@ -1000,7 +1000,9 @@ mod tests {
         assert!(valid_approval_resource_version(&"😀".repeat(512)));
         assert!(!valid_approval_resource_version(&"😀".repeat(513)));
         assert!(!valid_approval_resource_version("version\none"));
-        assert!(fresh_human_principal_key_status(HumanPrincipalKeyStatus::Active));
+        assert!(fresh_human_principal_key_status(
+            HumanPrincipalKeyStatus::Active
+        ));
         assert!(!fresh_human_principal_key_status(
             HumanPrincipalKeyStatus::VerifyOnly
         ));

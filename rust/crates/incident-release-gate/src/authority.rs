@@ -12,8 +12,8 @@ use agent_trust_action_ir::{
 use agent_trust_contracts::{
     ActionId, AgentIdentity, AgentInstanceId, CONTRACT_SCHEMA_VERSION, DataClassification,
     DataContext, ExecutionEnvironment, ExpectedOutcome, Intent, ResourceSelector, RiskContext,
-    RiskLevel, SchemaVersion, StepId, TaskId, TenantId, ToolId, ToolRef,
-    ToolVersion, VerifiedHumanPrincipal,
+    RiskLevel, SchemaVersion, StepId, TaskId, TenantId, ToolId, ToolRef, ToolVersion,
+    VerifiedHumanPrincipal,
 };
 use agent_trust_gateway::{
     GATEWAY_SCHEMA_VERSION, IdentityContext, InboundEnvelope, IngressProtocol, TenantContext,
@@ -37,10 +37,8 @@ pub const INCIDENT_EXECUTOR_REQUEST_SCHEMA: &str = "agenttrust.incident-executor
 pub const INCIDENT_ACTION_RECEIPT_SCHEMA: &str = "agenttrust.incident-action-receipt.v1";
 pub const INCIDENT_MUTATION_RESULT_SCHEMA: &str = "agenttrust.incident-mutation-result.v1";
 pub const INCIDENT_AUTHORITY_READINESS_SCHEMA: &str = "agenttrust.incident-release-readiness.v1";
-pub const AUTHORITATIVE_INCIDENT_PAGE_SCHEMA: &str =
-    "agenttrust.authoritative-incident-page.v1";
-pub const RELEASE_GATE_ENGINE_RECEIPT_SCHEMA: &str =
-    "agenttrust.release-gate-engine-receipt.v1";
+pub const AUTHORITATIVE_INCIDENT_PAGE_SCHEMA: &str = "agenttrust.authoritative-incident-page.v1";
+pub const RELEASE_GATE_ENGINE_RECEIPT_SCHEMA: &str = "agenttrust.release-gate-engine-receipt.v1";
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum IncidentAuthorityError {
@@ -110,24 +108,40 @@ impl IncidentAuthorityOperation {
     fn required_role(self) -> &'static str {
         match self {
             Self::Detect => "incident-detector",
-            Self::Triage | Self::Investigate | Self::PreserveEvidence | Self::PlanReplay
+            Self::Triage
+            | Self::Investigate
+            | Self::PreserveEvidence
+            | Self::PlanReplay
             | Self::CompleteReplay => "incident-responder",
-            Self::Contain | Self::PublishRootCause | Self::BeginRemediation
-            | Self::TriggerRecertification | Self::Close => "incident-commander",
-            Self::EvaluateRelease | Self::StartCanary | Self::RecordCanary
+            Self::Contain
+            | Self::PublishRootCause
+            | Self::BeginRemediation
+            | Self::TriggerRecertification
+            | Self::Close => "incident-commander",
+            Self::EvaluateRelease
+            | Self::StartCanary
+            | Self::RecordCanary
             | Self::RollbackRelease => "release-manager",
         }
     }
 
     fn risk(self) -> RiskLevel {
         match self {
-            Self::Detect | Self::Triage | Self::Investigate | Self::PreserveEvidence
+            Self::Detect
+            | Self::Triage
+            | Self::Investigate
+            | Self::PreserveEvidence
             | Self::PlanReplay => RiskLevel::High,
-            Self::Contain | Self::CompleteReplay | Self::PublishRootCause
-            | Self::BeginRemediation | Self::TriggerRecertification | Self::EvaluateRelease
-            | Self::StartCanary | Self::RecordCanary | Self::RollbackRelease | Self::Close => {
-                RiskLevel::Critical
-            }
+            Self::Contain
+            | Self::CompleteReplay
+            | Self::PublishRootCause
+            | Self::BeginRemediation
+            | Self::TriggerRecertification
+            | Self::EvaluateRelease
+            | Self::StartCanary
+            | Self::RecordCanary
+            | Self::RollbackRelease
+            | Self::Close => RiskLevel::Critical,
         }
     }
 
@@ -325,8 +339,7 @@ impl AuthorityPrincipal {
             roles: value.roles.clone(),
             approval_ids: value.approval_ids.clone(),
             assertion_jti: Some(
-                Uuid::parse_str(&value.jti)
-                    .map_err(|_| IncidentAuthorityError::PrincipalDenied)?,
+                Uuid::parse_str(&value.jti).map_err(|_| IncidentAuthorityError::PrincipalDenied)?,
             ),
             assertion_digest: Some(value.assertion_digest.clone()),
             assertion_expires_at: Some(value.expires_at),
@@ -500,10 +513,8 @@ fn validate_command(
         || request.tenant_id.to_string() != principal.tenant_id.0
         || request.command_id.is_nil()
         || request.task_id.is_nil()
-        || request.operation.is_release()
-            && !release_resource_identifier(&request.resource_id)
-        || !request.operation.is_release()
-            && !incident_resource_identifier(&request.resource_id)
+        || request.operation.is_release() && !release_resource_identifier(&request.resource_id)
+        || !request.operation.is_release() && !incident_resource_identifier(&request.resource_id)
         || !principal.roles.contains(request.operation.required_role())
         || !digest(request_digest)
         || !valid_idempotency_key(idempotency_key)
@@ -527,10 +538,22 @@ fn payload_shape(request: &IncidentCommandRequest, approvals: &BTreeSet<String>)
         IncidentAuthorityOperation::Detect => {
             exact_keys(
                 payload,
-                &["incident_id", "detection_id", "severity", "owner", "scope", "safe_summary", "evidence_refs", "auto_contain"],
+                &[
+                    "incident_id",
+                    "detection_id",
+                    "severity",
+                    "owner",
+                    "scope",
+                    "safe_summary",
+                    "evidence_refs",
+                    "auto_contain",
+                ],
             ) && uuid_field(payload, "incident_id")
                 && identifier_field(payload, "detection_id", 256)
-                && matches!(string_field(payload, "severity"), Some("P0" | "P1" | "P2" | "P3"))
+                && matches!(
+                    string_field(payload, "severity"),
+                    Some("P0" | "P1" | "P2" | "P3")
+                )
                 && identifier_field(payload, "owner", 256)
                 && string_array(payload, "scope", 1, 256, resource_identifier)
                 && string_array(payload, "evidence_refs", 1, 256, evidence_reference)
@@ -541,7 +564,10 @@ fn payload_shape(request: &IncidentCommandRequest, approvals: &BTreeSet<String>)
         IncidentAuthorityOperation::Triage => {
             exact_keys(payload, &["owner", "severity", "reason_code"])
                 && identifier_field(payload, "owner", 256)
-                && matches!(string_field(payload, "severity"), Some("P0" | "P1" | "P2" | "P3"))
+                && matches!(
+                    string_field(payload, "severity"),
+                    Some("P0" | "P1" | "P2" | "P3")
+                )
                 && identifier_field(payload, "reason_code", 128)
         }
         IncidentAuthorityOperation::Contain => {
@@ -550,57 +576,104 @@ fn payload_shape(request: &IncidentCommandRequest, approvals: &BTreeSet<String>)
                 && containment_targets(payload.get("targets"))
                 && approval_or_break_glass(approvals, payload.get("break_glass"))
         }
-        IncidentAuthorityOperation::Investigate
-        | IncidentAuthorityOperation::BeginRemediation => {
-            exact_keys(payload, &["reason_code"])
-                && identifier_field(payload, "reason_code", 128)
+        IncidentAuthorityOperation::Investigate | IncidentAuthorityOperation::BeginRemediation => {
+            exact_keys(payload, &["reason_code"]) && identifier_field(payload, "reason_code", 128)
         }
         IncidentAuthorityOperation::PreserveEvidence => {
-            exact_keys(payload, &["chain_head_digest", "snapshot_digest", "process_digest", "network_digest", "configuration_digest", "version_digest", "legal_hold_id"])
-                && ["chain_head_digest", "snapshot_digest", "process_digest", "network_digest", "configuration_digest", "version_digest"]
-                    .iter().all(|name| digest_field(payload, name))
+            exact_keys(
+                payload,
+                &[
+                    "chain_head_digest",
+                    "snapshot_digest",
+                    "process_digest",
+                    "network_digest",
+                    "configuration_digest",
+                    "version_digest",
+                    "legal_hold_id",
+                ],
+            ) && [
+                "chain_head_digest",
+                "snapshot_digest",
+                "process_digest",
+                "network_digest",
+                "configuration_digest",
+                "version_digest",
+            ]
+            .iter()
+            .all(|name| digest_field(payload, name))
                 && identifier_field(payload, "legal_hold_id", 256)
         }
         IncidentAuthorityOperation::PlanReplay => replay_plan_shape(payload, approvals),
         IncidentAuthorityOperation::CompleteReplay => replay_result_shape(payload, approvals),
         IncidentAuthorityOperation::PublishRootCause => root_cause_shape(payload),
         IncidentAuthorityOperation::TriggerRecertification => {
-            exact_keys(payload, &["root_cause_digest", "release_digest", "campaigns"])
-                && digest_field(payload, "root_cause_digest")
+            exact_keys(
+                payload,
+                &["root_cause_digest", "release_digest", "campaigns"],
+            ) && digest_field(payload, "root_cause_digest")
                 && digest_field(payload, "release_digest")
                 && string_array(payload, "campaigns", 1, 64, |value| identifier(value, 128))
                 && !approvals.is_empty()
         }
         IncidentAuthorityOperation::EvaluateRelease => release_gate_shape(payload, approvals),
         IncidentAuthorityOperation::StartCanary => {
-            exact_keys(payload, &["certificate_id", "release_digest", "canary_plan_digest", "percentage"])
-                && uuid_field(payload, "certificate_id")
+            exact_keys(
+                payload,
+                &[
+                    "certificate_id",
+                    "release_digest",
+                    "canary_plan_digest",
+                    "percentage",
+                ],
+            ) && uuid_field(payload, "certificate_id")
                 && digest_field(payload, "release_digest")
                 && digest_field(payload, "canary_plan_digest")
-                && payload.get("percentage").and_then(Value::as_u64).is_some_and(|value| (1..=10).contains(&value))
+                && payload
+                    .get("percentage")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|value| (1..=10).contains(&value))
                 && approvals.len() >= 2
         }
         IncidentAuthorityOperation::RecordCanary => {
-            exact_keys(payload, &["certificate_id", "release_digest", "metrics_digest", "passed", "rollback_required"])
-                && uuid_field(payload, "certificate_id")
+            exact_keys(
+                payload,
+                &[
+                    "certificate_id",
+                    "release_digest",
+                    "metrics_digest",
+                    "passed",
+                    "rollback_required",
+                ],
+            ) && uuid_field(payload, "certificate_id")
                 && digest_field(payload, "release_digest")
                 && digest_field(payload, "metrics_digest")
                 && payload.get("passed").and_then(Value::as_bool).is_some()
-                && payload.get("rollback_required").and_then(Value::as_bool).is_some()
+                && payload
+                    .get("rollback_required")
+                    .and_then(Value::as_bool)
+                    .is_some()
                 && (payload.get("passed").and_then(Value::as_bool) == Some(true)
                     || payload.get("rollback_required").and_then(Value::as_bool) == Some(true))
                 && approvals.len() >= 2
         }
         IncidentAuthorityOperation::RollbackRelease => {
-            exact_keys(payload, &["release_digest", "target_release_digest", "reason_digest"])
-                && digest_field(payload, "release_digest")
+            exact_keys(
+                payload,
+                &["release_digest", "target_release_digest", "reason_digest"],
+            ) && digest_field(payload, "release_digest")
                 && digest_field(payload, "target_release_digest")
                 && digest_field(payload, "reason_digest")
                 && approvals.len() >= 2
         }
         IncidentAuthorityOperation::Close => {
-            exact_keys(payload, &["root_cause_digest", "recertification_evidence_ref", "recertification_evidence_digest"])
-                && digest_field(payload, "root_cause_digest")
+            exact_keys(
+                payload,
+                &[
+                    "root_cause_digest",
+                    "recertification_evidence_ref",
+                    "recertification_evidence_digest",
+                ],
+            ) && digest_field(payload, "root_cause_digest")
                 && evidence_reference_field(payload, "recertification_evidence_ref")
                 && digest_field(payload, "recertification_evidence_digest")
                 && !approvals.is_empty()
@@ -673,7 +746,11 @@ fn canonical_incident_action(
             goal_hash: canonical_digest(request)?,
             operation: operation.clone(),
             justification_code: "INCIDENT_RELEASE_GOVERNANCE".into(),
-            safe_summary: Some(format!("{} {}", request.operation.as_str(), request.resource_id)),
+            safe_summary: Some(format!(
+                "{} {}",
+                request.operation.as_str(),
+                request.resource_id
+            )),
         },
         tool: ToolRef {
             tool_id: config.tool_id.clone(),
@@ -695,8 +772,16 @@ fn canonical_incident_action(
             deployment: "production".into(),
             region: config.region.clone(),
             zone: None,
-            simulation: matches!(request.operation, IncidentAuthorityOperation::PlanReplay | IncidentAuthorityOperation::CompleteReplay)
-                && string_field(request.payload.as_object().ok_or(IncidentAuthorityError::RequestInvalid)?, "mode") != Some("LIVE"),
+            simulation: matches!(
+                request.operation,
+                IncidentAuthorityOperation::PlanReplay | IncidentAuthorityOperation::CompleteReplay
+            ) && string_field(
+                request
+                    .payload
+                    .as_object()
+                    .ok_or(IncidentAuthorityError::RequestInvalid)?,
+                "mode",
+            ) != Some("LIVE"),
         },
         current_state_version: Some(request.expected_resource_version.to_string()),
         risk: RiskContext {
@@ -727,11 +812,11 @@ fn canonical_incident_action(
     normalization
         .payload_types
         .register("incident.release.mutation.v1", "1");
-    let action = normalize(draft, &normalization)
-        .map_err(|_| IncidentAuthorityError::RequestInvalid)?;
+    let action =
+        normalize(draft, &normalization).map_err(|_| IncidentAuthorityError::RequestInvalid)?;
     action_hash(&action).map_err(|_| IncidentAuthorityError::RequestInvalid)?;
-    let payload = serde_json::to_vec(&action)
-        .map_err(|_| IncidentAuthorityError::RequestInvalid)?;
+    let payload =
+        serde_json::to_vec(&action).map_err(|_| IncidentAuthorityError::RequestInvalid)?;
     Ok(InboundEnvelope {
         request_id: Uuid::new_v4().to_string(),
         trace_context: TraceContext {
@@ -828,8 +913,8 @@ impl PostgresIncidentAuthorityStore {
     ) -> Result<PreparedIngress, IncidentAuthorityError> {
         envelope.idempotency_key = Some(idempotency_key.to_string());
         let tenant = request.tenant_id;
-        let envelope_value = serde_json::to_value(&envelope)
-            .map_err(|_| IncidentAuthorityError::RequestInvalid)?;
+        let envelope_value =
+            serde_json::to_value(&envelope).map_err(|_| IncidentAuthorityError::RequestInvalid)?;
         let mut tx = self.begin_tenant(&principal.tenant_id).await?;
         if let (Some(jti), Some(assertion_digest), Some(expires_at)) = (
             principal.assertion_jti,
@@ -1295,13 +1380,13 @@ fn replay_plan_shape(payload: &Map<String, Value>, approvals: &BTreeSet<String>)
             string_field(payload, "credential_profile")
                 .is_some_and(|value| value != "test-only" && identifier(value, 128))
                 && optional_uuid_field(payload, "fresh_lease_id")
-                .ok()
-                .flatten()
-                .is_some()
+                    .ok()
+                    .flatten()
+                    .is_some()
                 && string_field(payload, "fresh_lease_digest").is_some_and(digest)
-                && parse_time_field(payload, "authorization_lease_expires_at").is_ok_and(
-                    |value| value > Utc::now() && value <= Utc::now() + Duration::hours(1),
-                )
+                && parse_time_field(payload, "authorization_lease_expires_at").is_ok_and(|value| {
+                    value > Utc::now() && value <= Utc::now() + Duration::hours(1)
+                })
                 && string_array(payload, "resource_refs", 1, 256, resource_identifier)
                 && approvals.len() >= 2
         }
@@ -1335,13 +1420,7 @@ fn containment_targets(value: Option<&Value>) -> bool {
     ) && value.get("kill_task").and_then(Value::as_bool) == Some(true)
         && value.get("revoke_credentials").and_then(Value::as_bool) == Some(true)
         && value.get("freeze_artifacts").and_then(Value::as_bool) == Some(true)
-        && string_array(
-            value,
-            "isolate_integrations",
-            1,
-            256,
-            resource_identifier,
-        )
+        && string_array(value, "isolate_integrations", 1, 256, resource_identifier)
 }
 
 fn approval_or_break_glass(approvals: &BTreeSet<String>, value: Option<&Value>) -> bool {
@@ -1506,13 +1585,9 @@ fn release_gate_shape(payload: &Map<String, Value>, approvals: &BTreeSet<String>
     ) || !identifier_field(definition, "gate_id", 128)
         || !identifier_field(definition, "version", 64)
         || !digest_field(definition, "definition_digest")
-        || !string_array(
-            definition,
-            "required_controls",
-            10,
-            128,
-            |value| identifier(value, 128),
-        )
+        || !string_array(definition, "required_controls", 10, 128, |value| {
+            identifier(value, 128)
+        })
     {
         return false;
     }
@@ -1618,9 +1693,7 @@ fn safe_summary(value: &Map<String, Value>) -> bool {
         .get("safe_summary")
         .and_then(Value::as_str)
         .is_some_and(|value| {
-            !value.is_empty()
-                && value.len() <= 512
-                && !value.contains(['\0', '\r', '\n'])
+            !value.is_empty() && value.len() <= 512 && !value.contains(['\0', '\r', '\n'])
         })
 }
 
@@ -1750,8 +1823,7 @@ fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'.' | b'_' | b':' | b'/' | b'@' | b'-')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'@' | b'-')
         })
 }
 
@@ -1760,9 +1832,7 @@ fn resource_identifier(value: &str) -> bool {
 }
 
 fn incident_resource_identifier(value: &str) -> bool {
-    value
-        .strip_prefix("incident:")
-        .is_some_and(canonical_uuid)
+    value.strip_prefix("incident:").is_some_and(canonical_uuid)
 }
 
 fn release_resource_identifier(value: &str) -> bool {
@@ -1892,14 +1962,8 @@ async fn apply_operation(
 ) -> Result<(String, Option<ReleaseGateEngineReceipt>), IncidentAuthorityError> {
     let command = &request.command;
     if command.operation.is_release() {
-        let state = apply_release_operation(
-            tx,
-            tenant,
-            request,
-            binding,
-            release_receipt.as_ref(),
-        )
-        .await?;
+        let state =
+            apply_release_operation(tx, tenant, request, binding, release_receipt.as_ref()).await?;
         return Ok((state, release_receipt));
     }
     let incident_id = incident_uuid(&command.resource_id)?;
@@ -1983,7 +2047,10 @@ async fn apply_operation(
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            ("CONTAINED".into(), "ANOMALY_DETECTED_AND_AUTOMATICALLY_CONTAINED".into())
+            (
+                "CONTAINED".into(),
+                "ANOMALY_DETECTED_AND_AUTOMATICALLY_CONTAINED".into(),
+            )
         }
         IncidentAuthorityOperation::Triage => {
             require_state(from_status.as_deref(), &["DETECTED"])?;
@@ -1997,7 +2064,10 @@ async fn apply_operation(
                 next_version,
             )
             .await?;
-            ("TRIAGED".into(), required_string(payload, "reason_code")?.into())
+            (
+                "TRIAGED".into(),
+                required_string(payload, "reason_code")?.into(),
+            )
         }
         IncidentAuthorityOperation::Contain => {
             require_state(from_status.as_deref(), &["DETECTED", "TRIAGED"])?;
@@ -2028,13 +2098,37 @@ async fn apply_operation(
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            update_incident(tx, tenant, incident_id, "CONTAINED", None, None, next_version).await?;
-            ("CONTAINED".into(), required_string(payload, "reason_code")?.into())
+            update_incident(
+                tx,
+                tenant,
+                incident_id,
+                "CONTAINED",
+                None,
+                None,
+                next_version,
+            )
+            .await?;
+            (
+                "CONTAINED".into(),
+                required_string(payload, "reason_code")?.into(),
+            )
         }
         IncidentAuthorityOperation::Investigate => {
             require_state(from_status.as_deref(), &["CONTAINED"])?;
-            update_incident(tx, tenant, incident_id, "INVESTIGATING", None, None, next_version).await?;
-            ("INVESTIGATING".into(), required_string(payload, "reason_code")?.into())
+            update_incident(
+                tx,
+                tenant,
+                incident_id,
+                "INVESTIGATING",
+                None,
+                None,
+                next_version,
+            )
+            .await?;
+            (
+                "INVESTIGATING".into(),
+                required_string(payload, "reason_code")?.into(),
+            )
         }
         IncidentAuthorityOperation::PreserveEvidence => {
             require_state(
@@ -2065,7 +2159,10 @@ async fn apply_operation(
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            (from_status.unwrap_or_else(|| "UNKNOWN".into()), "EVIDENCE_PRESERVED".into())
+            (
+                from_status.unwrap_or_else(|| "UNKNOWN".into()),
+                "EVIDENCE_PRESERVED".into(),
+            )
         }
         IncidentAuthorityOperation::PlanReplay => {
             require_state(from_status.as_deref(), &["INVESTIGATING", "REMEDIATING"])?;
@@ -2085,19 +2182,33 @@ async fn apply_operation(
             .bind(required_string(payload, "source_snapshot_digest")?)
             .bind(required_string(payload, "expected_result_digest")?)
             .bind(&plan_digest)
-            .bind(payload.get("resource_refs").cloned().unwrap_or(Value::Array(vec![])))
+            .bind(
+                payload
+                    .get("resource_refs")
+                    .cloned()
+                    .unwrap_or(Value::Array(vec![])),
+            )
             .bind(payload.get("credential_profile").and_then(Value::as_str))
             .bind(optional_uuid_field(payload, "fresh_lease_id")?)
             .bind(payload.get("fresh_lease_digest").and_then(Value::as_str))
-            .bind(serde_json::to_value(&request.approval_ids).map_err(|_| IncidentAuthorityError::RequestInvalid)?)
+            .bind(
+                serde_json::to_value(&request.approval_ids)
+                    .map_err(|_| IncidentAuthorityError::RequestInvalid)?,
+            )
             .bind(&request.actor_subject)
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            (from_status.unwrap_or_else(|| "UNKNOWN".into()), "REPLAY_PLANNED".into())
+            (
+                from_status.unwrap_or_else(|| "UNKNOWN".into()),
+                "REPLAY_PLANNED".into(),
+            )
         }
         IncidentAuthorityOperation::CompleteReplay => {
-            require_state(from_status.as_deref(), &["INVESTIGATING", "REMEDIATING", "RECERTIFYING"])?;
+            require_state(
+                from_status.as_deref(),
+                &["INVESTIGATING", "REMEDIATING", "RECERTIFYING"],
+            )?;
             let receipt = effect.ok_or(IncidentAuthorityError::DependencyUnavailable)?;
             let replay_id = parse_uuid_field(payload, "replay_id")?;
             let plan = sqlx::query(
@@ -2137,7 +2248,10 @@ async fn apply_operation(
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            (from_status.unwrap_or_else(|| "UNKNOWN".into()), "REPLAY_COMPLETED".into())
+            (
+                from_status.unwrap_or_else(|| "UNKNOWN".into()),
+                "REPLAY_COMPLETED".into(),
+            )
         }
         IncidentAuthorityOperation::PublishRootCause => {
             require_state(from_status.as_deref(), &["INVESTIGATING"])?;
@@ -2161,13 +2275,34 @@ async fn apply_operation(
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            update_incident(tx, tenant, incident_id, "REMEDIATING", None, None, next_version).await?;
+            update_incident(
+                tx,
+                tenant,
+                incident_id,
+                "REMEDIATING",
+                None,
+                None,
+                next_version,
+            )
+            .await?;
             ("REMEDIATING".into(), "ROOT_CAUSE_PUBLISHED".into())
         }
         IncidentAuthorityOperation::BeginRemediation => {
             require_state(from_status.as_deref(), &["INVESTIGATING", "REMEDIATING"])?;
-            update_incident(tx, tenant, incident_id, "REMEDIATING", None, None, next_version).await?;
-            ("REMEDIATING".into(), required_string(payload, "reason_code")?.into())
+            update_incident(
+                tx,
+                tenant,
+                incident_id,
+                "REMEDIATING",
+                None,
+                None,
+                next_version,
+            )
+            .await?;
+            (
+                "REMEDIATING".into(),
+                required_string(payload, "reason_code")?.into(),
+            )
         }
         IncidentAuthorityOperation::TriggerRecertification => {
             require_state(from_status.as_deref(), &["REMEDIATING"])?;
@@ -2191,7 +2326,16 @@ async fn apply_operation(
             .execute(&mut **tx)
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
-            update_incident(tx, tenant, incident_id, "RECERTIFYING", None, None, next_version).await?;
+            update_incident(
+                tx,
+                tenant,
+                incident_id,
+                "RECERTIFYING",
+                None,
+                None,
+                next_version,
+            )
+            .await?;
             ("RECERTIFYING".into(), "RECERTIFICATION_REQUESTED".into())
         }
         IncidentAuthorityOperation::Close => {
@@ -2220,16 +2364,7 @@ async fn apply_operation(
             | IncidentAuthorityOperation::PlanReplay
             | IncidentAuthorityOperation::CompleteReplay
     ) {
-        update_incident(
-            tx,
-            tenant,
-            incident_id,
-            &state,
-            None,
-            None,
-            next_version,
-        )
-        .await?;
+        update_incident(tx, tenant, incident_id, &state, None, None, next_version).await?;
     }
     append_timeline(
         tx,
@@ -2313,7 +2448,10 @@ async fn apply_release_operation(
             .bind(tenant)
             .bind(receipt.certificate_id)
             .bind(&request.command.resource_id)
-            .bind(serde_json::to_value(receipt).map_err(|_| IncidentAuthorityError::RequestInvalid)?)
+            .bind(
+                serde_json::to_value(receipt)
+                    .map_err(|_| IncidentAuthorityError::RequestInvalid)?,
+            )
             .bind(canonical_digest(receipt)?)
             .bind(&receipt.key_id)
             .bind(receipt.valid_from)
@@ -2324,28 +2462,64 @@ async fn apply_release_operation(
             Ok("GATE_PASSED".into())
         }
         IncidentAuthorityOperation::StartCanary => {
-            require_release_certificate_binding(tx, tenant, &request.command.resource_id, payload, true)
-                .await?;
-            update_release_state(tx, tenant, &request.command.resource_id, "GATE_PASSED", "CANARY_RUNNING").await?;
+            require_release_certificate_binding(
+                tx,
+                tenant,
+                &request.command.resource_id,
+                payload,
+                true,
+            )
+            .await?;
+            update_release_state(
+                tx,
+                tenant,
+                &request.command.resource_id,
+                "GATE_PASSED",
+                "CANARY_RUNNING",
+            )
+            .await?;
             append_canary_event(tx, tenant, request, binding, "CANARY_STARTED").await?;
             Ok("CANARY_RUNNING".into())
         }
         IncidentAuthorityOperation::RecordCanary => {
-            require_release_certificate_binding(tx, tenant, &request.command.resource_id, payload, false)
-                .await?;
+            require_release_certificate_binding(
+                tx,
+                tenant,
+                &request.command.resource_id,
+                payload,
+                false,
+            )
+            .await?;
             let passed = payload.get("passed").and_then(Value::as_bool) == Some(true);
-            let state = if passed { "CANARY_PASSED" } else { "ROLLBACK_REQUIRED" };
-            update_release_state(tx, tenant, &request.command.resource_id, "CANARY_RUNNING", state).await?;
+            let state = if passed {
+                "CANARY_PASSED"
+            } else {
+                "ROLLBACK_REQUIRED"
+            };
+            update_release_state(
+                tx,
+                tenant,
+                &request.command.resource_id,
+                "CANARY_RUNNING",
+                state,
+            )
+            .await?;
             append_canary_event(tx, tenant, request, binding, state).await?;
             Ok(state.into())
         }
         IncidentAuthorityOperation::RollbackRelease => {
-            require_release_digest_binding(tx, tenant, &request.command.resource_id, payload).await?;
+            require_release_digest_binding(tx, tenant, &request.command.resource_id, payload)
+                .await?;
             update_release_state_any(
                 tx,
                 tenant,
                 &request.command.resource_id,
-                &["GATE_PASSED", "CANARY_RUNNING", "CANARY_PASSED", "ROLLBACK_REQUIRED"],
+                &[
+                    "GATE_PASSED",
+                    "CANARY_RUNNING",
+                    "CANARY_PASSED",
+                    "ROLLBACK_REQUIRED",
+                ],
                 "ROLLED_BACK",
             )
             .await?;
@@ -2552,7 +2726,10 @@ async fn append_canary_event(
     .bind(&request.command.payload)
     .bind(canonical_digest(&request.command.payload)?)
     .bind(&request.actor_subject)
-    .bind(serde_json::to_value(&request.approval_ids).map_err(|_| IncidentAuthorityError::RequestInvalid)?)
+    .bind(
+        serde_json::to_value(&request.approval_ids)
+            .map_err(|_| IncidentAuthorityError::RequestInvalid)?,
+    )
     .bind(&binding.action_hash)
     .bind(binding.ledger_execution_id)
     .bind(&binding.fence_digest)
@@ -2655,13 +2832,12 @@ impl IncidentExecutor {
         };
         let effect = self.effects.execute(&binding, &request).await?;
         validate_effect(&request, &binding, effect.as_ref())?;
-        let release_receipt = if request.command.operation
-            == IncidentAuthorityOperation::EvaluateRelease
-        {
-            Some(self.issue_release_receipt(&request)?)
-        } else {
-            None
-        };
+        let release_receipt =
+            if request.command.operation == IncidentAuthorityOperation::EvaluateRelease {
+                Some(self.issue_release_receipt(&request)?)
+            } else {
+                None
+            };
         self.store
             .finalize_execution(&binding, &request, &claim, effect, release_receipt)
             .await
@@ -2693,8 +2869,8 @@ impl IncidentExecutor {
             let item = item
                 .as_object()
                 .ok_or(IncidentAuthorityError::EvidenceMissing)?;
-            let control_id = string_field(item, "control_id")
-                .ok_or(IncidentAuthorityError::EvidenceMissing)?;
+            let control_id =
+                string_field(item, "control_id").ok_or(IncidentAuthorityError::EvidenceMissing)?;
             let evidence_digest = string_field(item, "evidence_digest")
                 .ok_or(IncidentAuthorityError::EvidenceMissing)?;
             evidence_digests.insert(control_id.into(), evidence_digest.into());
@@ -2713,8 +2889,7 @@ impl IncidentExecutor {
             gate_version: required_string(definition, "version")?.into(),
             definition_digest: required_string(definition, "definition_digest")?.into(),
             evidence_digests,
-            rollback_artifact_digest: required_string(payload, "rollback_artifact_digest")?
-                .into(),
+            rollback_artifact_digest: required_string(payload, "rollback_artifact_digest")?.into(),
             canary_plan_digest: required_string(payload, "canary_plan_digest")?.into(),
             valid_from,
             valid_until,
@@ -2747,8 +2922,8 @@ impl PostgresIncidentAuthorityStore {
     ) -> Result<ExecutionClaim, IncidentAuthorityError> {
         let tenant = parse_tenant(&binding.tenant_id)?;
         let request_digest = canonical_digest(request)?;
-        let request_value = serde_json::to_value(request)
-            .map_err(|_| IncidentAuthorityError::RequestInvalid)?;
+        let request_value =
+            serde_json::to_value(request).map_err(|_| IncidentAuthorityError::RequestInvalid)?;
         let expected_version = i64::try_from(binding.resource_version)
             .map_err(|_| IncidentAuthorityError::RequestInvalid)?;
         let claim = Uuid::new_v4();
@@ -2776,8 +2951,8 @@ impl PostgresIncidentAuthorityStore {
         let action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&envelope.payload)
                 .map_err(|_| IncidentAuthorityError::PrincipalDenied)?;
-        let admitted_hash = action_hash(&action)
-            .map_err(|_| IncidentAuthorityError::PrincipalDenied)?;
+        let admitted_hash =
+            action_hash(&action).map_err(|_| IncidentAuthorityError::PrincipalDenied)?;
         let expected_action_version = request.command.expected_resource_version.to_string();
         if admitted_hash.0 != binding.action_hash
             || action.action_id.0 != request.command.command_id.to_string()
@@ -2907,7 +3082,9 @@ impl PostgresIncidentAuthorityStore {
         .await
         .map_err(|_| IncidentAuthorityError::DependencyUnavailable)?
         .unwrap_or(0);
-        if current != expected_version || request.command.expected_resource_version != binding.resource_version {
+        if current != expected_version
+            || request.command.expected_resource_version != binding.resource_version
+        {
             return Err(IncidentAuthorityError::StateConflict);
         }
         tx.commit()
@@ -3017,9 +3194,8 @@ impl PostgresIncidentAuthorityStore {
             "recorded_at": recorded_at,
         });
         let event_digest = canonical_digest(&event_payload)?;
-        let evidence_outbox_ref = format!(
-            "outbox://incident-evidence/{tenant}/{event_id}/sha256:{event_digest}"
-        );
+        let evidence_outbox_ref =
+            format!("outbox://incident-evidence/{tenant}/{event_id}/sha256:{event_digest}");
         sqlx::query(
             "INSERT INTO incident_evidence_events \
              (tenant_id,event_id,task_id,resource_id,event_type,actor_subject,payload,payload_digest,\
@@ -3081,8 +3257,8 @@ impl PostgresIncidentAuthorityStore {
                 .map_err(|_| IncidentAuthorityError::OutcomeUnknown)?,
             release_receipt,
         };
-        let result_value = serde_json::to_value(&result)
-            .map_err(|_| IncidentAuthorityError::OutcomeUnknown)?;
+        let result_value =
+            serde_json::to_value(&result).map_err(|_| IncidentAuthorityError::OutcomeUnknown)?;
         let result_digest = canonical_digest(&result)?;
         let updated = sqlx::query(
             "UPDATE incident_authority_executions SET state='SUCCEEDED',safe_result=$4,\

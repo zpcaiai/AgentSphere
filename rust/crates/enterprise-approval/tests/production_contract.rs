@@ -343,10 +343,11 @@ fn authoritative_review_facts_are_signed_exact_and_migrated_atomically() {
 
 #[test]
 fn approval_decisions_commit_an_immutable_signed_receipt_and_outbox_atomically() {
-    assert_eq!(OPENAPI.matches("x-agenttrust-max-utf8-bytes: 4096").count(), 4);
-    assert!(DECISION_REQUEST_BINDING_SCHEMA.contains(
-        "\"x-agenttrust-max-utf8-bytes\": 4096"
-    ));
+    assert_eq!(
+        OPENAPI.matches("x-agenttrust-max-utf8-bytes: 4096").count(),
+        4
+    );
+    assert!(DECISION_REQUEST_BINDING_SCHEMA.contains("\"x-agenttrust-max-utf8-bytes\": 4096"));
     assert!(APPROVAL_STORE.contains("!valid_approval_human_text(&envelope.reason)"));
     for invariant in [
         "agenttrust.approval-decision-result.v1",
@@ -365,9 +366,10 @@ fn approval_decisions_commit_an_immutable_signed_receipt_and_outbox_atomically()
         );
     }
     assert!(OPENAPI.contains("$ref: '#/components/schemas/ApprovalDecisionResult'"));
-    assert!(DECISION_EVIDENCE_SCHEMA.contains(
-        "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-    ));
+    assert!(
+        DECISION_EVIDENCE_SCHEMA
+            .contains("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+    );
     assert!(!DECISION_EVIDENCE_SCHEMA.contains("[1-5][0-9a-f]{3}"));
 
     for invariant in [
@@ -416,14 +418,16 @@ fn decision_receipt_rotation_and_delivery_are_real_fail_closed_runtime_paths() {
         "AGENT_TRUST_APPROVAL_EVIDENCE_CLIENT_PRIVATE_KEY_FILE",
         "AGENT_TRUST_APPROVAL_EVIDENCE_READINESS_SCHEMA",
     ] {
-        assert!(APPROVAL_BINARY.contains(variable), "missing startup {variable}");
+        assert!(
+            APPROVAL_BINARY.contains(variable),
+            "missing startup {variable}"
+        );
     }
-    assert!(APPROVAL_BINARY.contains(
-        "ApprovalApiState::production(store.clone(), authorizer, principal_keyring)"
-    ));
-    assert!(!APPROVAL_BINARY.contains(
-        "decision_evidence_outbox_ready(&delivery_tenants"
-    ));
+    assert!(
+        APPROVAL_BINARY
+            .contains("ApprovalApiState::production(store.clone(), authorizer, principal_keyring)")
+    );
+    assert!(!APPROVAL_BINARY.contains("decision_evidence_outbox_ready(&delivery_tenants"));
     assert!(APPROVAL_BINARY.contains("validate_certificate_identity_file("));
     for invariant in [
         "delivery_evidence_keyring",

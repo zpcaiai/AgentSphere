@@ -315,8 +315,12 @@ impl EvidenceEventKeyring {
         if document.schema_version!=EVIDENCE_KEYRING_SCHEMA||document.keys.is_empty()||document.keys.len()>1024{return Err(SupplyAuthorityError::ConfigurationInvalid);}
         let mut keys=std::collections::BTreeMap::new();
         for(key_id,encoded)in document.keys{
-            let bytes:<[u8;32]>::try_from(URL_SAFE_NO_PAD.decode(encoded).map_err(|_|SupplyAuthorityError::ConfigurationInvalid)?)
-                .map_err(|_|SupplyAuthorityError::ConfigurationInvalid)?;
+            let bytes: [u8; 32] = <[u8; 32]>::try_from(
+                URL_SAFE_NO_PAD
+                    .decode(encoded)
+                    .map_err(|_| SupplyAuthorityError::ConfigurationInvalid)?,
+            )
+            .map_err(|_| SupplyAuthorityError::ConfigurationInvalid)?;
             let key=VerifyingKey::from_bytes(&bytes).map_err(|_|SupplyAuthorityError::ConfigurationInvalid)?;
             if !identifier(&key_id,128)||keys.insert(key_id,key).is_some(){return Err(SupplyAuthorityError::ConfigurationInvalid);}
         }

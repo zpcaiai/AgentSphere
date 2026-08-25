@@ -36,11 +36,9 @@ pub const CONTEXT_ACTION_RECEIPT_SCHEMA: &str = "agenttrust.context-action-recei
 pub const CONTEXT_MUTATION_RESULT_SCHEMA: &str = "agenttrust.context-mutation-result.v1";
 pub const CONTEXT_RETRIEVAL_REQUEST_SCHEMA: &str = "agenttrust.context-retrieval-request.v1";
 pub const CONTEXT_RETRIEVAL_RESULT_SCHEMA: &str = "agenttrust.context-retrieval-result.v1";
-pub const CONTEXT_LIFECYCLE_EVIDENCE_SCHEMA: &str =
-    "agenttrust.context-lifecycle-evidence.v1";
+pub const CONTEXT_LIFECYCLE_EVIDENCE_SCHEMA: &str = "agenttrust.context-lifecycle-evidence.v1";
 pub const CONTEXT_READINESS_SCHEMA: &str = "agenttrust.context-readiness.v1";
-pub const AUTHORITATIVE_CONTEXT_PAGE_SCHEMA: &str =
-    "agenttrust.authoritative-context-page.v1";
+pub const AUTHORITATIVE_CONTEXT_PAGE_SCHEMA: &str = "agenttrust.authoritative-context-page.v1";
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ContextAuthorityError {
@@ -449,7 +447,10 @@ impl ContextIngressAuthority {
         if let Some(receipt) = prepared.receipt {
             return Ok(receipt);
         }
-        let receipt = self.orchestrator.submit(&tenant, &prepared.envelope).await?;
+        let receipt = self
+            .orchestrator
+            .submit(&tenant, &prepared.envelope)
+            .await?;
         self.store
             .complete_ingress(&tenant, idempotency_key, &receipt)
             .await
@@ -714,8 +715,8 @@ impl PostgresContextAuthorityStore {
         envelope: InboundEnvelope,
     ) -> Result<PreparedIngress, ContextAuthorityError> {
         let tenant_uuid = parse_tenant(tenant)?;
-        let envelope_value = serde_json::to_value(&envelope)
-            .map_err(|_| ContextAuthorityError::RequestInvalid)?;
+        let envelope_value =
+            serde_json::to_value(&envelope).map_err(|_| ContextAuthorityError::RequestInvalid)?;
         let action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&envelope.payload)
                 .map_err(|_| ContextAuthorityError::RequestInvalid)?;
@@ -762,13 +763,17 @@ impl PostgresContextAuthorityStore {
             || row.get::<String, _>("resource") != request.resource
             || row.get::<String, _>("operation") != request.operation.as_str()
             || row.get::<String, _>("actor_subject") != actor_subject
-            || !matches!(row.get::<String, _>("state").as_str(), "PREPARED" | "ACCEPTED")
+            || !matches!(
+                row.get::<String, _>("state").as_str(),
+                "PREPARED" | "ACCEPTED"
+            )
         {
             return Err(ContextAuthorityError::IdempotencyConflict);
         }
         let stored_envelope_value = row.get::<Value, _>("envelope");
-        let stored_envelope: InboundEnvelope = serde_json::from_value(stored_envelope_value.clone())
-            .map_err(|_| ContextAuthorityError::IdempotencyConflict)?;
+        let stored_envelope: InboundEnvelope =
+            serde_json::from_value(stored_envelope_value.clone())
+                .map_err(|_| ContextAuthorityError::IdempotencyConflict)?;
         let stored_action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&stored_envelope.payload)
                 .map_err(|_| ContextAuthorityError::IdempotencyConflict)?;
@@ -884,8 +889,8 @@ impl PostgresContextAuthorityStore {
     ) -> Result<ExecutionClaim, ContextAuthorityError> {
         let tenant = parse_tenant(&binding.tenant_id)?;
         let request_digest = canonical_digest(request)?;
-        let request_value = serde_json::to_value(request)
-            .map_err(|_| ContextAuthorityError::RequestInvalid)?;
+        let request_value =
+            serde_json::to_value(request).map_err(|_| ContextAuthorityError::RequestInvalid)?;
         let expected_version = i64::try_from(binding.resource_version)
             .map_err(|_| ContextAuthorityError::RequestInvalid)?;
         let claim = Uuid::new_v4();
@@ -911,8 +916,8 @@ impl PostgresContextAuthorityStore {
         let action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&envelope.payload)
                 .map_err(|_| ContextAuthorityError::PrincipalDenied)?;
-        let admitted_hash = action_hash(&action)
-            .map_err(|_| ContextAuthorityError::PrincipalDenied)?;
+        let admitted_hash =
+            action_hash(&action).map_err(|_| ContextAuthorityError::PrincipalDenied)?;
         let expected_action_version = request.command.expected_resource_version.to_string();
         if admitted_hash.0 != binding.action_hash
             || action.action_id.0 != request.command.command_id.to_string()
@@ -1119,15 +1124,8 @@ impl PostgresContextAuthorityStore {
         if observed != current {
             return Err(ContextAuthorityError::StateConflict);
         }
-        let (quarantine, legal_hold_blocked) = apply_domain_mutation(
-            &mut tx,
-            tenant,
-            binding,
-            request,
-            effect.as_ref(),
-            next,
-        )
-        .await?;
+        let (quarantine, legal_hold_blocked) =
+            apply_domain_mutation(&mut tx, tenant, binding, request, effect.as_ref(), next).await?;
         if current == 0 {
             sqlx::query(
                 "INSERT INTO context_resource_versions \
@@ -1187,9 +1185,7 @@ impl PostgresContextAuthorityStore {
                 .map_err(|_| ContextAuthorityError::StateConflict)?,
             state: "SUCCEEDED".into(),
             result_digest,
-            evidence_outbox_ref: format!(
-                "context-outbox://{tenant}/{event_id}"
-            ),
+            evidence_outbox_ref: format!("context-outbox://{tenant}/{event_id}"),
             quarantine,
             legal_hold_blocked,
             safe_receipts,
@@ -1236,8 +1232,8 @@ impl PostgresContextAuthorityStore {
         .execute(&mut *tx)
         .await
         .map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
-        let result_value = serde_json::to_value(&result)
-            .map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
+        let result_value =
+            serde_json::to_value(&result).map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
         let external_receipts = effect
             .as_ref()
             .map(serde_json::to_value)
@@ -1295,7 +1291,10 @@ impl PostgresContextAuthorityStore {
         {
             return Err(ContextAuthorityError::OutcomeUnknown);
         }
-        if outbox.get::<Option<DateTime<Utc>>, _>("delivered_at").is_none() {
+        if outbox
+            .get::<Option<DateTime<Utc>>, _>("delivered_at")
+            .is_none()
+        {
             let updated = sqlx::query(
                 "UPDATE context_evidence_outbox SET delivered_at=now() \
                  WHERE tenant_id=$1 AND event_id=$2 AND delivered_at IS NULL",
@@ -1309,8 +1308,8 @@ impl PostgresContextAuthorityStore {
                 return Err(ContextAuthorityError::OutcomeUnknown);
             }
         }
-        let receipt_value = serde_json::to_value(&receipt)
-            .map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
+        let receipt_value =
+            serde_json::to_value(&receipt).map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
         let updated = sqlx::query(
             "UPDATE context_authority_executions SET state='SUCCEEDED',evidence_ref=$3,\
              evidence_digest=$4,evidence_receipt=$5,updated_at=now() \
@@ -1494,9 +1493,7 @@ impl PostgresContextAuthorityStore {
         after: Option<&str>,
         limit: i64,
     ) -> Result<AuthoritativeContextPage, ContextAuthorityError> {
-        if !(1..=200).contains(&limit)
-            || after.is_some_and(|value| !resource_identifier(value))
-        {
+        if !(1..=200).contains(&limit) || after.is_some_and(|value| !resource_identifier(value)) {
             return Err(ContextAuthorityError::RequestInvalid);
         }
         let tenant_uuid = parse_tenant(tenant)?;
@@ -1665,14 +1662,7 @@ async fn apply_domain_mutation(
             .await
             .map_err(|_| ContextAuthorityError::StateConflict)?;
             if effect_quarantine {
-                insert_quarantine(
-                    tx,
-                    tenant,
-                    "MEMORY",
-                    &memory_id.to_string(),
-                    effect,
-                )
-                .await?;
+                insert_quarantine(tx, tenant, "MEMORY", &memory_id.to_string(), effect).await?;
             }
         }
         ContextOperation::DeleteMemory => {
@@ -1688,21 +1678,27 @@ async fn apply_domain_mutation(
             .map_err(|_| ContextAuthorityError::DependencyUnavailable)?
             .ok_or(ContextAuthorityError::NotFound)?;
             if row.get::<String, _>("owner_subject") != request.actor_subject
-                && !request.approval_ids.iter().any(|value| value.starts_with("privacy:"))
+                && !request
+                    .approval_ids
+                    .iter()
+                    .any(|value| value.starts_with("privacy:"))
             {
                 return Err(ContextAuthorityError::PrincipalDenied);
             }
             if row.get::<String, _>("content_digest")
                 != string_field_value(payload, "content_digest")?
-                || row.get::<String, _>("object_ref")
-                    != string_field_value(payload, "object_ref")?
+                || row.get::<String, _>("object_ref") != string_field_value(payload, "object_ref")?
             {
                 return Err(ContextAuthorityError::StateConflict);
             }
             if row.get::<String, _>("status") == "TOMBSTONED" {
                 return Err(ContextAuthorityError::StateConflict);
             }
-            let new_status = if legal_hold_blocked { "HELD" } else { "TOMBSTONED" };
+            let new_status = if legal_hold_blocked {
+                "HELD"
+            } else {
+                "TOMBSTONED"
+            };
             sqlx::query(
                 "UPDATE governed_memory_entries SET status=$3,resource_version=$4,\
                  ledger_execution_id=$5,fence_digest=$6,updated_at=now() \
@@ -1717,8 +1713,8 @@ async fn apply_domain_mutation(
             .execute(&mut **tx)
             .await
             .map_err(|_| ContextAuthorityError::StateConflict)?;
-            let deletion_receipt = serde_json::to_value(effect)
-                .map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
+            let deletion_receipt =
+                serde_json::to_value(effect).map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
             sqlx::query(
                 "INSERT INTO context_deletion_tombstones \
                  (tenant_id,tombstone_id,resource_type,resource_id,content_digest,deleted_by,\
@@ -1946,14 +1942,16 @@ async fn apply_domain_mutation(
                 return Err(ContextAuthorityError::StateConflict);
             }
             if row.get::<String, _>("owner_subject") != request.actor_subject
-                && !request.approval_ids.iter().any(|value| value.starts_with("privacy:"))
+                && !request
+                    .approval_ids
+                    .iter()
+                    .any(|value| value.starts_with("privacy:"))
             {
                 return Err(ContextAuthorityError::PrincipalDenied);
             }
             if row.get::<String, _>("content_digest")
                 != string_field_value(payload, "content_digest")?
-                || row.get::<String, _>("object_ref")
-                    != string_field_value(payload, "object_ref")?
+                || row.get::<String, _>("object_ref") != string_field_value(payload, "object_ref")?
                 || row.get::<Option<String>, _>("index_ref").as_deref()
                     != string_field(payload, "index_ref")
             {
@@ -1983,10 +1981,7 @@ async fn apply_domain_mutation(
             .bind(&request.actor_subject)
             .bind(!legal_hold_blocked)
             .bind(legal_hold_blocked)
-            .bind(
-                serde_json::to_value(effect)
-                    .map_err(|_| ContextAuthorityError::OutcomeUnknown)?,
-            )
+            .bind(serde_json::to_value(effect).map_err(|_| ContextAuthorityError::OutcomeUnknown)?)
             .execute(&mut **tx)
             .await
             .map_err(|_| ContextAuthorityError::OutcomeUnknown)?;
@@ -2219,9 +2214,7 @@ fn payload_shape(request: &ContextCommandRequest, actor: &str) -> bool {
     let Some(payload) = request.payload.as_object() else {
         return false;
     };
-    let resource_matches = |prefix: &str, id: &str| {
-        request.resource == format!("{prefix}:{id}")
-    };
+    let resource_matches = |prefix: &str, id: &str| request.resource == format!("{prefix}:{id}");
     match request.operation {
         ContextOperation::WriteMemory => {
             exact_keys(
@@ -2245,7 +2238,9 @@ fn payload_shape(request: &ContextCommandRequest, actor: &str) -> bool {
                 && identifier_field(payload, "purpose", 128)
                 && classification_field(payload, "classification")
                 && identifier_field(payload, "jurisdiction", 64)
-                && string_array(payload, "visibility", 1, 256, |value| identifier(value, 256))
+                && string_array(payload, "visibility", 1, 256, |value| {
+                    identifier(value, 256)
+                })
                 && trust_field(payload, "trust_level")
                 && provenance_field(payload, "provenance")
                 && digest_field(payload, "content_digest")
@@ -2298,8 +2293,13 @@ fn payload_shape(request: &ContextCommandRequest, actor: &str) -> bool {
                 && digest_field(payload, "artifact_digest")
                 && base64_field(payload, "signature", 32, 512)
                 && supply_chain_receipt(payload.get("supply_chain_receipt"))
-                && string_array(payload, "approved_by", 2, 32, |value| identifier(value, 256))
-                && matches!(string_field(payload, "trust_level"), Some("VERIFIED" | "AUTHORITATIVE"))
+                && string_array(payload, "approved_by", 2, 32, |value| {
+                    identifier(value, 256)
+                })
+                && matches!(
+                    string_field(payload, "trust_level"),
+                    Some("VERIFIED" | "AUTHORITATIVE")
+                )
                 && percentage_field(payload, "rollout_percent")
                 && object_reference_field(payload, "staging_object_ref")
                 && string_field(payload, "prompt_id")
@@ -2308,7 +2308,12 @@ fn payload_shape(request: &ContextCommandRequest, actor: &str) -> bool {
         ContextOperation::ActivatePrompt | ContextOperation::RollbackPrompt => {
             exact_keys(
                 payload,
-                &["prompt_id", "target_version", "rollout_percent", "reason_code"],
+                &[
+                    "prompt_id",
+                    "target_version",
+                    "rollout_percent",
+                    "reason_code",
+                ],
             ) && identifier_field(payload, "prompt_id", 256)
                 && semver_field(payload, "target_version")
                 && percentage_field(payload, "rollout_percent")
@@ -2331,7 +2336,9 @@ fn payload_shape(request: &ContextCommandRequest, actor: &str) -> bool {
             ) && identifier_field(payload, "source_id", 256)
                 && string_field(payload, "owner_subject") == Some(actor)
                 && trust_field(payload, "trust_level")
-                && string_array(payload, "allowed_subjects", 1, 1024, |value| identifier(value, 256))
+                && string_array(payload, "allowed_subjects", 1, 1024, |value| {
+                    identifier(value, 256)
+                })
                 && classification_field(payload, "classification")
                 && identifier_field(payload, "jurisdiction", 64)
                 && provenance_field(payload, "provenance")
@@ -2404,7 +2411,9 @@ fn payload_shape(request: &ContextCommandRequest, actor: &str) -> bool {
             ) && uuid_field(payload, "quarantine_id")
                 && resource_type_field(payload, "resource_type")
                 && identifier_field(payload, "resource_id", 512)
-                && string_array(payload, "reason_codes", 1, 64, |value| identifier(value, 128))
+                && string_array(payload, "reason_codes", 1, 64, |value| {
+                    identifier(value, 128)
+                })
                 && digest_field(payload, "detector_digest")
                 && object_reference_field(payload, "object_ref")
                 && optional_index_reference_field(payload, "index_ref")
@@ -2491,7 +2500,11 @@ fn canonical_context_action(
             goal_hash: canonical_digest(command)?,
             operation: operation.clone(),
             justification_code: "CONTEXT_PROVENANCE_GOVERNANCE".into(),
-            safe_summary: Some(format!("{} {}", command.operation.as_str(), command.resource)),
+            safe_summary: Some(format!(
+                "{} {}",
+                command.operation.as_str(),
+                command.resource
+            )),
         },
         tool: ToolRef {
             tool_id: config.tool_id.clone(),
@@ -2549,11 +2562,10 @@ fn canonical_context_action(
     normalization
         .payload_types
         .register("context.governance.mutation.v1", "1");
-    let action = normalize(draft, &normalization)
-        .map_err(|_| ContextAuthorityError::RequestInvalid)?;
+    let action =
+        normalize(draft, &normalization).map_err(|_| ContextAuthorityError::RequestInvalid)?;
     action_hash(&action).map_err(|_| ContextAuthorityError::RequestInvalid)?;
-    let payload = serde_json::to_vec(&action)
-        .map_err(|_| ContextAuthorityError::RequestInvalid)?;
+    let payload = serde_json::to_vec(&action).map_err(|_| ContextAuthorityError::RequestInvalid)?;
     Ok(InboundEnvelope {
         request_id: Uuid::new_v4().to_string(),
         trace_context: TraceContext {
@@ -2634,11 +2646,9 @@ fn validate_effect(
         ContextOperation::PublishPrompt => {
             BTreeSet::from(["SUPPLY_CHAIN", "POISONING", "OBJECT_STORE"])
         }
-        ContextOperation::PublishKnowledgeSnapshot => BTreeSet::from([
-            "SUPPLY_CHAIN",
-            "POISONING",
-            "OBJECT_STORE",
-        ]),
+        ContextOperation::PublishKnowledgeSnapshot => {
+            BTreeSet::from(["SUPPLY_CHAIN", "POISONING", "OBJECT_STORE"])
+        }
         ContextOperation::QuarantineResource => BTreeSet::from(["VECTOR_INDEX", "CACHE"]),
         ContextOperation::ReleaseQuarantine => {
             BTreeSet::from(["POISONING", "VECTOR_INDEX", "CACHE"])
@@ -2663,7 +2673,10 @@ fn validate_effect(
                 request.command.operation,
                 ContextOperation::WriteMemory | ContextOperation::PublishKnowledgeSnapshot
             )
-            && receipt.index_ref.as_deref().is_none_or(|value| !index_reference(value))
+            && receipt
+                .index_ref
+                .as_deref()
+                .is_none_or(|value| !index_reference(value))
         || matches!(
             request.command.operation,
             ContextOperation::WriteMemory
@@ -2821,7 +2834,8 @@ fn i64_field_value(value: &Map<String, Value>, field: &str) -> Result<i64, Conte
 }
 
 fn time_field(value: &Map<String, Value>, field: &str) -> Option<DateTime<Utc>> {
-    string_field(value, field).and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+    string_field(value, field)
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .map(|value| value.with_timezone(&Utc))
 }
 
@@ -2833,7 +2847,8 @@ fn time_field_value(
 }
 
 fn future_time_field(value: &Map<String, Value>, field: &str, maximum: Duration) -> bool {
-    time_field(value, field).is_some_and(|value| value > Utc::now() && value <= Utc::now() + maximum)
+    time_field(value, field)
+        .is_some_and(|value| value > Utc::now() && value <= Utc::now() + maximum)
 }
 
 fn identifier_field(value: &Map<String, Value>, field: &str, maximum: usize) -> bool {
@@ -2889,9 +2904,9 @@ fn percentage_field(value: &Map<String, Value>, field: &str) -> bool {
 fn base64_field(value: &Map<String, Value>, field: &str, minimum: usize, maximum: usize) -> bool {
     string_field(value, field).is_some_and(|value| {
         (minimum..=maximum).contains(&value.len())
-            && value
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=' | b'-' | b'_'))
+            && value.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=' | b'-' | b'_')
+            })
     })
 }
 
@@ -2928,9 +2943,9 @@ fn index_reference_field(value: &Map<String, Value>, field: &str) -> bool {
 }
 
 fn optional_index_reference_field(value: &Map<String, Value>, field: &str) -> bool {
-    value.get(field).is_some_and(|value| {
-        value.is_null() || value.as_str().is_some_and(index_reference)
-    })
+    value
+        .get(field)
+        .is_some_and(|value| value.is_null() || value.as_str().is_some_and(index_reference))
 }
 
 fn evidence_reference_field(value: &Map<String, Value>, field: &str) -> bool {
@@ -2959,8 +2974,7 @@ pub(crate) fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
         })
 }
 

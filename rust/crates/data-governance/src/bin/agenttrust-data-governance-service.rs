@@ -50,7 +50,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let expected_role = required_identifier("AGENT_TRUST_DATA_DATABASE_EXPECTED_ROLE")?;
     let database_ca = required_path("AGENT_TRUST_DATA_DATABASE_CA_FILE")?;
     let options = database_options(
-        &database_url, &database_password, &database_ca, &expected_role,
+        &database_url,
+        &database_password,
+        &database_ca,
+        &expected_role,
     )?;
     database_password.zeroize();
     let pool = PgPoolOptions::new()
@@ -115,9 +118,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         store.clone(),
         orchestrator,
         DataAuthorityConfig {
-            service_agent_id: AgentInstanceId(required_uuid(
-                "AGENT_TRUST_DATA_AGENT_INSTANCE_ID",
-            )?),
+            service_agent_id: AgentInstanceId(required_uuid("AGENT_TRUST_DATA_AGENT_INSTANCE_ID")?),
             organization_id: required_identifier("AGENT_TRUST_DATA_ORGANIZATION_ID")?,
             agent_version: required_identifier("AGENT_TRUST_DATA_AGENT_VERSION")?,
             region: required_identifier("AGENT_TRUST_DATA_REGION")?,
@@ -150,7 +151,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &allowed_identities,
     )?);
     let application = router(
-        ingress.clone(), executor.clone(), decision.clone(), tokens.clone(),
+        ingress.clone(),
+        executor.clone(),
+        decision.clone(),
+        tokens.clone(),
     );
     let listen: IpAddr = env::var("AGENT_TRUST_DATA_LISTEN_ADDRESS")?.parse()?;
     let management_listen: IpAddr =
@@ -163,12 +167,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             management_address: SocketAddr::new(management_listen, 9102),
             tls_ca_file: required_path("AGENT_TRUST_DATA_TLS_CA_FILE")?,
             tls_certificate_file: required_path("AGENT_TRUST_DATA_TLS_CERTIFICATE_FILE")?,
-            tls_private_key_file: required_private_path(
-                "AGENT_TRUST_DATA_TLS_PRIVATE_KEY_FILE",
-            )?,
+            tls_private_key_file: required_private_path("AGENT_TRUST_DATA_TLS_PRIVATE_KEY_FILE")?,
             allowed_client_identities: allowed_identities,
             recovery_interval_seconds: u64::try_from(required_i64(
-                "AGENT_TRUST_DATA_RECOVERY_INTERVAL_SECONDS", 5, 300,
+                "AGENT_TRUST_DATA_RECOVERY_INTERVAL_SECONDS",
+                5,
+                300,
             )?)?,
         },
         application,
@@ -176,7 +180,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         ingress,
         executor,
         decision,
-    ).await?;
+    )
+    .await?;
     Ok(())
 }
 
@@ -256,8 +261,7 @@ fn load_evidence_keyring(
             .map_err(|_| "DATA_EVIDENCE_KEYRING_INVALID")?
             .try_into()
             .map_err(|_| "DATA_EVIDENCE_KEYRING_INVALID")?;
-        let key = VerifyingKey::from_bytes(&bytes)
-            .map_err(|_| "DATA_EVIDENCE_KEYRING_INVALID")?;
+        let key = VerifyingKey::from_bytes(&bytes).map_err(|_| "DATA_EVIDENCE_KEYRING_INVALID")?;
         if keys.insert(key_id, key).is_some() {
             return Err("DATA_EVIDENCE_KEYRING_INVALID".into());
         }
@@ -271,8 +275,10 @@ fn load_signed_profiles(
 ) -> Result<SignedDeploymentProfiles, Box<dyn std::error::Error>> {
     let raw = std::fs::read(profile_path)?;
     let keyring_raw = std::fs::read(keyring_path)?;
-    if raw.is_empty() || raw.len() > 1_048_576
-        || keyring_raw.is_empty() || keyring_raw.len() > 1_048_576
+    if raw.is_empty()
+        || raw.len() > 1_048_576
+        || keyring_raw.is_empty()
+        || keyring_raw.len() > 1_048_576
     {
         return Err("DATA_PROFILE_DOCUMENT_INVALID".into());
     }
@@ -306,10 +312,14 @@ fn load_signed_profiles(
     {
         return Err("DATA_PROFILE_DOCUMENT_INVALID".into());
     }
-    let public_key = keyring.keys.get(&document.key_id)
+    let public_key = keyring
+        .keys
+        .get(&document.key_id)
         .ok_or("DATA_PROFILE_KEY_UNKNOWN")?;
-    let public_key: [u8; 32] = STANDARD.decode(public_key)?
-        .try_into().map_err(|_| "DATA_PROFILE_KEY_INVALID")?;
+    let public_key: [u8; 32] = STANDARD
+        .decode(public_key)?
+        .try_into()
+        .map_err(|_| "DATA_PROFILE_KEY_INVALID")?;
     let verifying_key = VerifyingKey::from_bytes(&public_key)?;
     let signature = Signature::from_slice(&STANDARD.decode(&document.signature)?)?;
     let material = ProfileSigningMaterial {
@@ -441,16 +451,22 @@ fn database_options(
         || database.contains('/')
         || parsed.fragment().is_some()
         || query.keys().any(|key| {
-            !matches!(key.as_str(), "sslmode" | "connect_timeout" | "application_name")
+            !matches!(
+                key.as_str(),
+                "sslmode" | "connect_timeout" | "application_name"
+            )
         })
         || query.get("sslmode").map(String::as_str) != Some("verify-full")
-        || query.get("application_name").map(String::as_str)
-            != Some("agenttrust-data-governance")
+        || query.get("application_name").map(String::as_str) != Some("agenttrust-data-governance")
     {
         return Err("DATA_GOVERNANCE_DATABASE_URL_INVALID".into());
     }
     Ok(PgConnectOptions::new()
-        .host(parsed.host_str().ok_or("DATA_GOVERNANCE_DATABASE_HOST_MISSING")?)
+        .host(
+            parsed
+                .host_str()
+                .ok_or("DATA_GOVERNANCE_DATABASE_HOST_MISSING")?,
+        )
         .port(parsed.port().unwrap_or(5432))
         .username(expected_role)
         .password(password)
@@ -530,7 +546,12 @@ fn required_private_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Erro
     let mode = metadata.mode() & 0o777;
     let effective_uid = Uid::effective().as_raw();
     let effective_gid = Gid::effective().as_raw();
-    let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+    let allowed = 0o400
+        | if metadata.gid() == effective_gid {
+            0o040
+        } else {
+            0
+        };
     let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
         || (metadata.gid() == effective_gid && mode & 0o040 != 0);
     if !readable || mode & !allowed != 0 {
@@ -579,7 +600,9 @@ fn required_identifier(name: &str) -> Result<String, Box<dyn std::error::Error>>
 
 fn required_mtls_identity(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     let value = env::var(name)?;
-    let san_value = value.strip_prefix("DNS:").or_else(|| value.strip_prefix("URI:"));
+    let san_value = value
+        .strip_prefix("DNS:")
+        .or_else(|| value.strip_prefix("URI:"));
     if value.is_empty()
         || value.len() > 256
         || san_value.is_none_or(str::is_empty)
@@ -593,16 +616,12 @@ fn required_mtls_identity(name: &str) -> Result<String, Box<dyn std::error::Erro
 fn config_identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':')
-        })
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let raw = env::var(name)?;
     let value = raw.parse::<i64>()?;
     if value < minimum || value > maximum || value.to_string() != raw {
@@ -620,13 +639,19 @@ fn required_exact_port(name: &str, expected: u16) -> Result<u16, Box<dyn std::er
 }
 
 fn required_identities(name: &str) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
-    let values = env::var(name)?.split(',').map(str::to_string).collect::<BTreeSet<_>>();
-    if values.is_empty() || values.len() > 128 || values.iter().any(|value| {
-        value.is_empty()
-            || value.len() > 512
-            || !(value.starts_with("DNS:") || value.starts_with("URI:"))
-            || !value.bytes().all(|byte| byte.is_ascii_graphic())
-    }) {
+    let values = env::var(name)?
+        .split(',')
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if values.is_empty()
+        || values.len() > 128
+        || values.iter().any(|value| {
+            value.is_empty()
+                || value.len() > 512
+                || !(value.starts_with("DNS:") || value.starts_with("URI:"))
+                || !value.bytes().all(|byte| byte.is_ascii_graphic())
+        })
+    {
         return Err(format!("{name}_INVALID").into());
     }
     Ok(values)

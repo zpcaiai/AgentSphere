@@ -783,7 +783,10 @@ mod tests {
         let detector = PoisoningDetector::default();
         for case in corpus.cases {
             assert_eq!(
-                detector.scan(&case.content).iter().any(|finding| finding.blocking),
+                detector
+                    .scan(&case.content)
+                    .iter()
+                    .any(|finding| finding.blocking),
                 case.blocking,
                 "content digest {}",
                 hex(Sha256::digest(case.content.as_bytes()))

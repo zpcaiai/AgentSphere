@@ -30,10 +30,6 @@ fn production_assets_keep_authority_fail_closed() {
     assert!(authority.contains("\"schema_version\":SUPPLY_RELEASES_SCHEMA"));
 
     let stack = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
-    assert!(stack.contains(
-        "livenessProbe: {httpGet: {path: /live, port: management}"
-    ));
-    assert!(stack.contains(
-        "readinessProbe: {httpGet: {path: /ready, port: management}"
-    ));
+    assert!(stack.contains("livenessProbe: {httpGet: {path: /live, port: management}"));
+    assert!(stack.contains("readinessProbe: {httpGet: {path: /ready, port: management}"));
 }

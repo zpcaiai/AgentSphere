@@ -4,10 +4,6 @@ pub mod artifact;
 pub mod postgres;
 pub mod server;
 
-use agent_trust_contracts::{
-    ArtifactRef, ContractError, EvaluationResult, EvaluationStatus, IdempotencyKey, SchemaVersion,
-    TaskId, TenantId,
-};
 pub use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
     AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceControlBinding,
@@ -16,6 +12,10 @@ pub use agent_trust_contracts::{
     EXECUTION_EVIDENCE_RECEIPT_SCHEMA_VERSION, EXECUTION_EVIDENCE_REQUEST_SCHEMA_VERSION,
     EvidenceEventDraft, EvidenceEventType, ExecutionEvidenceRequest,
     SignedAuthorityEvidenceReceipt, SignedEvidenceEvent, SignedExecutionEvidenceReceipt,
+};
+use agent_trust_contracts::{
+    ArtifactRef, ContractError, EvaluationResult, EvaluationStatus, IdempotencyKey, SchemaVersion,
+    TaskId, TenantId,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};

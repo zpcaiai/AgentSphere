@@ -14,8 +14,7 @@ const INSPECTION_SCHEMA: &str =
 const AUTHORITATIVE_PAGE_SCHEMA: &str =
     include_str!("../../../../schemas/data-governance/authoritative-page.schema.json");
 const DOCKERFILE: &str = include_str!("../../../../Dockerfile.data-governance");
-const RUNBOOK: &str =
-    include_str!("../../../../docs/data-governance/production-runbook.md");
+const RUNBOOK: &str = include_str!("../../../../docs/data-governance/production-runbook.md");
 const FAILURE_MATRIX: &str =
     include_str!("../../../../tests/data-governance/failure-injection-matrix.json");
 const STACK: &str = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
@@ -23,33 +22,59 @@ const STACK: &str = include_str!("../../../../deploy/kubernetes/production-stack
 #[test]
 fn durable_operations_match_code_schema_and_database_contract() {
     for operation in [
-        "REGISTER_LABEL", "RECORD_POLICY_DECISION", "RECORD_DLP_SCAN",
-        "RECORD_TRANSFORM_RECEIPT", "ISSUE_CROSS_DOMAIN_GRANT",
-        "CONSUME_CROSS_DOMAIN_GRANT", "RESOLVE_RETENTION", "PLACE_LEGAL_HOLD",
-        "RELEASE_LEGAL_HOLD", "AUTHORIZE_EXPORT", "COMPLETE_EXPORT",
+        "REGISTER_LABEL",
+        "RECORD_POLICY_DECISION",
+        "RECORD_DLP_SCAN",
+        "RECORD_TRANSFORM_RECEIPT",
+        "ISSUE_CROSS_DOMAIN_GRANT",
+        "CONSUME_CROSS_DOMAIN_GRANT",
+        "RESOLVE_RETENTION",
+        "PLACE_LEGAL_HOLD",
+        "RELEASE_LEGAL_HOLD",
+        "AUTHORIZE_EXPORT",
+        "COMPLETE_EXPORT",
     ] {
-        assert!(AUTHORITY.contains(operation), "authority missing {operation}");
-        assert!(COMMAND_SCHEMA.contains(operation), "schema missing {operation}");
-        assert!(MIGRATION.contains(operation), "migration missing {operation}");
+        assert!(
+            AUTHORITY.contains(operation),
+            "authority missing {operation}"
+        );
+        assert!(
+            COMMAND_SCHEMA.contains(operation),
+            "schema missing {operation}"
+        );
+        assert!(
+            MIGRATION.contains(operation),
+            "migration missing {operation}"
+        );
     }
 }
 
 #[test]
 fn exact_pep_ledger_fence_and_evidence_binding_is_mandatory() {
     for header in [
-        "x-agenttrust-action-hash", "x-agenttrust-ledger-execution-id",
-        "x-agenttrust-ledger-entry-id", "x-agenttrust-ledger-entry-digest",
-        "x-agenttrust-fence-digest", "x-agenttrust-resource-version",
-        "x-agenttrust-policy-decision-id", "x-agenttrust-policy-decision-digest",
+        "x-agenttrust-action-hash",
+        "x-agenttrust-ledger-execution-id",
+        "x-agenttrust-ledger-entry-id",
+        "x-agenttrust-ledger-entry-digest",
+        "x-agenttrust-fence-digest",
+        "x-agenttrust-resource-version",
+        "x-agenttrust-policy-decision-id",
+        "x-agenttrust-policy-decision-digest",
         "x-agenttrust-authorization-evidence-ref",
         "x-agenttrust-authorization-evidence-digest",
     ] {
         assert!(SERVER.contains(header), "server missing {header}");
-        assert!(OPENAPI.to_ascii_lowercase().contains(header), "OpenAPI missing {header}");
+        assert!(
+            OPENAPI.to_ascii_lowercase().contains(header),
+            "OpenAPI missing {header}"
+        );
     }
     for column in [
-        "ledger_event_id", "ledger_event_digest", "policy_decision_digest",
-        "authorization_evidence_ref", "authorization_evidence_digest",
+        "ledger_event_id",
+        "ledger_event_digest",
+        "policy_decision_digest",
+        "authorization_evidence_ref",
+        "authorization_evidence_digest",
     ] {
         assert!(MIGRATION.contains(column), "migration missing {column}");
     }
@@ -59,21 +84,30 @@ fn exact_pep_ledger_fence_and_evidence_binding_is_mandatory() {
 #[test]
 fn typed_ephemeral_routes_never_write_raw_content() {
     for path in [
-        "/v1/internal/data/evaluate", "/v1/internal/data/scan",
-        "/v1/internal/data/sanitize", "/v1/internal/data/artifacts/authorize",
+        "/v1/internal/data/evaluate",
+        "/v1/internal/data/scan",
+        "/v1/internal/data/sanitize",
+        "/v1/internal/data/artifacts/authorize",
     ] {
         assert!(SERVER.contains(path), "server missing {path}");
         assert!(OPENAPI.contains(path), "OpenAPI missing {path}");
     }
     for forbidden_column in [
-        "raw_content ", "prompt_content ", "content_base64 ", "sanitized_prompt ",
-        "secret_value ", "bearer_token ",
+        "raw_content ",
+        "prompt_content ",
+        "content_base64 ",
+        "sanitized_prompt ",
+        "secret_value ",
+        "bearer_token ",
     ] {
         assert!(!MIGRATION.to_ascii_lowercase().contains(forbidden_column));
     }
     assert!(SERVICE.contains("durable_record_required: true"));
     assert!(SERVICE.contains("ContentEncoding::Gzip | ContentEncoding::Zip"));
-    assert!(ADAPTERS.contains("redirect(reqwest::redirect::Policy::none())") || BINARY.contains("redirect(reqwest::redirect::Policy::none())"));
+    assert!(
+        ADAPTERS.contains("redirect(reqwest::redirect::Policy::none())")
+            || BINARY.contains("redirect(reqwest::redirect::Policy::none())")
+    );
 }
 
 #[test]
@@ -88,8 +122,16 @@ fn completed_mutation_read_never_promotes_a_pending_record_proposal() {
 
 #[test]
 fn authoritative_page_has_an_explicit_canonical_integrity_envelope() {
-    for marker in ["authoritative: true", "data_digest", "remove(\"data_digest\")", "canonical_digest(&material)"] {
-        assert!(AUTHORITY.contains(marker), "authority page missing {marker}");
+    for marker in [
+        "authoritative: true",
+        "data_digest",
+        "remove(\"data_digest\")",
+        "canonical_digest(&material)",
+    ] {
+        assert!(
+            AUTHORITY.contains(marker),
+            "authority page missing {marker}"
+        );
     }
     for contract in [OPENAPI, AUTHORITATIVE_PAGE_SCHEMA] {
         assert!(contract.contains("authoritative"));
@@ -106,8 +148,13 @@ fn production_boundary_is_tls13_single_san_exact_scope_and_fixed_ports() {
     assert!(SERVER.contains("identities.len() == 1"));
     assert!(SERVER.contains("CommonName is deliberately ignored"));
     for scope in [
-        "data:mutate", "data:execute", "data:evaluate", "data:scan",
-        "data:sanitize", "data:artifact-authorize", "data:read",
+        "data:mutate",
+        "data:execute",
+        "data:evaluate",
+        "data:scan",
+        "data:sanitize",
+        "data:artifact-authorize",
+        "data:read",
     ] {
         assert!(SERVER.contains(scope));
     }
@@ -119,28 +166,41 @@ fn production_boundary_is_tls13_single_san_exact_scope_and_fixed_ports() {
     assert!(ADAPTERS.contains("value.schema_version == endpoint.readiness_schema"));
     assert!(SERVER.contains("config.data_address.ip().is_loopback()"));
     assert!(SERVER.contains("config.management_address.ip().is_unspecified()"));
-    assert!(STACK.contains(
-        "AGENT_TRUST_DATA_MANAGEMENT_LISTEN_ADDRESS, value: 0.0.0.0"
-    ));
+    assert!(STACK.contains("AGENT_TRUST_DATA_MANAGEMENT_LISTEN_ADDRESS, value: 0.0.0.0"));
 }
 
 #[test]
 fn force_rls_immutability_concurrency_and_evidence_recovery_are_structural() {
     for table in [
-        "data_resource_versions", "data_authority_ingress", "data_authority_executions",
-        "governed_data_labels", "data_policy_decision_records", "data_dlp_scan_summaries",
-        "data_transform_receipts", "data_cross_domain_grants",
-        "data_cross_domain_consumptions", "data_retention_records", "data_legal_holds",
-        "data_export_intents", "data_evidence_outbox",
+        "data_resource_versions",
+        "data_authority_ingress",
+        "data_authority_executions",
+        "governed_data_labels",
+        "data_policy_decision_records",
+        "data_dlp_scan_summaries",
+        "data_transform_receipts",
+        "data_cross_domain_grants",
+        "data_cross_domain_consumptions",
+        "data_retention_records",
+        "data_legal_holds",
+        "data_export_intents",
+        "data_evidence_outbox",
     ] {
         assert!(MIGRATION.contains(table), "migration missing {table}");
     }
     for marker in [
-        "FORCE ROW LEVEL SECURITY", "data_single_resource_flight_idx",
-        "FOR UPDATE", "consumed_at IS NULL", "MUTATED_PENDING_EVIDENCE",
-        "recover_pending_evidence", "MissedTickBehavior::Delay",
+        "FORCE ROW LEVEL SECURITY",
+        "data_single_resource_flight_idx",
+        "FOR UPDATE",
+        "consumed_at IS NULL",
+        "MUTATED_PENDING_EVIDENCE",
+        "recover_pending_evidence",
+        "MissedTickBehavior::Delay",
     ] {
-        assert!(MIGRATION.contains(marker) || AUTHORITY.contains(marker) || SERVER.contains(marker), "missing {marker}");
+        assert!(
+            MIGRATION.contains(marker) || AUTHORITY.contains(marker) || SERVER.contains(marker),
+            "missing {marker}"
+        );
     }
     assert!(MIGRATION.contains("DATA_CROSS_DOMAIN_GRANT_IMMUTABLE"));
     assert!(MIGRATION.contains("DATA_EVIDENCE_OUTBOX_IMMUTABLE"));
@@ -155,25 +215,40 @@ fn force_rls_immutability_concurrency_and_evidence_recovery_are_structural() {
 #[test]
 fn evidence_uses_the_shared_governed_authority_wire_and_verifies_signatures() {
     for marker in [
-        "AuthorityEvidenceEventRequest", "AuthorityEvidenceControlBinding",
-        "AuthorityEvidenceSourceKind::GovernedAction", "SignedAuthorityEvidenceReceipt",
-        "v1/evidence/authority-events", "X-AgentTrust-Authority-Event-Id",
-        "X-AgentTrust-Payload-Digest", "receipt.verify(verifying_key, Utc::now())",
+        "AuthorityEvidenceEventRequest",
+        "AuthorityEvidenceControlBinding",
+        "AuthorityEvidenceSourceKind::GovernedAction",
+        "SignedAuthorityEvidenceReceipt",
+        "v1/evidence/authority-events",
+        "X-AgentTrust-Authority-Event-Id",
+        "X-AgentTrust-Payload-Digest",
+        "receipt.verify(verifying_key, Utc::now())",
     ] {
-        assert!(ADAPTERS.contains(marker), "Evidence adapter missing {marker}");
+        assert!(
+            ADAPTERS.contains(marker),
+            "Evidence adapter missing {marker}"
+        );
     }
     for marker in [
-        "task_id", "event_occurred_at", "delivery_requested_at",
+        "task_id",
+        "event_occurred_at",
+        "delivery_requested_at",
         "data-governance-evidence-{event_id}",
     ] {
-        assert!(AUTHORITY.contains(marker), "durable outbox missing {marker}");
+        assert!(
+            AUTHORITY.contains(marker),
+            "durable outbox missing {marker}"
+        );
     }
     for variable in [
         "AGENT_TRUST_DATA_EVIDENCE_SOURCE_SERVICE",
         "AGENT_TRUST_DATA_EVIDENCE_ISSUER",
         "AGENT_TRUST_DATA_EVIDENCE_VERIFYING_KEYRING_FILE",
     ] {
-        assert!(BINARY.contains(variable), "production config missing {variable}");
+        assert!(
+            BINARY.contains(variable),
+            "production config missing {variable}"
+        );
     }
     assert!(!ADAPTERS.contains("v1/evidence/events\""));
     assert!(RUNBOOK.contains("evidence:authority-event"));
@@ -182,21 +257,39 @@ fn evidence_uses_the_shared_governed_authority_wire_and_verifies_signatures() {
 #[test]
 fn artifact_and_export_authorization_require_exact_durable_preflight_bindings() {
     for marker in [
-        "verify_artifact_preflight", "governed_data_labels", "data_policy_decision_records",
-        "data_dlp_scan_summaries", "data_transform_receipts", "data_cross_domain_grants",
+        "verify_artifact_preflight",
+        "governed_data_labels",
+        "data_policy_decision_records",
+        "data_dlp_scan_summaries",
+        "data_transform_receipts",
+        "data_cross_domain_grants",
         "transformations @> d.decision->'required_transformations'",
-        "s.engine_receipt_digest=$8", "g.single_use AND g.expires_at>now()",
-        "verify_external_effect_preconditions", "DataOperation::CompleteExport",
+        "s.engine_receipt_digest=$8",
+        "g.single_use AND g.expires_at>now()",
+        "verify_external_effect_preconditions",
+        "DataOperation::CompleteExport",
     ] {
-        assert!(AUTHORITY.contains(marker), "durable preflight missing {marker}");
+        assert!(
+            AUTHORITY.contains(marker),
+            "durable preflight missing {marker}"
+        );
     }
     for marker in [
-        "dlp_receipt_digest", "transform_id", "transform_receipt_digest",
-        "object_authorization_ref", "object_authorization_digest",
+        "dlp_receipt_digest",
+        "transform_id",
+        "transform_receipt_digest",
+        "object_authorization_ref",
+        "object_authorization_digest",
     ] {
-        assert!(COMMAND_SCHEMA.contains(marker), "command schema missing {marker}");
+        assert!(
+            COMMAND_SCHEMA.contains(marker),
+            "command schema missing {marker}"
+        );
         assert!(MIGRATION.contains(marker), "migration missing {marker}");
-        assert!(INSPECTION_SCHEMA.contains(marker), "inspection schema missing {marker}");
+        assert!(
+            INSPECTION_SCHEMA.contains(marker),
+            "inspection schema missing {marker}"
+        );
     }
     assert!(SERVICE.contains("durable_preflight_verified: true"));
     assert!(SERVICE.contains("receipt.transform_id != request.transform_id"));
@@ -205,11 +298,19 @@ fn artifact_and_export_authorization_require_exact_durable_preflight_bindings() 
 #[test]
 fn failure_matrix_covers_required_negative_and_crash_boundaries() {
     for scenario in [
-        "ENTERPRISE_DLP_UNAVAILABLE", "ENCODED_COMPRESSED_ESCAPE", "REDIRECT_BYPASS",
-        "PUBLIC_MODEL_FALLBACK", "CROSS_TENANT_EXPORT", "CROSS_DOMAIN_CONCURRENT_REPLAY",
-        "LEGAL_HOLD_RELEASE_RACE", "CRASH_AFTER_EXTERNAL_EFFECT", "CRASH_AFTER_DB_COMMIT",
-        "OFFLINE_EGRESS_ATTEMPT", "ARTIFACT_DURABLE_BINDING_MISMATCH",
-        "REQUIRED_TRANSFORM_MISSING", "EXPORT_TRANSFORM_REPLAY",
+        "ENTERPRISE_DLP_UNAVAILABLE",
+        "ENCODED_COMPRESSED_ESCAPE",
+        "REDIRECT_BYPASS",
+        "PUBLIC_MODEL_FALLBACK",
+        "CROSS_TENANT_EXPORT",
+        "CROSS_DOMAIN_CONCURRENT_REPLAY",
+        "LEGAL_HOLD_RELEASE_RACE",
+        "CRASH_AFTER_EXTERNAL_EFFECT",
+        "CRASH_AFTER_DB_COMMIT",
+        "OFFLINE_EGRESS_ATTEMPT",
+        "ARTIFACT_DURABLE_BINDING_MISMATCH",
+        "REQUIRED_TRANSFORM_MISSING",
+        "EXPORT_TRANSFORM_REPLAY",
     ] {
         assert!(FAILURE_MATRIX.contains(scenario), "missing {scenario}");
     }

@@ -257,7 +257,12 @@ fn validate_file(
         let mode = metadata.mode() & 0o777;
         let effective_uid = nix::unistd::Uid::effective().as_raw();
         let effective_gid = nix::unistd::Gid::effective().as_raw();
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable_by_process = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         if metadata.nlink() != 1
@@ -272,8 +277,7 @@ fn validate_file(
 
 fn exact_content_type(headers: &reqwest::header::HeaderMap, expected: &str) -> bool {
     let mut values = headers.get_all(reqwest::header::CONTENT_TYPE).iter();
-    values.next().and_then(|value| value.to_str().ok()) == Some(expected)
-        && values.next().is_none()
+    values.next().and_then(|value| value.to_str().ok()) == Some(expected) && values.next().is_none()
 }
 
 fn classify_delivery_status(
@@ -312,9 +316,11 @@ fn strict_json<T: DeserializeOwned>(raw: &[u8]) -> Result<T, ApprovalError> {
         return Err(ApprovalError::GrantInvalid);
     }
     let mut deserializer = serde_json::Deserializer::from_slice(raw);
-    let value = StrictJsonValue::deserialize(&mut deserializer)
+    let value =
+        StrictJsonValue::deserialize(&mut deserializer).map_err(|_| ApprovalError::GrantInvalid)?;
+    deserializer
+        .end()
         .map_err(|_| ApprovalError::GrantInvalid)?;
-    deserializer.end().map_err(|_| ApprovalError::GrantInvalid)?;
     serde_json::from_value(value.0).map_err(|_| ApprovalError::GrantInvalid)
 }
 
@@ -335,7 +341,10 @@ struct StrictJsonVisitor {
 
 impl StrictJsonVisitor {
     fn nested<E: de::Error>(&self) -> Result<Self, E> {
-        let depth = self.depth.checked_add(1).ok_or_else(|| E::custom("JSON depth"))?;
+        let depth = self
+            .depth
+            .checked_add(1)
+            .ok_or_else(|| E::custom("JSON depth"))?;
         if depth > MAX_JSON_DEPTH {
             return Err(E::custom("JSON depth"));
         }
@@ -449,8 +458,8 @@ mod tests {
                 Err(ApprovalEvidenceDeliveryError::ConfigurationInvalid)
             );
         }
-        let valid = Url::parse("https://evidence.internal/")
-            .unwrap_or_else(|_| panic!("valid test URL"));
+        let valid =
+            Url::parse("https://evidence.internal/").unwrap_or_else(|_| panic!("valid test URL"));
         assert_eq!(validate_https_origin(&valid), Ok(()));
     }
 
@@ -459,8 +468,7 @@ mod tests {
         assert!(strict_json::<Value>(br#"{"a":1,"a":2}"#).is_err());
         assert!(strict_json::<Value>(br#"{"a":1} false"#).is_err());
         assert_eq!(
-            strict_json::<Value>(br#"{"a":1}"#)
-                .unwrap_or_else(|_| panic!("strict JSON")),
+            strict_json::<Value>(br#"{"a":1}"#).unwrap_or_else(|_| panic!("strict JSON")),
             serde_json::json!({"a": 1})
         );
     }
@@ -472,10 +480,12 @@ mod tests {
         )
         .unwrap_or_else(|_| panic!("complete readiness"));
         assert!(ready.ready && ready.database_ready && ready.worm_ready);
-        assert!(strict_json::<EvidenceReadiness>(
-            br#"{"schema_version":"agenttrust.evidence-readiness.v1","ready":true}"#
-        )
-        .is_err());
+        assert!(
+            strict_json::<EvidenceReadiness>(
+                br#"{"schema_version":"agenttrust.evidence-readiness.v1","ready":true}"#
+            )
+            .is_err()
+        );
         assert!(strict_json::<EvidenceReadiness>(
             br#"{"schema_version":"agenttrust.evidence-readiness.v1","ready":true,"database_ready":true,"worm_ready":true,"development":true}"#
         )

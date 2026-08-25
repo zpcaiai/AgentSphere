@@ -3,8 +3,8 @@ use agent_trust_platform_sre::authority::{
     PostgresSreAuthorityStore, SreAuthorityConfig, SreExecutor, SreIngressAuthority,
 };
 use agent_trust_platform_sre::server::{
-    HttpSreEffectPort, HttpSreOrchestrator, SreAdapterKind, SreAdapterTarget, SreServerConfig,
-    SreEvidenceKeyring, SreTokenAuthorizer, router, serve,
+    HttpSreEffectPort, HttpSreOrchestrator, SreAdapterKind, SreAdapterTarget, SreEvidenceKeyring,
+    SreServerConfig, SreTokenAuthorizer, router, serve,
 };
 use ed25519_dalek::SigningKey;
 use reqwest::{Certificate, Identity};
@@ -89,17 +89,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         store.clone(),
         orchestrator,
         SreAuthorityConfig {
-            service_agent_id: AgentInstanceId(required_uuid(
-                "AGENT_TRUST_SRE_AGENT_INSTANCE_ID",
-            )?),
+            service_agent_id: AgentInstanceId(required_uuid("AGENT_TRUST_SRE_AGENT_INSTANCE_ID")?),
             organization_id: required_identifier("AGENT_TRUST_SRE_ORGANIZATION_ID")?,
             agent_version: required_identifier("AGENT_TRUST_SRE_AGENT_VERSION")?,
             region: required_identifier("AGENT_TRUST_SRE_REGION")?,
             tool_id: ToolId(required_identifier("AGENT_TRUST_SRE_TOOL_ID")?),
             tool_version: ToolVersion(required_identifier("AGENT_TRUST_SRE_TOOL_VERSION")?),
-            credential_profile: required_identifier(
-                "AGENT_TRUST_SRE_EXECUTOR_CREDENTIAL_PROFILE",
-            )?,
+            credential_profile: required_identifier("AGENT_TRUST_SRE_EXECUTOR_CREDENTIAL_PROFILE")?,
             service_subject: ingress_subject.clone(),
         },
     )?;
@@ -125,8 +121,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &allowed_identities,
     )?);
     let audience = required_identifier("AGENT_TRUST_SRE_HUMAN_PRINCIPAL_AUDIENCE")?;
-    let keyring_bytes =
-        std::fs::read(required_path("AGENT_TRUST_SRE_HUMAN_PRINCIPAL_KEYRING_FILE")?)?;
+    let keyring_bytes = std::fs::read(required_path(
+        "AGENT_TRUST_SRE_HUMAN_PRINCIPAL_KEYRING_FILE",
+    )?)?;
     let keyring = Arc::new(HumanPrincipalKeyring::from_json(
         &keyring_bytes,
         &audience,
@@ -151,17 +148,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let data_port = required_i64("AGENT_TRUST_SRE_PORT", 8_097, 8_097)? as u16;
     let management_address: IpAddr =
         env::var("AGENT_TRUST_SRE_MANAGEMENT_LISTEN_ADDRESS")?.parse()?;
-    let management_port =
-        required_i64("AGENT_TRUST_SRE_MANAGEMENT_PORT", 9_107, 9_107)? as u16;
+    let management_port = required_i64("AGENT_TRUST_SRE_MANAGEMENT_PORT", 9_107, 9_107)? as u16;
     serve(
         SreServerConfig {
             data_address: SocketAddr::new(data_address, data_port),
             management_address: SocketAddr::new(management_address, management_port),
             tls_ca_file: required_path("AGENT_TRUST_SRE_TLS_CA_FILE")?,
             tls_certificate_file: required_path("AGENT_TRUST_SRE_TLS_CERTIFICATE_FILE")?,
-            tls_private_key_file: required_private_path(
-                "AGENT_TRUST_SRE_TLS_PRIVATE_KEY_FILE",
-            )?,
+            tls_private_key_file: required_private_path("AGENT_TRUST_SRE_TLS_PRIVATE_KEY_FILE")?,
             allowed_client_identities: allowed_identities,
             ingress_subject,
             executor_subject,
@@ -176,7 +170,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn adapter_targets() -> Result<BTreeMap<SreAdapterKind, SreAdapterTarget>, Box<dyn std::error::Error>> {
+fn adapter_targets()
+-> Result<BTreeMap<SreAdapterKind, SreAdapterTarget>, Box<dyn std::error::Error>> {
     let definitions = [
         (SreAdapterKind::Backup, "BACKUP"),
         (SreAdapterKind::Recovery, "RECOVERY"),
@@ -208,7 +203,9 @@ fn verify_unique_dependency_credentials(
     targets: &BTreeMap<SreAdapterKind, SreAdapterTarget>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut endpoints = BTreeSet::from([orchestrator_endpoint.as_str().to_string()]);
-    let mut tokens = BTreeSet::from([sha256(read_secret_file_path(orchestrator_token, 16, 8_192)?.as_bytes())]);
+    let mut tokens = BTreeSet::from([sha256(
+        read_secret_file_path(orchestrator_token, 16, 8_192)?.as_bytes(),
+    )]);
     for target in targets.values() {
         if !endpoints.insert(target.endpoint.as_str().to_string())
             || !tokens.insert(sha256(
@@ -295,7 +292,9 @@ async fn verify_database_role(
     let expected_base = BTreeSet::from(["INSERT".to_string(), "SELECT".to_string()]);
     if by_table.len() != expected_tables.len()
         || expected_tables.iter().any(|table| {
-            by_table.get(*table).is_none_or(|privileges| privileges != &expected_base)
+            by_table
+                .get(*table)
+                .is_none_or(|privileges| privileges != &expected_base)
         })
     {
         return Err("PLATFORM_SRE_DATABASE_TABLE_GRANTS_INVALID".into());
@@ -309,7 +308,12 @@ async fn verify_database_role(
     .await?;
     let observed_updates = column_grants
         .into_iter()
-        .map(|row| Ok((row.try_get::<String, _>("table_name")?, row.try_get::<String, _>("column_name")?)))
+        .map(|row| {
+            Ok((
+                row.try_get::<String, _>("table_name")?,
+                row.try_get::<String, _>("column_name")?,
+            ))
+        })
         .collect::<Result<BTreeSet<_>, sqlx::Error>>()?;
     if observed_updates != expected_updates {
         return Err("PLATFORM_SRE_DATABASE_COLUMN_GRANTS_INVALID".into());
@@ -322,43 +326,85 @@ fn expected_update_columns() -> BTreeSet<(String, String)> {
         (
             "sre_service_slos",
             &[
-                "service","sli_kind","window_seconds","target_millionths","minimum_samples",
-                "fast_burn_threshold_millionths","slow_burn_threshold_millionths",
-                "release_blocking","status","resource_version","updated_at",
+                "service",
+                "sli_kind",
+                "window_seconds",
+                "target_millionths",
+                "minimum_samples",
+                "fast_burn_threshold_millionths",
+                "slow_burn_threshold_millionths",
+                "release_blocking",
+                "status",
+                "resource_version",
+                "updated_at",
             ],
         ),
         (
             "sre_deployment_topologies",
             &[
-                "deployment_mode","release_digest","topology_digest","zones","components",
-                "quorum_rules","disruption_budgets","immutable_image_digests","status",
-                "resource_version","updated_at",
+                "deployment_mode",
+                "release_digest",
+                "topology_digest",
+                "zones",
+                "components",
+                "quorum_rules",
+                "disruption_budgets",
+                "immutable_image_digests",
+                "status",
+                "resource_version",
+                "updated_at",
             ],
         ),
         (
             "sre_burn_alerts",
             &["state", "owner_subject", "resolved_at", "resource_version"],
         ),
-        ("sre_dr_plans", &["status", "resource_version", "updated_at"]),
-        ("sre_chaos_campaigns", &["status", "resource_version", "updated_at"]),
-        ("sre_load_campaigns", &["status", "resource_version", "updated_at"]),
+        (
+            "sre_dr_plans",
+            &["status", "resource_version", "updated_at"],
+        ),
+        (
+            "sre_chaos_campaigns",
+            &["status", "resource_version", "updated_at"],
+        ),
+        (
+            "sre_load_campaigns",
+            &["status", "resource_version", "updated_at"],
+        ),
         (
             "deployment_rollouts",
-            &["status", "current_canary_percent", "resource_version", "updated_at"],
+            &[
+                "status",
+                "current_canary_percent",
+                "resource_version",
+                "updated_at",
+            ],
         ),
         (
             "sre_resource_versions",
             &[
-                "resource_version","action_hash","ledger_execution_id","ledger_event_id",
-                "ledger_event_digest","fence_digest","updated_at",
+                "resource_version",
+                "action_hash",
+                "ledger_execution_id",
+                "ledger_event_id",
+                "ledger_event_digest",
+                "fence_digest",
+                "updated_at",
             ],
         ),
         ("sre_action_ingress", &["state", "receipt", "updated_at"]),
         (
             "sre_authority_executions",
             &[
-                "state","execution_owner","lease_expires_at","external_receipt","safe_result",
-                "evidence_request","evidence_ref","evidence_digest","updated_at",
+                "state",
+                "execution_owner",
+                "lease_expires_at",
+                "external_receipt",
+                "safe_result",
+                "evidence_request",
+                "evidence_ref",
+                "evidence_digest",
+                "updated_at",
             ],
         ),
         (
@@ -408,8 +454,7 @@ fn database_options(
         || password.is_empty()
         || query.len() != 2
         || query.get("sslmode").map(String::as_str) != Some("verify-full")
-        || query.get("options").map(String::as_str)
-            != Some("-csearch_path=pg_catalog,public")
+        || query.get("options").map(String::as_str) != Some("-csearch_path=pg_catalog,public")
         || !ca_file.is_absolute()
     {
         return Err("PLATFORM_SRE_DATABASE_URL_INVALID".into());
@@ -466,7 +511,12 @@ fn secure_file(path: &Path, private: bool) -> Result<bool, Box<dyn std::error::E
     let effective_uid = nix::unistd::Uid::effective().as_raw();
     let effective_gid = nix::unistd::Gid::effective().as_raw();
     let access = if private {
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         readable && mode & !allowed == 0
@@ -522,9 +572,9 @@ fn required_identifier(name: &str) -> Result<String, Box<dyn std::error::Error>>
     let value = env::var(name)?;
     if value.is_empty()
         || value.len() > 256
-        || value.bytes().any(|byte| {
-            !(byte.is_ascii_alphanumeric() || b"-_.:/@".contains(&byte))
-        })
+        || value
+            .bytes()
+            .any(|byte| !(byte.is_ascii_alphanumeric() || b"-_.:/@".contains(&byte)))
     {
         return Err("PLATFORM_SRE_IDENTIFIER_INVALID".into());
     }
@@ -539,11 +589,7 @@ fn required_uuid(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     Ok(value)
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let raw = env::var(name)?;
     if raw.starts_with('+') || raw.starts_with('0') && raw.len() > 1 {
         return Err("PLATFORM_SRE_INTEGER_INVALID".into());
@@ -571,9 +617,7 @@ fn required_url(name: &str) -> Result<url::Url, Box<dyn std::error::Error>> {
     Ok(value)
 }
 
-fn required_identities(
-    name: &str,
-) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
+fn required_identities(name: &str) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
     let raw = env::var(name)?;
     let identities = raw.split(',').map(str::to_string).collect::<BTreeSet<_>>();
     if identities.len() < 3

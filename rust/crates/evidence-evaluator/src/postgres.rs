@@ -8,8 +8,8 @@ use crate::{
     SignedEvidencePackage, StoredArtifact, package_hash,
 };
 use agent_trust_contracts::{
-    AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE, AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION,
-    ArtifactRef, AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE, AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, ArtifactRef,
+    AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
     EVIDENCE_EXECUTION_RECEIPT_KEY_USAGE, EXECUTION_EVIDENCE_RECEIPT_SCHEMA_VERSION,
     EvaluationResult, EvaluationStatus, EvidenceEventType, ExecutionEvidenceRequest, SchemaVersion,
     SignedAuthorityEvidenceReceipt, SignedEvidenceEvent, SignedExecutionEvidenceReceipt,
@@ -497,10 +497,10 @@ impl PostgresEvidenceStore {
         receipt.sign(&self.signing_key)?;
         receipt.verify(&self.verifying_key(), Utc::now())?;
 
-        let event_value = serde_json::to_value(&receipt.event)
-            .map_err(|_| EvidenceError::Canonicalization)?;
-        let receipt_value = serde_json::to_value(&receipt)
-            .map_err(|_| EvidenceError::Canonicalization)?;
+        let event_value =
+            serde_json::to_value(&receipt.event).map_err(|_| EvidenceError::Canonicalization)?;
+        let receipt_value =
+            serde_json::to_value(&receipt).map_err(|_| EvidenceError::Canonicalization)?;
         let event_type = serde_json::to_value(&receipt.event.draft.event_type)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))

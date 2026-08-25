@@ -2,9 +2,9 @@
 //! Evidence authorities. Redirect following is disabled by the production client configuration.
 
 use crate::authority::{
-    AdapterReceipt, DataActionReceipt, DataAuthorityError, DataEffectReceipt,
-    DataExecutionBinding, DataExecutorRequest, DataOperation, DataOrchestratorPort, DataRuntimePort,
-    DATA_EVIDENCE_SCHEMA, adapter_reference, canonical_digest, canonical_uuid, digest,
+    AdapterReceipt, DATA_EVIDENCE_SCHEMA, DataActionReceipt, DataAuthorityError, DataEffectReceipt,
+    DataExecutionBinding, DataExecutorRequest, DataOperation, DataOrchestratorPort,
+    DataRuntimePort, adapter_reference, canonical_digest, canonical_uuid, digest,
     evidence_reference, identifier, valid_idempotency_key,
 };
 use crate::service::{
@@ -13,10 +13,10 @@ use crate::service::{
 };
 use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
-    ActionHash, AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
-    AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
-    EvidenceEventType, ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId,
-    TenantId, AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,
+    AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, AuthorityEvidenceControlBinding,
+    AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION,
+    EvidenceEventDraft, EvidenceEventType, ExecutionId, IdempotencyKey,
+    SignedAuthorityEvidenceReceipt, TaskId, TenantId,
 };
 use agent_trust_gateway::InboundEnvelope;
 use async_trait::async_trait;
@@ -83,7 +83,8 @@ impl EvidenceReceiptVerification {
         issuer: String,
         verifying_keys: BTreeMap<String, VerifyingKey>,
     ) -> Result<Self, DataAuthorityError> {
-        let san_value = source_service.strip_prefix("DNS:")
+        let san_value = source_service
+            .strip_prefix("DNS:")
             .or_else(|| source_service.strip_prefix("URI:"));
         if san_value.is_none_or(str::is_empty)
             || !identifier(&source_service, 256)
@@ -132,7 +133,11 @@ impl HttpDataRuntime {
         endpoints.object_worm.validate()?;
         endpoints.legal_hold.validate()?;
         endpoints.evidence.validate()?;
-        Ok(Self { client, endpoints, evidence_verification })
+        Ok(Self {
+            client,
+            endpoints,
+            evidence_verification,
+        })
     }
 
     async fn effect(
@@ -144,7 +149,9 @@ impl HttpDataRuntime {
         binding: &DataExecutionBinding,
         request: &DataExecutorRequest,
     ) -> Result<AdapterReceipt, DataAuthorityError> {
-        let target = endpoint.endpoint.join(path)
+        let target = endpoint
+            .endpoint
+            .join(path)
             .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
         let payload = json!({
             "schema_version": "agenttrust.data-adapter-effect.v1",
@@ -165,13 +172,21 @@ impl HttpDataRuntime {
             "metadata": request.command.payload,
         });
         let request_digest = canonical_digest(&payload)?;
-        let response = self.client.post(target)
+        let response = self
+            .client
+            .post(target)
             .bearer_auth(read_token(&endpoint.token_file)?)
             .header("X-AgentTrust-Tenant-Id", &binding.tenant_id.0)
             .header("Idempotency-Key", &binding.idempotency_key)
             .header("X-AgentTrust-Action-Hash", &binding.action_hash)
-            .header("X-AgentTrust-Ledger-Execution-Id", binding.ledger_execution_id.to_string())
-            .header("X-AgentTrust-Ledger-Entry-Id", binding.ledger_event_id.to_string())
+            .header(
+                "X-AgentTrust-Ledger-Execution-Id",
+                binding.ledger_execution_id.to_string(),
+            )
+            .header(
+                "X-AgentTrust-Ledger-Entry-Id",
+                binding.ledger_event_id.to_string(),
+            )
             .header("X-AgentTrust-Fence-Digest", &binding.fence_digest)
             .json(&payload)
             .timeout(Duration::from_secs(15))
@@ -251,12 +266,19 @@ impl DataOrchestratorPort for HttpDataOrchestrator {
         tenant: &TenantId,
         envelope: &InboundEnvelope,
     ) -> Result<DataActionReceipt, DataAuthorityError> {
-        let idempotency_key = envelope.idempotency_key.as_deref()
+        let idempotency_key = envelope
+            .idempotency_key
+            .as_deref()
             .filter(|value| valid_idempotency_key(value))
             .ok_or(DataAuthorityError::RequestInvalid)?;
-        let target = self.endpoint.endpoint.join("v1/actions")
+        let target = self
+            .endpoint
+            .endpoint
+            .join("v1/actions")
             .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
-        let response = self.client.post(target)
+        let response = self
+            .client
+            .post(target)
             .bearer_auth(read_token(&self.endpoint.token_file)?)
             .header("X-AgentTrust-Tenant-Id", &tenant.0)
             .header("Idempotency-Key", idempotency_key)
@@ -312,38 +334,50 @@ impl DataRuntimePort for HttpDataRuntime {
         request: &DataExecutorRequest,
     ) -> Result<Option<DataEffectReceipt>, DataAuthorityError> {
         let receipts = match request.command.operation {
-            DataOperation::RecordDlpScan => vec![self.effect(
-                &self.endpoints.enterprise_dlp,
-                "v1/dlp/receipts/verify",
-                "ENTERPRISE_DLP",
-                "VERIFY_DLP_RECEIPT",
-                binding,
-                request,
-            ).await?],
-            DataOperation::ResolveRetention => vec![self.effect(
-                &self.endpoints.legal_hold,
-                "v1/legal-holds/retention-check",
-                "LEGAL_HOLD",
-                "RESOLVE_RETENTION",
-                binding,
-                request,
-            ).await?],
-            DataOperation::PlaceLegalHold => vec![self.effect(
-                &self.endpoints.legal_hold,
-                "v1/legal-holds/place",
-                "LEGAL_HOLD",
-                "PLACE",
-                binding,
-                request,
-            ).await?],
-            DataOperation::ReleaseLegalHold => vec![self.effect(
-                &self.endpoints.legal_hold,
-                "v1/legal-holds/release",
-                "LEGAL_HOLD",
-                "RELEASE",
-                binding,
-                request,
-            ).await?],
+            DataOperation::RecordDlpScan => vec![
+                self.effect(
+                    &self.endpoints.enterprise_dlp,
+                    "v1/dlp/receipts/verify",
+                    "ENTERPRISE_DLP",
+                    "VERIFY_DLP_RECEIPT",
+                    binding,
+                    request,
+                )
+                .await?,
+            ],
+            DataOperation::ResolveRetention => vec![
+                self.effect(
+                    &self.endpoints.legal_hold,
+                    "v1/legal-holds/retention-check",
+                    "LEGAL_HOLD",
+                    "RESOLVE_RETENTION",
+                    binding,
+                    request,
+                )
+                .await?,
+            ],
+            DataOperation::PlaceLegalHold => vec![
+                self.effect(
+                    &self.endpoints.legal_hold,
+                    "v1/legal-holds/place",
+                    "LEGAL_HOLD",
+                    "PLACE",
+                    binding,
+                    request,
+                )
+                .await?,
+            ],
+            DataOperation::ReleaseLegalHold => vec![
+                self.effect(
+                    &self.endpoints.legal_hold,
+                    "v1/legal-holds/release",
+                    "LEGAL_HOLD",
+                    "RELEASE",
+                    binding,
+                    request,
+                )
+                .await?,
+            ],
             DataOperation::AuthorizeExport => vec![
                 self.effect(
                     &self.endpoints.enterprise_dlp,
@@ -352,7 +386,8 @@ impl DataRuntimePort for HttpDataRuntime {
                     "AUTHORIZE_EXPORT",
                     binding,
                     request,
-                ).await?,
+                )
+                .await?,
                 self.effect(
                     &self.endpoints.object_worm,
                     "v1/objects/authorize-export",
@@ -360,16 +395,20 @@ impl DataRuntimePort for HttpDataRuntime {
                     "AUTHORIZE_EXPORT",
                     binding,
                     request,
-                ).await?,
+                )
+                .await?,
             ],
-            DataOperation::CompleteExport => vec![self.effect(
-                &self.endpoints.object_worm,
-                "v1/objects/complete-export",
-                "OBJECT_WORM",
-                "COMPLETE_EXPORT",
-                binding,
-                request,
-            ).await?],
+            DataOperation::CompleteExport => vec![
+                self.effect(
+                    &self.endpoints.object_worm,
+                    "v1/objects/complete-export",
+                    "OBJECT_WORM",
+                    "COMPLETE_EXPORT",
+                    binding,
+                    request,
+                )
+                .await?,
+            ],
             _ => return Ok(None),
         };
         let mut receipt = DataEffectReceipt {
@@ -464,20 +503,24 @@ impl DataRuntimePort for HttpDataRuntime {
                 trace_id: evidence.trace_id,
                 span_id: evidence.ledger_execution_id.to_string(),
                 payload_hash: payload_digest.into(),
-                safe_summary: format!(
-                    "data-governance {} committed",
-                    evidence.operation.as_str()
-                ),
+                safe_summary: format!("data-governance {} committed", evidence.operation.as_str()),
                 artifact_refs: Vec::new(),
                 occurred_at: evidence.event_occurred_at,
             },
             requested_at: evidence.delivery_requested_at,
         };
-        let request_digest = request.request_digest()
+        let request_digest = request
+            .request_digest()
             .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
-        let target = self.endpoints.evidence.endpoint.join("v1/evidence/authority-events")
+        let target = self
+            .endpoints
+            .evidence
+            .endpoint
+            .join("v1/evidence/authority-events")
             .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
-        let response = self.client.post(target)
+        let response = self
+            .client
+            .post(target)
             .bearer_auth(read_token(&self.endpoints.evidence.token_file)?)
             .header("X-AgentTrust-Tenant-Id", &tenant.0)
             .header("Idempotency-Key", idempotency_key)
@@ -491,10 +534,15 @@ impl DataRuntimePort for HttpDataRuntime {
         if response.status() == StatusCode::CONFLICT {
             return Err(DataAuthorityError::IdempotencyConflict);
         }
-        let receipt: SignedAuthorityEvidenceReceipt = bounded_json_response(response, 65_536).await?;
-        let verifying_key = self.evidence_verification.verifying_keys.get(&receipt.key_id)
+        let receipt: SignedAuthorityEvidenceReceipt =
+            bounded_json_response(response, 65_536).await?;
+        let verifying_key = self
+            .evidence_verification
+            .verifying_keys
+            .get(&receipt.key_id)
             .ok_or(DataAuthorityError::DependencyUnavailable)?;
-        receipt.verify(verifying_key, Utc::now())
+        receipt
+            .verify(verifying_key, Utc::now())
             .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
         if receipt.issuer != self.evidence_verification.issuer
             || receipt.tenant_id != request.tenant_id
@@ -547,7 +595,11 @@ impl DataInspectionPort for HttpDataRuntime {
         {
             return Err(DataAuthorityError::RequestInvalid);
         }
-        let target = self.endpoints.enterprise_dlp.endpoint.join("v1/dlp/scans")
+        let target = self
+            .endpoints
+            .enterprise_dlp
+            .endpoint
+            .join("v1/dlp/scans")
             .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
         let request = DlpScanAdapterRequest {
             schema_version: "agenttrust.enterprise-dlp-scan.v1",
@@ -557,7 +609,9 @@ impl DataInspectionPort for HttpDataRuntime {
             media_type,
             content_base64: STANDARD.encode(bytes),
         };
-        let response = self.client.post(target)
+        let response = self
+            .client
+            .post(target)
             .bearer_auth(read_token(&self.endpoints.enterprise_dlp.token_file)?)
             .header("X-AgentTrust-Tenant-Id", &tenant.0)
             .header("Idempotency-Key", format!("dlp-scan-{scan_id}"))
@@ -577,13 +631,15 @@ impl DataInspectionPort for HttpDataRuntime {
         policy_request_digest: &str,
         dlp_receipt_digest: &str,
     ) -> Result<ObjectAuthorizationReceipt, DataAuthorityError> {
-        if !digest(decision_digest)
-            || !digest(policy_request_digest)
-            || !digest(dlp_receipt_digest)
+        if !digest(decision_digest) || !digest(policy_request_digest) || !digest(dlp_receipt_digest)
         {
             return Err(DataAuthorityError::RequestInvalid);
         }
-        let target = self.endpoints.object_worm.endpoint.join("v1/objects/authorize")
+        let target = self
+            .endpoints
+            .object_worm
+            .endpoint
+            .join("v1/objects/authorize")
             .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
         let payload = json!({
             "schema_version": "agenttrust.object-authorization.v1",
@@ -604,10 +660,15 @@ impl DataInspectionPort for HttpDataRuntime {
             "cross_domain_approval_id": request.policy_request.cross_domain_approval_id,
             "redirect_target_digests": request.redirect_target_digests,
         });
-        let response = self.client.post(target)
+        let response = self
+            .client
+            .post(target)
             .bearer_auth(read_token(&self.endpoints.object_worm.token_file)?)
             .header("X-AgentTrust-Tenant-Id", &tenant.0)
-            .header("Idempotency-Key", format!("object-auth-{}", request.authorization_id))
+            .header(
+                "Idempotency-Key",
+                format!("object-auth-{}", request.authorization_id),
+            )
             .json(&payload)
             .timeout(Duration::from_secs(15))
             .send()
@@ -631,68 +692,72 @@ async fn endpoint_ready(client: &Client, endpoint: &AdapterEndpoint) -> bool {
     let Ok(token) = read_token(&endpoint.token_file) else {
         return false;
     };
-    let Ok(response) = client.get(target)
+    let Ok(response) = client
+        .get(target)
         .bearer_auth(token)
         .timeout(Duration::from_secs(3))
         .send()
-        .await else {
-            return false;
-        };
+        .await
+    else {
+        return false;
+    };
     bounded_json_response::<DependencyReadiness>(response, 4096)
         .await
-        .is_ok_and(|value| {
-            value.schema_version == endpoint.readiness_schema && value.ready
-        })
+        .is_ok_and(|value| value.schema_version == endpoint.readiness_schema && value.ready)
 }
 
 async fn bounded_json_response<T: DeserializeOwned>(
     response: reqwest::Response,
     maximum: usize,
 ) -> Result<T, DataAuthorityError> {
-    let maximum_u64 = u64::try_from(maximum)
-        .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
+    let maximum_u64 =
+        u64::try_from(maximum).map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
     let mut content_types = response
         .headers()
         .get_all(reqwest::header::CONTENT_TYPE)
         .iter();
-    let exact_json = content_types.next()
-        .and_then(|value| value.to_str().ok()) == Some("application/json")
+    let exact_json = content_types.next().and_then(|value| value.to_str().ok())
+        == Some("application/json")
         && content_types.next().is_none();
     if !response.status().is_success()
-        || response.content_length().is_some_and(|length| length > maximum_u64)
+        || response
+            .content_length()
+            .is_some_and(|length| length > maximum_u64)
         || !exact_json
     {
         return Err(DataAuthorityError::DependencyUnavailable);
     }
-    let bytes = read_bounded_body(response, maximum).await
+    let bytes = read_bounded_body(response, maximum)
+        .await
         .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
     if bytes.is_empty() || bytes.len() > maximum {
         return Err(DataAuthorityError::DependencyUnavailable);
     }
-    crate::server::strict_json(&bytes)
-        .map_err(|_| DataAuthorityError::DependencyUnavailable)
+    crate::server::strict_json(&bytes).map_err(|_| DataAuthorityError::DependencyUnavailable)
 }
 
 fn read_token(path: &PathBuf) -> Result<String, DataAuthorityError> {
     validate_private_file(path)?;
-    let token = fs::read_to_string(path)
-        .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
+    let token = fs::read_to_string(path).map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
     let token = token.trim();
-    if !(16..=8192).contains(&token.len())
-        || token.bytes().any(|byte| byte.is_ascii_whitespace())
-    {
+    if !(16..=8192).contains(&token.len()) || token.bytes().any(|byte| byte.is_ascii_whitespace()) {
         return Err(DataAuthorityError::ConfigurationInvalid);
     }
     Ok(token.into())
 }
 
 fn validate_private_file(path: &PathBuf) -> Result<(), DataAuthorityError> {
-    let metadata = fs::symlink_metadata(path)
-        .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        fs::symlink_metadata(path).map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
     let mode = metadata.mode() & 0o777;
     let effective_uid = Uid::effective().as_raw();
     let effective_gid = Gid::effective().as_raw();
-    let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+    let allowed = 0o400
+        | if metadata.gid() == effective_gid {
+            0o040
+        } else {
+            0
+        };
     let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
         || (metadata.gid() == effective_gid && mode & 0o040 != 0);
     if !path.is_absolute()

@@ -1,6 +1,4 @@
-use agent_trust_contracts::{
-    AgentInstanceId, HumanPrincipalKeyring, ToolId, ToolVersion,
-};
+use agent_trust_contracts::{AgentInstanceId, HumanPrincipalKeyring, ToolId, ToolVersion};
 use agent_trust_incident_release_gate::authority::{
     IncidentAuthorityConfig, IncidentExecutor, IncidentIngressAuthority,
     PostgresIncidentAuthorityStore,
@@ -32,11 +30,8 @@ async fn main() {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let database_url = read_secret_file("AGENT_TRUST_INCIDENT_DATABASE_URL_FILE", 16, 16_384)?;
-    let mut database_password = read_secret_file(
-        "AGENT_TRUST_INCIDENT_DATABASE_PASSWORD_FILE",
-        16,
-        8_192,
-    )?;
+    let mut database_password =
+        read_secret_file("AGENT_TRUST_INCIDENT_DATABASE_PASSWORD_FILE", 16, 8_192)?;
     let expected_role = required_identifier("AGENT_TRUST_INCIDENT_DATABASE_EXPECTED_ROLE")?;
     let database_ca = required_path("AGENT_TRUST_INCIDENT_DATABASE_CA_FILE")?;
     let options = database_options(
@@ -90,11 +85,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         required_url("AGENT_TRUST_INCIDENT_REPLAY_ENDPOINT")?,
         required_private_path("AGENT_TRUST_INCIDENT_REPLAY_TOKEN_FILE")?,
     )?);
-    let mut signing_key_bytes = read_binary_secret(
-        "AGENT_TRUST_INCIDENT_RELEASE_SIGNING_KEY_FILE",
-        32,
-        32,
-    )?;
+    let mut signing_key_bytes =
+        read_binary_secret("AGENT_TRUST_INCIDENT_RELEASE_SIGNING_KEY_FILE", 32, 32)?;
     let signing_key_array: [u8; 32] = signing_key_bytes
         .as_slice()
         .try_into()
@@ -140,8 +132,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let data_port = required_i64("AGENT_TRUST_INCIDENT_PORT", 1, 65_535)? as u16;
     let management_address: IpAddr =
         env::var("AGENT_TRUST_INCIDENT_MANAGEMENT_LISTEN_ADDRESS")?.parse()?;
-    let management_port =
-        required_i64("AGENT_TRUST_INCIDENT_MANAGEMENT_PORT", 1, 65_535)? as u16;
+    let management_port = required_i64("AGENT_TRUST_INCIDENT_MANAGEMENT_PORT", 1, 65_535)? as u16;
     serve(
         IncidentServerConfig {
             data_address: SocketAddr::new(data_address, data_port),
@@ -228,8 +219,7 @@ fn database_options(
         || password.is_empty()
         || query.len() != 2
         || query.get("sslmode").map(String::as_str) != Some("verify-full")
-        || query.get("options").map(String::as_str)
-            != Some("-csearch_path=pg_catalog,public")
+        || query.get("options").map(String::as_str) != Some("-csearch_path=pg_catalog,public")
         || !ca_file.is_absolute()
     {
         return Err("INCIDENT_DATABASE_URL_INVALID".into());
@@ -285,7 +275,12 @@ fn secure_file(path: &Path, private: bool) -> Result<bool, Box<dyn std::error::E
     let effective_uid = nix::unistd::Uid::effective().as_raw();
     let effective_gid = nix::unistd::Gid::effective().as_raw();
     let access = if private {
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         readable && mode & !allowed == 0
@@ -373,11 +368,7 @@ fn required_uuid(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     Ok(value)
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let value: i64 = env::var(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("INCIDENT_INTEGER_INVALID".into());
@@ -436,8 +427,32 @@ mod tests {
     fn database_url_is_exact_and_has_no_path_escape() {
         let ca = Path::new("/var/run/incident/db-ca.pem");
         let valid = "postgresql://incident_authority_application_role@db.internal/agentsphere?sslmode=verify-full&options=-csearch_path%3Dpg_catalog%2Cpublic";
-        assert!(database_options(valid, "not-a-real-secret", ca, "incident_authority_application_role").is_ok());
-        assert!(database_options(&valid.replace("sslmode", "SSLMODE"), "not-a-real-secret", ca, "incident_authority_application_role").is_err());
-        assert!(database_options(&valid.replace("/agentsphere?", "/agentsphere/extra?"), "not-a-real-secret", ca, "incident_authority_application_role").is_err());
+        assert!(
+            database_options(
+                valid,
+                "not-a-real-secret",
+                ca,
+                "incident_authority_application_role"
+            )
+            .is_ok()
+        );
+        assert!(
+            database_options(
+                &valid.replace("sslmode", "SSLMODE"),
+                "not-a-real-secret",
+                ca,
+                "incident_authority_application_role"
+            )
+            .is_err()
+        );
+        assert!(
+            database_options(
+                &valid.replace("/agentsphere?", "/agentsphere/extra?"),
+                "not-a-real-secret",
+                ca,
+                "incident_authority_application_role"
+            )
+            .is_err()
+        );
     }
 }

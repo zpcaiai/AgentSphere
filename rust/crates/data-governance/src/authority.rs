@@ -10,11 +10,11 @@ use agent_trust_action_ir::{
     ActionDraft, CredentialRef, NormalizationContext, TypedPayload, hash as action_hash, normalize,
 };
 use agent_trust_contracts::{
-    ActionId, AgentIdentity, AgentInstanceId, AuthorityEvidenceSourceKind,
-    CONTRACT_SCHEMA_VERSION, DataClassification, DataContext, DataPolicyRequest,
-    ExecutionEnvironment, ExpectedOutcome, Intent, ResourceSelector, RiskContext, RiskLevel,
-    SchemaVersion, SignedAuthorityEvidenceReceipt, StepId, TaskId, TenantId, ToolId, ToolRef,
-    ToolVersion, AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION,
+    AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, ActionId, AgentIdentity, AgentInstanceId,
+    AuthorityEvidenceSourceKind, CONTRACT_SCHEMA_VERSION, DataClassification, DataContext,
+    DataPolicyRequest, ExecutionEnvironment, ExpectedOutcome, Intent, ResourceSelector,
+    RiskContext, RiskLevel, SchemaVersion, SignedAuthorityEvidenceReceipt, StepId, TaskId,
+    TenantId, ToolId, ToolRef, ToolVersion,
 };
 use agent_trust_gateway::{
     GATEWAY_SCHEMA_VERSION, IdentityContext, InboundEnvelope, IngressProtocol, TenantContext,
@@ -342,7 +342,11 @@ impl DataIngressAuthority {
         config: DataAuthorityConfig,
     ) -> Result<Self, DataAuthorityError> {
         config.validate()?;
-        Ok(Self { store, orchestrator, config })
+        Ok(Self {
+            store,
+            orchestrator,
+            config,
+        })
     }
 
     pub async fn submit(
@@ -353,8 +357,17 @@ impl DataIngressAuthority {
         request_digest: &str,
         idempotency_key: &str,
     ) -> Result<DataActionReceipt, DataAuthorityError> {
-        validate_command(&tenant, &actor_subject, &request, request_digest, idempotency_key)?;
-        let current = self.store.current_resource_version(&tenant, &request.resource).await?;
+        validate_command(
+            &tenant,
+            &actor_subject,
+            &request,
+            request_digest,
+            idempotency_key,
+        )?;
+        let current = self
+            .store
+            .current_resource_version(&tenant, &request.resource)
+            .await?;
         if current != request.expected_resource_version {
             return Err(DataAuthorityError::StateConflict);
         }
@@ -366,19 +379,27 @@ impl DataIngressAuthority {
             approval_ids: BTreeSet::new(),
         };
         let envelope = canonical_data_action(&executor, &self.config, idempotency_key)?;
-        let prepared = self.store.prepare_ingress(
-            &tenant,
-            &actor_subject,
-            &request,
-            request_digest,
-            idempotency_key,
-            envelope,
-        ).await?;
+        let prepared = self
+            .store
+            .prepare_ingress(
+                &tenant,
+                &actor_subject,
+                &request,
+                request_digest,
+                idempotency_key,
+                envelope,
+            )
+            .await?;
         if let Some(receipt) = prepared.receipt {
             return Ok(receipt);
         }
-        let receipt = self.orchestrator.submit(&tenant, &prepared.envelope).await?;
-        self.store.complete_ingress(&tenant, idempotency_key, &receipt).await
+        let receipt = self
+            .orchestrator
+            .submit(&tenant, &prepared.envelope)
+            .await?;
+        self.store
+            .complete_ingress(&tenant, idempotency_key, &receipt)
+            .await
     }
 
     pub async fn ready(&self) -> bool {
@@ -421,7 +442,11 @@ impl DataExecutor {
         if !(15..=300).contains(&execution_lease_seconds) {
             return Err(DataAuthorityError::ConfigurationInvalid);
         }
-        Ok(Self { store, runtime, execution_lease_seconds })
+        Ok(Self {
+            store,
+            runtime,
+            execution_lease_seconds,
+        })
     }
 
     pub async fn ready(&self) -> bool {
@@ -434,7 +459,11 @@ impl DataExecutor {
         request: DataExecutorRequest,
     ) -> Result<DataMutationResult, DataAuthorityError> {
         validate_execution(&binding, &request)?;
-        match self.store.claim_execution(&binding, &request, self.execution_lease_seconds).await? {
+        match self
+            .store
+            .claim_execution(&binding, &request, self.execution_lease_seconds)
+            .await?
+        {
             ExecutionClaim::Completed(result) => Ok(result),
             ExecutionClaim::EvidencePending(pending) => {
                 self.deliver_and_finalize(&binding.tenant_id, pending).await
@@ -444,14 +473,16 @@ impl DataExecutor {
                     request.command.operation,
                     DataOperation::AuthorizeExport | DataOperation::CompleteExport
                 ) {
-                    self.store.verify_external_effect_preconditions(
-                        &binding.tenant_id,
-                        &request,
-                    ).await?;
+                    self.store
+                        .verify_external_effect_preconditions(&binding.tenant_id, &request)
+                        .await?;
                 }
                 let effect = self.runtime.execute_effects(&binding, &request).await?;
                 validate_effect(&binding, &request, effect.as_ref())?;
-                let pending = self.store.commit_mutation(&binding, &request, claim, effect).await?;
+                let pending = self
+                    .store
+                    .commit_mutation(&binding, &request, claim, effect)
+                    .await?;
                 self.deliver_and_finalize(&binding.tenant_id, pending).await
             }
         }
@@ -462,13 +493,16 @@ impl DataExecutor {
         tenant: &TenantId,
         pending: PendingEvidence,
     ) -> Result<DataMutationResult, DataAuthorityError> {
-        let receipt = self.runtime.publish_evidence(
-            tenant,
-            pending.event_id,
-            &pending.idempotency_key,
-            &pending.payload,
-            &pending.payload_digest,
-        ).await?;
+        let receipt = self
+            .runtime
+            .publish_evidence(
+                tenant,
+                pending.event_id,
+                &pending.idempotency_key,
+                &pending.payload,
+                &pending.payload_digest,
+            )
+            .await?;
         validate_evidence_receipt(&pending, &receipt)?;
         self.store.finalize_evidence(tenant, pending, receipt).await
     }
@@ -522,11 +556,7 @@ impl PostgresDataAuthorityStore {
         let mut tx = self.begin_tenant(tenant).await?;
         match request.command.operation {
             DataOperation::AuthorizeExport => {
-                verify_authorize_export_prerequisites(
-                    &mut tx,
-                    tenant_uuid,
-                    payload,
-                ).await?;
+                verify_authorize_export_prerequisites(&mut tx, tenant_uuid, payload).await?;
             }
             DataOperation::CompleteExport => {
                 let permitted = sqlx::query_scalar::<_, bool>(
@@ -571,13 +601,18 @@ impl PostgresDataAuthorityStore {
             || !canonical_uuid(&binding.dlp_scan_id.to_string())
             || !digest(&binding.dlp_receipt_digest)
             || binding.transform_id.is_some() != binding.transform_receipt_digest.is_some()
-            || binding.transform_receipt_digest.as_deref().is_some_and(|value| !digest(value))
-            || binding.cross_domain_grant_id.is_some()
-                != binding.cross_domain_approval_id.is_some()
+            || binding
+                .transform_receipt_digest
+                .as_deref()
+                .is_some_and(|value| !digest(value))
+            || binding.cross_domain_grant_id.is_some() != binding.cross_domain_approval_id.is_some()
             || !jurisdiction(&binding.source_jurisdiction)
             || !jurisdiction(&binding.target_jurisdiction)
             || binding.required_transformations.len() > 32
-            || binding.required_transformations.iter().any(|value| !identifier(value, 256))
+            || binding
+                .required_transformations
+                .iter()
+                .any(|value| !identifier(value, 256))
         {
             return Err(DataAuthorityError::RequestInvalid);
         }
@@ -640,7 +675,10 @@ impl PostgresDataAuthorityStore {
             return Err(DataAuthorityError::DlpDenied);
         }
 
-        match (binding.transform_id, binding.transform_receipt_digest.as_deref()) {
+        match (
+            binding.transform_id,
+            binding.transform_receipt_digest.as_deref(),
+        ) {
             (None, None) if binding.required_transformations.is_empty() => {}
             (Some(transform_id), Some(transform_digest))
                 if !binding.required_transformations.is_empty() =>
@@ -655,7 +693,8 @@ impl PostgresDataAuthorityStore {
                 .await
                 .map_err(dependency)?
                 .ok_or(DataAuthorityError::DlpDenied)?;
-                let transformations = transform.get::<Value, _>("transformations")
+                let transformations = transform
+                    .get::<Value, _>("transformations")
                     .as_array()
                     .cloned()
                     .ok_or(DataAuthorityError::DependencyUnavailable)?
@@ -664,8 +703,7 @@ impl PostgresDataAuthorityStore {
                     .collect::<Option<BTreeSet<_>>>()
                     .ok_or(DataAuthorityError::DependencyUnavailable)?;
                 if transform.get::<String, _>("output_digest") != binding.object_digest
-                    || transform.get::<String, _>("transform_receipt_digest")
-                        != transform_digest
+                    || transform.get::<String, _>("transform_receipt_digest") != transform_digest
                     || !binding.required_transformations.is_subset(&transformations)
                 {
                     return Err(DataAuthorityError::DlpDenied);
@@ -674,7 +712,10 @@ impl PostgresDataAuthorityStore {
             _ => return Err(DataAuthorityError::DlpDenied),
         }
 
-        match (binding.cross_domain_grant_id, binding.cross_domain_approval_id) {
+        match (
+            binding.cross_domain_grant_id,
+            binding.cross_domain_approval_id,
+        ) {
             (None, None) => {}
             (Some(grant_id), Some(approval_id)) => {
                 let grant = sqlx::query(
@@ -708,10 +749,8 @@ impl PostgresDataAuthorityStore {
                     .map_err(dependency)?,
                     _ => false,
                 };
-                if grant.get::<String, _>("source_jurisdiction")
-                        != binding.source_jurisdiction
-                    || grant.get::<String, _>("target_jurisdiction")
-                        != binding.target_jurisdiction
+                if grant.get::<String, _>("source_jurisdiction") != binding.source_jurisdiction
+                    || grant.get::<String, _>("target_jurisdiction") != binding.target_jurisdiction
                     || grant.get::<String, _>("object_digest") != binding.object_digest
                     || grant.get::<String, _>("classification")
                         != classification_name(binding.classification)
@@ -735,13 +774,12 @@ impl PostgresDataAuthorityStore {
     ) -> Result<Transaction<'_, Postgres>, DataAuthorityError> {
         let tenant_uuid = parse_tenant(tenant)?;
         let mut tx = self.pool.begin().await.map_err(dependency)?;
-        let selected = sqlx::query_scalar::<_, String>(
-            "SELECT set_config('app.tenant_id',$1,true)",
-        )
-        .bind(tenant_uuid.to_string())
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(dependency)?;
+        let selected =
+            sqlx::query_scalar::<_, String>("SELECT set_config('app.tenant_id',$1,true)")
+                .bind(tenant_uuid.to_string())
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(dependency)?;
         if selected != tenant_uuid.to_string() {
             return Err(DataAuthorityError::DependencyUnavailable);
         }
@@ -783,8 +821,8 @@ impl PostgresDataAuthorityStore {
         envelope: InboundEnvelope,
     ) -> Result<PreparedIngress, DataAuthorityError> {
         let tenant_uuid = parse_tenant(tenant)?;
-        let envelope_value = serde_json::to_value(&envelope)
-            .map_err(|_| DataAuthorityError::RequestInvalid)?;
+        let envelope_value =
+            serde_json::to_value(&envelope).map_err(|_| DataAuthorityError::RequestInvalid)?;
         let action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&envelope.payload)
                 .map_err(|_| DataAuthorityError::RequestInvalid)?;
@@ -816,7 +854,8 @@ impl PostgresDataAuthorityStore {
         .execute(&mut *tx)
         .await
         .map_err(|_| DataAuthorityError::IdempotencyConflict)?
-        .rows_affected() == 1;
+        .rows_affected()
+            == 1;
         let row = sqlx::query(
             "SELECT request_digest,action_id,task_id,action_hash,resource,operation,actor_subject,\
                     envelope,state,receipt FROM data_authority_ingress \
@@ -829,8 +868,9 @@ impl PostgresDataAuthorityStore {
         .map_err(dependency)?
         .ok_or(DataAuthorityError::IdempotencyConflict)?;
         let stored_envelope_value = row.get::<Value, _>("envelope");
-        let stored_envelope: InboundEnvelope = serde_json::from_value(stored_envelope_value.clone())
-            .map_err(|_| DataAuthorityError::IdempotencyConflict)?;
+        let stored_envelope: InboundEnvelope =
+            serde_json::from_value(stored_envelope_value.clone())
+                .map_err(|_| DataAuthorityError::IdempotencyConflict)?;
         let stored_action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&stored_envelope.payload)
                 .map_err(|_| DataAuthorityError::IdempotencyConflict)?;
@@ -854,7 +894,10 @@ impl PostgresDataAuthorityStore {
             || row.get::<String, _>("resource") != request.resource
             || row.get::<String, _>("operation") != request.operation.as_str()
             || row.get::<String, _>("actor_subject") != actor_subject
-            || !matches!(row.get::<String, _>("state").as_str(), "PREPARED" | "ACCEPTED")
+            || !matches!(
+                row.get::<String, _>("state").as_str(),
+                "PREPARED" | "ACCEPTED"
+            )
             || stored_envelope.schema_version != GATEWAY_SCHEMA_VERSION
             || stored_envelope.idempotency_key.as_deref() != Some(idempotency_key)
             || stored_envelope.payload_hash != sha256(&stored_envelope.payload)
@@ -873,7 +916,10 @@ impl PostgresDataAuthorityStore {
             .transpose()
             .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
         tx.commit().await.map_err(dependency)?;
-        Ok(PreparedIngress { envelope: stored_envelope, receipt })
+        Ok(PreparedIngress {
+            envelope: stored_envelope,
+            receipt,
+        })
     }
 
     async fn complete_ingress(
@@ -884,8 +930,8 @@ impl PostgresDataAuthorityStore {
     ) -> Result<DataActionReceipt, DataAuthorityError> {
         validate_action_receipt(receipt)?;
         let tenant_uuid = parse_tenant(tenant)?;
-        let receipt_value = serde_json::to_value(receipt)
-            .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+        let receipt_value =
+            serde_json::to_value(receipt).map_err(|_| DataAuthorityError::DependencyUnavailable)?;
         let mut tx = self.begin_tenant(tenant).await?;
         let row = sqlx::query(
             "SELECT action_id,task_id,state,receipt FROM data_authority_ingress \
@@ -921,7 +967,9 @@ impl PostgresDataAuthorityStore {
                 return Err(DataAuthorityError::OutcomeUnknown);
             }
         }
-        tx.commit().await.map_err(|_| DataAuthorityError::OutcomeUnknown)?;
+        tx.commit()
+            .await
+            .map_err(|_| DataAuthorityError::OutcomeUnknown)?;
         Ok(receipt.clone())
     }
 
@@ -933,8 +981,8 @@ impl PostgresDataAuthorityStore {
     ) -> Result<ExecutionClaim, DataAuthorityError> {
         let tenant_uuid = parse_tenant(&binding.tenant_id)?;
         let request_digest = canonical_digest(request)?;
-        let request_value = serde_json::to_value(request)
-            .map_err(|_| DataAuthorityError::RequestInvalid)?;
+        let request_value =
+            serde_json::to_value(request).map_err(|_| DataAuthorityError::RequestInvalid)?;
         let resource_version = i64::try_from(binding.resource_version)
             .map_err(|_| DataAuthorityError::RequestInvalid)?;
         let owner = Uuid::new_v4();
@@ -965,8 +1013,7 @@ impl PostgresDataAuthorityStore {
         let action: agent_trust_action_ir::CanonicalAction =
             serde_json::from_slice(&envelope.payload)
                 .map_err(|_| DataAuthorityError::PrincipalDenied)?;
-        let admitted = action_hash(&action)
-            .map_err(|_| DataAuthorityError::PrincipalDenied)?;
+        let admitted = action_hash(&action).map_err(|_| DataAuthorityError::PrincipalDenied)?;
         if admitted.0 != binding.action_hash
             || action.action_id.0 != request.command.command_id.to_string()
             || action.task_id.0 != request.command.task_id.to_string()
@@ -1020,16 +1067,27 @@ impl PostgresDataAuthorityStore {
         .fetch_one(&mut *tx)
         .await
         .map_err(dependency)?;
-        validate_execution_row(&row, binding, request, &request_digest, &request_value, resource_version)?;
+        validate_execution_row(
+            &row,
+            binding,
+            request,
+            &request_digest,
+            &request_value,
+            resource_version,
+        )?;
         let state = row.get::<String, _>("state");
         let claim_owner = row.get::<Uuid, _>("execution_owner");
         let result = if state == "COMPLETED" {
-            let value = row.get::<Option<Value>, _>("result")
+            let value = row
+                .get::<Option<Value>, _>("result")
                 .ok_or(DataAuthorityError::DependencyUnavailable)?;
-            ExecutionClaim::Completed(serde_json::from_value(value)
-                .map_err(|_| DataAuthorityError::DependencyUnavailable)?)
+            ExecutionClaim::Completed(
+                serde_json::from_value(value)
+                    .map_err(|_| DataAuthorityError::DependencyUnavailable)?,
+            )
         } else if state == "MUTATED_PENDING_EVIDENCE" {
-            let event_id = row.get::<Option<Uuid>, _>("evidence_event_id")
+            let event_id = row
+                .get::<Option<Uuid>, _>("evidence_event_id")
                 .ok_or(DataAuthorityError::DependencyUnavailable)?;
             ExecutionClaim::EvidencePending(load_pending(&mut tx, tenant_uuid, event_id).await?)
         } else if state == "EXECUTING" && claim_owner == owner {
@@ -1069,7 +1127,9 @@ impl PostgresDataAuthorityStore {
         let tenant_uuid = parse_tenant(&binding.tenant_id)?;
         let expected = i64::try_from(request.command.expected_resource_version)
             .map_err(|_| DataAuthorityError::RequestInvalid)?;
-        let next = expected.checked_add(1).ok_or(DataAuthorityError::StateConflict)?;
+        let next = expected
+            .checked_add(1)
+            .ok_or(DataAuthorityError::StateConflict)?;
         let mut tx = self.begin_tenant(&binding.tenant_id).await?;
         let execution = sqlx::query(
             "SELECT state,execution_owner,execution_lease_until > now() AS lease_valid \
@@ -1096,7 +1156,9 @@ impl PostgresDataAuthorityStore {
         .await
         .map_err(dependency)?
         .unwrap_or(0);
-        if current != expected || binding.resource_version != request.command.expected_resource_version {
+        if current != expected
+            || binding.resource_version != request.command.expected_resource_version
+        {
             return Err(DataAuthorityError::StateConflict);
         }
         apply_domain_mutation(&mut tx, binding, request, effect.as_ref()).await?;
@@ -1176,8 +1238,8 @@ impl PostgresDataAuthorityStore {
         });
         let payload_digest = canonical_digest(&payload)?;
         let evidence_idempotency_key = format!("data-governance-evidence-{event_id}");
-        let result_value = serde_json::to_value(&result)
-            .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+        let result_value =
+            serde_json::to_value(&result).map_err(|_| DataAuthorityError::DependencyUnavailable)?;
         sqlx::query(
             "INSERT INTO data_evidence_outbox \
              (tenant_id,event_id,action_id,idempotency_key,payload,payload_digest,state) \
@@ -1208,7 +1270,9 @@ impl PostgresDataAuthorityStore {
         if updated.rows_affected() != 1 {
             return Err(DataAuthorityError::OutcomeUnknown);
         }
-        tx.commit().await.map_err(|_| DataAuthorityError::OutcomeUnknown)?;
+        tx.commit()
+            .await
+            .map_err(|_| DataAuthorityError::OutcomeUnknown)?;
         Ok(PendingEvidence {
             event_id,
             idempotency_key: evidence_idempotency_key,
@@ -1252,16 +1316,14 @@ impl PostgresDataAuthorityStore {
             {
                 return Err(DataAuthorityError::IdempotencyConflict);
             }
-            let completed: DataMutationResult = serde_json::from_value(
-                outbox.get::<Value, _>("result"),
-            )
-            .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+            let completed: DataMutationResult =
+                serde_json::from_value(outbox.get::<Value, _>("result"))
+                    .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
             if completed.command_id != pending.result.command_id
                 || completed.result_digest != pending.result.result_digest
                 || completed.state != "COMPLETED"
                 || completed.evidence_ref.as_deref() != Some(receipt.evidence_ref.as_str())
-                || completed.evidence_digest.as_deref()
-                    != Some(receipt.evidence_digest.as_str())
+                || completed.evidence_digest.as_deref() != Some(receipt.evidence_digest.as_str())
             {
                 return Err(DataAuthorityError::IdempotencyConflict);
             }
@@ -1376,7 +1438,9 @@ impl PostgresDataAuthorityStore {
                 updated_at: row.get("updated_at"),
             });
         }
-        let next_after = has_more.then(|| items.last().map(|item| item.resource.clone())).flatten();
+        let next_after = has_more
+            .then(|| items.last().map(|item| item.resource.clone()))
+            .flatten();
         let mut page = AuthoritativeDataPage {
             schema_version: "agenttrust.authoritative-data-page.v1".into(),
             tenant_id: tenant.clone(),
@@ -1385,9 +1449,10 @@ impl PostgresDataAuthorityStore {
             next_after,
             data_digest: String::new(),
         };
-        let mut material = serde_json::to_value(&page)
-            .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
-        material.as_object_mut()
+        let mut material =
+            serde_json::to_value(&page).map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+        material
+            .as_object_mut()
             .ok_or(DataAuthorityError::DependencyUnavailable)?
             .remove("data_digest");
         page.data_digest = canonical_digest(&material)?;
@@ -1419,19 +1484,22 @@ impl PostgresDataAuthorityStore {
             .get::<Option<Value>, _>("result")
             .ok_or(DataAuthorityError::DependencyUnavailable)
             .and_then(|value| {
-                serde_json::from_value(value)
-                    .map_err(|_| DataAuthorityError::DependencyUnavailable)
+                serde_json::from_value(value).map_err(|_| DataAuthorityError::DependencyUnavailable)
             })?;
         if result.schema_version != DATA_MUTATION_RESULT_SCHEMA
             || result.command_id != command_id
             || result.state != "COMPLETED"
             || !digest(&result.result_digest)
             || !evidence_reference(
-                result.evidence_ref.as_deref()
+                result
+                    .evidence_ref
+                    .as_deref()
                     .ok_or(DataAuthorityError::DependencyUnavailable)?,
             )
             || !digest(
-                result.evidence_digest.as_deref()
+                result
+                    .evidence_digest
+                    .as_deref()
                     .ok_or(DataAuthorityError::DependencyUnavailable)?,
             )
         {
@@ -1502,10 +1570,9 @@ async fn apply_domain_mutation(
             .map_err(|_| DataAuthorityError::StateConflict)?;
         }
         DataOperation::RecordPolicyDecision => {
-            let policy_request: DataPolicyRequest = serde_json::from_value(
-                value(payload, "request")?.clone(),
-            )
-            .map_err(|_| DataAuthorityError::RequestInvalid)?;
+            let policy_request: DataPolicyRequest =
+                serde_json::from_value(value(payload, "request")?.clone())
+                    .map_err(|_| DataAuthorityError::RequestInvalid)?;
             if policy_request.tenant_id != binding.tenant_id {
                 return Err(DataAuthorityError::PrincipalDenied);
             }
@@ -2005,7 +2072,11 @@ fn canonical_data_action(
             goal_hash: canonical_digest(command)?,
             operation: operation.clone(),
             justification_code: "DATA_FLOW_GOVERNANCE".into(),
-            safe_summary: Some(format!("{} {}", command.operation.as_str(), command.resource)),
+            safe_summary: Some(format!(
+                "{} {}",
+                command.operation.as_str(),
+                command.resource
+            )),
         },
         tool: ToolRef {
             tool_id: config.tool_id.clone(),
@@ -2063,11 +2134,10 @@ fn canonical_data_action(
     normalization
         .payload_types
         .register("data.governance.mutation.v1", "1");
-    let action = normalize(draft, &normalization)
-        .map_err(|_| DataAuthorityError::RequestInvalid)?;
+    let action =
+        normalize(draft, &normalization).map_err(|_| DataAuthorityError::RequestInvalid)?;
     action_hash(&action).map_err(|_| DataAuthorityError::RequestInvalid)?;
-    let payload = serde_json::to_vec(&action)
-        .map_err(|_| DataAuthorityError::RequestInvalid)?;
+    let payload = serde_json::to_vec(&action).map_err(|_| DataAuthorityError::RequestInvalid)?;
     Ok(InboundEnvelope {
         request_id: Uuid::new_v4().to_string(),
         trace_context: TraceContext {
@@ -2232,8 +2302,10 @@ fn validate_effect(
         || receipt.receipts.len() > 8
         || canonical_digest(&unsigned)? != receipt.receipt_digest
         || receipt.receipts.iter().any(|item| {
-            !matches!(item.adapter.as_str(), "ENTERPRISE_DLP" | "OBJECT_WORM" | "LEGAL_HOLD")
-                || !identifier(&item.operation, 128)
+            !matches!(
+                item.adapter.as_str(),
+                "ENTERPRISE_DLP" | "OBJECT_WORM" | "LEGAL_HOLD"
+            ) || !identifier(&item.operation, 128)
                 || item.resource != request.command.resource
                 || item.idempotency_key != binding.idempotency_key
                 || !digest(&item.request_digest)
@@ -2250,30 +2322,21 @@ fn validate_effect(
             return Err(DataAuthorityError::DependencyUnavailable);
         }
     }
-    let actual = receipt.receipts.iter()
+    let actual = receipt
+        .receipts
+        .iter()
         .map(|item| (item.adapter.as_str(), item.operation.as_str()))
         .collect::<BTreeSet<_>>();
     let required = match request.command.operation {
-        DataOperation::RecordDlpScan => {
-            BTreeSet::from([("ENTERPRISE_DLP", "VERIFY_DLP_RECEIPT")])
-        }
-        DataOperation::ResolveRetention
-            => BTreeSet::from([("LEGAL_HOLD", "RESOLVE_RETENTION")]),
-        DataOperation::PlaceLegalHold => {
-            BTreeSet::from([("LEGAL_HOLD", "PLACE")])
-        }
-        DataOperation::ReleaseLegalHold => {
-            BTreeSet::from([("LEGAL_HOLD", "RELEASE")])
-        }
-        DataOperation::AuthorizeExport => {
-            BTreeSet::from([
-                ("ENTERPRISE_DLP", "AUTHORIZE_EXPORT"),
-                ("OBJECT_WORM", "AUTHORIZE_EXPORT"),
-            ])
-        }
-        DataOperation::CompleteExport => {
-            BTreeSet::from([("OBJECT_WORM", "COMPLETE_EXPORT")])
-        }
+        DataOperation::RecordDlpScan => BTreeSet::from([("ENTERPRISE_DLP", "VERIFY_DLP_RECEIPT")]),
+        DataOperation::ResolveRetention => BTreeSet::from([("LEGAL_HOLD", "RESOLVE_RETENTION")]),
+        DataOperation::PlaceLegalHold => BTreeSet::from([("LEGAL_HOLD", "PLACE")]),
+        DataOperation::ReleaseLegalHold => BTreeSet::from([("LEGAL_HOLD", "RELEASE")]),
+        DataOperation::AuthorizeExport => BTreeSet::from([
+            ("ENTERPRISE_DLP", "AUTHORIZE_EXPORT"),
+            ("OBJECT_WORM", "AUTHORIZE_EXPORT"),
+        ]),
+        DataOperation::CompleteExport => BTreeSet::from([("OBJECT_WORM", "COMPLETE_EXPORT")]),
         _ => BTreeSet::new(),
     };
     if actual != required || receipt.receipts.len() != required.len() {
@@ -2281,7 +2344,9 @@ fn validate_effect(
     }
     let payload = payload_object(&request.command.payload)?;
     if request.command.operation == DataOperation::ResolveRetention {
-        let receipt = receipt.receipts.first()
+        let receipt = receipt
+            .receipts
+            .first()
             .ok_or(DataAuthorityError::DependencyUnavailable)?;
         if receipt.reference != text(payload, "resolver_receipt_ref")?
             || receipt.receipt_digest != text(payload, "resolver_receipt_digest")?
@@ -2290,7 +2355,9 @@ fn validate_effect(
         }
     }
     if request.command.operation == DataOperation::CompleteExport {
-        let receipt = receipt.receipts.first()
+        let receipt = receipt
+            .receipts
+            .first()
             .ok_or(DataAuthorityError::DependencyUnavailable)?;
         if receipt.reference != text(payload, "worm_receipt_ref")?
             || receipt.receipt_digest != text(payload, "worm_receipt_digest")?
@@ -2305,20 +2372,32 @@ fn validate_evidence_receipt(
     pending: &PendingEvidence,
     receipt: &SignedAuthorityEvidenceReceipt,
 ) -> Result<(), DataAuthorityError> {
-    let payload = pending.payload.as_object()
+    let payload = pending
+        .payload
+        .as_object()
         .ok_or(DataAuthorityError::DependencyUnavailable)?;
-    let tenant_id = payload.get("tenant_id").and_then(Value::as_str)
+    let tenant_id = payload
+        .get("tenant_id")
+        .and_then(Value::as_str)
         .ok_or(DataAuthorityError::DependencyUnavailable)?;
-    let task_id = payload.get("task_id").and_then(Value::as_str)
+    let task_id = payload
+        .get("task_id")
+        .and_then(Value::as_str)
         .ok_or(DataAuthorityError::DependencyUnavailable)?;
     let event_occurred_at: DateTime<Utc> = serde_json::from_value(
-        payload.get("event_occurred_at").cloned()
+        payload
+            .get("event_occurred_at")
+            .cloned()
             .ok_or(DataAuthorityError::DependencyUnavailable)?,
-    ).map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+    )
+    .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
     let delivery_requested_at: DateTime<Utc> = serde_json::from_value(
-        payload.get("delivery_requested_at").cloned()
+        payload
+            .get("delivery_requested_at")
+            .cloned()
             .ok_or(DataAuthorityError::DependencyUnavailable)?,
-    ).map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+    )
+    .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
     if receipt.schema_version != AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION
         || receipt.authority_event_id != pending.event_id.to_string()
         || receipt.payload_digest != pending.payload_digest
@@ -2377,8 +2456,7 @@ fn validate_execution_row(
         || row.get::<String, _>("trace_id") != binding.trace_id
         || row.get::<String, _>("policy_decision_id") != binding.policy_decision_id
         || row.get::<String, _>("policy_decision_digest") != binding.policy_decision_digest
-        || row.get::<String, _>("authorization_evidence_ref")
-            != binding.authorization_evidence_ref
+        || row.get::<String, _>("authorization_evidence_ref") != binding.authorization_evidence_ref
         || row.get::<String, _>("authorization_evidence_digest")
             != binding.authorization_evidence_digest
         || row.get::<Value, _>("request") != *request_value
@@ -2400,51 +2478,80 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
     }
     match operation {
         DataOperation::RegisterLabel => {
-            exact_keys(object, &[
-                "object_ref", "object_version", "object_digest", "label", "label_digest",
-                "source_evidence_ref", "source_evidence_digest",
-            ])
-                && object_reference_field(object, "object_ref")
+            exact_keys(
+                object,
+                &[
+                    "object_ref",
+                    "object_version",
+                    "object_digest",
+                    "label",
+                    "label_digest",
+                    "source_evidence_ref",
+                    "source_evidence_digest",
+                ],
+            ) && object_reference_field(object, "object_ref")
                 && identifier_field(object, "object_version", 256)
                 && digest_field(object, "object_digest")
                 && digest_field(object, "label_digest")
                 && evidence_reference_field(object, "source_evidence_ref")
                 && digest_field(object, "source_evidence_digest")
                 && valid_label_value(object.get("label"))
-                && canonical_digest(object.get("label").unwrap_or(&Value::Null))
-                    .is_ok_and(|digest| object.get("label_digest").and_then(Value::as_str) == Some(digest.as_str()))
+                && canonical_digest(object.get("label").unwrap_or(&Value::Null)).is_ok_and(
+                    |digest| {
+                        object.get("label_digest").and_then(Value::as_str) == Some(digest.as_str())
+                    },
+                )
         }
         DataOperation::RecordPolicyDecision => {
-            exact_keys(object, &[
-                "decision_id", "request_digest", "request", "decision", "decision_digest",
-                "shadow", "evaluated_at",
-            ])
-                && uuid_field(object, "decision_id")
+            exact_keys(
+                object,
+                &[
+                    "decision_id",
+                    "request_digest",
+                    "request",
+                    "decision",
+                    "decision_digest",
+                    "shadow",
+                    "evaluated_at",
+                ],
+            ) && uuid_field(object, "decision_id")
                 && digest_field(object, "request_digest")
                 && valid_policy_request(object.get("request"))
                 && valid_policy_decision(object.get("decision"))
                 && digest_field(object, "decision_digest")
                 && boolean_field(object, "shadow")
                 && recent_timestamp_field(object, "evaluated_at", 10)
-                && canonical_digest(object.get("decision").unwrap_or(&Value::Null))
-                    .is_ok_and(|digest| object.get("decision_digest").and_then(Value::as_str) == Some(digest.as_str()))
-                && canonical_digest(object.get("request").unwrap_or(&Value::Null))
-                    .is_ok_and(|digest| object.get("request_digest").and_then(Value::as_str) == Some(digest.as_str()))
+                && canonical_digest(object.get("decision").unwrap_or(&Value::Null)).is_ok_and(
+                    |digest| {
+                        object.get("decision_digest").and_then(Value::as_str)
+                            == Some(digest.as_str())
+                    },
+                )
+                && canonical_digest(object.get("request").unwrap_or(&Value::Null)).is_ok_and(
+                    |digest| {
+                        object.get("request_digest").and_then(Value::as_str)
+                            == Some(digest.as_str())
+                    },
+                )
         }
         DataOperation::RecordDlpScan => {
-            exact_keys(object, &[
-                "scan_id", "content_digest", "size_bytes", "finding_counts",
-                "findings_digest", "engine_revision", "engine_receipt_ref",
-                "engine_receipt_digest", "high_risk", "blocking",
-            ])
-                && uuid_field(object, "scan_id")
-                && digest_field(object, "content_digest")
-                && bounded_integer_field(
-                    object,
+            exact_keys(
+                object,
+                &[
+                    "scan_id",
+                    "content_digest",
                     "size_bytes",
-                    1,
-                    8_388_608,
-                )
+                    "finding_counts",
+                    "findings_digest",
+                    "engine_revision",
+                    "engine_receipt_ref",
+                    "engine_receipt_digest",
+                    "high_risk",
+                    "blocking",
+                ],
+            ) && uuid_field(object, "scan_id")
+                && digest_field(object, "content_digest")
+                && bounded_integer_field(object, "size_bytes", 1, 8_388_608)
                 && valid_finding_counts(object.get("finding_counts"))
                 && digest_field(object, "findings_digest")
                 && identifier_field(object, "engine_revision", 256)
@@ -2454,12 +2561,20 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && boolean_field(object, "blocking")
         }
         DataOperation::RecordTransformReceipt => {
-            exact_keys(object, &[
-                "transform_id", "input_digest", "output_digest", "transformations",
-                "reversible", "key_reference_digest", "dlp_scan_id", "dlp_receipt_digest",
-                "transform_receipt_digest",
-            ])
-                && uuid_field(object, "transform_id")
+            exact_keys(
+                object,
+                &[
+                    "transform_id",
+                    "input_digest",
+                    "output_digest",
+                    "transformations",
+                    "reversible",
+                    "key_reference_digest",
+                    "dlp_scan_id",
+                    "dlp_receipt_digest",
+                    "transform_receipt_digest",
+                ],
+            ) && uuid_field(object, "transform_id")
                 && digest_field(object, "input_digest")
                 && digest_field(object, "output_digest")
                 && string_array_field(object, "transformations", 1, 16)
@@ -2476,12 +2591,23 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && embedded_digest_matches(object, "transform_receipt_digest")
         }
         DataOperation::IssueCrossDomainGrant => {
-            exact_keys(object, &[
-                "grant_id", "source_zone", "target_zone", "source_jurisdiction",
-                "target_jurisdiction", "object_digest", "classification", "approval_id",
-                "approval_evidence_ref", "approval_evidence_digest", "expires_at", "single_use",
-            ])
-                && uuid_field(object, "grant_id")
+            exact_keys(
+                object,
+                &[
+                    "grant_id",
+                    "source_zone",
+                    "target_zone",
+                    "source_jurisdiction",
+                    "target_jurisdiction",
+                    "object_digest",
+                    "classification",
+                    "approval_id",
+                    "approval_evidence_ref",
+                    "approval_evidence_digest",
+                    "expires_at",
+                    "single_use",
+                ],
+            ) && uuid_field(object, "grant_id")
                 && identifier_field(object, "source_zone", 128)
                 && identifier_field(object, "target_zone", 128)
                 && object.get("source_zone") != object.get("target_zone")
@@ -2496,10 +2622,16 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && object.get("single_use").and_then(Value::as_bool) == Some(true)
         }
         DataOperation::ConsumeCrossDomainGrant => {
-            exact_keys(object, &[
-                "grant_id", "object_digest", "source_zone", "target_zone", "export_intent_id",
-            ])
-                && uuid_field(object, "grant_id")
+            exact_keys(
+                object,
+                &[
+                    "grant_id",
+                    "object_digest",
+                    "source_zone",
+                    "target_zone",
+                    "export_intent_id",
+                ],
+            ) && uuid_field(object, "grant_id")
                 && digest_field(object, "object_digest")
                 && identifier_field(object, "source_zone", 128)
                 && identifier_field(object, "target_zone", 128)
@@ -2507,15 +2639,25 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && uuid_field(object, "export_intent_id")
         }
         DataOperation::ResolveRetention => {
-            exact_keys(object, &[
-                "retention_id", "object_ref", "retention_label", "action", "retain_until",
-                "policy_version", "legal_hold_checked_at", "resolver_receipt_ref",
-                "resolver_receipt_digest",
-            ])
-                && uuid_field(object, "retention_id")
+            exact_keys(
+                object,
+                &[
+                    "retention_id",
+                    "object_ref",
+                    "retention_label",
+                    "action",
+                    "retain_until",
+                    "policy_version",
+                    "legal_hold_checked_at",
+                    "resolver_receipt_ref",
+                    "resolver_receipt_digest",
+                ],
+            ) && uuid_field(object, "retention_id")
                 && object_reference_field(object, "object_ref")
                 && identifier_field(object, "retention_label", 128)
-                && object.get("action").and_then(Value::as_str)
+                && object
+                    .get("action")
+                    .and_then(Value::as_str)
                     .is_some_and(|value| matches!(value, "DELETE" | "ARCHIVE" | "RETAIN"))
                 && future_timestamp_field(object, "retain_until", 20 * 365 * 24 * 3600)
                 && identifier_field(object, "policy_version", 256)
@@ -2524,11 +2666,18 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && digest_field(object, "resolver_receipt_digest")
         }
         DataOperation::PlaceLegalHold => {
-            exact_keys(object, &[
-                "hold_id", "object_ref", "reason_digest", "approval_id",
-                "approval_evidence_ref", "approval_evidence_digest", "effective_at",
-            ])
-                && uuid_field(object, "hold_id")
+            exact_keys(
+                object,
+                &[
+                    "hold_id",
+                    "object_ref",
+                    "reason_digest",
+                    "approval_id",
+                    "approval_evidence_ref",
+                    "approval_evidence_digest",
+                    "effective_at",
+                ],
+            ) && uuid_field(object, "hold_id")
                 && object_reference_field(object, "object_ref")
                 && digest_field(object, "reason_digest")
                 && uuid_field(object, "approval_id")
@@ -2537,11 +2686,17 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && recent_timestamp_field(object, "effective_at", 10)
         }
         DataOperation::ReleaseLegalHold => {
-            exact_keys(object, &[
-                "hold_id", "object_ref", "released_at", "release_approval_id",
-                "release_evidence_ref", "release_evidence_digest",
-            ])
-                && uuid_field(object, "hold_id")
+            exact_keys(
+                object,
+                &[
+                    "hold_id",
+                    "object_ref",
+                    "released_at",
+                    "release_approval_id",
+                    "release_evidence_ref",
+                    "release_evidence_digest",
+                ],
+            ) && uuid_field(object, "hold_id")
                 && object_reference_field(object, "object_ref")
                 && recent_timestamp_field(object, "released_at", 10)
                 && uuid_field(object, "release_approval_id")
@@ -2549,14 +2704,29 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && digest_field(object, "release_evidence_digest")
         }
         DataOperation::AuthorizeExport => {
-            exact_keys(object, &[
-                "export_id", "object_ref", "object_digest", "label_digest", "decision_id",
-                "decision_digest", "policy_request_digest", "dlp_scan_id", "dlp_receipt_digest",
-                "transform_id", "transform_receipt_digest", "grant_id",
-                "object_authorization_ref", "object_authorization_digest", "destination_kind",
-                "destination_digest", "expires_at", "redirects_allowed",
-            ])
-                && uuid_field(object, "export_id")
+            exact_keys(
+                object,
+                &[
+                    "export_id",
+                    "object_ref",
+                    "object_digest",
+                    "label_digest",
+                    "decision_id",
+                    "decision_digest",
+                    "policy_request_digest",
+                    "dlp_scan_id",
+                    "dlp_receipt_digest",
+                    "transform_id",
+                    "transform_receipt_digest",
+                    "grant_id",
+                    "object_authorization_ref",
+                    "object_authorization_digest",
+                    "destination_kind",
+                    "destination_digest",
+                    "expires_at",
+                    "redirects_allowed",
+                ],
+            ) && uuid_field(object, "export_id")
                 && object_reference_field(object, "object_ref")
                 && digest_field(object, "object_digest")
                 && digest_field(object, "label_digest")
@@ -2568,9 +2738,14 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && optional_uuid_field(object, "transform_id")
                 && optional_digest_field(object, "transform_receipt_digest")
                 && (object.get("transform_id").and_then(Value::as_str).is_some()
-                    == object.get("transform_receipt_digest").and_then(Value::as_str).is_some())
+                    == object
+                        .get("transform_receipt_digest")
+                        .and_then(Value::as_str)
+                        .is_some())
                 && optional_uuid_field(object, "grant_id")
-                && object.get("object_authorization_ref").and_then(Value::as_str)
+                && object
+                    .get("object_authorization_ref")
+                    .and_then(Value::as_str)
                     .is_some_and(|value| value.starts_with("object://") && adapter_reference(value))
                 && digest_field(object, "object_authorization_digest")
                 && identifier_field(object, "destination_kind", 2048)
@@ -2579,12 +2754,20 @@ fn validate_payload(operation: DataOperation, payload: &Value) -> bool {
                 && object.get("redirects_allowed").and_then(Value::as_bool) == Some(false)
         }
         DataOperation::CompleteExport => {
-            exact_keys(object, &[
-                "export_id", "object_digest", "artifact_ref", "artifact_digest",
-                "watermark_digest", "signature_digest", "worm_receipt_ref",
-                "worm_receipt_digest", "completed_at",
-            ])
-                && uuid_field(object, "export_id")
+            exact_keys(
+                object,
+                &[
+                    "export_id",
+                    "object_digest",
+                    "artifact_ref",
+                    "artifact_digest",
+                    "watermark_digest",
+                    "signature_digest",
+                    "worm_receipt_ref",
+                    "worm_receipt_digest",
+                    "completed_at",
+                ],
+            ) && uuid_field(object, "export_id")
                 && digest_field(object, "object_digest")
                 && artifact_reference_field(object, "artifact_ref")
                 && digest_field(object, "artifact_digest")
@@ -2601,12 +2784,21 @@ fn valid_label_value(value: Option<&Value>) -> bool {
     let Some(object) = value.and_then(Value::as_object) else {
         return false;
     };
-    exact_keys(object, &[
-        "schema_version", "classification", "domain_tags", "jurisdictions", "contains_secret",
-        "contains_personal_data", "export_restricted", "retention_label", "confidence", "lineage",
-    ])
-        && object.get("schema_version").and_then(Value::as_str)
-            == Some(crate::DATA_SCHEMA_VERSION)
+    exact_keys(
+        object,
+        &[
+            "schema_version",
+            "classification",
+            "domain_tags",
+            "jurisdictions",
+            "contains_secret",
+            "contains_personal_data",
+            "export_restricted",
+            "retention_label",
+            "confidence",
+            "lineage",
+        ],
+    ) && object.get("schema_version").and_then(Value::as_str) == Some(crate::DATA_SCHEMA_VERSION)
         && classification_field(object, "classification")
         && string_array_field(object, "domain_tags", 0, 64)
         && string_array_field(object, "jurisdictions", 1, 32)
@@ -2614,40 +2806,63 @@ fn valid_label_value(value: Option<&Value>) -> bool {
         && boolean_field(object, "contains_personal_data")
         && boolean_field(object, "export_restricted")
         && identifier_field(object, "retention_label", 128)
-        && object.get("confidence").and_then(Value::as_str).is_some_and(|value| {
-            matches!(
-                value,
-                "UNKNOWN" | "INFERRED" | "DETERMINISTIC" | "HUMAN_VERIFIED"
-            )
-        })
+        && object
+            .get("confidence")
+            .and_then(Value::as_str)
+            .is_some_and(|value| {
+                matches!(
+                    value,
+                    "UNKNOWN" | "INFERRED" | "DETERMINISTIC" | "HUMAN_VERIFIED"
+                )
+            })
         && (object.get("confidence").and_then(Value::as_str) != Some("UNKNOWN")
-            || object.get("classification").and_then(Value::as_str)
+            || object
+                .get("classification")
+                .and_then(Value::as_str)
                 .is_some_and(|value| matches!(value, "RESTRICTED" | "REGULATED")))
-        && (!object.get("contains_secret").and_then(Value::as_bool).unwrap_or(false)
-            || (object.get("classification").and_then(Value::as_str)
+        && (!object
+            .get("contains_secret")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+            || (object
+                .get("classification")
+                .and_then(Value::as_str)
                 .is_some_and(|value| matches!(value, "RESTRICTED" | "REGULATED"))
                 && object.get("export_restricted").and_then(Value::as_bool) == Some(true)))
-        && (!object.get("contains_personal_data").and_then(Value::as_bool).unwrap_or(false)
+        && (!object
+            .get("contains_personal_data")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
             || (object.get("classification").and_then(Value::as_str) == Some("REGULATED")
                 && object.get("export_restricted").and_then(Value::as_bool) == Some(true)))
-        && object.get("lineage").and_then(Value::as_object).is_some_and(|lineage| {
-            exact_keys(lineage, &["source_id", "source_hash", "transformation_hashes"])
-                && identifier_field(lineage, "source_id", 512)
-                && digest_field(lineage, "source_hash")
-                && digest_array_field(lineage, "transformation_hashes", 0, 1024)
-        })
+        && object
+            .get("lineage")
+            .and_then(Value::as_object)
+            .is_some_and(|lineage| {
+                exact_keys(
+                    lineage,
+                    &["source_id", "source_hash", "transformation_hashes"],
+                ) && identifier_field(lineage, "source_id", 512)
+                    && digest_field(lineage, "source_hash")
+                    && digest_array_field(lineage, "transformation_hashes", 0, 1024)
+            })
 }
 
 fn valid_policy_decision(value: Option<&Value>) -> bool {
     let Some(object) = value.and_then(Value::as_object) else {
         return false;
     };
-    exact_keys(object, &[
-        "schema_version", "allowed", "policy_version", "reason_codes",
-        "required_transformations", "maximum_retention_seconds",
-    ])
-        && object.get("schema_version").and_then(Value::as_str)
-            == Some(crate::DATA_SCHEMA_VERSION)
+    exact_keys(
+        object,
+        &[
+            "schema_version",
+            "allowed",
+            "policy_version",
+            "reason_codes",
+            "required_transformations",
+            "maximum_retention_seconds",
+        ],
+    ) && object.get("schema_version").and_then(Value::as_str) == Some(crate::DATA_SCHEMA_VERSION)
         && boolean_field(object, "allowed")
         && identifier_field(object, "policy_version", 256)
         && string_array_field(object, "reason_codes", 1, 32)
@@ -2687,25 +2902,27 @@ fn valid_finding_counts(value: Option<&Value>) -> bool {
         && object.iter().all(|(key, value)| {
             matches!(
                 key.as_str(),
-                "SECRET" | "PERSONAL_DATA" | "INDUSTRIAL_SENSITIVE" | "ENCODED_PAYLOAD"
-                    | "COMPRESSED_PAYLOAD" | "UNKNOWN"
+                "SECRET"
+                    | "PERSONAL_DATA"
+                    | "INDUSTRIAL_SENSITIVE"
+                    | "ENCODED_PAYLOAD"
+                    | "COMPRESSED_PAYLOAD"
+                    | "UNKNOWN"
             ) && value.as_u64().is_some_and(|count| count <= 1_000_000)
         })
 }
 
 fn payload_object(payload: &Value) -> Result<&serde_json::Map<String, Value>, DataAuthorityError> {
-    payload.as_object().ok_or(DataAuthorityError::RequestInvalid)
+    payload
+        .as_object()
+        .ok_or(DataAuthorityError::RequestInvalid)
 }
 
 fn exact_keys(object: &serde_json::Map<String, Value>, expected: &[&str]) -> bool {
-    object.len() == expected.len()
-        && expected.iter().all(|key| object.contains_key(*key))
+    object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
 }
 
-fn embedded_digest_matches(
-    object: &serde_json::Map<String, Value>,
-    digest_key: &str,
-) -> bool {
+fn embedded_digest_matches(object: &serde_json::Map<String, Value>, digest_key: &str) -> bool {
     let Some(expected) = object.get(digest_key).and_then(Value::as_str) else {
         return false;
     };
@@ -2722,9 +2939,20 @@ fn contains_forbidden_content_key(value: &Value, depth: usize) -> bool {
         Value::Object(object) => object.iter().any(|(key, value)| {
             matches!(
                 key.to_ascii_lowercase().as_str(),
-                "raw" | "raw_content" | "content" | "content_base64" | "prompt"
-                    | "sanitized_prompt" | "sample" | "secret" | "password" | "token"
-                    | "api_key" | "authorization" | "credential" | "private_key"
+                "raw"
+                    | "raw_content"
+                    | "content"
+                    | "content_base64"
+                    | "prompt"
+                    | "sanitized_prompt"
+                    | "sample"
+                    | "secret"
+                    | "password"
+                    | "token"
+                    | "api_key"
+                    | "authorization"
+                    | "credential"
+                    | "private_key"
             ) || contains_forbidden_content_key(value, depth + 1)
         }),
         Value::Array(values) => values
@@ -2762,20 +2990,14 @@ fn optional_text<'a>(
     }
 }
 
-fn boolean(
-    object: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<bool, DataAuthorityError> {
+fn boolean(object: &serde_json::Map<String, Value>, key: &str) -> Result<bool, DataAuthorityError> {
     object
         .get(key)
         .and_then(Value::as_bool)
         .ok_or(DataAuthorityError::RequestInvalid)
 }
 
-fn integer(
-    object: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<i64, DataAuthorityError> {
+fn integer(object: &serde_json::Map<String, Value>, key: &str) -> Result<i64, DataAuthorityError> {
     object
         .get(key)
         .and_then(Value::as_i64)
@@ -2816,16 +3038,13 @@ fn identifier_field(object: &serde_json::Map<String, Value>, key: &str, max: usi
 }
 
 fn digest_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .is_some_and(digest)
+    object.get(key).and_then(Value::as_str).is_some_and(digest)
 }
 
 fn optional_digest_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).is_some_and(|value| {
-        value.is_null() || value.as_str().is_some_and(digest)
-    })
+    object
+        .get(key)
+        .is_some_and(|value| value.is_null() || value.as_str().is_some_and(digest))
 }
 
 fn uuid_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
@@ -2836,9 +3055,9 @@ fn uuid_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
 }
 
 fn optional_uuid_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).is_some_and(|value| {
-        value.is_null() || value.as_str().is_some_and(canonical_uuid)
-    })
+    object
+        .get(key)
+        .is_some_and(|value| value.is_null() || value.as_str().is_some_and(canonical_uuid))
 }
 
 fn boolean_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
@@ -2846,13 +3065,22 @@ fn boolean_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
 }
 
 fn classification_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).and_then(Value::as_str).is_some_and(|value| {
-        matches!(value, "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED" | "REGULATED")
-    })
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(|value| {
+            matches!(
+                value,
+                "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED" | "REGULATED"
+            )
+        })
 }
 
 fn jurisdiction_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).and_then(Value::as_str).is_some_and(jurisdiction)
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(jurisdiction)
 }
 
 fn jurisdiction(value: &str) -> bool {
@@ -2869,7 +3097,9 @@ fn bounded_integer_field(
     minimum: u64,
     maximum: u64,
 ) -> bool {
-    object.get(key).and_then(Value::as_u64)
+    object
+        .get(key)
+        .and_then(Value::as_u64)
         .is_some_and(|value| (minimum..=maximum).contains(&value))
 }
 
@@ -2879,14 +3109,21 @@ fn string_array_field(
     minimum: usize,
     maximum: usize,
 ) -> bool {
-    object.get(key).and_then(Value::as_array).is_some_and(|values| {
-        (minimum..=maximum).contains(&values.len())
-            && values.iter().all(|value| {
-                value.as_str().is_some_and(|text| identifier(text, 256))
-            })
-            && values.iter().filter_map(Value::as_str).collect::<BTreeSet<_>>().len()
-                == values.len()
-    })
+    object
+        .get(key)
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            (minimum..=maximum).contains(&values.len())
+                && values
+                    .iter()
+                    .all(|value| value.as_str().is_some_and(|text| identifier(text, 256)))
+                && values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    == values.len()
+        })
 }
 
 fn digest_array_field(
@@ -2895,31 +3132,52 @@ fn digest_array_field(
     minimum: usize,
     maximum: usize,
 ) -> bool {
-    object.get(key).and_then(Value::as_array).is_some_and(|values| {
-        (minimum..=maximum).contains(&values.len())
-            && values.iter().all(|value| value.as_str().is_some_and(digest))
-            && values.iter().filter_map(Value::as_str).collect::<BTreeSet<_>>().len()
-                == values.len()
-    })
+    object
+        .get(key)
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            (minimum..=maximum).contains(&values.len())
+                && values
+                    .iter()
+                    .all(|value| value.as_str().is_some_and(digest))
+                && values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<BTreeSet<_>>()
+                    .len()
+                    == values.len()
+        })
 }
 
 fn object_reference_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).and_then(Value::as_str).is_some_and(object_reference)
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(object_reference)
 }
 
 fn evidence_reference_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).and_then(Value::as_str).is_some_and(evidence_reference)
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(evidence_reference)
 }
 
 fn adapter_reference_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).and_then(Value::as_str).is_some_and(adapter_reference)
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(adapter_reference)
 }
 
 fn artifact_reference_field(object: &serde_json::Map<String, Value>, key: &str) -> bool {
-    object.get(key).and_then(Value::as_str).is_some_and(|value| {
-        (value.starts_with("artifact://") || value.starts_with("object://"))
-            && identifier(value, 2048)
-    })
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .is_some_and(|value| {
+            (value.starts_with("artifact://") || value.starts_with("object://"))
+                && identifier(value, 2048)
+        })
 }
 
 fn recent_timestamp_field(
@@ -2927,7 +3185,9 @@ fn recent_timestamp_field(
     key: &str,
     tolerance_minutes: i64,
 ) -> bool {
-    object.get(key).and_then(Value::as_str)
+    object
+        .get(key)
+        .and_then(Value::as_str)
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .is_some_and(|value| {
             let value = value.with_timezone(&Utc);
@@ -2941,27 +3201,32 @@ fn future_timestamp_field(
     key: &str,
     maximum_seconds: u64,
 ) -> bool {
-    object.get(key).and_then(Value::as_str)
+    object
+        .get(key)
+        .and_then(Value::as_str)
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .is_some_and(|value| {
             let value = value.with_timezone(&Utc);
             let Ok(maximum_seconds) = i64::try_from(maximum_seconds) else {
                 return false;
             };
-            value > Utc::now()
-                && value <= Utc::now() + Duration::seconds(maximum_seconds)
+            value > Utc::now() && value <= Utc::now() + Duration::seconds(maximum_seconds)
         })
 }
 
 fn payload_classification(payload: &Value) -> DataClassification {
-    let classification = payload.as_object()
+    let classification = payload
+        .as_object()
         .and_then(|object| object.get("classification"))
         .and_then(Value::as_str)
-        .or_else(|| payload.as_object()
-            .and_then(|object| object.get("label"))
-            .and_then(Value::as_object)
-            .and_then(|label| label.get("classification"))
-            .and_then(Value::as_str));
+        .or_else(|| {
+            payload
+                .as_object()
+                .and_then(|object| object.get("label"))
+                .and_then(Value::as_object)
+                .and_then(|label| label.get("classification"))
+                .and_then(Value::as_str)
+        });
     match classification {
         Some("PUBLIC") => DataClassification::Public,
         Some("INTERNAL") => DataClassification::Internal,
@@ -2982,18 +3247,22 @@ fn classification_name(classification: DataClassification) -> &'static str {
 }
 
 fn payload_jurisdiction(payload: &Value) -> Option<String> {
-    payload.as_object()
+    payload
+        .as_object()
         .and_then(|object| object.get("source_jurisdiction"))
         .and_then(Value::as_str)
         .map(str::to_string)
-        .or_else(|| payload.as_object()
-            .and_then(|object| object.get("label"))
-            .and_then(Value::as_object)
-            .and_then(|label| label.get("jurisdictions"))
-            .and_then(Value::as_array)
-            .and_then(|values| values.first())
-            .and_then(Value::as_str)
-            .map(str::to_string))
+        .or_else(|| {
+            payload
+                .as_object()
+                .and_then(|object| object.get("label"))
+                .and_then(Value::as_object)
+                .and_then(|label| label.get("jurisdictions"))
+                .and_then(Value::as_array)
+                .and_then(|values| values.first())
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
 }
 
 pub(crate) fn canonical_uuid(value: &str) -> bool {
@@ -3003,12 +3272,16 @@ pub(crate) fn canonical_uuid(value: &str) -> bool {
 pub(crate) fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
-        && value.bytes().all(|byte| byte.is_ascii_graphic() && !matches!(byte, b'"' | b'\\'))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() && !matches!(byte, b'"' | b'\\'))
 }
 
 pub(crate) fn digest(value: &str) -> bool {
     value.len() == 64
-        && value.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
 pub(crate) fn evidence_reference(value: &str) -> bool {
@@ -3042,7 +3315,9 @@ fn resource_reference(value: &str) -> bool {
 
 pub(crate) fn valid_idempotency_key(value: &str) -> bool {
     (16..=256).contains(&value.len())
-        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
 }
 
 fn parse_tenant(tenant: &TenantId) -> Result<Uuid, DataAuthorityError> {

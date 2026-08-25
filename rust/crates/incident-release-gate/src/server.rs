@@ -107,8 +107,7 @@ impl IncidentTokenAuthorizer {
         if !path.is_absolute() {
             return Err(IncidentAuthorityError::ConfigurationInvalid);
         }
-        let raw =
-            std::fs::read(path).map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?;
+        let raw = std::fs::read(path).map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?;
         if raw.is_empty() || raw.len() > 1_048_576 {
             return Err(IncidentAuthorityError::ConfigurationInvalid);
         }
@@ -228,10 +227,9 @@ async fn submit_detection(
     Json(body): Json<IncidentCommandRequest>,
 ) -> Result<(StatusCode, Json<IncidentActionReceipt>), ApiError> {
     let tenant = exact_tenant(&headers, body.tenant_id.to_string())?;
-    let subject =
-        state
-            .tokens
-            .authorize(&peer, &tenant.0, INCIDENT_DETECT_SCOPE, &headers)?;
+    let subject = state
+        .tokens
+        .authorize(&peer, &tenant.0, INCIDENT_DETECT_SCOPE, &headers)?;
     if subject != peer {
         return Err(IncidentAuthorityError::PrincipalDenied.into());
     }
@@ -308,10 +306,9 @@ async fn execute_mutation(
     Json(body): Json<IncidentExecutorRequest>,
 ) -> Result<Json<IncidentMutationResult>, ApiError> {
     let tenant = exact_tenant_from_header(&headers)?;
-    let subject =
-        state
-            .tokens
-            .authorize(&peer, &tenant.0, INCIDENT_EXECUTE_SCOPE, &headers)?;
+    let subject = state
+        .tokens
+        .authorize(&peer, &tenant.0, INCIDENT_EXECUTE_SCOPE, &headers)?;
     if subject != peer {
         return Err(IncidentAuthorityError::PrincipalDenied.into());
     }
@@ -330,11 +327,8 @@ async fn execute_mutation(
         trace_id: required_header(&headers, "x-agenttrust-trace-id")?.to_string(),
         policy_decision_id: required_header(&headers, "x-agenttrust-policy-decision-id")?
             .to_string(),
-        policy_decision_digest: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-digest",
-        )?
-        .to_string(),
+        policy_decision_digest: required_header(&headers, "x-agenttrust-policy-decision-digest")?
+            .to_string(),
         authorization_evidence_ref: required_header(
             &headers,
             "x-agenttrust-authorization-evidence-ref",
@@ -824,15 +818,13 @@ fn build_server_tls(
         .build()
         .map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?;
     let mut certificate_reader = BufReader::new(
-        File::open(certificate_file)
-            .map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?,
+        File::open(certificate_file).map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?,
     );
     let certificates = rustls_pemfile::certs(&mut certificate_reader)
         .collect::<Result<Vec<CertificateDer<'static>>, _>>()
         .map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?;
     let mut key_reader = BufReader::new(
-        File::open(private_key_file)
-            .map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?,
+        File::open(private_key_file).map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?,
     );
     let private_key = rustls_pemfile::private_key(&mut key_reader)
         .map_err(|_| IncidentAuthorityError::ConfigurationInvalid)?
@@ -1025,8 +1017,7 @@ fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
         })
 }
 
@@ -1050,9 +1041,7 @@ fn validate_https_root(value: &url::Url) -> Result<(), IncidentAuthorityError> {
     Ok(())
 }
 
-fn validate_identities(
-    identities: &BTreeSet<String>,
-) -> Result<(), IncidentAuthorityError> {
+fn validate_identities(identities: &BTreeSet<String>) -> Result<(), IncidentAuthorityError> {
     if identities.is_empty()
         || identities.iter().any(|identity| {
             identity.len() > 512
@@ -1201,8 +1190,26 @@ mod server_tests {
 
     #[test]
     fn endpoints_must_be_https_roots() {
-        assert!(validate_https_root(&url::Url::parse("https://authority.internal/").unwrap_or_else(|error| panic!("url: {error}"))).is_ok());
-        assert!(validate_https_root(&url::Url::parse("https://authority.internal/v1").unwrap_or_else(|error| panic!("url: {error}"))).is_err());
-        assert!(validate_https_root(&url::Url::parse("http://authority.internal/").unwrap_or_else(|error| panic!("url: {error}"))).is_err());
+        assert!(
+            validate_https_root(
+                &url::Url::parse("https://authority.internal/")
+                    .unwrap_or_else(|error| panic!("url: {error}"))
+            )
+            .is_ok()
+        );
+        assert!(
+            validate_https_root(
+                &url::Url::parse("https://authority.internal/v1")
+                    .unwrap_or_else(|error| panic!("url: {error}"))
+            )
+            .is_err()
+        );
+        assert!(
+            validate_https_root(
+                &url::Url::parse("http://authority.internal/")
+                    .unwrap_or_else(|error| panic!("url: {error}"))
+            )
+            .is_err()
+        );
     }
 }

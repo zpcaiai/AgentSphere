@@ -1,15 +1,15 @@
 //! Review facts bound to the shared Evidence Authority receipt.
 
 use super::{ApprovalError, ApprovalRequest};
-use agent_trust_contracts::{
-    APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
-    AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceEventRequest,
-    AuthorityEvidenceSourceKind,
-};
 pub use agent_trust_contracts::{
     APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION, APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION,
     APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION, ApprovalReviewEvidence,
     ApprovalReviewEvidenceIssueRequest, ApprovalReviewMaterial,
+};
+use agent_trust_contracts::{
+    APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
+    AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceEventRequest,
+    AuthorityEvidenceSourceKind,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
@@ -92,14 +92,20 @@ impl ApprovalReviewEvidenceKeyring {
                 || !key_identifier(&entry.key_id)
                 || entry.source_services.is_empty()
                 || entry.source_services.len() > 128
-                || entry.source_services.iter().any(|source| !source_identity(source))
+                || entry
+                    .source_services
+                    .iter()
+                    .any(|source| !source_identity(source))
                 || entry.algorithm != "Ed25519"
                 || entry.usage != AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE
                 || !matches!(entry.status.as_str(), "ACTIVE" | "RETIRED")
                 || entry.not_before >= entry.expires_at
                 || entry.tenant_ids.is_empty()
                 || entry.tenant_ids.len() > MAX_TENANTS_PER_KEY
-                || entry.tenant_ids.iter().any(|tenant| !canonical_uuid(tenant))
+                || entry
+                    .tenant_ids
+                    .iter()
+                    .any(|tenant| !canonical_uuid(tenant))
             {
                 return Err(ApprovalError::ConfigurationInvalid);
             }
@@ -138,8 +144,7 @@ impl ApprovalReviewEvidenceKeyring {
                 && verification.tenant_ids.contains(tenant)
                 && verification.not_before <= now
                 && verification.expires_at
-                    > now
-                        + Duration::seconds(APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS)
+                    > now + Duration::seconds(APPROVAL_REVIEW_MAX_EVIDENCE_LIFETIME_SECONDS)
         })
     }
 
@@ -269,10 +274,7 @@ impl ApprovalReviewEvidenceKeyring {
             requested_at: authority_request.requested_at,
         };
         let expected_authority_request = issue
-            .to_authority_event(
-                &authority_request.event.source_service,
-                verification_time,
-            )
+            .to_authority_event(&authority_request.event.source_service, verification_time)
             .map_err(|_| ApprovalError::RequestInvalid)?;
         let expected_request_digest = expected_authority_request
             .request_digest()
@@ -312,7 +314,11 @@ fn expected_material(request: &ApprovalRequest) -> ApprovalReviewMaterial {
         risk_package_ref: request.review_evidence.material.risk_package_ref.clone(),
         risk_package_digest: request.review_evidence.material.risk_package_digest.clone(),
         state_snapshot_ref: request.review_evidence.material.state_snapshot_ref.clone(),
-        state_snapshot_digest: request.review_evidence.material.state_snapshot_digest.clone(),
+        state_snapshot_digest: request
+            .review_evidence
+            .material
+            .state_snapshot_digest
+            .clone(),
     }
 }
 
@@ -331,8 +337,7 @@ fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
         })
 }
 

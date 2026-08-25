@@ -874,11 +874,20 @@ impl ExecutionLedger for PostgresExecutionLedger {
         .bind(tenant_uuid).bind(execution_uuid).fetch_optional(&mut *transaction).await
         .map_err(|_| LedgerError::StoreFailure)?.ok_or(LedgerError::NotFound)?;
         let event = OutboxEvent {
-            event_id: row.try_get::<Uuid, _>("event_id").map_err(|_| LedgerError::StoreFailure)?.to_string(),
+            event_id: row
+                .try_get::<Uuid, _>("event_id")
+                .map_err(|_| LedgerError::StoreFailure)?
+                .to_string(),
             execution_id: execution_id.clone(),
-            event_type: row.try_get("event_type").map_err(|_| LedgerError::StoreFailure)?,
-            payload: row.try_get("payload").map_err(|_| LedgerError::StoreFailure)?,
-            created_at: row.try_get("created_at").map_err(|_| LedgerError::StoreFailure)?,
+            event_type: row
+                .try_get("event_type")
+                .map_err(|_| LedgerError::StoreFailure)?,
+            payload: row
+                .try_get("payload")
+                .map_err(|_| LedgerError::StoreFailure)?,
+            created_at: row
+                .try_get("created_at")
+                .map_err(|_| LedgerError::StoreFailure)?,
             published_at: None,
         };
         transaction
@@ -1183,7 +1192,10 @@ mod tests {
             .await
             .unwrap_or_else(|_| panic!("reserved fact"));
         assert_eq!(reserved.event_digest.len(), 64);
-        assert_eq!(reserved.event_ref, format!("ledger-event:{}", reserved.event_id));
+        assert_eq!(
+            reserved.event_ref,
+            format!("ledger-event:{}", reserved.event_id)
+        );
         assert_eq!(
             ledger
                 .status_event_fact(&base.tenant_id, &reservation.execution_id)

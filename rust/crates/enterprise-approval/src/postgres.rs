@@ -23,15 +23,13 @@ const DECISION_EVIDENCE_DELIVERY_BATCH_SIZE: usize = 32;
 const DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS: i64 = 60;
 const DECISION_EVIDENCE_DELIVERY_MAX_BACKOFF_SECONDS: i64 = 900;
 const DECISION_EVIDENCE_MAX_PENDING_AGE_SECONDS: i64 = 300;
-const _: () = assert!(
-    DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS > EVIDENCE_REQUEST_TIMEOUT_SECONDS as i64
-);
+const _: () =
+    assert!(DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS > EVIDENCE_REQUEST_TIMEOUT_SECONDS as i64);
 
 pub const APPROVAL_CASE_VIEW_SCHEMA_VERSION: &str = "agenttrust.approval-case-view.v1";
 pub const AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION: &str =
     "agenttrust.authoritative-approval-page.v1";
-pub const APPROVAL_DECISION_RESULT_SCHEMA_VERSION: &str =
-    "agenttrust.approval-decision-result.v1";
+pub const APPROVAL_DECISION_RESULT_SCHEMA_VERSION: &str = "agenttrust.approval-decision-result.v1";
 pub const APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION: &str =
     "agenttrust.approval-decision-evidence.v1";
 pub const APPROVAL_DECISION_EVIDENCE_KEY_USAGE: &str = "APPROVAL_DECISION_EVIDENCE";
@@ -381,9 +379,7 @@ fn decision_status_valid(decision: ApprovalDecision, status: ApprovalStatus) -> 
         ApprovalDecision::PostReviewed => status == ApprovalStatus::Approved,
         ApprovalDecision::Approve => matches!(
             status,
-            ApprovalStatus::Pending
-                | ApprovalStatus::Approved
-                | ApprovalStatus::PostReviewRequired
+            ApprovalStatus::Pending | ApprovalStatus::Approved | ApprovalStatus::PostReviewRequired
         ),
     }
 }
@@ -691,17 +687,23 @@ impl ApprovalDecisionEvidenceKeyring {
     fn matches_signer(&self, signer: &ApprovalSigner) -> bool {
         self.issuer == signer.issuer()
             && self.active_key_id == signer.key_id()
-            && self.keys.get(&self.active_key_id).is_some_and(|verification| {
-                verification.active
-                    && verification.key.to_bytes() == signer.verifying_key().to_bytes()
-            })
+            && self
+                .keys
+                .get(&self.active_key_id)
+                .is_some_and(|verification| {
+                    verification.active
+                        && verification.key.to_bytes() == signer.verifying_key().to_bytes()
+                })
     }
 
     fn covers_active_signer_at(&self, signer: &ApprovalSigner, at: DateTime<Utc>) -> bool {
         self.matches_signer(signer)
-            && self.keys.get(&self.active_key_id).is_some_and(|verification| {
-                verification.not_before <= at && verification.expires_at > at
-            })
+            && self
+                .keys
+                .get(&self.active_key_id)
+                .is_some_and(|verification| {
+                    verification.not_before <= at && verification.expires_at > at
+                })
     }
 
     fn verify_receipt(
@@ -721,12 +723,7 @@ impl ApprovalDecisionEvidenceKeyring {
         {
             return Err(ApprovalError::GrantInvalid);
         }
-        receipt.verify(
-            &self.issuer,
-            &receipt.key_id,
-            &verification.key,
-            now,
-        )
+        receipt.verify(&self.issuer, &receipt.key_id, &verification.key, now)
     }
 }
 
@@ -781,14 +778,11 @@ impl PostgresApprovalStore {
     }
 
     pub fn review_evidence_covers(&self, tenant: &TenantId, now: DateTime<Utc>) -> bool {
-        self.review_evidence_keyring.covers_tenant_at(&tenant.0, now)
+        self.review_evidence_keyring
+            .covers_tenant_at(&tenant.0, now)
     }
 
-    pub fn decision_evidence_delivery_covers(
-        &self,
-        tenant: &TenantId,
-        now: DateTime<Utc>,
-    ) -> bool {
+    pub fn decision_evidence_delivery_covers(&self, tenant: &TenantId, now: DateTime<Utc>) -> bool {
         self.delivery_evidence_keyring.covers_source_tenant_at(
             &tenant.0,
             &self.evidence_source_identity,
@@ -856,8 +850,11 @@ impl PostgresApprovalStore {
                 Ok(transaction) => transaction,
                 Err(error) => {
                     decision_evidence_delivery_alert(
-                        "READINESS_QUERY_FAILED", Some(tenant), None,
-                        &error.to_string(), None,
+                        "READINESS_QUERY_FAILED",
+                        Some(tenant),
+                        None,
+                        &error.to_string(),
+                        None,
                     );
                     return false;
                 }
@@ -879,31 +876,43 @@ impl PostgresApprovalStore {
                     Ok(healthy) => healthy,
                     Err(_) => {
                         decision_evidence_delivery_alert(
-                            "READINESS_RESULT_INVALID", Some(tenant), None,
-                            "APPROVAL_DATABASE_UNAVAILABLE", None,
+                            "READINESS_RESULT_INVALID",
+                            Some(tenant),
+                            None,
+                            "APPROVAL_DATABASE_UNAVAILABLE",
+                            None,
                         );
                         return false;
                     }
                 },
                 Err(_) => {
                     decision_evidence_delivery_alert(
-                        "READINESS_QUERY_FAILED", Some(tenant), None,
-                        "APPROVAL_DATABASE_UNAVAILABLE", None,
+                        "READINESS_QUERY_FAILED",
+                        Some(tenant),
+                        None,
+                        "APPROVAL_DATABASE_UNAVAILABLE",
+                        None,
                     );
                     return false;
                 }
             };
             if transaction.commit().await.is_err() {
                 decision_evidence_delivery_alert(
-                    "READINESS_COMMIT_FAILED", Some(tenant), None,
-                    "APPROVAL_DATABASE_UNAVAILABLE", None,
+                    "READINESS_COMMIT_FAILED",
+                    Some(tenant),
+                    None,
+                    "APPROVAL_DATABASE_UNAVAILABLE",
+                    None,
                 );
                 return false;
             }
             if !healthy {
                 decision_evidence_delivery_alert(
-                    "BACKLOG_UNHEALTHY", Some(tenant), None,
-                    "FATAL_OR_STALE_BACKLOG", None,
+                    "BACKLOG_UNHEALTHY",
+                    Some(tenant),
+                    None,
+                    "FATAL_OR_STALE_BACKLOG",
+                    None,
                 );
                 return false;
             }
@@ -964,7 +973,9 @@ impl PostgresApprovalStore {
                         .request_digest()
                         .is_ok_and(|digest| digest == item.request_digest);
                 let outcome = if binding_valid {
-                    self.evidence_publisher.publish(&item.authority_request).await
+                    self.evidence_publisher
+                        .publish(&item.authority_request)
+                        .await
                 } else {
                     Err(ApprovalEvidenceDeliveryError::ReceiptInvalid)
                 };
@@ -972,13 +983,18 @@ impl PostgresApprovalStore {
                     Ok(receipt) => {
                         if let Err(error) = self
                             .mark_decision_evidence_delivered(
-                                &item, worker_id, &receipt, Utc::now(),
+                                &item,
+                                worker_id,
+                                &receipt,
+                                Utc::now(),
                             )
                             .await
                         {
                             decision_evidence_delivery_alert(
-                                "MARK_DELIVERED_FAILED", Some(&item.tenant_id),
-                                Some(&item.authority_event_id), &error.to_string(),
+                                "MARK_DELIVERED_FAILED",
+                                Some(&item.tenant_id),
+                                Some(&item.authority_event_id),
+                                &error.to_string(),
                                 Some(item.delivery_attempts),
                             );
                             return Err(error);
@@ -997,15 +1013,19 @@ impl PostgresApprovalStore {
                             .await
                         {
                             decision_evidence_delivery_alert(
-                                "RELEASE_RETRY_FAILED", Some(&item.tenant_id),
-                                Some(&item.authority_event_id), &release_error.to_string(),
+                                "RELEASE_RETRY_FAILED",
+                                Some(&item.tenant_id),
+                                Some(&item.authority_event_id),
+                                &release_error.to_string(),
                                 Some(item.delivery_attempts),
                             );
                             return Err(release_error);
                         }
                         decision_evidence_delivery_alert(
-                            "PUBLISH_RETRY", Some(&item.tenant_id),
-                            Some(&item.authority_event_id), retry_code,
+                            "PUBLISH_RETRY",
+                            Some(&item.tenant_id),
+                            Some(&item.authority_event_id),
+                            retry_code,
                             Some(item.delivery_attempts),
                         );
                     }
@@ -1030,18 +1050,17 @@ impl PostgresApprovalStore {
         let mut start_index = 0_usize;
         loop {
             let delivered = match self
-                .deliver_decision_evidence_once_from(
-                    &tenants,
-                    &worker_id,
-                    Utc::now(),
-                    start_index,
-                )
+                .deliver_decision_evidence_once_from(&tenants, &worker_id, Utc::now(), start_index)
                 .await
             {
                 Ok(delivered) => delivered,
                 Err(error) => {
                     decision_evidence_delivery_alert(
-                        "BATCH_FAILED", None, None, &error.to_string(), None,
+                        "BATCH_FAILED",
+                        None,
+                        None,
+                        &error.to_string(),
+                        None,
                     );
                     0
                 }
@@ -1067,8 +1086,8 @@ impl PostgresApprovalStore {
             return Err(ApprovalError::RequestInvalid);
         }
         let limit = i64::try_from(limit).map_err(|_| ApprovalError::RequestInvalid)?;
-        let lease_expires_at = now
-            + chrono::Duration::seconds(DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS);
+        let lease_expires_at =
+            now + chrono::Duration::seconds(DECISION_EVIDENCE_DELIVERY_LEASE_SECONDS);
         let mut transaction = self.begin_tenant(tenant).await?;
         let rows = sqlx::query(
             "WITH candidates AS MATERIALIZED (\
@@ -1171,9 +1190,7 @@ impl PostgresApprovalStore {
             return Err(ApprovalError::RequestInvalid);
         }
         let next_attempt_at = failed_at
-            + chrono::Duration::seconds(decision_evidence_retry_seconds(
-                pending.delivery_attempts,
-            ));
+            + chrono::Duration::seconds(decision_evidence_retry_seconds(pending.delivery_attempts));
         let mut transaction = self.begin_tenant(&pending.tenant_id).await?;
         let affected = sqlx::query(
             "UPDATE approval_decision_evidence_outbox \
@@ -1434,8 +1451,9 @@ impl PostgresApprovalStore {
         transaction.commit().await.map_err(database)?;
 
         let next_cursor = if has_more {
-            let (created_at, case_id) =
-                last_scanned.as_ref().ok_or(ApprovalError::DatabaseUnavailable)?;
+            let (created_at, case_id) = last_scanned
+                .as_ref()
+                .ok_or(ApprovalError::DatabaseUnavailable)?;
             Some(encode_authoritative_cursor(
                 tenant,
                 resource,
@@ -1693,7 +1711,13 @@ impl PostgresApprovalStore {
         idempotency_key: &str,
         request_digest: &str,
         now: DateTime<Utc>,
-    ) -> Result<(ApprovalDecisionEvidenceReceipt, AuthorityEvidenceEventRequest), ApprovalError> {
+    ) -> Result<
+        (
+            ApprovalDecisionEvidenceReceipt,
+            AuthorityEvidenceEventRequest,
+        ),
+        ApprovalError,
+    > {
         if !self
             .decision_evidence_keyring
             .covers_active_signer_at(&self.signer, now)
@@ -1738,11 +1762,8 @@ impl PostgresApprovalStore {
         };
         receipt.decision_digest = receipt.expected_decision_digest()?;
         receipt.evidence_ref = receipt.expected_evidence_ref();
-        let authority_request = decision_authority_evidence_request(
-            &receipt,
-            case,
-            &self.evidence_source_identity,
-        )?;
+        let authority_request =
+            decision_authority_evidence_request(&receipt, case, &self.evidence_source_identity)?;
         receipt.authority_request_digest = authority_request
             .request_digest()
             .map_err(|_| ApprovalError::RequestInvalid)?;
@@ -2509,7 +2530,8 @@ async fn persist_decision_evidence(
     let authority_request_digest = authority_request
         .request_digest()
         .map_err(|_| ApprovalError::RequestInvalid)?;
-    let signed_receipt = serde_json::to_value(receipt).map_err(|_| ApprovalError::RequestInvalid)?;
+    let signed_receipt =
+        serde_json::to_value(receipt).map_err(|_| ApprovalError::RequestInvalid)?;
     let request_value =
         serde_json::to_value(authority_request).map_err(|_| ApprovalError::RequestInvalid)?;
     sqlx::query(
@@ -2655,7 +2677,11 @@ fn decision_evidence_delivery_alert(
     code: &str,
     delivery_attempts: Option<i32>,
 ) {
-    let severity = if code == "OUTCOME_UNKNOWN" { "WARN" } else { "ERROR" };
+    let severity = if code == "OUTCOME_UNKNOWN" {
+        "WARN"
+    } else {
+        "ERROR"
+    };
     eprintln!(
         "{}",
         serde_json::json!({
@@ -3165,9 +3191,11 @@ fn parse_authoritative_request(
 ) -> Result<Option<ApprovalRequest>, ApprovalError> {
     match serde_json::from_value::<ApprovalRequest>(value.clone()) {
         Ok(request) => Ok(Some(request)),
-        Err(_) if value.get("review_context").is_none() && value.get("review_evidence").is_none() => {
-            let legacy: LegacyApprovalRequestV0 = serde_json::from_value(value)
-                .map_err(|_| ApprovalError::DatabaseUnavailable)?;
+        Err(_)
+            if value.get("review_context").is_none() && value.get("review_evidence").is_none() =>
+        {
+            let legacy: LegacyApprovalRequestV0 =
+                serde_json::from_value(value).map_err(|_| ApprovalError::DatabaseUnavailable)?;
             if !legacy.valid_for_authoritative_exclusion(tenant) {
                 return Err(ApprovalError::DatabaseUnavailable);
             }
@@ -3216,21 +3244,15 @@ fn validate_case_view(view: &ApprovalCaseView) -> Result<(), ApprovalError> {
         || match view.domain {
             ApprovalCaseDomain::Coding => {
                 view.industrial_details.is_some()
-                    || !view
-                        .coding_details
-                        .as_ref()
-                        .is_some_and(|details| {
-                            ApprovalReviewContext::Coding(details.clone()).valid()
-                        })
+                    || !view.coding_details.as_ref().is_some_and(|details| {
+                        ApprovalReviewContext::Coding(details.clone()).valid()
+                    })
             }
             ApprovalCaseDomain::Industrial => {
                 view.coding_details.is_some()
-                    || !view
-                        .industrial_details
-                        .as_ref()
-                        .is_some_and(|details| {
-                            ApprovalReviewContext::Industrial(details.clone()).valid()
-                        })
+                    || !view.industrial_details.as_ref().is_some_and(|details| {
+                        ApprovalReviewContext::Industrial(details.clone()).valid()
+                    })
             }
         }
         || view.evidence_refs.len() != 3
@@ -3524,7 +3546,10 @@ mod tests {
         partial_upgrade
             .as_object_mut()
             .unwrap_or_else(|| panic!("partial object"))
-            .insert("review_context".into(), serde_json::json!({"domain": "CODING"}));
+            .insert(
+                "review_context".into(),
+                serde_json::json!({"domain": "CODING"}),
+            );
         assert_eq!(
             parse_authoritative_request(partial_upgrade, &tenant),
             Err(ApprovalError::DatabaseUnavailable)
@@ -3612,14 +3637,8 @@ mod tests {
             .as_bytes(),
         )
         .unwrap_or_else(|_| panic!("keyring"));
-        assert!(keyring.covers_active_signer_at(
-            &signer,
-            instant("2026-01-01T00:00:00Z")
-        ));
-        assert!(!keyring.covers_active_signer_at(
-            &signer,
-            instant("2027-01-01T00:00:00Z")
-        ));
+        assert!(keyring.covers_active_signer_at(&signer, instant("2026-01-01T00:00:00Z")));
+        assert!(!keyring.covers_active_signer_at(&signer, instant("2027-01-01T00:00:00Z")));
     }
 
     #[test]

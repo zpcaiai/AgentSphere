@@ -360,7 +360,12 @@ fn secure_file(path: &Path, private: bool) -> Result<bool, Box<dyn std::error::E
         let effective_uid = nix::unistd::Uid::effective().as_raw();
         let effective_gid = nix::unistd::Gid::effective().as_raw();
         let access = if private {
-            let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+            let allowed = 0o400
+                | if metadata.gid() == effective_gid {
+                    0o040
+                } else {
+                    0
+                };
             let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
                 || (metadata.gid() == effective_gid && mode & 0o040 != 0);
             readable && mode & !allowed == 0

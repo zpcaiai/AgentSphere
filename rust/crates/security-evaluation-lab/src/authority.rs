@@ -34,7 +34,8 @@ use uuid::Uuid;
 pub const SECURITY_EVAL_COMMAND_SCHEMA: &str = "agenttrust.security-eval-command.v1";
 pub const SECURITY_EVAL_EXECUTOR_SCHEMA: &str = "agenttrust.security-eval-executor-request.v1";
 pub const SECURITY_EVAL_ACTION_RECEIPT_SCHEMA: &str = "agenttrust.security-eval-action-receipt.v1";
-pub const SECURITY_EVAL_MUTATION_RESULT_SCHEMA: &str = "agenttrust.security-eval-mutation-result.v1";
+pub const SECURITY_EVAL_MUTATION_RESULT_SCHEMA: &str =
+    "agenttrust.security-eval-mutation-result.v1";
 pub const SECURITY_EVAL_RUNNER_RECEIPT_SCHEMA: &str = "agenttrust.security-eval-runner-receipt.v1";
 pub const SECURITY_EVAL_EVIDENCE_RECEIPT_SCHEMA: &str =
     "agenttrust.security-eval-evidence-receipt.v1";
@@ -135,7 +136,10 @@ impl SecurityEvalOperation {
     }
 
     fn invokes_runner(self) -> bool {
-        matches!(self, Self::StartCampaign | Self::AbortCampaign | Self::TripKillSwitch)
+        matches!(
+            self,
+            Self::StartCampaign | Self::AbortCampaign | Self::TripKillSwitch
+        )
     }
 }
 
@@ -260,7 +264,10 @@ pub struct SecurityEvalEvidenceReceipt {
 }
 
 impl IsolatedRunnerReceipt {
-    fn validate(&self, command: &SecurityEvalCommandRequest) -> Result<(), SecurityEvalAuthorityError> {
+    fn validate(
+        &self,
+        command: &SecurityEvalCommandRequest,
+    ) -> Result<(), SecurityEvalAuthorityError> {
         let payload = object(&command.payload)?;
         let campaign_id = uuid_field(payload, "campaign_id")?;
         let expected_profile = string_field(payload, "environment_profile")?;
@@ -415,7 +422,9 @@ impl DatasetTrustKeyring {
                 return Err(SecurityEvalAuthorityError::ConfigurationInvalid);
             }
         }
-        Ok(Self { keys: Arc::new(keys) })
+        Ok(Self {
+            keys: Arc::new(keys),
+        })
     }
 
     fn verify_manifest(
@@ -517,7 +526,11 @@ impl SecurityEvalIngressAuthority {
         {
             return Err(SecurityEvalAuthorityError::ConfigurationInvalid);
         }
-        Ok(Self { store, orchestrator, config })
+        Ok(Self {
+            store,
+            orchestrator,
+            config,
+        })
     }
 
     pub async fn ready(&self) -> bool {
@@ -539,7 +552,13 @@ impl SecurityEvalIngressAuthority {
         let envelope = materialize_action(&principal, &command, &self.config)?;
         let prepared = self
             .store
-            .prepare_ingress(&principal, &command, request_digest, idempotency_key, envelope)
+            .prepare_ingress(
+                &principal,
+                &command,
+                request_digest,
+                idempotency_key,
+                envelope,
+            )
             .await?;
         if let Some(receipt) = prepared.receipt {
             return Ok(receipt);
@@ -595,7 +614,10 @@ fn materialize_action(
         Value::String("CANONICAL_ACTION_IR->PEP->LEDGER->FENCE->EVIDENCE".into()),
     );
     extensions.insert("x-production-target-prohibited".into(), Value::Bool(true));
-    extensions.insert("x-physical-side-effects-prohibited".into(), Value::Bool(true));
+    extensions.insert(
+        "x-physical-side-effects-prohibited".into(),
+        Value::Bool(true),
+    );
     extensions.insert(
         "x-plan-hash".into(),
         Value::String(canonical_digest(&json!({
@@ -630,7 +652,11 @@ fn materialize_action(
             goal_hash: canonical_digest(command)?,
             operation: operation.clone(),
             justification_code: "SECURITY_EVALUATION_GOVERNANCE".into(),
-            safe_summary: Some(format!("{} {}", command.operation.as_str(), command.resource_id)),
+            safe_summary: Some(format!(
+                "{} {}",
+                command.operation.as_str(),
+                command.resource_id
+            )),
         },
         tool: ToolRef {
             tool_id: config.tool_id.clone(),
@@ -683,11 +709,11 @@ fn materialize_action(
     normalization
         .payload_types
         .register("security.evaluation.mutation.v1", "1");
-    let action = normalize(draft, &normalization)
-        .map_err(|_| SecurityEvalAuthorityError::RequestInvalid)?;
+    let action =
+        normalize(draft, &normalization).map_err(|_| SecurityEvalAuthorityError::RequestInvalid)?;
     action_hash(&action).map_err(|_| SecurityEvalAuthorityError::RequestInvalid)?;
-    let bytes = serde_json::to_vec(&action)
-        .map_err(|_| SecurityEvalAuthorityError::RequestInvalid)?;
+    let bytes =
+        serde_json::to_vec(&action).map_err(|_| SecurityEvalAuthorityError::RequestInvalid)?;
     Ok(InboundEnvelope {
         request_id: Uuid::new_v4().to_string(),
         trace_context: TraceContext {
@@ -1248,7 +1274,16 @@ impl PostgresSecurityEvalStore {
             }
             SecurityEvalOperation::ApproveCampaign => {
                 exact_fields(payload, &["campaign_id"])?;
-                update_campaign_state(&mut tx, tenant, payload, "DRAFT", "APPROVED", new_version, expected).await?;
+                update_campaign_state(
+                    &mut tx,
+                    tenant,
+                    payload,
+                    "DRAFT",
+                    "APPROVED",
+                    new_version,
+                    expected,
+                )
+                .await?;
             }
             SecurityEvalOperation::StartCampaign => {
                 let receipt = runner_receipt
@@ -1256,7 +1291,16 @@ impl PostgresSecurityEvalStore {
                     .ok_or(SecurityEvalAuthorityError::IsolationDenied)?;
                 receipt.validate(command)?;
                 assert_campaign_budget_binding(&mut tx, tenant, payload, receipt).await?;
-                update_campaign_state(&mut tx, tenant, payload, "APPROVED", "RUNNING", new_version, expected).await?;
+                update_campaign_state(
+                    &mut tx,
+                    tenant,
+                    payload,
+                    "APPROVED",
+                    "RUNNING",
+                    new_version,
+                    expected,
+                )
+                .await?;
             }
             SecurityEvalOperation::RecordResult => {
                 apply_record_result(&mut tx, tenant, payload).await?;
@@ -1271,14 +1315,9 @@ impl PostgresSecurityEvalStore {
                 apply_record_retest(&mut tx, tenant, payload).await?;
             }
             SecurityEvalOperation::CompleteCampaign => {
-                let report = build_and_insert_report(
-                    &mut tx,
-                    tenant,
-                    payload,
-                    report_key_id,
-                    report_signer,
-                )
-                .await?;
+                let report =
+                    build_and_insert_report(&mut tx, tenant, payload, report_key_id, report_signer)
+                        .await?;
                 let campaign_id = report.campaign_id;
                 let final_status = if report.cleanup_complete && report.evidence_complete {
                     "COMPLETED"
@@ -1450,7 +1489,9 @@ impl PostgresSecurityEvalStore {
                 .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?,
             state: "PENDING_EVIDENCE".into(),
             result_digest,
-            evidence_outbox_ref: format!("evidence-outbox://security-evaluation/{tenant}/{event_id}"),
+            evidence_outbox_ref: format!(
+                "evidence-outbox://security-evaluation/{tenant}/{event_id}"
+            ),
             runner_receipt,
             signed_report,
         };
@@ -1575,7 +1616,10 @@ impl PostgresSecurityEvalStore {
         {
             return Err(SecurityEvalAuthorityError::EvidenceMissing);
         }
-        if row.get::<Option<DateTime<Utc>>, _>("published_at").is_some() {
+        if row
+            .get::<Option<DateTime<Utc>>, _>("published_at")
+            .is_some()
+        {
             if row.get::<Option<String>, _>("authority_receipt_ref")
                 != Some(receipt.evidence_ref.clone())
                 || row.get::<Option<String>, _>("authority_receipt_digest")
@@ -1805,7 +1849,8 @@ impl SecurityEvalExecutor {
         } else {
             None
         };
-        let result = self.store
+        let result = self
+            .store
             .apply_mutation(
                 &binding,
                 &request,
@@ -1892,7 +1937,13 @@ async fn apply_register_dataset(
     {
         return Err(SecurityEvalAuthorityError::RequestInvalid);
     }
-    keys.verify_manifest(signer_key_id, manifest, dataset_digest, signature, Utc::now())?;
+    keys.verify_manifest(
+        signer_key_id,
+        manifest,
+        dataset_digest,
+        signature,
+        Utc::now(),
+    )?;
     let expected = new_version - 1;
     if expected == 0 {
         sqlx::query(
@@ -2105,7 +2156,10 @@ async fn apply_create_campaign(
         || !safe_text(safe_name, 256)
         || !environment_profile.starts_with("isolated-")
         || !identifier(environment_profile, 128)
-        || !matches!(target_environment, "EPHEMERAL_SANDBOX" | "ISOLATED_TENANT" | "DIGITAL_TWIN")
+        || !matches!(
+            target_environment,
+            "EPHEMERAL_SANDBOX" | "ISOLATED_TENANT" | "DIGITAL_TWIN"
+        )
         || payload.get("production_access_allowed") != Some(&Value::Bool(false))
         || payload.get("physical_effects_allowed") != Some(&Value::Bool(false))
         || deadline_at <= Utc::now() + Duration::minutes(1)
@@ -2155,7 +2209,17 @@ async fn apply_attach_scenario(
     new_version: i64,
     expected: i64,
 ) -> Result<(), SecurityEvalAuthorityError> {
-    exact_fields(payload, &["campaign_id", "scenario_id", "scenario_version", "scenario_digest", "deterministic_seed", "ordinal"])?;
+    exact_fields(
+        payload,
+        &[
+            "campaign_id",
+            "scenario_id",
+            "scenario_version",
+            "scenario_digest",
+            "deterministic_seed",
+            "ordinal",
+        ],
+    )?;
     let campaign_id = uuid_field(payload, "campaign_id")?;
     let scenario_id = uuid_field(payload, "scenario_id")?;
     let scenario_version = string_field(payload, "scenario_version")?;
@@ -2472,7 +2536,9 @@ async fn apply_open_finding(
     if !matches!(severity, "LOW" | "MEDIUM" | "HIGH" | "CRITICAL")
         || !identifier(risk_type, 128)
         || controls.iter().any(|value| !identifier(value, 128))
-        || policies.iter().any(|value| !evidence_reference(value) && !identifier(value, 256))
+        || policies
+            .iter()
+            .any(|value| !evidence_reference(value) && !identifier(value, 256))
         || evidence.iter().any(|value| !evidence_reference(value))
         || !safe_text(summary, 2048)
         || (matches!(severity, "HIGH" | "CRITICAL") && (!remediation || !retest))
@@ -2510,7 +2576,17 @@ async fn apply_link_remediation(
     payload: &Map<String, Value>,
     new_version: i64,
 ) -> Result<(), SecurityEvalAuthorityError> {
-    exact_fields(payload, &["remediation_id", "finding_id", "owner_subject", "change_ref", "change_digest", "due_at"])?;
+    exact_fields(
+        payload,
+        &[
+            "remediation_id",
+            "finding_id",
+            "owner_subject",
+            "change_ref",
+            "change_digest",
+            "due_at",
+        ],
+    )?;
     let remediation_id = uuid_field(payload, "remediation_id")?;
     let finding_id = uuid_field(payload, "finding_id")?;
     let owner = string_field(payload, "owner_subject")?;
@@ -2560,7 +2636,18 @@ async fn apply_record_retest(
     tenant: Uuid,
     payload: &Map<String, Value>,
 ) -> Result<(), SecurityEvalAuthorityError> {
-    exact_fields(payload, &["retest_id", "finding_id", "remediation_id", "campaign_id", "candidate_result_id", "outcome", "evidence_refs"])?;
+    exact_fields(
+        payload,
+        &[
+            "retest_id",
+            "finding_id",
+            "remediation_id",
+            "campaign_id",
+            "candidate_result_id",
+            "outcome",
+            "evidence_refs",
+        ],
+    )?;
     let retest_id = uuid_field(payload, "retest_id")?;
     let finding_id = uuid_field(payload, "finding_id")?;
     let remediation_id = uuid_field(payload, "remediation_id")?;
@@ -2610,7 +2697,11 @@ async fn apply_record_retest(
     .execute(&mut **tx)
     .await
     .map_err(|_| SecurityEvalAuthorityError::StateConflict)?;
-    let finding_state = if outcome == "PASSED" { "VERIFIED" } else { "OPEN" };
+    let finding_state = if outcome == "PASSED" {
+        "VERIFIED"
+    } else {
+        "OPEN"
+    };
     sqlx::query(
         "UPDATE security_findings SET status=$3,resource_version=resource_version+1,updated_at=now() \
          WHERE tenant_id=$1 AND finding_id=$2 AND status='RETESTING'",
@@ -2639,7 +2730,10 @@ async fn apply_publish_baseline(
     tenant: Uuid,
     payload: &Map<String, Value>,
 ) -> Result<(), SecurityEvalAuthorityError> {
-    exact_fields(payload, &["baseline_id", "baseline_key", "source_report_id"])?;
+    exact_fields(
+        payload,
+        &["baseline_id", "baseline_key", "source_report_id"],
+    )?;
     let baseline_id = uuid_field(payload, "baseline_id")?;
     let baseline_key = string_field(payload, "baseline_key")?;
     let report_id = uuid_field(payload, "source_report_id")?;
@@ -2708,7 +2802,10 @@ async fn apply_trip_kill_switch(
     let switch_id = uuid_field(payload, "switch_id")?;
     let environment = string_field(payload, "environment_profile")?;
     let reason = string_field(payload, "reason_code")?;
-    if !environment.starts_with("isolated-") || !identifier(environment, 128) || !identifier(reason, 128) {
+    if !environment.starts_with("isolated-")
+        || !identifier(environment, 128)
+        || !identifier(reason, 128)
+    {
         return Err(SecurityEvalAuthorityError::RequestInvalid);
     }
     if expected == 0 {
@@ -2924,8 +3021,10 @@ async fn build_and_insert_report(
     let high_risk_regression = !risk.baseline_regressions.is_empty()
         || risk.open_high_or_critical_findings > 0
         || result_rows.iter().any(|row| {
-            matches!(row.get::<String, _>("risk_level").as_str(), "HIGH" | "CRITICAL")
-                && row.get::<String, _>("status") == "CONTROL_FAILED"
+            matches!(
+                row.get::<String, _>("risk_level").as_str(),
+                "HIGH" | "CRITICAL"
+            ) && row.get::<String, _>("status") == "CONTROL_FAILED"
         });
     let release_blocked = high_risk_regression || !cleanup_complete || !evidence_complete;
     let mut report = SignedSecurityEvalReport {
@@ -2955,7 +3054,8 @@ async fn build_and_insert_report(
         signature: String::new(),
     };
     report.report_digest = report_digest(&report)?;
-    report.signature = URL_SAFE_NO_PAD.encode(signer.sign(&report_signing_bytes(&report)?).to_bytes());
+    report.signature =
+        URL_SAFE_NO_PAD.encode(signer.sign(&report_signing_bytes(&report)?).to_bytes());
     let report_value = serde_json::to_value(&report)
         .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
     let risk_value = serde_json::to_value(&report.risk_summary)
@@ -3171,7 +3271,10 @@ fn validate_execution(
         || binding.ledger_execution_id.is_nil()
         || binding.ledger_event_id.is_nil()
         || request.approval_ids.len() > 64
-        || request.approval_ids.iter().any(|value| !identifier(value, 256))
+        || request
+            .approval_ids
+            .iter()
+            .any(|value| !identifier(value, 256))
     {
         return Err(SecurityEvalAuthorityError::RequestInvalid);
     }
@@ -3270,9 +3373,9 @@ fn validate_scenario_definition(
                 .is_some_and(|items| {
                     !items.is_empty()
                         && items.len() <= 128
-                        && items.iter().all(|item| {
-                            item.as_str().is_some_and(|value| identifier(value, 128))
-                        })
+                        && items
+                            .iter()
+                            .all(|item| item.as_str().is_some_and(|value| identifier(value, 128)))
                 })
             || step.get("production_side_effect") != Some(&Value::Bool(false))
             || !matches!(
@@ -3317,7 +3420,12 @@ fn validate_coverage(value: &Value) -> Result<(), SecurityEvalAuthorityError> {
     let object = object(value)?;
     exact_fields(
         object,
-        &["threat_surfaces", "control_ids", "domain_packs", "sample_count"],
+        &[
+            "threat_surfaces",
+            "control_ids",
+            "domain_packs",
+            "sample_count",
+        ],
     )?;
     for field in ["threat_surfaces", "control_ids", "domain_packs"] {
         let values = string_array_field(object, field, 1, 256)?;
@@ -3335,7 +3443,13 @@ fn validate_metric_values(value: &Value) -> Result<(), SecurityEvalAuthorityErro
     let object = object(value)?;
     exact_fields(
         object,
-        &["prevented", "detected", "contained", "recovered", "latency_ms"],
+        &[
+            "prevented",
+            "detected",
+            "contained",
+            "recovered",
+            "latency_ms",
+        ],
     )?;
     for field in ["prevented", "detected", "contained", "recovered"] {
         bool_field(object, field)?;
@@ -3451,20 +3565,14 @@ fn safe_text_field<'a>(
     }
 }
 
-fn bool_field(
-    value: &Map<String, Value>,
-    field: &str,
-) -> Result<bool, SecurityEvalAuthorityError> {
+fn bool_field(value: &Map<String, Value>, field: &str) -> Result<bool, SecurityEvalAuthorityError> {
     value
         .get(field)
         .and_then(Value::as_bool)
         .ok_or(SecurityEvalAuthorityError::RequestInvalid)
 }
 
-fn uuid_field(
-    value: &Map<String, Value>,
-    field: &str,
-) -> Result<Uuid, SecurityEvalAuthorityError> {
+fn uuid_field(value: &Map<String, Value>, field: &str) -> Result<Uuid, SecurityEvalAuthorityError> {
     let raw = string_field(value, field)?;
     Uuid::parse_str(raw)
         .ok()
@@ -3609,7 +3717,9 @@ fn safe_text(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && !value.contains(['\0', '\r'])
-        && value.chars().all(|character| !character.is_control() || character == '\n')
+        && value
+            .chars()
+            .all(|character| !character.is_control() || character == '\n')
 }
 
 fn idempotency(value: &str) -> bool {
@@ -3664,7 +3774,13 @@ fn scenario_category(value: &str) -> bool {
 fn domain_pack_name(value: &str) -> bool {
     matches!(
         value,
-        "COMMON" | "CODING" | "INDUSTRIAL" | "ENERGY" | "MEDICAL" | "SENSITIVE_INTERACTION" | "MARKETPLACE"
+        "COMMON"
+            | "CODING"
+            | "INDUSTRIAL"
+            | "ENERGY"
+            | "MEDICAL"
+            | "SENSITIVE_INTERACTION"
+            | "MARKETPLACE"
     )
 }
 
@@ -3745,26 +3861,31 @@ mod production_unit_tests {
             report_digest: String::new(),
             signature: String::new(),
         };
-        report.report_digest = report_digest(&report).unwrap_or_else(|error| panic!("digest: {error}"));
+        report.report_digest =
+            report_digest(&report).unwrap_or_else(|error| panic!("digest: {error}"));
         report.signature = URL_SAFE_NO_PAD.encode(
             signing
-                .sign(&report_signing_bytes(&report).unwrap_or_else(|error| panic!("bytes: {error}")))
+                .sign(
+                    &report_signing_bytes(&report).unwrap_or_else(|error| panic!("bytes: {error}")),
+                )
                 .to_bytes(),
         );
         assert!(!report.production_certified);
         assert_eq!(report.attestation_class, "ENGINE_EVALUATION_ONLY");
-        assert!(signing
-            .verifying_key()
-            .verify(
-                &report_signing_bytes(&report).unwrap_or_else(|error| panic!("bytes: {error}")),
-                &Signature::from_slice(
-                    &URL_SAFE_NO_PAD
-                        .decode(report.signature.as_bytes())
-                        .unwrap_or_else(|error| panic!("decode: {error}"))
+        assert!(
+            signing
+                .verifying_key()
+                .verify(
+                    &report_signing_bytes(&report).unwrap_or_else(|error| panic!("bytes: {error}")),
+                    &Signature::from_slice(
+                        &URL_SAFE_NO_PAD
+                            .decode(report.signature.as_bytes())
+                            .unwrap_or_else(|error| panic!("decode: {error}"))
+                    )
+                    .unwrap_or_else(|error| panic!("signature: {error}"))
                 )
-                .unwrap_or_else(|error| panic!("signature: {error}"))
-            )
-            .is_ok());
+                .is_ok()
+        );
     }
 
     #[test]
@@ -3803,13 +3924,15 @@ mod production_unit_tests {
             "provenance": "internal-red-team",
             "license": "PROPRIETARY-TEST-ONLY"
         });
-        let canonical = serde_jcs::to_vec(&manifest)
-            .unwrap_or_else(|error| panic!("canonical: {error}"));
+        let canonical =
+            serde_jcs::to_vec(&manifest).unwrap_or_else(|error| panic!("canonical: {error}"));
         let digest = sha256(&canonical);
         let signature = URL_SAFE_NO_PAD.encode(signing.sign(&canonical).to_bytes());
-        assert!(keyring
-            .verify_manifest("dataset-key-1", &manifest, &digest, &signature, now)
-            .is_ok());
+        assert!(
+            keyring
+                .verify_manifest("dataset-key-1", &manifest, &digest, &signature, now)
+                .is_ok()
+        );
         let mut tampered = manifest;
         tampered["license"] = Value::String("DIFFERENT".into());
         assert_eq!(

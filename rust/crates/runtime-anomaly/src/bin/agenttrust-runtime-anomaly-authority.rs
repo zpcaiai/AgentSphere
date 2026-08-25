@@ -38,7 +38,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if nix::unistd::Uid::effective().is_root() {
         return Err("RUNTIME_ANOMALY_ROOT_EXECUTION_DENIED".into());
     }
-    let database_url = read_secret_file("AGENT_TRUST_RUNTIME_ANOMALY_DATABASE_URL_FILE", 16, 16_384)?;
+    let database_url =
+        read_secret_file("AGENT_TRUST_RUNTIME_ANOMALY_DATABASE_URL_FILE", 16, 16_384)?;
     let mut database_password = read_secret_file(
         "AGENT_TRUST_RUNTIME_ANOMALY_DATABASE_PASSWORD_FILE",
         16,
@@ -123,9 +124,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             service_agent_id: AgentInstanceId(required_uuid(
                 "AGENT_TRUST_RUNTIME_ANOMALY_AGENT_INSTANCE_ID",
             )?),
-            organization_id: required_identifier(
-                "AGENT_TRUST_RUNTIME_ANOMALY_ORGANIZATION_ID",
-            )?,
+            organization_id: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_ORGANIZATION_ID")?,
             agent_version: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_AGENT_VERSION")?,
             region: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_REGION")?,
             tool_id: ToolId(required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_TOOL_ID")?),
@@ -135,13 +134,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             credential_profile: required_identifier(
                 "AGENT_TRUST_RUNTIME_ANOMALY_EXECUTOR_CREDENTIAL_PROFILE",
             )?,
-            service_subject: required_identifier(
-                "AGENT_TRUST_RUNTIME_ANOMALY_SERVICE_SUBJECT",
-            )?,
+            service_subject: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_SERVICE_SUBJECT")?,
             rule_version: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_RULE_VERSION")?,
-            rule_bundle_digest: required_digest(
-                "AGENT_TRUST_RUNTIME_ANOMALY_RULE_BUNDLE_DIGEST",
-            )?,
+            rule_bundle_digest: required_digest("AGENT_TRUST_RUNTIME_ANOMALY_RULE_BUNDLE_DIGEST")?,
             maximum_signal_clock_skew_seconds: required_i64(
                 "AGENT_TRUST_RUNTIME_ANOMALY_MAXIMUM_SIGNAL_CLOCK_SKEW_SECONDS",
                 0,
@@ -202,11 +197,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let maximum_concurrency = required_usize(
-        "AGENT_TRUST_RUNTIME_ANOMALY_MAXIMUM_CONCURRENCY",
-        1,
-        10_000,
-    )?;
+    let maximum_concurrency =
+        required_usize("AGENT_TRUST_RUNTIME_ANOMALY_MAXIMUM_CONCURRENCY", 1, 10_000)?;
     let data = data_router(
         authority.clone(),
         executor.clone(),
@@ -244,9 +236,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn required_endpoint(
-    name: &str,
-) -> Result<RuntimeAnomalyEndpoint, Box<dyn std::error::Error>> {
+fn required_endpoint(name: &str) -> Result<RuntimeAnomalyEndpoint, Box<dyn std::error::Error>> {
     let prefix = format!("AGENT_TRUST_RUNTIME_ANOMALY_{name}");
     Ok(RuntimeAnomalyEndpoint {
         origin: required_url(&format!("{prefix}_ENDPOINT"))?,
@@ -321,7 +311,9 @@ async fn verify_database_role(
     {
         return Err("RUNTIME_ANOMALY_DATABASE_ROLE_UNSAFE".into());
     }
-    let row_security: String = sqlx::query_scalar("SHOW row_security").fetch_one(pool).await?;
+    let row_security: String = sqlx::query_scalar("SHOW row_security")
+        .fetch_one(pool)
+        .await?;
     if row_security != "on" {
         return Err("RUNTIME_ANOMALY_DATABASE_RLS_DISABLED".into());
     }
@@ -500,7 +492,12 @@ fn validate_file(path: &Path, private: bool) -> Result<(), Box<dyn std::error::E
     let effective_gid = nix::unistd::Gid::effective().as_raw();
     let mode = metadata.mode() & 0o777;
     let permitted = if private {
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         readable && mode & !allowed == 0
@@ -576,11 +573,7 @@ fn required_exact_port(name: &str, expected: u16) -> Result<u16, Box<dyn std::er
     Ok(value)
 }
 
-fn required_u32(
-    name: &str,
-    minimum: u32,
-    maximum: u32,
-) -> Result<u32, Box<dyn std::error::Error>> {
+fn required_u32(name: &str, minimum: u32, maximum: u32) -> Result<u32, Box<dyn std::error::Error>> {
     let value: u32 = required_env(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("RUNTIME_ANOMALY_NUMBER_INVALID".into());
@@ -588,11 +581,7 @@ fn required_u32(
     Ok(value)
 }
 
-fn required_u64(
-    name: &str,
-    minimum: u64,
-    maximum: u64,
-) -> Result<u64, Box<dyn std::error::Error>> {
+fn required_u64(name: &str, minimum: u64, maximum: u64) -> Result<u64, Box<dyn std::error::Error>> {
     let value: u64 = required_env(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("RUNTIME_ANOMALY_NUMBER_INVALID".into());
@@ -600,11 +589,7 @@ fn required_u64(
     Ok(value)
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let value: i64 = required_env(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("RUNTIME_ANOMALY_NUMBER_INVALID".into());

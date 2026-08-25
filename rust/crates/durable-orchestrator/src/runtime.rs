@@ -332,8 +332,7 @@ fn preflight_transition(
             | RuntimeCommandType::Complete
             | RuntimeCommandType::NeedsHuman
     );
-    if (command.command_type != RuntimeCommandType::Kill
-        && processed >= MAX_PROCESSED_COMMANDS - 1)
+    if (command.command_type != RuntimeCommandType::Kill && processed >= MAX_PROCESSED_COMMANDS - 1)
         || (!lifecycle_control
             && command.command_type != RuntimeCommandType::Kill
             && processed >= MAX_ROUTINE_COMMANDS)

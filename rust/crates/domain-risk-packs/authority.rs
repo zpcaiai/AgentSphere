@@ -171,7 +171,8 @@ impl DomainReceiptKeyring {
         let mut keys=BTreeMap::new();
         for entry in document.keys {
             let decoded=URL_SAFE_NO_PAD.decode(entry.public_key).map_err(|_|DomainAuthorityError::ConfigurationInvalid)?;
-            let bytes:<[u8;32]>::try_from(decoded).map_err(|_|DomainAuthorityError::ConfigurationInvalid)?;
+            let bytes: [u8; 32] = <[u8; 32]>::try_from(decoded)
+                .map_err(|_| DomainAuthorityError::ConfigurationInvalid)?;
             let key=VerifyingKey::from_bytes(&bytes).map_err(|_|DomainAuthorityError::ConfigurationInvalid)?;
             if entry.usage!="DOMAIN_RUNTIME_RECEIPT"||entry.revoked||entry.not_before>now||entry.expires_at<=now
                 ||!identifier(&entry.key_id,256)||keys.insert(entry.key_id,(key,entry.not_before,entry.expires_at)).is_some(){return Err(DomainAuthorityError::ConfigurationInvalid);}
@@ -275,7 +276,8 @@ impl PostgresDomainRuntimeStore {
         let signed_at=envelope.pack_manifest.signature.signed_at;
         if row.get::<String,_>("algorithm")!="ED25519"||row.get::<String,_>("key_status")!="ACTIVE"||row.get::<String,_>("publisher_status")!="ACTIVE"
             ||row.get::<DateTime<Utc>,_>("valid_from")>signed_at||row.get::<DateTime<Utc>,_>("valid_until")<=signed_at{return Err(DomainAuthorityError::PackInactive);}
-        let bytes:<[u8;32]>::try_from(row.get::<Vec<u8>,_>("public_key_spki")).map_err(|_|DomainAuthorityError::PackInactive)?;
+        let bytes: [u8; 32] = <[u8; 32]>::try_from(row.get::<Vec<u8>, _>("public_key_spki"))
+            .map_err(|_| DomainAuthorityError::PackInactive)?;
         let key=VerifyingKey::from_bytes(&bytes).map_err(|_|DomainAuthorityError::PackInactive)?;
         let verifier=ArtifactVerifier::default();
         verifier.authorize_publisher(envelope.pack_manifest.signature.key_id.clone(),envelope.pack_manifest.publisher_identity.clone(),key);

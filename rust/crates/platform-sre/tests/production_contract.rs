@@ -74,7 +74,10 @@ fn every_mutation_is_bound_to_canonical_pep_ledger_fence_and_evidence() {
         "publish_evidence",
         "finalize_evidence",
     ] {
-        assert!(AUTHORITY.contains(required), "missing authority binding {required}");
+        assert!(
+            AUTHORITY.contains(required),
+            "missing authority binding {required}"
+        );
     }
     for header in [
         "x-agenttrust-action-hash",
@@ -121,8 +124,14 @@ fn database_contract_forces_tenant_rls_immutability_and_restart_states() {
         "sre_evidence_outbox",
     ];
     for table in tenant_tables {
-        assert!(MIGRATION.contains(&format!("'{table}'")), "RLS inventory missing {table}");
-        assert!(SERVICE.contains(&format!("\"{table}\"")), "DB grant inventory missing {table}");
+        assert!(
+            MIGRATION.contains(&format!("'{table}'")),
+            "RLS inventory missing {table}"
+        );
+        assert!(
+            SERVICE.contains(&format!("\"{table}\"")),
+            "DB grant inventory missing {table}"
+        );
     }
     for state in [
         "PREPARED",
@@ -146,7 +155,10 @@ fn signed_engine_report_is_structurally_not_a_production_certificate() {
     let schema: Value = serde_json::from_str(ENGINE_SCHEMA)
         .unwrap_or_else(|error| panic!("engine schema JSON invalid: {error}"));
     assert_eq!(schema["properties"]["engine_report_only"]["const"], true);
-    assert_eq!(schema["properties"]["production_certification"]["const"], false);
+    assert_eq!(
+        schema["properties"]["production_certification"]["const"],
+        false
+    );
     assert!(AUTHORITY.contains("engine_report_only: true"));
     assert!(AUTHORITY.contains("production_certification: false"));
 }
@@ -163,7 +175,15 @@ fn adapters_and_transport_fail_closed() {
     ] {
         assert!(SERVICE.contains(required));
     }
-    for adapter in ["Backup", "Recovery", "DisasterRecovery", "Chaos", "Load", "Upgrade", "Evidence"] {
+    for adapter in [
+        "Backup",
+        "Recovery",
+        "DisasterRecovery",
+        "Chaos",
+        "Load",
+        "Upgrade",
+        "Evidence",
+    ] {
         assert!(SERVER.contains(&format!("SreAdapterKind::{adapter}")));
     }
     assert!(SERVER.contains("TLS13"));
@@ -203,10 +223,6 @@ fn management_routes_match_production_probes() {
         assert!(SERVER.contains(marker), "missing management route {marker}");
     }
     assert!(SERVER.contains("\"schema_version\": \"agenttrust.sre-liveness.v1\""));
-    assert!(STACK.contains(
-        "livenessProbe: {httpGet: {path: /live, port: management}"
-    ));
-    assert!(STACK.contains(
-        "readinessProbe: {httpGet: {path: /ready, port: management}"
-    ));
+    assert!(STACK.contains("livenessProbe: {httpGet: {path: /live, port: management}"));
+    assert!(STACK.contains("readinessProbe: {httpGet: {path: /ready, port: management}"));
 }

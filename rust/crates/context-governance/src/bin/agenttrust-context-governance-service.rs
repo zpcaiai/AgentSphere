@@ -48,7 +48,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     database_password.zeroize();
     let pool = PgPoolOptions::new()
         .min_connections(2)
-        .max_connections(required_i64("AGENT_TRUST_CONTEXT_DATABASE_MAX_CONNECTIONS", 4, 50)? as u32)
+        .max_connections(
+            required_i64("AGENT_TRUST_CONTEXT_DATABASE_MAX_CONNECTIONS", 4, 50)? as u32,
+        )
         .acquire_timeout(std::time::Duration::from_secs(5))
         .idle_timeout(std::time::Duration::from_secs(60))
         .max_lifetime(std::time::Duration::from_secs(900))
@@ -136,12 +138,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &required_private_path("AGENT_TRUST_CONTEXT_TOKEN_BINDINGS_FILE")?,
         &allowed_identities,
     )?);
-    let application = router(
-        ingress.clone(),
-        executor.clone(),
-        retrieval,
-        tokens.clone(),
-    );
+    let application = router(ingress.clone(), executor.clone(), retrieval, tokens.clone());
     let listen: IpAddr = env::var("AGENT_TRUST_CONTEXT_LISTEN_ADDRESS")?.parse()?;
     let management_listen: IpAddr =
         env::var("AGENT_TRUST_CONTEXT_MANAGEMENT_LISTEN_ADDRESS")?.parse()?;
@@ -387,7 +384,12 @@ fn required_private_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Erro
     let mode = metadata.mode() & 0o777;
     let effective_uid = Uid::effective().as_raw();
     let effective_gid = Gid::effective().as_raw();
-    let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+    let allowed = 0o400
+        | if metadata.gid() == effective_gid {
+            0o040
+        } else {
+            0
+        };
     let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
         || (metadata.gid() == effective_gid && mode & 0o040 != 0);
     if !readable || mode & !allowed != 0 {
@@ -434,11 +436,7 @@ fn required_identifier(name: &str) -> Result<String, Box<dyn std::error::Error>>
     Ok(value)
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let raw = env::var(name)?;
     let value = raw.parse::<i64>()?;
     if value < minimum || value > maximum || value.to_string() != raw {

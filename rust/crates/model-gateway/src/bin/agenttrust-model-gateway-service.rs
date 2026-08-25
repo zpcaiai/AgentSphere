@@ -1,16 +1,14 @@
 use agent_trust_model_gateway::adapters::{
     AdapterEndpoint, HttpProductionModelRuntime, ModelRuntimeEndpoints,
 };
-use agent_trust_model_gateway::authority::{
-    ModelExecutionAuthority, PostgresModelAuthorityStore,
-};
+use agent_trust_model_gateway::authority::{ModelExecutionAuthority, PostgresModelAuthorityStore};
 use agent_trust_model_gateway::server::{
     ModelServerConfig, ModelTokenAuthorizer, router, serve, validate_private_file,
 };
 use nix::unistd::Uid;
 use reqwest::{Certificate, Identity};
-use sqlx::{PgPool, Row};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
+use sqlx::{PgPool, Row};
 use std::collections::BTreeSet;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
@@ -127,19 +125,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         env::var("AGENT_TRUST_MODEL_MANAGEMENT_LISTEN_ADDRESS")?.parse()?;
     serve(
         ModelServerConfig {
-            data_address: SocketAddr::new(
-                listen,
-                exact_port("AGENT_TRUST_MODEL_PORT", 8091)?,
-            ),
+            data_address: SocketAddr::new(listen, exact_port("AGENT_TRUST_MODEL_PORT", 8091)?),
             management_address: SocketAddr::new(
                 management_listen,
                 exact_port("AGENT_TRUST_MODEL_MANAGEMENT_PORT", 9101)?,
             ),
             tls_ca_file: required_path("AGENT_TRUST_MODEL_TLS_CA_FILE")?,
             tls_certificate_file: required_path("AGENT_TRUST_MODEL_TLS_CERTIFICATE_FILE")?,
-            tls_private_key_file: required_private_path(
-                "AGENT_TRUST_MODEL_TLS_PRIVATE_KEY_FILE",
-            )?,
+            tls_private_key_file: required_private_path("AGENT_TRUST_MODEL_TLS_PRIVATE_KEY_FILE")?,
             allowed_client_identities: identities,
             recovery_interval_seconds: required_i64(
                 "AGENT_TRUST_MODEL_RECOVERY_INTERVAL_SECONDS",
@@ -223,8 +216,7 @@ fn database_options(
             )
         })
         || query.get("sslmode").map(String::as_str) != Some("verify-full")
-        || query.get("application_name").map(String::as_str)
-            != Some("agenttrust-model-gateway")
+        || query.get("application_name").map(String::as_str) != Some("agenttrust-model-gateway")
     {
         return Err("MODEL_DATABASE_URL_INVALID".into());
     }
@@ -322,11 +314,7 @@ fn exact_port(name: &str, expected: u16) -> Result<u16, Box<dyn std::error::Erro
     Ok(value)
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let value = env::var(name)?.parse::<i64>()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("MODEL_GATEWAY_INTEGER_INVALID".into());

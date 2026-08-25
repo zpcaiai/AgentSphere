@@ -101,8 +101,8 @@ impl RuntimeAnomalyTokenAuthorizer {
         allowed_identities: &BTreeSet<String>,
     ) -> Result<Self, RuntimeAnomalyAuthorityError> {
         validate_private_file(path, 1_048_576)?;
-        let raw = std::fs::read(path)
-            .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
+        let raw =
+            std::fs::read(path).map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
         let document: TokenBindingDocument = serde_json::from_slice(&raw)
             .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
         if document.schema_version != "agenttrust.runtime-anomaly-token-bindings.v1"
@@ -124,7 +124,10 @@ impl RuntimeAnomalyTokenAuthorizer {
                         | ANOMALY_QUERY_SCOPE
                 )
                 || signal_scope != binding.source_id.is_some()
-                || binding.source_id.as_ref().is_some_and(|value| !identifier(value, 128))
+                || binding
+                    .source_id
+                    .as_ref()
+                    .is_some_and(|value| !identifier(value, 128))
                 || !identifier(&binding.subject, 256)
                 || !digest(&binding.token_sha256)
                 || !canonical_uuid(&binding.tenant_id)
@@ -141,10 +144,11 @@ impl RuntimeAnomalyTokenAuthorizer {
                 return Err(RuntimeAnomalyAuthorityError::ConfigurationInvalid);
             }
         }
-        if allowed_identities
-            .iter()
-            .any(|identity| !bindings.iter().any(|value| &value.client_identity == identity))
-        {
+        if allowed_identities.iter().any(|identity| {
+            !bindings
+                .iter()
+                .any(|value| &value.client_identity == identity)
+        }) {
             return Err(RuntimeAnomalyAuthorityError::ConfigurationInvalid);
         }
         Ok(Self { bindings })
@@ -154,8 +158,7 @@ impl RuntimeAnomalyTokenAuthorizer {
         self.bindings
             .iter()
             .filter_map(|binding| {
-                canonical_uuid(&binding.tenant_id)
-                    .then(|| TenantId(binding.tenant_id.clone()))
+                canonical_uuid(&binding.tenant_id).then(|| TenantId(binding.tenant_id.clone()))
             })
             .collect()
     }
@@ -209,7 +212,11 @@ pub fn data_router(
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(TimeoutLayer::new(Duration::from_secs(45)))
         .layer(ConcurrencyLimitLayer::new(maximum_concurrency))
-        .with_state(DataState { authority, executor, tokens })
+        .with_state(DataState {
+            authority,
+            executor,
+            tokens,
+        })
 }
 
 pub fn management_router(
@@ -222,12 +229,13 @@ pub fn management_router(
         .layer(DefaultBodyLimit::max(4_096))
         .layer(TimeoutLayer::new(Duration::from_secs(5)))
         .layer(ConcurrencyLimitLayer::new(32))
-        .with_state(ManagementState { authority, executor })
+        .with_state(ManagementState {
+            authority,
+            executor,
+        })
 }
 
-async fn data_ready(
-    State(state): State<DataState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
+async fn data_ready(State(state): State<DataState>) -> Result<Json<serde_json::Value>, ApiError> {
     readiness(&state.authority, &state.executor).await
 }
 
@@ -321,9 +329,10 @@ async fn execute_action(
     Json(body): Json<RuntimeAnomalyExecutorRequest>,
 ) -> Result<Json<RuntimeAnomalyMutationResult>, ApiError> {
     let tenant = exact_tenant(&headers, &body.command.tenant_id.to_string())?;
-    let _executor_subject = state
-        .tokens
-        .authorize(&peer, &tenant, ANOMALY_EXECUTE_SCOPE, None, &headers)?;
+    let _executor_subject =
+        state
+            .tokens
+            .authorize(&peer, &tenant, ANOMALY_EXECUTE_SCOPE, None, &headers)?;
     let binding = execution_binding_from_headers(&headers, tenant)?;
     Ok(Json(state.executor.execute(binding, body).await?))
 }
@@ -363,7 +372,8 @@ fn execution_binding_from_headers(
         action_hash: required_digest_header(headers, "x-agenttrust-action-hash")?.into(),
         ledger_execution_id: uuid_header(headers, "x-agenttrust-ledger-execution-id")?,
         ledger_event_id: uuid_header(headers, "x-agenttrust-ledger-event-id")?,
-        ledger_event_digest: required_digest_header(headers, "x-agenttrust-ledger-event-digest")?.into(),
+        ledger_event_digest: required_digest_header(headers, "x-agenttrust-ledger-event-digest")?
+            .into(),
         fence_digest: required_digest_header(headers, "x-agenttrust-fence-digest")?.into(),
         resource_version: required_header(headers, "x-agenttrust-resource-version")?
             .parse::<u64>()
@@ -373,9 +383,21 @@ fn execution_binding_from_headers(
         idempotency_key: required_idempotency_key(headers)?.into(),
         trace_id: required_header(headers, "x-agenttrust-trace-id")?.into(),
         policy_decision_id: required_header(headers, "x-agenttrust-policy-decision-id")?.into(),
-        policy_decision_digest: required_digest_header(headers, "x-agenttrust-policy-decision-digest")?.into(),
-        authorization_evidence_ref: required_header(headers, "x-agenttrust-authorization-evidence-ref")?.into(),
-        authorization_evidence_digest: required_digest_header(headers, "x-agenttrust-authorization-evidence-digest")?.into(),
+        policy_decision_digest: required_digest_header(
+            headers,
+            "x-agenttrust-policy-decision-digest",
+        )?
+        .into(),
+        authorization_evidence_ref: required_header(
+            headers,
+            "x-agenttrust-authorization-evidence-ref",
+        )?
+        .into(),
+        authorization_evidence_digest: required_digest_header(
+            headers,
+            "x-agenttrust-authorization-evidence-digest",
+        )?
+        .into(),
     })
 }
 
@@ -434,7 +456,8 @@ where
 {
     type Stream = <RustlsAcceptor as Accept<I, S>>::Stream;
     type Service = AddExtension<S, RuntimeAnomalyPeerIdentity>;
-    type Future = Pin<Box<dyn Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send>>;
+    type Future =
+        Pin<Box<dyn Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
         let inner = self.inner.clone();
@@ -527,9 +550,7 @@ impl IntoResponse for ApiError {
             | RuntimeAnomalyAuthorityError::StateConflict => StatusCode::CONFLICT,
             RuntimeAnomalyAuthorityError::DependencyUnavailable
             | RuntimeAnomalyAuthorityError::OutcomeUnknown
-            | RuntimeAnomalyAuthorityError::ConfigurationInvalid => {
-                StatusCode::SERVICE_UNAVAILABLE
-            }
+            | RuntimeAnomalyAuthorityError::ConfigurationInvalid => StatusCode::SERVICE_UNAVAILABLE,
         };
         (
             status,
@@ -555,9 +576,7 @@ fn exact_tenant(
     Ok(tenant)
 }
 
-fn exact_tenant_from_header(
-    headers: &HeaderMap,
-) -> Result<TenantId, RuntimeAnomalyAuthorityError> {
+fn exact_tenant_from_header(headers: &HeaderMap) -> Result<TenantId, RuntimeAnomalyAuthorityError> {
     let value = required_header(headers, "x-agenttrust-tenant-id")?;
     if !canonical_uuid(value) {
         return Err(RuntimeAnomalyAuthorityError::PrincipalDenied);
@@ -588,9 +607,7 @@ fn required_digest_header<'a>(
     }
 }
 
-fn required_idempotency_key(
-    headers: &HeaderMap,
-) -> Result<&str, RuntimeAnomalyAuthorityError> {
+fn required_idempotency_key(headers: &HeaderMap) -> Result<&str, RuntimeAnomalyAuthorityError> {
     let value = required_header(headers, "idempotency-key")?;
     if !(16..=256).contains(&value.len())
         || value.bytes().any(|byte| {
@@ -710,7 +727,12 @@ fn validate_private_file(
         let mode = metadata.mode() & 0o777;
         let effective_uid = nix::unistd::Uid::effective().as_raw();
         let effective_gid = nix::unistd::Gid::effective().as_raw();
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         if metadata.nlink() != 1 || !readable || mode & !allowed != 0 {
@@ -746,9 +768,7 @@ fn identifier(value: &str, maximum: usize) -> bool {
         })
 }
 
-fn validate_identities(
-    identities: &BTreeSet<String>,
-) -> Result<(), RuntimeAnomalyAuthorityError> {
+fn validate_identities(identities: &BTreeSet<String>) -> Result<(), RuntimeAnomalyAuthorityError> {
     if identities.is_empty()
         || identities.iter().any(|identity| {
             identity.len() > 512
@@ -898,6 +918,9 @@ mod tests {
     fn certificate_requires_exactly_one_supported_san() {
         assert!(certificate_subject_alt_names(&[]).is_err());
         assert!(validate_identities(&BTreeSet::from(["CN:legacy".into()])).is_err());
-        assert!(validate_identities(&BTreeSet::from(["URI:spiffe://agenttrust/anomaly".into()])).is_ok());
+        assert!(
+            validate_identities(&BTreeSet::from(["URI:spiffe://agenttrust/anomaly".into()]))
+                .is_ok()
+        );
     }
 }

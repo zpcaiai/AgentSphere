@@ -295,9 +295,16 @@ impl RuleDetector {
                     "unregistered executor",
                 ))
             } else if signal.kind == SignalKind::Process
-                && ["setns", "ptrace", "docker.sock", "host namespace", "mount host", "sandbox escape"]
-                    .iter()
-                    .any(|marker| normalized.contains(marker))
+                && [
+                    "setns",
+                    "ptrace",
+                    "docker.sock",
+                    "host namespace",
+                    "mount host",
+                    "sandbox escape",
+                ]
+                .iter()
+                .any(|marker| normalized.contains(marker))
             {
                 Some((
                     "RUNTIME_SANDBOX_EVASION",
@@ -460,7 +467,11 @@ fn normalized_signal_text(signal: &RiskSignal) -> String {
             let Some(next) = next else {
                 break;
             };
-            if next == current || !next.bytes().all(|byte| byte.is_ascii_graphic() || byte == b' ') {
+            if next == current
+                || !next
+                    .bytes()
+                    .all(|byte| byte.is_ascii_graphic() || byte == b' ')
+            {
                 break;
             }
             current = next;
@@ -497,7 +508,8 @@ fn percent_decode_ascii(value: &str) -> String {
     while index < bytes.len() {
         if bytes[index] == b'%'
             && index + 2 < bytes.len()
-            && let (Some(high), Some(low)) = (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2]))
+            && let (Some(high), Some(low)) =
+                (hex_nibble(bytes[index + 1]), hex_nibble(bytes[index + 2]))
         {
             output.push(high.saturating_mul(16).saturating_add(low));
             index += 3;
@@ -1173,7 +1185,10 @@ mod tests {
         let response = controller
             .adjust(&aggregate, 4)
             .unwrap_or_else(|error| panic!("adjust: {error}"));
-        assert_eq!(response.adjustment, AuthorizationAdjustment::RevokeCredential);
+        assert_eq!(
+            response.adjustment,
+            AuthorizationAdjustment::RevokeCredential
+        );
         assert_eq!(response.new_revocation_epoch, 5);
         assert!(response.recovery_conditions.contains("CREDENTIAL_ROTATED"));
     }
@@ -1230,9 +1245,15 @@ mod tests {
                 .signals(&tenant, &task)
                 .unwrap_or_else(|error| panic!("signals: {error}")),
         );
-        assert!(findings.iter().any(|finding| finding.rule_id == "RUNTIME_SANDBOX_EVASION"));
-        assert!(!findings
-            .iter()
-            .any(|finding| finding.rule_id == "RUNTIME_SCOPE_EXPANSION"));
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.rule_id == "RUNTIME_SANDBOX_EVASION")
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.rule_id == "RUNTIME_SCOPE_EXPANSION")
+        );
     }
 }

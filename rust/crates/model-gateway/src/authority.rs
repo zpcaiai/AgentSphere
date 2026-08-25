@@ -26,8 +26,7 @@ pub const ROUTE_PLAN_SCHEMA: &str = "agenttrust.model-route-plan.v1";
 pub const EXTERNAL_OUTCOME_SCHEMA: &str = "agenttrust.model-provider-outcome.v1";
 pub const COMPLETION_EVIDENCE_SCHEMA: &str = "agenttrust.model-completion-evidence.v1";
 pub const READINESS_SCHEMA: &str = "agenttrust.model-gateway-readiness.v1";
-pub const AUTHORITATIVE_EXECUTIONS_SCHEMA: &str =
-    "agenttrust.authoritative-model-executions.v1";
+pub const AUTHORITATIVE_EXECUTIONS_SCHEMA: &str = "agenttrust.authoritative-model-executions.v1";
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AuthorityError {
@@ -372,8 +371,14 @@ pub struct BillingEvidenceReceipt {
 
 #[derive(Debug, Clone)]
 pub enum PrepareOutcome {
-    New { request_id: Uuid, reservation_id: Uuid },
-    RetryPrepared { request_id: Uuid, reservation_id: Uuid },
+    New {
+        request_id: Uuid,
+        reservation_id: Uuid,
+    },
+    RetryPrepared {
+        request_id: Uuid,
+        reservation_id: Uuid,
+    },
     Replay(ModelExecutionResult),
     Failed(String),
     Unknown,
@@ -795,8 +800,8 @@ impl PostgresModelAuthorityStore {
         .fetch_one(&mut *transaction)
         .await
         .map_err(|_| AuthorityError::DependencyUnavailable)?;
-        let actual = i64::try_from(outcome.cost_microunits)
-            .map_err(|_| AuthorityError::BudgetExceeded)?;
+        let actual =
+            i64::try_from(outcome.cost_microunits).map_err(|_| AuthorityError::BudgetExceeded)?;
         if actual > reserved {
             return Err(AuthorityError::BudgetExceeded);
         }
@@ -1142,10 +1147,12 @@ impl PostgresModelAuthorityStore {
         query: &ModelExecutionListQuery,
     ) -> Result<AuthoritativeModelExecutionsPage, AuthorityError> {
         if !(1..=200).contains(&query.limit)
-            || !query
-                .state
-                .as_deref()
-                .is_none_or(|value| matches!(value, "PREPARED" | "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN"))
+            || !query.state.as_deref().is_none_or(|value| {
+                matches!(
+                    value,
+                    "PREPARED" | "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN"
+                )
+            })
             || query.cursor_created_at.is_some() != query.cursor_request_id.is_some()
         {
             return Err(AuthorityError::RequestInvalid);
@@ -1202,8 +1209,8 @@ impl PostgresModelAuthorityStore {
             data_digest: String::new(),
             generated_at: Utc::now(),
         };
-        let mut digest_material = serde_json::to_value(&page)
-            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        let mut digest_material =
+            serde_json::to_value(&page).map_err(|_| AuthorityError::DependencyUnavailable)?;
         digest_material
             .as_object_mut()
             .and_then(|object| object.remove("data_digest"))
@@ -1279,8 +1286,8 @@ impl PostgresModelAuthorityStore {
             let value: Value = row
                 .try_get("safe_response")
                 .map_err(|_| AuthorityError::DependencyUnavailable)?;
-            let result = serde_json::from_value(value)
-                .map_err(|_| AuthorityError::DependencyUnavailable)?;
+            let result =
+                serde_json::from_value(value).map_err(|_| AuthorityError::DependencyUnavailable)?;
             transaction
                 .commit()
                 .await
@@ -1303,12 +1310,11 @@ impl PostgresModelAuthorityStore {
         .fetch_all(&mut *transaction)
         .await
         .map_err(|_| AuthorityError::DependencyUnavailable)?;
-        let (matched, matched_requests, total_metered, total_billed) =
-            compare_billing_rows(
-                &rows,
-                &request.lines,
-                &request.residency_policy_evidence_digest,
-            )?;
+        let (matched, matched_requests, total_metered, total_billed) = compare_billing_rows(
+            &rows,
+            &request.lines,
+            &request.residency_policy_evidence_digest,
+        )?;
         let result = BillingReconciliationResult {
             schema_version: "agenttrust.model-billing-reconciliation.v1".into(),
             matched,
@@ -1319,8 +1325,8 @@ impl PostgresModelAuthorityStore {
             evidence_ref: evidence.evidence_ref.clone(),
             evidence_digest: evidence.evidence_digest.clone(),
         };
-        let safe_response = serde_json::to_value(&result)
-            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        let safe_response =
+            serde_json::to_value(&result).map_err(|_| AuthorityError::DependencyUnavailable)?;
         sqlx::query(
             "INSERT INTO public.model_billing_reconciliations \
              (tenant_id,reconciliation_id,idempotency_key,request_digest,action_hash,authorization_id,\
@@ -1452,11 +1458,7 @@ impl ModelExecutionAuthority {
             request.prompt_utf8.zeroize();
             plan.transformed_prompt_utf8.zeroize();
             self.store
-                .fail_before_provider(
-                    request.tenant_id,
-                    request_id,
-                    stable_error_for_plan(&error),
-                )
+                .fail_before_provider(request.tenant_id, request_id, stable_error_for_plan(&error))
                 .await?;
             return Err(error);
         }
@@ -1586,12 +1588,7 @@ impl ModelExecutionAuthority {
         let evidence = self
             .runtime
             .billing_evidence(
-                &request,
-                &binding,
-                preview.0,
-                preview.1,
-                preview.2,
-                preview.3,
+                &request, &binding, preview.0, preview.1, preview.2, preview.3,
             )
             .await?;
         if evidence.schema_version != "agenttrust.model-billing-evidence.v1"
@@ -1676,8 +1673,8 @@ fn validate_billing_binding(
     request: &BillingStatementRequest,
     binding: &ExecutionBinding,
 ) -> Result<(), AuthorityError> {
-    let computed = action_hash(&request.canonical_action)
-        .map_err(|_| AuthorityError::RequestInvalid)?;
+    let computed =
+        action_hash(&request.canonical_action).map_err(|_| AuthorityError::RequestInvalid)?;
     let material = BillingStatementDigestMaterial {
         schema_version: &request.schema_version,
         tenant_id: request.tenant_id,
@@ -1711,14 +1708,13 @@ fn validate_billing_binding(
     }
     let mut provider_requests = BTreeSet::new();
     for line in &request.lines {
-        if !line.provider_key.starts_with(&format!("{}:", request.provider_id))
+        if !line
+            .provider_key
+            .starts_with(&format!("{}:", request.provider_id))
             || !identifier(&line.provider_key, 768)
             || !identifier(&line.provider_request_id, 512)
             || !provider_requests.insert(line.provider_request_id.as_str())
-            || line
-                .input_tokens
-                .checked_add(line.output_tokens)
-                .is_none()
+            || line.input_tokens.checked_add(line.output_tokens).is_none()
             || line.billed_microunits > i64::MAX as u64
         {
             return Err(AuthorityError::RequestInvalid);
@@ -1794,21 +1790,15 @@ fn compare_billing_rows(
         total_billed = total_billed
             .checked_add(line.billed_microunits)
             .ok_or(AuthorityError::RequestInvalid)?;
-        matched &= metered
-            .get(&line.provider_request_id)
-            .is_some_and(|(
-                provider_key,
-                input_tokens,
-                output_tokens,
-                amount,
-                policy_evidence_digest,
-            )| {
+        matched &= metered.get(&line.provider_request_id).is_some_and(
+            |(provider_key, input_tokens, output_tokens, amount, policy_evidence_digest)| {
                 provider_key == &line.provider_key
                     && input_tokens == &line.input_tokens
                     && output_tokens == &line.output_tokens
                     && amount == &line.billed_microunits
                     && policy_evidence_digest == residency_policy_evidence_digest
-            });
+            },
+        );
     }
     Ok((
         matched,
@@ -1932,8 +1922,8 @@ fn validate_request_binding(
     request: &ModelExecutionRequest,
     binding: &ExecutionBinding,
 ) -> Result<(), AuthorityError> {
-    let computed = action_hash(&request.canonical_action)
-        .map_err(|_| AuthorityError::RequestInvalid)?;
+    let computed =
+        action_hash(&request.canonical_action).map_err(|_| AuthorityError::RequestInvalid)?;
     if request.schema_version != EXECUTION_REQUEST_SCHEMA
         || request.tenant_id.to_string() != binding.tenant_id.0
         || request.task_id.to_string() != request.canonical_action.task_id.0
@@ -1958,16 +1948,24 @@ fn validate_request_binding(
         || request.cross_domain_approval_id.is_some() != request.cross_domain_grant_id.is_some()
         || request.cross_domain_grant_id.is_some() != request.cross_domain_source_zone.is_some()
         || request.cross_domain_grant_id.is_some() != request.cross_domain_target_zone.is_some()
-        || request.cross_domain_source_zone.as_deref().is_some_and(|value| !identifier(value, 256))
-        || request.cross_domain_target_zone.as_deref().is_some_and(|value| !identifier(value, 256))
+        || request
+            .cross_domain_source_zone
+            .as_deref()
+            .is_some_and(|value| !identifier(value, 256))
+        || request
+            .cross_domain_target_zone
+            .as_deref()
+            .is_some_and(|value| !identifier(value, 256))
         || request.required_capabilities.is_empty()
         || request.required_capabilities.len() > 5
         || request.allowed_provider_ids.is_empty()
         || request.allowed_provider_ids.len() > 100
-        || !request
-            .required_capabilities
-            .iter()
-            .all(|value| matches!(value.as_str(), "GENERATE" | "STREAM" | "EMBEDDINGS" | "TOOL_CALLING" | "STRUCTURED_OUTPUT"))
+        || !request.required_capabilities.iter().all(|value| {
+            matches!(
+                value.as_str(),
+                "GENERATE" | "STREAM" | "EMBEDDINGS" | "TOOL_CALLING" | "STRUCTURED_OUTPUT"
+            )
+        })
         || request
             .allowed_provider_ids
             .iter()
@@ -2005,7 +2003,10 @@ fn validate_plan(request: &ModelExecutionRequest, plan: &RoutePlan) -> Result<()
         || !identifier(&plan.model_id, 256)
         || !identifier(&plan.model_version, 256)
         || !jurisdiction(&plan.provider_jurisdiction)
-        || !matches!(plan.protocol.as_str(), "OPENAI_COMPATIBLE" | "LOCAL_INFERENCE")
+        || !matches!(
+            plan.protocol.as_str(),
+            "OPENAI_COMPATIBLE" | "LOCAL_INFERENCE"
+        )
         || !digest_value(&plan.provider_manifest_digest)
         || !digest_value(&plan.route_decision_digest)
         || !digest_value(&plan.pre_transform_policy_decision_digest)
@@ -2031,7 +2032,10 @@ fn validate_plan(request: &ModelExecutionRequest, plan: &RoutePlan) -> Result<()
         || !identifier(&plan.data_policy_version, 256)
         || plan.route_reasons.is_empty()
         || plan.route_reasons.len() > 32
-        || plan.route_reasons.iter().any(|value| !identifier(value, 256))
+        || plan
+            .route_reasons
+            .iter()
+            .any(|value| !identifier(value, 256))
         || plan.transformed_prompt_utf8.is_empty()
         || plan.transformed_prompt_utf8.len() > 4_194_304
     {
@@ -2056,12 +2060,31 @@ fn validate_provider_outcome(
         || outcome.cost_microunits > request.maximum_cost_microunits
         || output_bytes > request.maximum_output_bytes
         || outcome.stream_chunks.len() > 10_000
-        || outcome.stream_chunks.iter().any(|chunk| chunk.is_empty() || chunk.len() > 1_048_576)
-        || outcome.embedding.as_ref().is_some_and(|values| values.is_empty() || values.len() > 65_536 || values.iter().any(|value| !value.is_finite()))
+        || outcome
+            .stream_chunks
+            .iter()
+            .any(|chunk| chunk.is_empty() || chunk.len() > 1_048_576)
+        || outcome.embedding.as_ref().is_some_and(|values| {
+            values.is_empty()
+                || values.len() > 65_536
+                || values.iter().any(|value| !value.is_finite())
+        })
         || match request.operation {
-            ModelOperation::Generate => outcome.output_utf8.is_none() || !outcome.stream_chunks.is_empty() || outcome.embedding.is_some(),
-            ModelOperation::Stream => outcome.stream_chunks.is_empty() || outcome.output_utf8.is_some() || outcome.embedding.is_some(),
-            ModelOperation::Embeddings => outcome.embedding.is_none() || outcome.output_utf8.is_some() || !outcome.stream_chunks.is_empty(),
+            ModelOperation::Generate => {
+                outcome.output_utf8.is_none()
+                    || !outcome.stream_chunks.is_empty()
+                    || outcome.embedding.is_some()
+            }
+            ModelOperation::Stream => {
+                outcome.stream_chunks.is_empty()
+                    || outcome.output_utf8.is_some()
+                    || outcome.embedding.is_some()
+            }
+            ModelOperation::Embeddings => {
+                outcome.embedding.is_none()
+                    || outcome.output_utf8.is_some()
+                    || !outcome.stream_chunks.is_empty()
+            }
         }
     {
         return Err(AuthorityError::ProviderOutcomeUnknown);
@@ -2076,8 +2099,7 @@ fn validate_completion(completion: &CompletionEvidence) -> Result<(), AuthorityE
         || !digest_value(&completion.artifact_digest)
         || !digest_value(&completion.output_digest)
         || completion.artifact_digest != completion.output_digest
-        || completion.artifact_ref
-            != format!("artifact://sha256/{}", completion.output_digest)
+        || completion.artifact_ref != format!("artifact://sha256/{}", completion.output_digest)
         || !evidence_reference(&completion.evidence_ref, 512)
         || !digest_value(&completion.evidence_digest)
         || !evidence_reference(&completion.residency_policy_evidence_ref, 2048)
@@ -2091,9 +2113,13 @@ fn validate_completion(completion: &CompletionEvidence) -> Result<(), AuthorityE
         || !digest_value(&completion.artifact_policy_evidence_digest)
         || completion.grant_consumption_evidence_ref.is_some()
             != completion.grant_consumption_evidence_digest.is_some()
-        || completion.grant_consumption_evidence_ref.as_deref()
+        || completion
+            .grant_consumption_evidence_ref
+            .as_deref()
             .is_some_and(|value| !evidence_reference(value, 2048))
-        || completion.grant_consumption_evidence_digest.as_deref()
+        || completion
+            .grant_consumption_evidence_digest
+            .as_deref()
             .is_some_and(|value| !digest_value(value))
         || !evidence_reference(&completion.export_authorization_evidence_ref, 2048)
         || !digest_value(&completion.export_authorization_evidence_digest)
@@ -2114,15 +2140,9 @@ fn valid_model_data_label(request: &ModelExecutionRequest) -> bool {
         && label.jurisdictions.contains(&request.source_jurisdiction)
         && !label.jurisdictions.is_empty()
         && label.jurisdictions.len() <= 32
-        && label
-            .jurisdictions
-            .iter()
-            .all(|value| jurisdiction(value))
+        && label.jurisdictions.iter().all(|value| jurisdiction(value))
         && label.domain_tags.len() <= 64
-        && label
-            .domain_tags
-            .iter()
-            .all(|value| identifier(value, 256))
+        && label.domain_tags.iter().all(|value| identifier(value, 256))
         && identifier(&label.retention_label, 128)
         && identifier(&label.lineage.source_id, 512)
         && digest_value(&label.lineage.source_hash)
@@ -2142,8 +2162,7 @@ fn valid_model_data_label(request: &ModelExecutionRequest) -> bool {
             == label.lineage.transformation_hashes.len()
         && !label.contains_secret
         && (!label.contains_personal_data
-            || (request.classification == DataClassification::Regulated
-                && label.export_restricted))
+            || (request.classification == DataClassification::Regulated && label.export_restricted))
         && (!matches!(label.confidence, ModelLabelConfidence::Unknown)
             || matches!(
                 request.classification,
@@ -2263,9 +2282,15 @@ fn evidence_reference(value: &str, maximum: usize) -> bool {
 }
 
 fn adapter_reference(value: &str, maximum: usize) -> bool {
-    ["dlp://", "object://", "worm://", "legal-hold://", "evidence://"]
-        .iter()
-        .any(|prefix| value.starts_with(prefix))
+    [
+        "dlp://",
+        "object://",
+        "worm://",
+        "legal-hold://",
+        "evidence://",
+    ]
+    .iter()
+    .any(|prefix| value.starts_with(prefix))
         && identifier(value, maximum)
 }
 
@@ -2324,7 +2349,11 @@ mod authority_tests {
             untrusted_content: true,
             provider_key: "p:m:v".into(),
             provider_request_id: "request".into(),
-            usage: ModelUsage { input_tokens: 1, output_tokens: 1, cost_microunits: 2 },
+            usage: ModelUsage {
+                input_tokens: 1,
+                output_tokens: 1,
+                cost_microunits: 2,
+            },
             output_digest: "b".repeat(64),
             evidence_ref: "evidence://request".into(),
             evidence_digest: "c".repeat(64),

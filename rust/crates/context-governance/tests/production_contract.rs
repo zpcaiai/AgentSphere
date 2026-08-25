@@ -30,9 +30,18 @@ fn lifecycle_operations_match_code_schema_openapi_and_database_contract() {
         "RELEASE_QUARANTINE",
     ];
     for operation in operations {
-        assert!(AUTHORITY.contains(operation), "authority missing {operation}");
-        assert!(COMMAND_SCHEMA.contains(operation), "schema missing {operation}");
-        assert!(MIGRATION.contains(operation), "migration missing {operation}");
+        assert!(
+            AUTHORITY.contains(operation),
+            "authority missing {operation}"
+        );
+        assert!(
+            COMMAND_SCHEMA.contains(operation),
+            "schema missing {operation}"
+        );
+        assert!(
+            MIGRATION.contains(operation),
+            "migration missing {operation}"
+        );
     }
     for path in [
         "/v1/context/actions",
@@ -115,7 +124,10 @@ fn deletion_quarantine_and_failure_recovery_are_durable() {
         "cache_purged",
         "legal_hold_blocked",
     ] {
-        assert!(AUTHORITY.contains(marker) || MIGRATION.contains(marker), "missing {marker}");
+        assert!(
+            AUTHORITY.contains(marker) || MIGRATION.contains(marker),
+            "missing {marker}"
+        );
     }
     assert!(ADAPTERS.contains("verify_absent"));
     assert!(SERVER.contains("MissedTickBehavior::Delay"));
@@ -206,7 +218,13 @@ fn migration_forces_rls_and_image_is_pinned_non_root() {
 #[test]
 fn production_sources_have_no_placeholder_paths() {
     for source in [AUTHORITY, ADAPTERS, SERVER, BINARY] {
-        for marker in ["todo!", "unimplemented!", "TODO", "mock production", "allow_all"] {
+        for marker in [
+            "todo!",
+            "unimplemented!",
+            "TODO",
+            "mock production",
+            "allow_all",
+        ] {
             assert!(!source.contains(marker), "placeholder marker {marker}");
         }
     }

@@ -4,14 +4,16 @@ use crate::authority::*;
 use agent_trust_action_ir::{ParseLimits, parse_strict_json};
 use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
-    ActionHash, ApprovalId, ArtifactRef, AuthorityEvidenceControlBinding,
-    AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind, DataPolicyDecision,
-    DataPolicyRequest, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft, EvidenceEventType,
-    ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TenantId,
-    AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,
+    AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ApprovalId, ArtifactRef,
+    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    DataPolicyDecision, DataPolicyRequest, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
+    EvidenceEventType, ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TenantId,
 };
 use async_trait::async_trait;
-use base64::{Engine as _, engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD}};
+use base64::{
+    Engine as _,
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reqwest::header::CONTENT_TYPE;
@@ -743,8 +745,7 @@ impl HttpProductionModelRuntime {
                 || !jurisdictions.contains(&request.source_jurisdiction)
                 || maximum_request <= 0
                 || request.maximum_cost_microunits
-                    > u64::try_from(maximum_request)
-                        .map_err(|_| AuthorityError::ProviderDenied)?
+                    > u64::try_from(maximum_request).map_err(|_| AuthorityError::ProviderDenied)?
             {
                 continue;
             }
@@ -788,7 +789,10 @@ impl HttpProductionModelRuntime {
             || response.record_payload.get("decision_digest")
                 != Some(&Value::String(response.decision_digest.clone()))
             || response.record_payload.get("shadow") != Some(&Value::Bool(false))
-            || response.record_payload.as_object().is_none_or(|value| value.len() != 7)
+            || response
+                .record_payload
+                .as_object()
+                .is_none_or(|value| value.len() != 7)
         {
             return Err(AuthorityError::ProviderDenied);
         }
@@ -811,8 +815,8 @@ impl HttpProductionModelRuntime {
         let decoded = STANDARD
             .decode(request.content_base64.as_bytes())
             .map_err(|_| AuthorityError::RequestInvalid)?;
-        let high_risk = request.classification
-            >= agent_trust_contracts::DataClassification::Confidential;
+        let high_risk =
+            request.classification >= agent_trust_contracts::DataClassification::Confidential;
         if response.schema_version != "agenttrust.data-dlp-inspection.v1"
             || response.scan_id != request.scan_id
             || response.content_digest != digest(&decoded)
@@ -821,11 +825,18 @@ impl HttpProductionModelRuntime {
             || response.finding_counts.keys().any(|key| {
                 !matches!(
                     key.as_str(),
-                    "SECRET" | "PERSONAL_DATA" | "INDUSTRIAL_SENSITIVE"
-                        | "ENCODED_PAYLOAD" | "COMPRESSED_PAYLOAD" | "UNKNOWN"
+                    "SECRET"
+                        | "PERSONAL_DATA"
+                        | "INDUSTRIAL_SENSITIVE"
+                        | "ENCODED_PAYLOAD"
+                        | "COMPRESSED_PAYLOAD"
+                        | "UNKNOWN"
                 )
             })
-            || response.finding_counts.values().any(|value| *value > 1_000_000)
+            || response
+                .finding_counts
+                .values()
+                .any(|value| *value > 1_000_000)
             || !lower_digest(&response.findings_digest)
             || !identifier(&response.engine_revision, 256)
             || !adapter_reference(&response.engine_receipt_ref)
@@ -835,7 +846,10 @@ impl HttpProductionModelRuntime {
                 != Some(&Value::String(response.scan_id.to_string()))
             || response.record_payload.get("content_digest")
                 != Some(&Value::String(response.content_digest.clone()))
-            || response.record_payload.get("size_bytes").and_then(Value::as_u64)
+            || response
+                .record_payload
+                .get("size_bytes")
+                .and_then(Value::as_u64)
                 != Some(response.size_bytes)
             || response.record_payload.get("finding_counts")
                 != serde_json::to_value(&response.finding_counts).ok().as_ref()
@@ -849,7 +863,10 @@ impl HttpProductionModelRuntime {
                 != Some(&Value::String(response.engine_receipt_digest.clone()))
             || response.record_payload.get("high_risk") != Some(&Value::Bool(high_risk))
             || response.record_payload.get("blocking") != Some(&Value::Bool(response.blocking))
-            || response.record_payload.as_object().is_none_or(|value| value.len() != 10)
+            || response
+                .record_payload
+                .as_object()
+                .is_none_or(|value| value.len() != 10)
         {
             return Err(AuthorityError::ProviderDenied);
         }
@@ -891,9 +908,16 @@ impl HttpProductionModelRuntime {
             || response.transform_receipt_digest != canonical_digest(&unsigned_receipt)?
             || response.transformations.is_empty()
             || response.transformations.len() > 16
-            || response.transformations.iter().collect::<BTreeSet<_>>().len()
+            || response
+                .transformations
+                .iter()
+                .collect::<BTreeSet<_>>()
+                .len()
                 != response.transformations.len()
-            || response.transformations.iter().any(|value| !identifier(value, 256))
+            || response
+                .transformations
+                .iter()
+                .any(|value| !identifier(value, 256))
             || response.reversible
             || !response.durable_record_required
             || response.record_payload.get("transform_id")
@@ -903,7 +927,9 @@ impl HttpProductionModelRuntime {
             || response.record_payload.get("output_digest")
                 != Some(&Value::String(response.output_digest.clone()))
             || response.record_payload.get("transformations")
-                != serde_json::to_value(&response.transformations).ok().as_ref()
+                != serde_json::to_value(&response.transformations)
+                    .ok()
+                    .as_ref()
             || response.record_payload.get("reversible") != Some(&Value::Bool(false))
             || response.record_payload.get("key_reference_digest") != Some(&Value::Null)
             || response.record_payload.get("dlp_scan_id")
@@ -912,7 +938,10 @@ impl HttpProductionModelRuntime {
                 != Some(&Value::String(response.dlp_receipt_digest.clone()))
             || response.record_payload.get("transform_receipt_digest")
                 != Some(&Value::String(response.transform_receipt_digest.clone()))
-            || response.record_payload.as_object().is_none_or(|value| value.len() != 9)
+            || response
+                .record_payload
+                .as_object()
+                .is_none_or(|value| value.len() != 9)
         {
             return Err(AuthorityError::ProviderDenied);
         }
@@ -947,9 +976,8 @@ impl HttpProductionModelRuntime {
             requested_at: Utc::now(),
             payload,
         };
-        let idempotency_key = digest(
-            format!("{}:{}:{}", request.tenant_id, request.action_id, phase).as_bytes(),
-        );
+        let idempotency_key =
+            digest(format!("{}:{}:{}", request.tenant_id, request.action_id, phase).as_bytes());
         let (command, completed) = self
             .prepare_data_command(request.action_id, phase, &idempotency_key, &proposed)
             .await?;
@@ -982,15 +1010,22 @@ impl HttpProductionModelRuntime {
         {
             return Err(AuthorityError::DependencyUnavailable);
         }
-        let result = self.completed_data_mutation(
-            request.tenant_id,
-            command.command_id,
-            command.operation,
-            &command.resource,
+        let result = self
+            .completed_data_mutation(
+                request.tenant_id,
+                command.command_id,
+                command.operation,
+                &command.resource,
+            )
+            .await?;
+        self.complete_data_command(
+            request.action_id,
+            phase,
+            &idempotency_key,
+            &command,
+            &result,
         )
         .await?;
-        self.complete_data_command(request.action_id, phase, &idempotency_key, &command, &result)
-            .await?;
         Ok(result)
     }
 
@@ -1004,18 +1039,26 @@ impl HttpProductionModelRuntime {
         if !identifier(phase, 256) || !identifier(idempotency_key, 128) {
             return Err(AuthorityError::ConfigurationInvalid);
         }
-        let command_value = serde_json::to_value(proposed)
-            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        let command_value =
+            serde_json::to_value(proposed).map_err(|_| AuthorityError::DependencyUnavailable)?;
         let command_digest = canonical_digest(proposed)?;
-        let mut transaction = self.pool.begin().await
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         sqlx::query("SELECT pg_catalog.set_config('app.tenant_id',$1,true)")
             .bind(proposed.tenant_id.to_string())
-            .execute(&mut *transaction).await
+            .execute(&mut *transaction)
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         sqlx::query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1,0))")
-            .bind(format!("model-data-governance:{}:{idempotency_key}", proposed.tenant_id))
-            .execute(&mut *transaction).await
+            .bind(format!(
+                "model-data-governance:{}:{idempotency_key}",
+                proposed.tenant_id
+            ))
+            .execute(&mut *transaction)
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         if let Some(row) = sqlx::query(
             "SELECT action_id,phase,idempotency_key,command,command_digest,state,mutation_result \
@@ -1027,13 +1070,17 @@ impl HttpProductionModelRuntime {
         .bind(idempotency_key)
         .bind(action_id)
         .bind(phase)
-        .fetch_optional(&mut *transaction).await
+        .fetch_optional(&mut *transaction)
+        .await
         .map_err(|_| AuthorityError::DependencyUnavailable)?
         {
             let existing: DataCommandRequest = serde_json::from_value(
-                row.try_get("command").map_err(|_| AuthorityError::DependencyUnavailable)?,
-            ).map_err(|_| AuthorityError::DependencyUnavailable)?;
-            let stored_digest: String = row.try_get("command_digest")
+                row.try_get("command")
+                    .map_err(|_| AuthorityError::DependencyUnavailable)?,
+            )
+            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+            let stored_digest: String = row
+                .try_get("command_digest")
                 .map_err(|_| AuthorityError::DependencyUnavailable)?;
             if row.try_get::<Uuid, _>("action_id").ok() != Some(action_id)
                 || row.try_get::<String, _>("phase").ok().as_deref() != Some(phase)
@@ -1044,13 +1091,15 @@ impl HttpProductionModelRuntime {
             {
                 return Err(AuthorityError::IdempotencyConflict);
             }
-            let state: String = row.try_get("state")
+            let state: String = row
+                .try_get("state")
                 .map_err(|_| AuthorityError::DependencyUnavailable)?;
             let completed = if state == "COMPLETED" {
                 let result: DataMutationResult = serde_json::from_value(
                     row.try_get("mutation_result")
                         .map_err(|_| AuthorityError::DependencyUnavailable)?,
-                ).map_err(|_| AuthorityError::DependencyUnavailable)?;
+                )
+                .map_err(|_| AuthorityError::DependencyUnavailable)?;
                 validate_completed_mutation(&result, &existing)?;
                 Some(result)
             } else if state == "PREPARED" {
@@ -1058,7 +1107,9 @@ impl HttpProductionModelRuntime {
             } else {
                 return Err(AuthorityError::DependencyUnavailable);
             };
-            transaction.commit().await
+            transaction
+                .commit()
+                .await
                 .map_err(|_| AuthorityError::DependencyUnavailable)?;
             return Ok((existing, completed));
         }
@@ -1074,9 +1125,12 @@ impl HttpProductionModelRuntime {
         .bind(idempotency_key)
         .bind(command_value)
         .bind(command_digest)
-        .execute(&mut *transaction).await
+        .execute(&mut *transaction)
+        .await
         .map_err(|_| AuthorityError::DependencyUnavailable)?;
-        transaction.commit().await
+        transaction
+            .commit()
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         Ok((proposed.clone(), None))
     }
@@ -1090,15 +1144,19 @@ impl HttpProductionModelRuntime {
         result: &DataMutationResult,
     ) -> Result<(), AuthorityError> {
         validate_completed_mutation(result, command)?;
-        let result_value = serde_json::to_value(result)
-            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        let result_value =
+            serde_json::to_value(result).map_err(|_| AuthorityError::DependencyUnavailable)?;
         let evidence_ref = mutation_evidence_ref(result)?;
         let evidence_digest = mutation_evidence_digest(result)?;
-        let mut transaction = self.pool.begin().await
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         sqlx::query("SELECT pg_catalog.set_config('app.tenant_id',$1,true)")
             .bind(command.tenant_id.to_string())
-            .execute(&mut *transaction).await
+            .execute(&mut *transaction)
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         let updated = sqlx::query(
             "UPDATE public.model_data_governance_outbox SET state='COMPLETED',\
@@ -1124,14 +1182,17 @@ impl HttpProductionModelRuntime {
             )
             .bind(command.tenant_id)
             .bind(command.command_id)
-            .fetch_optional(&mut *transaction).await
+            .fetch_optional(&mut *transaction)
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?
             .ok_or(AuthorityError::IdempotencyConflict)?;
             if existing != result_value {
                 return Err(AuthorityError::IdempotencyConflict);
             }
         }
-        transaction.commit().await
+        transaction
+            .commit()
+            .await
             .map_err(|_| AuthorityError::DependencyUnavailable)
     }
 
@@ -1217,7 +1278,10 @@ impl HttpProductionModelRuntime {
             .header("accept", "application/json")
             .header("x-agenttrust-tenant-id", &request.tenant_id.0)
             .header("idempotency-key", &request.idempotency_key.0)
-            .header("x-agenttrust-authority-event-id", &request.authority_event_id)
+            .header(
+                "x-agenttrust-authority-event-id",
+                &request.authority_event_id,
+            )
             .header("x-agenttrust-payload-digest", &request.event.payload_hash)
             .json(&request)
             .send()
@@ -1270,15 +1334,15 @@ impl HttpProductionModelRuntime {
         {
             return Err(AuthorityError::ConfigurationInvalid);
         }
-        let tenant = Uuid::parse_str(&proposed.tenant_id.0)
-            .map_err(|_| AuthorityError::BindingInvalid)?;
+        let tenant =
+            Uuid::parse_str(&proposed.tenant_id.0).map_err(|_| AuthorityError::BindingInvalid)?;
         let event_id = Uuid::parse_str(&proposed.authority_event_id)
             .map_err(|_| AuthorityError::BindingInvalid)?;
         let request_digest = proposed
             .request_digest()
             .map_err(|_| AuthorityError::BindingInvalid)?;
-        let request_value = serde_json::to_value(proposed)
-            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        let request_value =
+            serde_json::to_value(proposed).map_err(|_| AuthorityError::DependencyUnavailable)?;
         let mut transaction = self
             .pool
             .begin()
@@ -1290,7 +1354,10 @@ impl HttpProductionModelRuntime {
             .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
         sqlx::query("SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended($1,0))")
-            .bind(format!("model-authority-evidence:{tenant}:{}", proposed.idempotency_key.0))
+            .bind(format!(
+                "model-authority-evidence:{tenant}:{}",
+                proposed.idempotency_key.0
+            ))
             .execute(&mut *transaction)
             .await
             .map_err(|_| AuthorityError::DependencyUnavailable)?;
@@ -1380,12 +1447,12 @@ impl HttpProductionModelRuntime {
         event_kind: &str,
         receipt: &SignedAuthorityEvidenceReceipt,
     ) -> Result<(), AuthorityError> {
-        let tenant = Uuid::parse_str(&request.tenant_id.0)
-            .map_err(|_| AuthorityError::BindingInvalid)?;
+        let tenant =
+            Uuid::parse_str(&request.tenant_id.0).map_err(|_| AuthorityError::BindingInvalid)?;
         let event_id = Uuid::parse_str(&request.authority_event_id)
             .map_err(|_| AuthorityError::BindingInvalid)?;
-        let receipt_value = serde_json::to_value(receipt)
-            .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        let receipt_value =
+            serde_json::to_value(receipt).map_err(|_| AuthorityError::DependencyUnavailable)?;
         let mut transaction = self
             .pool
             .begin()
@@ -1576,8 +1643,7 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
                     inspected.record_payload.clone(),
                 )
                 .await?;
-            if dlp_denied_or_mislabeled(&inspected, &request.data_label)
-            {
+            if dlp_denied_or_mislabeled(&inspected, &request.data_label) {
                 continue;
             }
 
@@ -1827,7 +1893,10 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
                         if matches!(
                             content_type.as_str(),
                             "application/x-ndjson" | "application/jsonl"
-                        ) => parse_local_json_lines(&bytes, plan),
+                        ) =>
+                    {
+                        parse_local_json_lines(&bytes, plan)
+                    }
                     _ => Err(AuthorityError::ProviderOutcomeUnknown),
                 }
             }
@@ -1846,7 +1915,10 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
         let mut output_label = request.data_label.clone();
         output_label.lineage.source_id = format!("model-output:{}", outcome.provider_request_id);
         output_label.lineage.source_hash = output_digest.clone();
-        if !output_label.jurisdictions.contains(&plan.provider_jurisdiction) {
+        if !output_label
+            .jurisdictions
+            .contains(&plan.provider_jurisdiction)
+        {
             if output_label.jurisdictions.len() >= 32 {
                 return Err(AuthorityError::ProviderOutcomeUnknown);
             }
@@ -1929,9 +2001,7 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             "endpoint_origin_digest": digest(self.endpoints.artifact_store.endpoint.as_str().as_bytes()),
         }))?;
         let artifact_policy_request = DataPolicyRequest {
-            schema_version: agent_trust_contracts::SchemaVersion(
-                "agenttrust.contracts.v1".into(),
-            ),
+            schema_version: agent_trust_contracts::SchemaVersion("agenttrust.contracts.v1".into()),
             tenant_id: TenantId(request.tenant_id.to_string()),
             classification: request.classification,
             source_jurisdiction: plan.provider_jurisdiction.clone(),
@@ -1964,13 +2034,19 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
                 request,
                 "ARTIFACT_POLICY",
                 DataOperation::RecordPolicyDecision,
-                format!("policy-decisions/{}", artifact_policy_evaluation.decision_id),
+                format!(
+                    "policy-decisions/{}",
+                    artifact_policy_evaluation.decision_id
+                ),
                 0,
                 artifact_policy_evaluation.record_payload.clone(),
             )
             .await?;
         if !artifact_policy_evaluation.decision.allowed
-            || !artifact_policy_evaluation.decision.required_transformations.is_empty()
+            || !artifact_policy_evaluation
+                .decision
+                .required_transformations
+                .is_empty()
         {
             return Err(AuthorityError::ProviderOutcomeUnknown);
         }
@@ -1983,9 +2059,13 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             "destination_digest": destination_digest,
         }))?;
         let grant_consumption_record = if let Some(grant_id) = request.cross_domain_grant_id {
-            let source_zone = request.cross_domain_source_zone.as_deref()
+            let source_zone = request
+                .cross_domain_source_zone
+                .as_deref()
                 .ok_or(AuthorityError::BindingInvalid)?;
-            let target_zone = request.cross_domain_target_zone.as_deref()
+            let target_zone = request
+                .cross_domain_target_zone
+                .as_deref()
                 .ok_or(AuthorityError::BindingInvalid)?;
             let grant_record = self
                 .persist_data_record(
@@ -2050,8 +2130,7 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             || artifact_authorization.decision != artifact_policy_evaluation.decision
             || artifact_authorization.decision_digest
                 != canonical_digest(&artifact_authorization.decision)?
-            || artifact_authorization.decision_digest
-                != artifact_policy_evaluation.decision_digest
+            || artifact_authorization.decision_digest != artifact_policy_evaluation.decision_digest
             || artifact_authorization.policy_request_digest
                 != canonical_digest(&artifact_policy_request)?
             || artifact_authorization.policy_request_digest
@@ -2060,7 +2139,9 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             || artifact_authorization.dlp_receipt_digest != output_dlp.engine_receipt_digest
             || artifact_authorization.transform_id.is_some()
             || artifact_authorization.transform_receipt_digest.is_some()
-            || !artifact_authorization.object_authorization_ref.starts_with("object://")
+            || !artifact_authorization
+                .object_authorization_ref
+                .starts_with("object://")
             || !adapter_reference(&artifact_authorization.object_authorization_ref)
             || !lower_digest(&artifact_authorization.object_authorization_digest)
             || !artifact_authorization.worm_required
@@ -2210,16 +2291,12 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             artifact_policy_evidence_digest: mutation_evidence_digest(&artifact_policy_record)?,
             grant_consumption_evidence_ref: &grant_consumption_evidence_ref,
             grant_consumption_evidence_digest: &grant_consumption_evidence_digest,
-            export_authorization_evidence_ref: mutation_evidence_ref(
-                &export_authorization_record,
-            )?,
+            export_authorization_evidence_ref: mutation_evidence_ref(&export_authorization_record)?,
             export_authorization_evidence_digest: mutation_evidence_digest(
                 &export_authorization_record,
             )?,
             export_completion_evidence_ref: mutation_evidence_ref(&export_completion_record)?,
-            export_completion_evidence_digest: mutation_evidence_digest(
-                &export_completion_record,
-            )?,
+            export_completion_evidence_digest: mutation_evidence_digest(&export_completion_record)?,
             artifact_store_receipt_ref: &artifact.receipt_ref,
             artifact_store_receipt_digest: &artifact.receipt_digest,
             artifact_ref: &artifact.artifact_ref,
@@ -2283,25 +2360,24 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             output_dlp_evidence_ref: mutation_evidence_ref(&output_dlp_record)?.to_owned(),
             output_dlp_evidence_digest: mutation_evidence_digest(&output_dlp_record)?.to_owned(),
             output_label_evidence_ref: mutation_evidence_ref(&output_label_record)?.to_owned(),
-            output_label_evidence_digest: mutation_evidence_digest(&output_label_record)?.to_owned(),
-            artifact_policy_evidence_ref: mutation_evidence_ref(&artifact_policy_record)?.to_owned(),
-            artifact_policy_evidence_digest: mutation_evidence_digest(&artifact_policy_record)?.to_owned(),
+            output_label_evidence_digest: mutation_evidence_digest(&output_label_record)?
+                .to_owned(),
+            artifact_policy_evidence_ref: mutation_evidence_ref(&artifact_policy_record)?
+                .to_owned(),
+            artifact_policy_evidence_digest: mutation_evidence_digest(&artifact_policy_record)?
+                .to_owned(),
             grant_consumption_evidence_ref,
             grant_consumption_evidence_digest,
-            export_authorization_evidence_ref: mutation_evidence_ref(
-                &export_authorization_record,
-            )?
-            .to_owned(),
+            export_authorization_evidence_ref: mutation_evidence_ref(&export_authorization_record)?
+                .to_owned(),
             export_authorization_evidence_digest: mutation_evidence_digest(
                 &export_authorization_record,
             )?
             .to_owned(),
             export_completion_evidence_ref: mutation_evidence_ref(&export_completion_record)?
                 .to_owned(),
-            export_completion_evidence_digest: mutation_evidence_digest(
-                &export_completion_record,
-            )?
-            .to_owned(),
+            export_completion_evidence_digest: mutation_evidence_digest(&export_completion_record)?
+                .to_owned(),
             artifact_store_receipt_ref: artifact.receipt_ref,
             artifact_store_receipt_digest: artifact.receipt_digest,
         })
@@ -2409,10 +2485,12 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
         self.dependency_ready(&self.endpoints.data_policy).await?;
         self.dependency_ready(&self.endpoints.dlp).await?;
         self.dependency_ready(&self.endpoints.sanitizer).await?;
-        self.dependency_ready(&self.endpoints.artifact_authorizer).await?;
+        self.dependency_ready(&self.endpoints.artifact_authorizer)
+            .await?;
         self.dependency_ready(&self.endpoints.data_mutation).await?;
         self.dependency_ready(&self.endpoints.data_read).await?;
-        self.dependency_ready(&self.endpoints.artifact_store).await?;
+        self.dependency_ready(&self.endpoints.artifact_store)
+            .await?;
         self.dependency_ready(&self.endpoints.evidence).await
     }
 }
@@ -2453,8 +2531,8 @@ fn verify_manifest(
     let signature_bytes = URL_SAFE_NO_PAD
         .decode(manifest.signature.as_bytes())
         .map_err(|_| AuthorityError::ProviderDenied)?;
-    let signature = Signature::from_slice(&signature_bytes)
-        .map_err(|_| AuthorityError::ProviderDenied)?;
+    let signature =
+        Signature::from_slice(&signature_bytes).map_err(|_| AuthorityError::ProviderDenied)?;
     if manifest.schema_version != "agenttrust.model-provider-manifest.v1"
         || manifest.key_usage != "MODEL_PROVIDER_MANIFEST"
         || computed_digest != stored_digest
@@ -2509,8 +2587,8 @@ fn verify_revocation(
     let signature_bytes = URL_SAFE_NO_PAD
         .decode(revocation.signature.as_bytes())
         .map_err(|_| AuthorityError::ProviderDenied)?;
-    let signature = Signature::from_slice(&signature_bytes)
-        .map_err(|_| AuthorityError::ProviderDenied)?;
+    let signature =
+        Signature::from_slice(&signature_bytes).map_err(|_| AuthorityError::ProviderDenied)?;
     if revocation.schema_version != "agenttrust.model-provider-revocation.v1"
         || revocation.key_usage != "MODEL_PROVIDER_REVOCATION"
         || revocation.provider_revision == 0
@@ -2566,7 +2644,10 @@ fn provider_request_body(request: &ModelExecutionRequest, plan: &RoutePlan) -> V
     }
 }
 
-fn parse_generate_response(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutcome, AuthorityError> {
+fn parse_generate_response(
+    bytes: &[u8],
+    plan: &RoutePlan,
+) -> Result<ProviderOutcome, AuthorityError> {
     let value: Value = strict_json(bytes, MAX_PROVIDER_RESPONSE)?;
     let (request_id, output, input_tokens, output_tokens, finish_reason) =
         if plan.protocol == "OPENAI_COMPATIBLE" {
@@ -2586,26 +2667,42 @@ fn parse_generate_response(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOut
                 string(&value, "/finish_reason", 64)?,
             )
         };
-    provider_outcome(plan, request_id, Some(output), None, Vec::new(), finish_reason, input_tokens, output_tokens)
+    provider_outcome(
+        plan,
+        request_id,
+        Some(output),
+        None,
+        Vec::new(),
+        finish_reason,
+        input_tokens,
+        output_tokens,
+    )
 }
 
-fn parse_embedding_response(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutcome, AuthorityError> {
+fn parse_embedding_response(
+    bytes: &[u8],
+    plan: &RoutePlan,
+) -> Result<ProviderOutcome, AuthorityError> {
     let value: Value = strict_json(bytes, MAX_PROVIDER_RESPONSE)?;
-    let (request_id, embedding_pointer, input_tokens, output_tokens) = if plan.protocol == "OPENAI_COMPATIBLE" {
-        (
-            string(&value, "/id", 512)?,
-            "/data/0/embedding",
-            number(&value, "/usage/prompt_tokens")?,
-            0,
-        )
-    } else {
-        (
-            string(&value, "/request_id", 512)?,
-            "/embedding",
-            number(&value, "/input_tokens")?,
-            value.pointer("/output_tokens").and_then(Value::as_u64).unwrap_or(0),
-        )
-    };
+    let (request_id, embedding_pointer, input_tokens, output_tokens) =
+        if plan.protocol == "OPENAI_COMPATIBLE" {
+            (
+                string(&value, "/id", 512)?,
+                "/data/0/embedding",
+                number(&value, "/usage/prompt_tokens")?,
+                0,
+            )
+        } else {
+            (
+                string(&value, "/request_id", 512)?,
+                "/embedding",
+                number(&value, "/input_tokens")?,
+                value
+                    .pointer("/output_tokens")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0),
+            )
+        };
     let values = value
         .pointer(embedding_pointer)
         .and_then(Value::as_array)
@@ -2621,7 +2718,16 @@ fn parse_embedding_response(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOu
                 .ok_or(AuthorityError::ProviderOutcomeUnknown)
         })
         .collect::<Result<Vec<_>, _>>()?;
-    provider_outcome(plan, request_id, None, Some(embedding), Vec::new(), "stop".into(), input_tokens, output_tokens)
+    provider_outcome(
+        plan,
+        request_id,
+        None,
+        Some(embedding),
+        Vec::new(),
+        "stop".into(),
+        input_tokens,
+        output_tokens,
+    )
 }
 
 fn parse_openai_sse(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutcome, AuthorityError> {
@@ -2710,7 +2816,10 @@ fn parse_openai_sse(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutcome, A
     )
 }
 
-fn parse_local_json_lines(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutcome, AuthorityError> {
+fn parse_local_json_lines(
+    bytes: &[u8],
+    plan: &RoutePlan,
+) -> Result<ProviderOutcome, AuthorityError> {
     let text = std::str::from_utf8(bytes).map_err(|_| AuthorityError::ProviderOutcomeUnknown)?;
     let mut chunks = Vec::new();
     let mut request_id = None;
@@ -2723,11 +2832,16 @@ fn parse_local_json_lines(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutc
         }
         let value: Value = strict_json(line.as_bytes(), 2 * 1_048_576)?;
         let sequence = number(&value, "/sequence")?;
-        if sequence != u64::try_from(index + 1).map_err(|_| AuthorityError::ProviderOutcomeUnknown)? {
+        if sequence
+            != u64::try_from(index + 1).map_err(|_| AuthorityError::ProviderOutcomeUnknown)?
+        {
             return Err(AuthorityError::ProviderOutcomeUnknown);
         }
         let current_id = string(&value, "/request_id", 512)?;
-        if request_id.as_ref().is_some_and(|existing| existing != &current_id) {
+        if request_id
+            .as_ref()
+            .is_some_and(|existing| existing != &current_id)
+        {
             return Err(AuthorityError::ProviderOutcomeUnknown);
         }
         request_id = Some(current_id);
@@ -2836,7 +2950,8 @@ fn strict_json<T: DeserializeOwned>(raw: &[u8], maximum: usize) -> Result<T, Aut
         max_object_keys: 4096,
         max_number_chars: 128,
     };
-    let value = parse_strict_json(raw, &limits).map_err(|_| AuthorityError::ProviderOutcomeUnknown)?;
+    let value =
+        parse_strict_json(raw, &limits).map_err(|_| AuthorityError::ProviderOutcomeUnknown)?;
     serde_json::from_value(value).map_err(|_| AuthorityError::ProviderOutcomeUnknown)
 }
 
@@ -2874,7 +2989,10 @@ fn validate_provider_endpoint(profile: &ProviderEndpointRecord) -> Result<(), Au
         || profile.endpoint_profile.len() > 128
         || profile.provider_key.is_empty()
         || profile.provider_key.len() > 768
-        || !matches!(profile.protocol.as_str(), "OPENAI_COMPATIBLE" | "LOCAL_INFERENCE")
+        || !matches!(
+            profile.protocol.as_str(),
+            "OPENAI_COMPATIBLE" | "LOCAL_INFERENCE"
+        )
         || profile.endpoint.scheme() != "https"
         || profile.endpoint.cannot_be_a_base()
         || profile.endpoint.host_str().is_none()
@@ -3176,9 +3294,15 @@ fn jurisdiction(value: &str) -> bool {
 
 fn adapter_reference(value: &str) -> bool {
     value.len() <= 2048
-        && ["dlp://", "object://", "worm://", "legal-hold://", "evidence://"]
-            .iter()
-            .any(|prefix| value.starts_with(prefix))
+        && [
+            "dlp://",
+            "object://",
+            "worm://",
+            "legal-hold://",
+            "evidence://",
+        ]
+        .iter()
+        .any(|prefix| value.starts_with(prefix))
         && identifier(value, 2048)
 }
 
@@ -3200,9 +3324,18 @@ mod adapter_tests {
     #[test]
     fn service_urls_cannot_escape_the_configured_origin() {
         let base = Url::parse("https://policy.example/").ok();
-        assert!(base.as_ref().is_some_and(|url| service_url(url, "/ready").is_ok()));
-        assert!(base.as_ref().is_some_and(|url| service_url(url, "//evil.example/x").is_err()));
-        assert!(base.as_ref().is_some_and(|url| service_url(url, "/../x").is_err()));
+        assert!(
+            base.as_ref()
+                .is_some_and(|url| service_url(url, "/ready").is_ok())
+        );
+        assert!(
+            base.as_ref()
+                .is_some_and(|url| service_url(url, "//evil.example/x").is_err())
+        );
+        assert!(
+            base.as_ref()
+                .is_some_and(|url| service_url(url, "/../x").is_err())
+        );
     }
 
     #[test]

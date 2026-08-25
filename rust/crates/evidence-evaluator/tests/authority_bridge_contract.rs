@@ -2,16 +2,13 @@ const CONTRACTS: &str = include_str!("../../contracts/src/lib.rs");
 const STORE: &str = include_str!("../src/postgres.rs");
 const SERVER: &str = include_str!("../src/server.rs");
 const BINARY: &str = include_str!("../src/bin/agenttrust-evidence-service.rs");
-const MIGRATION: &str = include_str!(
-    "../../../../migrations/evidence/0036_01_23_production_authority_evidence.sql"
-);
+const MIGRATION: &str =
+    include_str!("../../../../migrations/evidence/0036_01_23_production_authority_evidence.sql");
 const OPENAPI: &str = include_str!("../../../../schemas/openapi/evidence-v1.yaml");
-const REQUEST_SCHEMA: &str = include_str!(
-    "../../../../schemas/evidence/authority-evidence-event-request.schema.json"
-);
-const RECEIPT_SCHEMA: &str = include_str!(
-    "../../../../schemas/evidence/signed-authority-evidence-receipt.schema.json"
-);
+const REQUEST_SCHEMA: &str =
+    include_str!("../../../../schemas/evidence/authority-evidence-event-request.schema.json");
+const RECEIPT_SCHEMA: &str =
+    include_str!("../../../../schemas/evidence/signed-authority-evidence-receipt.schema.json");
 
 #[test]
 fn authority_events_are_distinct_from_orchestrator_lifecycle_events() {
@@ -41,8 +38,14 @@ fn governed_authority_event_is_bound_to_final_pep_and_ledger() {
         "authorization_evidence_ref",
         "authorization_evidence_digest",
     ] {
-        assert!(STORE.contains(marker), "missing production binding {marker}");
-        assert!(REQUEST_SCHEMA.contains(marker), "missing schema binding {marker}");
+        assert!(
+            STORE.contains(marker),
+            "missing production binding {marker}"
+        );
+        assert!(
+            REQUEST_SCHEMA.contains(marker),
+            "missing schema binding {marker}"
+        );
     }
     assert!(STORE.contains("AuthorityEvidenceSourceKind::GovernedAction"));
     assert!(STORE.contains("AuthorityEvidenceSourceKind::AuthenticatedEvent"));

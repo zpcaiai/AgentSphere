@@ -365,9 +365,8 @@ impl HttpsFactClient {
         if bytes.is_empty() {
             return false;
         }
-        serde_json::from_slice::<DependencyReadiness>(&bytes).is_ok_and(|value| {
-            value.schema_version == FACT_READINESS_SCHEMA_VERSION && value.ready
-        })
+        serde_json::from_slice::<DependencyReadiness>(&bytes)
+            .is_ok_and(|value| value.schema_version == FACT_READINESS_SCHEMA_VERSION && value.ready)
     }
 }
 

@@ -12,14 +12,18 @@ fn all_domain_manifests_are_content_addressed_and_default_deny_secrets() {
     for manifest in manifests {
         assert!(manifest.policy_bundle_ref.starts_with("policy:sha256:"));
         assert!(manifest.evaluator_ref.starts_with("evaluator:sha256:"));
-        assert!(manifest
-            .artifact_refs
-            .iter()
-            .all(|reference| reference.starts_with("artifact:sha256:")));
+        assert!(
+            manifest
+                .artifact_refs
+                .iter()
+                .all(|reference| reference.starts_with("artifact:sha256:"))
+        );
         assert!(manifest.permissions.secret_scopes.is_empty());
-        assert!(manifest
-            .compatibility
-            .contains("agenttrust.domain-execution.v1"));
+        assert!(
+            manifest
+                .compatibility
+                .contains("agenttrust.domain-execution.v1")
+        );
     }
 }
 
@@ -28,9 +32,8 @@ fn physical_migrations_require_distinct_experts_and_consume_supervision() {
     let industrial = include_str!(
         "../../../../migrations/domain-packs/0036_01_19_production_industrial_pack.sql"
     );
-    let energy = include_str!(
-        "../../../../migrations/domain-packs/0036_01_20_production_energy_pack.sql"
-    );
+    let energy =
+        include_str!("../../../../migrations/domain-packs/0036_01_20_production_energy_pack.sql");
     for migration in [industrial, energy] {
         assert!(migration.contains("count(DISTINCT reviewer_subject)"));
         assert!(migration.contains("reviewer_subject<>supervision.supervisor_subject"));
@@ -96,10 +99,6 @@ fn domain_management_routes_match_production_probes() {
     assert!(server.contains("route(\"/live\",get(management_live))"));
     assert!(server.contains("route(\"/ready\",get(management_ready))"));
     assert!(server.contains("\"schema_version\":DOMAIN_READINESS_SCHEMA,\"live\":true"));
-    assert!(stack.contains(
-        "livenessProbe: {httpGet: {path: /live, port: management}"
-    ));
-    assert!(stack.contains(
-        "readinessProbe: {httpGet: {path: /ready, port: management}"
-    ));
+    assert!(stack.contains("livenessProbe: {httpGet: {path: /live, port: management}"));
+    assert!(stack.contains("readinessProbe: {httpGet: {path: /ready, port: management}"));
 }

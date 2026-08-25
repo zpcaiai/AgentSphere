@@ -723,8 +723,8 @@ pub(crate) fn contains_secret_marker(value: &str) -> bool {
         "token=",
         "token:",
     ]
-        .iter()
-        .any(|marker| normalized.contains(marker))
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 pub fn binding_hash(binding: &ApprovalExecutionBinding) -> Result<String, ApprovalError> {
     Ok(hex(Sha256::digest(
@@ -800,14 +800,13 @@ pub mod review_evidence;
 pub mod server;
 pub use postgres::{
     APPROVAL_CASE_VIEW_SCHEMA_VERSION, APPROVAL_DECISION_EVIDENCE_KEY_USAGE,
-    APPROVAL_DECISION_EVIDENCE_KEYRING_SCHEMA_VERSION,
-    APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION, APPROVAL_DECISION_RESULT_SCHEMA_VERSION,
-    APPROVAL_DECISION_REQUEST_BINDING_SCHEMA_VERSION, AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION,
-    ApprovalCaseCreateEnvelope, ApprovalCaseDomain, ApprovalCaseView, ApprovalCaseViewStatus,
-    ApprovalDecision, ApprovalDecisionEnvelope, ApprovalDecisionEvidenceKeyring,
-    ApprovalDecisionEvidenceReceipt, ApprovalDecisionResult, ApprovalGrantIssueRequest,
-    ApprovalGrantRevocationReceipt, ApprovalGrantRevocationRequest, ApprovalPrincipal,
-    ApprovalSigner, AuthoritativeApprovalPage, PostgresApprovalStore,
+    APPROVAL_DECISION_EVIDENCE_KEYRING_SCHEMA_VERSION, APPROVAL_DECISION_EVIDENCE_SCHEMA_VERSION,
+    APPROVAL_DECISION_REQUEST_BINDING_SCHEMA_VERSION, APPROVAL_DECISION_RESULT_SCHEMA_VERSION,
+    AUTHORITATIVE_APPROVAL_PAGE_SCHEMA_VERSION, ApprovalCaseCreateEnvelope, ApprovalCaseDomain,
+    ApprovalCaseView, ApprovalCaseViewStatus, ApprovalDecision, ApprovalDecisionEnvelope,
+    ApprovalDecisionEvidenceKeyring, ApprovalDecisionEvidenceReceipt, ApprovalDecisionResult,
+    ApprovalGrantIssueRequest, ApprovalGrantRevocationReceipt, ApprovalGrantRevocationRequest,
+    ApprovalPrincipal, ApprovalSigner, AuthoritativeApprovalPage, PostgresApprovalStore,
 };
 pub use principal::{
     APPROVAL_PRINCIPAL_ASSERTION_SCHEMA_VERSION, APPROVAL_PRINCIPAL_KEYRING_SCHEMA_VERSION,
@@ -815,21 +814,19 @@ pub use principal::{
     SignedApprovalPrincipalAssertion, approval_principal_request_digest,
 };
 pub use review_evidence::{
-    APPROVAL_REVIEW_EVIDENCE_KEYRING_SCHEMA_VERSION,
-    APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION, APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION,
-    APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION, ApprovalReviewEvidence,
-    ApprovalReviewEvidenceIssueRequest, ApprovalReviewEvidenceKeyring, ApprovalReviewMaterial,
-    review_material_digest,
+    APPROVAL_REVIEW_EVIDENCE_ISSUE_SCHEMA_VERSION, APPROVAL_REVIEW_EVIDENCE_KEYRING_SCHEMA_VERSION,
+    APPROVAL_REVIEW_EVIDENCE_SCHEMA_VERSION, APPROVAL_REVIEW_MATERIAL_SCHEMA_VERSION,
+    ApprovalReviewEvidence, ApprovalReviewEvidenceIssueRequest, ApprovalReviewEvidenceKeyring,
+    ApprovalReviewMaterial, review_material_digest,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use agent_trust_contracts::{
-        AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,
-        AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE, AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION,
-        AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, SignedAuthorityEvidenceReceipt,
-        SignedEvidenceEvent,
+        AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, AUTHORITY_EVIDENCE_RECEIPT_KEY_USAGE,
+        AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION, AuthorityEvidenceSourceKind,
+        EVIDENCE_EVENT_SCHEMA_VERSION, SignedAuthorityEvidenceReceipt, SignedEvidenceEvent,
     };
     use std::sync::Arc;
 
@@ -913,11 +910,8 @@ mod tests {
         event.event_hash = event
             .expected_hash()
             .unwrap_or_else(|_| panic!("evidence event hash"));
-        event.signature = URL_SAFE_NO_PAD.encode(
-            signing
-                .sign(event.event_hash.as_bytes())
-                .to_bytes(),
-        );
+        event.signature =
+            URL_SAFE_NO_PAD.encode(signing.sign(event.event_hash.as_bytes()).to_bytes());
         let mut receipt = SignedAuthorityEvidenceReceipt {
             schema_version: AUTHORITY_EVIDENCE_RECEIPT_SCHEMA_VERSION.into(),
             tenant_id: authority_request.tenant_id.clone(),
@@ -965,7 +959,11 @@ mod tests {
             risk_package_ref: request.review_evidence.material.risk_package_ref.clone(),
             risk_package_digest: request.review_evidence.material.risk_package_digest.clone(),
             state_snapshot_ref: request.review_evidence.material.state_snapshot_ref.clone(),
-            state_snapshot_digest: request.review_evidence.material.state_snapshot_digest.clone(),
+            state_snapshot_digest: request
+                .review_evidence
+                .material
+                .state_snapshot_digest
+                .clone(),
         }
     }
 
@@ -1110,14 +1108,19 @@ mod tests {
             });
         assert!(validate_request(&mismatched, &case.policy).is_ok());
         assert_eq!(
-            service.review_evidence_keyring.verify_request(&mismatched, Utc::now()),
+            service
+                .review_evidence_keyring
+                .verify_request(&mismatched, Utc::now()),
             Err(ApprovalError::RequestInvalid)
         );
         mismatched.review_evidence =
             signed_review_evidence(material_for_request(&mismatched), Utc::now());
-        assert!(service.review_evidence_keyring
-            .verify_request(&mismatched, Utc::now())
-            .is_ok());
+        assert!(
+            service
+                .review_evidence_keyring
+                .verify_request(&mismatched, Utc::now())
+                .is_ok()
+        );
 
         let mut unknown = serde_json::to_value(&case.request.review_context)
             .unwrap_or_else(|_| panic!("review context JSON"));
@@ -1139,10 +1142,9 @@ mod tests {
                 .is_ok()
         );
         assert_eq!(
-            service.review_evidence_keyring.verify_request(
-                &case.request,
-                created_at + chrono::Duration::hours(1),
-            ),
+            service
+                .review_evidence_keyring
+                .verify_request(&case.request, created_at + chrono::Duration::hours(1),),
             Err(ApprovalError::RequestInvalid)
         );
         assert!(
@@ -1158,7 +1160,10 @@ mod tests {
     fn shared_authority_request_binds_exact_source_payload_and_artifacts() {
         let (service, case) = setup(false);
         let authority = &case.request.review_evidence.authority_request;
-        assert_eq!(authority.source_kind, AuthorityEvidenceSourceKind::AuthenticatedEvent);
+        assert_eq!(
+            authority.source_kind,
+            AuthorityEvidenceSourceKind::AuthenticatedEvent
+        );
         assert!(authority.control_binding.is_none());
         assert_eq!(
             authority.event.event_type,

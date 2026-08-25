@@ -115,7 +115,12 @@ impl DataTokenAuthorizer {
         let mode = metadata.mode() & 0o777;
         let effective_uid = Uid::effective().as_raw();
         let effective_gid = Gid::effective().as_raw();
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         if !path.is_absolute()
@@ -169,7 +174,9 @@ impl DataTokenAuthorizer {
             }
         }
         if allowed_identities.iter().any(|identity| {
-            !bindings.iter().any(|binding| &binding.client_identity == identity)
+            !bindings
+                .iter()
+                .any(|binding| &binding.client_identity == identity)
         }) {
             return Err(DataAuthorityError::ConfigurationInvalid);
         }
@@ -191,12 +198,16 @@ impl DataTokenAuthorizer {
             })
             .ok_or(DataAuthorityError::PrincipalDenied)?;
         let supplied = hex::encode(Sha256::digest(authorization.as_bytes()));
-        let matches = self.bindings.iter().filter(|binding| {
-            binding.client_identity == peer
-                && binding.tenant_id == tenant
-                && binding.scope == scope
-                && constant_time_equal(&supplied, &binding.token_sha256)
-        }).collect::<Vec<_>>();
+        let matches = self
+            .bindings
+            .iter()
+            .filter(|binding| {
+                binding.client_identity == peer
+                    && binding.tenant_id == tenant
+                    && binding.scope == scope
+                    && constant_time_equal(&supplied, &binding.token_sha256)
+            })
+            .collect::<Vec<_>>();
         if matches.len() != 1 {
             return Err(DataAuthorityError::PrincipalDenied);
         }
@@ -204,7 +215,8 @@ impl DataTokenAuthorizer {
     }
 
     fn tenants(&self) -> BTreeSet<TenantId> {
-        self.bindings.iter()
+        self.bindings
+            .iter()
             .map(|binding| TenantId(binding.tenant_id.clone()))
             .collect()
     }
@@ -223,8 +235,14 @@ pub fn router(
         .route("/v1/internal/data/evaluate", post(evaluate_policy))
         .route("/v1/internal/data/scan", post(inspect_dlp))
         .route("/v1/internal/data/sanitize", post(sanitize_prompt))
-        .route("/v1/internal/data/artifacts/authorize", post(authorize_artifact))
-        .route("/v1/authoritative/data/resources", get(authoritative_resources))
+        .route(
+            "/v1/internal/data/artifacts/authorize",
+            post(authorize_artifact),
+        )
+        .route(
+            "/v1/authoritative/data/resources",
+            get(authoritative_resources),
+        )
         .route(
             "/v1/authoritative/data/mutations/{command_id}",
             get(completed_mutation),
@@ -235,7 +253,12 @@ pub fn router(
             StatusCode::REQUEST_TIMEOUT,
             Duration::from_secs(45),
         ))
-        .with_state(ServerState { ingress, executor, decision, tokens })
+        .with_state(ServerState {
+            ingress,
+            executor,
+            decision,
+            tokens,
+        })
 }
 
 async fn data_ready(State(state): State<ServerState>) -> Result<Json<Value>, ApiError> {
@@ -251,15 +274,23 @@ async fn submit_action(
     require_json_content_type(&headers)?;
     let request: DataCommandRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.tenant_id)?;
-    let subject = state.tokens.authorize(&peer, &tenant.0, DATA_MUTATE_SCOPE, &headers)?;
+    let subject = state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_MUTATE_SCOPE, &headers)?;
     let idempotency_key = required_idempotency_key(&headers)?;
     let request_digest = service_request_digest(
-        "/v1/data/actions", &tenant, &peer, &subject, DATA_MUTATE_SCOPE,
-        idempotency_key, &request,
+        "/v1/data/actions",
+        &tenant,
+        &peer,
+        &subject,
+        DATA_MUTATE_SCOPE,
+        idempotency_key,
+        &request,
     )?;
-    let receipt = state.ingress.submit(
-        tenant, subject, request, &request_digest, idempotency_key,
-    ).await?;
+    let receipt = state
+        .ingress
+        .submit(tenant, subject, request, &request_digest, idempotency_key)
+        .await?;
     Ok((StatusCode::ACCEPTED, Json(receipt)))
 }
 
@@ -272,9 +303,10 @@ async fn execute_mutation(
     require_json_content_type(&headers)?;
     let request: DataExecutorRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.command.tenant_id)?;
-    let executor_subject = state.tokens.authorize(
-        &peer, &tenant.0, DATA_EXECUTE_SCOPE, &headers,
-    )?;
+    let executor_subject =
+        state
+            .tokens
+            .authorize(&peer, &tenant.0, DATA_EXECUTE_SCOPE, &headers)?;
     if executor_subject != peer {
         return Err(DataAuthorityError::PrincipalDenied.into());
     }
@@ -286,19 +318,23 @@ async fn execute_mutation(
         ledger_event_digest: required_header(&headers, "x-agenttrust-ledger-entry-digest")?.into(),
         fence_digest: required_header(&headers, "x-agenttrust-fence-digest")?.into(),
         resource_version: required_header(&headers, "x-agenttrust-resource-version")?
-            .parse().map_err(|_| DataAuthorityError::RequestInvalid)?,
+            .parse()
+            .map_err(|_| DataAuthorityError::RequestInvalid)?,
         idempotency_key: required_idempotency_key(&headers)?.into(),
         trace_id: required_header(&headers, "x-agenttrust-trace-id")?.into(),
         policy_decision_id: required_header(&headers, "x-agenttrust-policy-decision-id")?.into(),
-        policy_decision_digest: required_header(
-            &headers, "x-agenttrust-policy-decision-digest",
-        )?.into(),
+        policy_decision_digest: required_header(&headers, "x-agenttrust-policy-decision-digest")?
+            .into(),
         authorization_evidence_ref: required_header(
-            &headers, "x-agenttrust-authorization-evidence-ref",
-        )?.into(),
+            &headers,
+            "x-agenttrust-authorization-evidence-ref",
+        )?
+        .into(),
         authorization_evidence_digest: required_header(
-            &headers, "x-agenttrust-authorization-evidence-digest",
-        )?.into(),
+            &headers,
+            "x-agenttrust-authorization-evidence-digest",
+        )?
+        .into(),
     };
     Ok(Json(state.executor.execute(binding, request).await?))
 }
@@ -312,7 +348,9 @@ async fn evaluate_policy(
     require_json_content_type(&headers)?;
     let request: PolicyEvaluationRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.tenant_id)?;
-    state.tokens.authorize(&peer, &tenant.0, DATA_EVALUATE_SCOPE, &headers)?;
+    state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_EVALUATE_SCOPE, &headers)?;
     Ok(Json(state.decision.evaluate(request)?))
 }
 
@@ -325,7 +363,9 @@ async fn inspect_dlp(
     require_json_content_type(&headers)?;
     let request: DlpInspectionRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.tenant_id)?;
-    state.tokens.authorize(&peer, &tenant.0, DATA_SCAN_SCOPE, &headers)?;
+    state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_SCAN_SCOPE, &headers)?;
     Ok(Json(state.decision.inspect(request).await?))
 }
 
@@ -338,7 +378,9 @@ async fn sanitize_prompt(
     require_json_content_type(&headers)?;
     let request: PromptSanitizationRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.tenant_id)?;
-    state.tokens.authorize(&peer, &tenant.0, DATA_SANITIZE_SCOPE, &headers)?;
+    state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_SANITIZE_SCOPE, &headers)?;
     Ok(Json(state.decision.sanitize(request).await?))
 }
 
@@ -351,7 +393,9 @@ async fn authorize_artifact(
     require_json_content_type(&headers)?;
     let request: ArtifactAuthorizationRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.tenant_id)?;
-    state.tokens.authorize(&peer, &tenant.0, DATA_ARTIFACT_SCOPE, &headers)?;
+    state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_ARTIFACT_SCOPE, &headers)?;
     Ok(Json(state.decision.authorize_artifact(request).await?))
 }
 
@@ -369,10 +413,15 @@ async fn authoritative_resources(
     Query(query): Query<PageQuery>,
 ) -> Result<Json<AuthoritativeDataPage>, ApiError> {
     let tenant = exact_tenant_from_header(&headers)?;
-    state.tokens.authorize(&peer, &tenant.0, DATA_READ_SCOPE, &headers)?;
-    Ok(Json(state.ingress.authoritative_page(
-        &tenant, query.after.as_deref(), query.limit.unwrap_or(100),
-    ).await?))
+    state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_READ_SCOPE, &headers)?;
+    Ok(Json(
+        state
+            .ingress
+            .authoritative_page(&tenant, query.after.as_deref(), query.limit.unwrap_or(100))
+            .await?,
+    ))
 }
 
 async fn completed_mutation(
@@ -382,12 +431,19 @@ async fn completed_mutation(
     AxumPath(raw_command_id): AxumPath<String>,
 ) -> Result<Json<DataMutationResult>, ApiError> {
     let tenant = exact_tenant_from_header(&headers)?;
-    state.tokens.authorize(&peer, &tenant.0, DATA_READ_SCOPE, &headers)?;
+    state
+        .tokens
+        .authorize(&peer, &tenant.0, DATA_READ_SCOPE, &headers)?;
     let command_id = Uuid::parse_str(&raw_command_id)
         .ok()
         .filter(|value| value.to_string() == raw_command_id)
         .ok_or(DataAuthorityError::RequestInvalid)?;
-    Ok(Json(state.ingress.completed_mutation(&tenant, command_id).await?))
+    Ok(Json(
+        state
+            .ingress
+            .completed_mutation(&tenant, command_id)
+            .await?,
+    ))
 }
 
 pub async fn serve(
@@ -408,7 +464,9 @@ pub async fn serve(
         return Err(DataAuthorityError::ConfigurationInvalid);
     }
     let tls = build_server_tls(
-        &config.tls_ca_file, &config.tls_certificate_file, &config.tls_private_key_file,
+        &config.tls_ca_file,
+        &config.tls_certificate_file,
+        &config.tls_private_key_file,
     )?;
     let acceptor = PeerIdentityAcceptor {
         inner: RustlsAcceptor::new(tls),
@@ -423,7 +481,8 @@ pub async fn serve(
             decision: readiness_decision,
         });
     let management_listener = tokio::net::TcpListener::bind(config.management_address)
-        .await.map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
+        .await
+        .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
     let recovery_tenants = tokens.tenants();
     let recovery_executor = readiness_executor;
     let recovery_interval = config.recovery_interval_seconds;
@@ -441,11 +500,13 @@ pub async fn serve(
         axum_server::bind(config.data_address)
             .acceptor(acceptor)
             .serve(application.into_make_service())
-            .await.map_err(|_| DataAuthorityError::DependencyUnavailable)
+            .await
+            .map_err(|_| DataAuthorityError::DependencyUnavailable)
     };
     let management_plane = async move {
         axum::serve(management_listener, management)
-            .await.map_err(|_| DataAuthorityError::DependencyUnavailable)
+            .await
+            .map_err(|_| DataAuthorityError::DependencyUnavailable)
     };
     tokio::try_join!(data_plane, management_plane)?;
     Ok(())
@@ -467,9 +528,8 @@ async fn readiness(
     executor: &DataExecutor,
     decision: &DataDecisionService,
 ) -> Result<Json<Value>, ApiError> {
-    let (ingress_ready, executor_ready, inspection_ready) = tokio::join!(
-        ingress.ready(), executor.ready(), decision.ready(),
-    );
+    let (ingress_ready, executor_ready, inspection_ready) =
+        tokio::join!(ingress.ready(), executor.ready(), decision.ready(),);
     if !ingress_ready || !executor_ready || !inspection_ready {
         return Err(DataAuthorityError::DependencyUnavailable.into());
     }
@@ -498,7 +558,8 @@ where
 {
     type Stream = <RustlsAcceptor as Accept<I, S>>::Stream;
     type Service = AddExtension<S, DataPeerIdentity>;
-    type Future = Pin<Box<dyn Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send>>;
+    type Future =
+        Pin<Box<dyn Future<Output = std::io::Result<(Self::Stream, Self::Service)>> + Send>>;
 
     fn accept(&self, stream: I, service: S) -> Self::Future {
         let inner = self.inner.clone();
@@ -508,7 +569,8 @@ where
             let certificates = stream.get_ref().1.peer_certificates().ok_or_else(|| {
                 IoError::new(ErrorKind::PermissionDenied, "client certificate missing")
             })?;
-            let identity = certificates.first()
+            let identity = certificates
+                .first()
                 .and_then(|certificate| exact_certificate_identity(certificate.as_ref(), &allowed))
                 .ok_or_else(|| IoError::new(ErrorKind::PermissionDenied, "client SAN denied"))?;
             Ok((stream, Extension(DataPeerIdentity(identity)).layer(service)))
@@ -521,9 +583,8 @@ fn build_server_tls(
     certificate_file: &Path,
     private_key_file: &Path,
 ) -> Result<RustlsConfig, DataAuthorityError> {
-    let mut ca_reader = BufReader::new(
-        File::open(ca_file).map_err(|_| DataAuthorityError::ConfigurationInvalid)?,
-    );
+    let mut ca_reader =
+        BufReader::new(File::open(ca_file).map_err(|_| DataAuthorityError::ConfigurationInvalid)?);
     let ca_certificates = rustls_pemfile::certs(&mut ca_reader)
         .collect::<Result<Vec<CertificateDer<'static>>, _>>()
         .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
@@ -533,7 +594,8 @@ fn build_server_tls(
         return Err(DataAuthorityError::ConfigurationInvalid);
     }
     let verifier = WebPkiClientVerifier::builder(Arc::new(roots))
-        .build().map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
+        .build()
+        .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
     let mut certificate_reader = BufReader::new(
         File::open(certificate_file).map_err(|_| DataAuthorityError::ConfigurationInvalid)?,
     );
@@ -546,14 +608,13 @@ fn build_server_tls(
     let private_key = rustls_pemfile::private_key(&mut key_reader)
         .map_err(|_| DataAuthorityError::ConfigurationInvalid)?
         .ok_or(DataAuthorityError::ConfigurationInvalid)?;
-    let mut server = ServerConfig::builder_with_provider(Arc::new(
-        rustls::crypto::ring::default_provider(),
-    ))
-    .with_protocol_versions(&[&rustls::version::TLS13])
-    .map_err(|_| DataAuthorityError::ConfigurationInvalid)?
-    .with_client_cert_verifier(verifier)
-    .with_single_cert(certificates, PrivateKeyDer::clone_key(&private_key))
-    .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
+    let mut server =
+        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .map_err(|_| DataAuthorityError::ConfigurationInvalid)?
+            .with_client_cert_verifier(verifier)
+            .with_single_cert(certificates, PrivateKeyDer::clone_key(&private_key))
+            .map_err(|_| DataAuthorityError::ConfigurationInvalid)?;
     server.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     Ok(RustlsConfig::from_config(Arc::new(server)))
 }
@@ -592,7 +653,8 @@ impl IntoResponse for ApiError {
                 "trace_id": trace_id,
                 "safe_digest": safe_digest
             })),
-        ).into_response()
+        )
+            .into_response()
     }
 }
 
@@ -615,7 +677,8 @@ fn exact_tenant_from_header(headers: &HeaderMap) -> Result<TenantId, DataAuthori
 
 fn parse_uuid_header(headers: &HeaderMap, name: &'static str) -> Result<Uuid, DataAuthorityError> {
     let value = required_header(headers, name)?;
-    Uuid::parse_str(value).ok()
+    Uuid::parse_str(value)
+        .ok()
         .filter(|parsed| parsed.to_string() == value)
         .ok_or(DataAuthorityError::RequestInvalid)
 }
@@ -792,7 +855,8 @@ fn certificate_subject_alt_names(certificate: &[u8]) -> Result<Vec<String>, ()> 
             _ => return Err(()),
         };
         let value = std::str::from_utf8(raw).map_err(|_| ())?;
-        if value.is_empty() || value.len() > 508
+        if value.is_empty()
+            || value.len() > 508
             || !value.bytes().all(|byte| byte.is_ascii_graphic())
         {
             return Err(());
@@ -817,7 +881,8 @@ fn der_element(input: &[u8], offset: usize) -> Result<(u8, &[u8], usize), ()> {
         }
         let mut length = 0usize;
         for byte in input.get(offset + 2..offset + 2 + octets).ok_or(())? {
-            length = length.checked_mul(256)
+            length = length
+                .checked_mul(256)
                 .and_then(|value| value.checked_add(usize::from(*byte)))
                 .ok_or(())?;
         }
@@ -841,7 +906,9 @@ pub fn strict_json<T: DeserializeOwned>(raw: &[u8]) -> Result<T, DataAuthorityEr
     let mut deserializer = serde_json::Deserializer::from_slice(raw);
     let value = StrictJsonValue::deserialize(&mut deserializer)
         .map_err(|_| DataAuthorityError::RequestInvalid)?;
-    deserializer.end().map_err(|_| DataAuthorityError::RequestInvalid)?;
+    deserializer
+        .end()
+        .map_err(|_| DataAuthorityError::RequestInvalid)?;
     serde_json::from_value(value.0).map_err(|_| DataAuthorityError::RequestInvalid)
 }
 
@@ -868,43 +935,61 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
     }
 
     fn visit_unit<E>(self) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         Ok(StrictJsonValue(Value::Null))
     }
 
     fn visit_none<E>(self) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         Ok(StrictJsonValue(Value::Null))
     }
 
     fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         Ok(StrictJsonValue(Value::Bool(value)))
     }
 
     fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         Ok(StrictJsonValue(Value::Number(Number::from(value))))
     }
 
     fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         Ok(StrictJsonValue(Value::Number(Number::from(value))))
     }
 
     fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
-    where E: de::Error {
-        Number::from_f64(value).map(Value::Number).map(StrictJsonValue)
+    where
+        E: de::Error,
+    {
+        Number::from_f64(value)
+            .map(Value::Number)
+            .map(StrictJsonValue)
             .ok_or_else(|| de::Error::custom("non-finite JSON number"))
     }
 
     fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         self.visit_string(value.to_string())
     }
 
     fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-    where E: de::Error {
+    where
+        E: de::Error,
+    {
         if value.len() > 11 * 1024 * 1024 {
             return Err(de::Error::custom("JSON string capacity exceeded"));
         }
@@ -912,7 +997,9 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
     }
 
     fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
-    where A: SeqAccess<'de> {
+    where
+        A: SeqAccess<'de>,
+    {
         if self.depth >= 32 {
             return Err(de::Error::custom("JSON depth exceeded"));
         }
@@ -929,14 +1016,18 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
     }
 
     fn visit_map<A>(self, mut object: A) -> Result<Self::Value, A::Error>
-    where A: MapAccess<'de> {
+    where
+        A: MapAccess<'de>,
+    {
         if self.depth >= 32 {
             return Err(de::Error::custom("JSON depth exceeded"));
         }
         let mut values = Map::new();
         while let Some(key) = object.next_key::<String>()? {
             if key.len() > 256 || values.contains_key(&key) {
-                return Err(de::Error::custom("duplicate or oversized JSON object member"));
+                return Err(de::Error::custom(
+                    "duplicate or oversized JSON object member",
+                ));
             }
             let value = object.next_value_seed(StrictJsonSeed {
                 depth: self.depth + 1,
@@ -958,7 +1049,9 @@ impl<'de> de::DeserializeSeed<'de> for StrictJsonSeed {
     type Value = StrictJsonValue;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
-    where D: Deserializer<'de> {
+    where
+        D: Deserializer<'de>,
+    {
         deserializer.deserialize_any(StrictJsonVisitor { depth: self.depth })
     }
 }

@@ -4,10 +4,10 @@ use crate::authority::*;
 use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
-    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
-    AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
-    EvidenceEventType, ExecutionId, HumanPrincipalKeyring, IdempotencyKey,
-    SignedAuthorityEvidenceReceipt, TaskId, TenantId, human_principal_request_digest,
+    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft, EvidenceEventType, ExecutionId,
+    HumanPrincipalKeyring, IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId, TenantId,
+    human_principal_request_digest,
 };
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Query, State};
@@ -218,7 +218,10 @@ pub fn router(
         .route("/ready", get(data_ready))
         .route("/v1/sre/actions", post(submit_action))
         .route("/v1/sre/executions", post(execute_mutation))
-        .route("/v1/authoritative/sre/resources", get(authoritative_resources))
+        .route(
+            "/v1/authoritative/sre/resources",
+            get(authoritative_resources),
+        )
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(TimeoutLayer::new(Duration::from_secs(45)))
         .with_state(ServerState {
@@ -317,11 +320,8 @@ async fn execute_mutation(
         trace_id: required_header(&headers, "x-agenttrust-trace-id")?.to_string(),
         policy_decision_id: required_header(&headers, "x-agenttrust-policy-decision-id")?
             .to_string(),
-        policy_decision_digest: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-digest",
-        )?
-        .to_string(),
+        policy_decision_digest: required_header(&headers, "x-agenttrust-policy-decision-digest")?
+            .to_string(),
         authorization_evidence_ref: required_header(
             &headers,
             "x-agenttrust-authorization-evidence-ref",
@@ -430,7 +430,9 @@ impl SreEvidenceKeyring {
                 return Err(SreAuthorityError::ConfigurationInvalid);
             }
         }
-        Ok(Self { keys: Arc::new(keys) })
+        Ok(Self {
+            keys: Arc::new(keys),
+        })
     }
 
     fn key(&self, key_id: &str) -> Option<&VerifyingKey> {
@@ -496,7 +498,9 @@ impl HttpSreEffectPort {
             SreOperation::Failback => Some((SreAdapterKind::DisasterRecovery, "v1/dr/failback")),
             SreOperation::ExecuteChaos => Some((SreAdapterKind::Chaos, "v1/chaos/execute")),
             SreOperation::ExecuteLoad => Some((SreAdapterKind::Load, "v1/load/execute")),
-            SreOperation::RollbackUpgrade => Some((SreAdapterKind::Upgrade, "v1/upgrades/rollback")),
+            SreOperation::RollbackUpgrade => {
+                Some((SreAdapterKind::Upgrade, "v1/upgrades/rollback"))
+            }
             _ => None,
         };
         selected
@@ -528,14 +532,35 @@ impl HttpSreEffectPort {
             .header("X-AgentTrust-Tenant-Id", &binding.tenant_id.0)
             .header("Idempotency-Key", &binding.idempotency_key)
             .header("X-AgentTrust-Action-Hash", &binding.action_hash)
-            .header("X-AgentTrust-Ledger-Execution-Id", binding.ledger_execution_id.to_string())
-            .header("X-AgentTrust-Ledger-Entry-Id", binding.ledger_event_id.to_string())
-            .header("X-AgentTrust-Ledger-Entry-Digest", &binding.ledger_event_digest)
+            .header(
+                "X-AgentTrust-Ledger-Execution-Id",
+                binding.ledger_execution_id.to_string(),
+            )
+            .header(
+                "X-AgentTrust-Ledger-Entry-Id",
+                binding.ledger_event_id.to_string(),
+            )
+            .header(
+                "X-AgentTrust-Ledger-Entry-Digest",
+                &binding.ledger_event_digest,
+            )
             .header("X-AgentTrust-Fence-Digest", &binding.fence_digest)
-            .header("X-AgentTrust-Policy-Decision-Id", &binding.policy_decision_id)
-            .header("X-AgentTrust-Policy-Decision-Digest", &binding.policy_decision_digest)
-            .header("X-AgentTrust-Authorization-Evidence-Ref", &binding.authorization_evidence_ref)
-            .header("X-AgentTrust-Authorization-Evidence-Digest", &binding.authorization_evidence_digest)
+            .header(
+                "X-AgentTrust-Policy-Decision-Id",
+                &binding.policy_decision_id,
+            )
+            .header(
+                "X-AgentTrust-Policy-Decision-Digest",
+                &binding.policy_decision_digest,
+            )
+            .header(
+                "X-AgentTrust-Authorization-Evidence-Ref",
+                &binding.authorization_evidence_ref,
+            )
+            .header(
+                "X-AgentTrust-Authorization-Evidence-Digest",
+                &binding.authorization_evidence_digest,
+            )
             .header("X-AgentTrust-Trace-Id", &binding.trace_id)
             .json(request)
             .send()
@@ -545,7 +570,9 @@ impl HttpSreEffectPort {
             return Err(SreAuthorityError::IdempotencyConflict);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 1_048_576)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 1_048_576)
             || !exact_content_type(response.headers(), "application/json")
         {
             return Err(SreAuthorityError::DependencyUnavailable);
@@ -566,14 +593,7 @@ impl SreEffectPort for HttpSreEffectPort {
             } else {
                 "agenttrust.sre-adapter-readiness.v1"
             };
-            if !dependency_ready(
-                &self.client,
-                &target.endpoint,
-                &target.token_file,
-                schema,
-            )
-            .await
-            {
+            if !dependency_ready(&self.client, &target.endpoint, &target.token_file, schema).await {
                 return false;
             }
         }
@@ -626,7 +646,8 @@ impl SreEffectPort for HttpSreEffectPort {
                 ledger_event_id: evidence_uuid_field(payload, "ledger_event_id")?.to_string(),
                 ledger_event_digest: evidence_digest_field(payload, "ledger_event_digest")?,
                 fence_digest: evidence_digest_field(payload, "fence_digest")?,
-                policy_decision_id: evidence_string_field(payload, "policy_decision_id", 256)?.into(),
+                policy_decision_id: evidence_string_field(payload, "policy_decision_id", 256)?
+                    .into(),
                 policy_decision_digest: evidence_digest_field(payload, "policy_decision_digest")?,
                 authorization_evidence_ref: evidence_string_field(
                     payload,
@@ -676,7 +697,9 @@ impl SreEffectPort for HttpSreEffectPort {
             .await
             .map_err(|_| SreAuthorityError::DependencyUnavailable)?;
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 65_536)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 65_536)
             || !exact_content_type(response.headers(), "application/json")
         {
             return Err(SreAuthorityError::DependencyUnavailable);
@@ -741,10 +764,7 @@ fn evidence_digest_field(payload: &Value, name: &str) -> Result<String, SreAutho
     Ok(value.into())
 }
 
-fn evidence_time_field(
-    payload: &Value,
-    name: &str,
-) -> Result<DateTime<Utc>, SreAuthorityError> {
+fn evidence_time_field(payload: &Value, name: &str) -> Result<DateTime<Utc>, SreAuthorityError> {
     DateTime::parse_from_rfc3339(evidence_string_field(payload, name, 64)?)
         .map(|value| value.with_timezone(&Utc))
         .map_err(|_| SreAuthorityError::RequestInvalid)
@@ -830,7 +850,9 @@ impl SreOrchestratorPort for HttpSreOrchestrator {
             return Err(SreAuthorityError::IdempotencyConflict);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 65_536)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 65_536)
             || !exact_content_type(response.headers(), "application/json")
         {
             return Err(SreAuthorityError::DependencyUnavailable);
@@ -986,9 +1008,8 @@ fn build_server_tls(
     certificate_file: &Path,
     private_key_file: &Path,
 ) -> Result<RustlsConfig, SreAuthorityError> {
-    let mut ca_reader = BufReader::new(
-        File::open(ca_file).map_err(|_| SreAuthorityError::ConfigurationInvalid)?,
-    );
+    let mut ca_reader =
+        BufReader::new(File::open(ca_file).map_err(|_| SreAuthorityError::ConfigurationInvalid)?);
     let ca_certificates = rustls_pemfile::certs(&mut ca_reader)
         .collect::<Result<Vec<CertificateDer<'static>>, _>>()
         .map_err(|_| SreAuthorityError::ConfigurationInvalid)?;
@@ -1059,10 +1080,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn exact_tenant(
-    headers: &HeaderMap,
-    body_tenant: String,
-) -> Result<TenantId, SreAuthorityError> {
+fn exact_tenant(headers: &HeaderMap, body_tenant: String) -> Result<TenantId, SreAuthorityError> {
     let tenant = exact_tenant_from_header(headers)?;
     if tenant.0 != body_tenant {
         return Err(SreAuthorityError::PrincipalDenied);
@@ -1127,8 +1145,7 @@ fn single_header<'a>(headers: &'a HeaderMap, name: &'static str) -> Option<&'a s
 
 fn exact_content_type(headers: &reqwest::header::HeaderMap, expected: &str) -> bool {
     let mut values = headers.get_all(reqwest::header::CONTENT_TYPE).iter();
-    values.next().and_then(|value| value.to_str().ok()) == Some(expected)
-        && values.next().is_none()
+    values.next().and_then(|value| value.to_str().ok()) == Some(expected) && values.next().is_none()
 }
 
 fn strict_json<T: DeserializeOwned>(raw: &[u8]) -> Result<T, SreAuthorityError> {
@@ -1282,7 +1299,9 @@ async fn dependency_ready(
         return false;
     };
     if !response.status().is_success()
-        || response.content_length().is_some_and(|length| length > 16_384)
+        || response
+            .content_length()
+            .is_some_and(|length| length > 16_384)
         || !exact_content_type(response.headers(), "application/json")
     {
         return false;
@@ -1312,8 +1331,8 @@ fn validate_https_root(value: &url::Url) -> Result<(), SreAuthorityError> {
 }
 
 fn read_token(path: &Path) -> Result<String, SreAuthorityError> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| SreAuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| SreAuthorityError::ConfigurationInvalid)?;
     if !path.is_absolute()
         || !metadata.file_type().is_file()
         || metadata.file_type().is_symlink()
@@ -1322,8 +1341,8 @@ fn read_token(path: &Path) -> Result<String, SreAuthorityError> {
     {
         return Err(SreAuthorityError::ConfigurationInvalid);
     }
-    let value = std::fs::read_to_string(path)
-        .map_err(|_| SreAuthorityError::ConfigurationInvalid)?;
+    let value =
+        std::fs::read_to_string(path).map_err(|_| SreAuthorityError::ConfigurationInvalid)?;
     let token = value.trim_end_matches(['\r', '\n']);
     if !(16..=8_192).contains(&token.len())
         || token.bytes().any(|byte| !byte.is_ascii_graphic())
@@ -1361,8 +1380,7 @@ fn identifier(value: &str, maximum: usize) -> bool {
     !value.is_empty()
         && value.len() <= maximum
         && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric()
-                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
+            byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@')
         })
 }
 
@@ -1530,10 +1548,12 @@ mod tests {
 
     #[test]
     fn client_identity_requires_one_exact_san() {
-        assert!(validate_identities(&BTreeSet::from([
-            "URI:spiffe://agenttrust.example/sre-runtime".into()
-        ]))
-        .is_ok());
+        assert!(
+            validate_identities(&BTreeSet::from([
+                "URI:spiffe://agenttrust.example/sre-runtime".into()
+            ]))
+            .is_ok()
+        );
         assert_eq!(
             validate_identities(&BTreeSet::from(["CN:legacy".into()])),
             Err(SreAuthorityError::ConfigurationInvalid)

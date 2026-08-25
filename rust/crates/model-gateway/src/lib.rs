@@ -1,7 +1,7 @@
 //! Deterministic data-policy filtering followed by bounded model route optimization.
 
-pub mod authority;
 pub mod adapters;
+pub mod authority;
 pub mod production;
 pub mod server;
 
@@ -691,10 +691,8 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                         || response.finish_reason.len() > 64
                         || std::str::from_utf8(&response.output).is_err()
                     {
-                        self.budget.finalize(
-                            &reservation.reservation_id,
-                            reservation.amount_microunits,
-                        )?;
+                        self.budget
+                            .finalize(&reservation.reservation_id, reservation.amount_microunits)?;
                         return Err(ModelError::ProviderProtocolInvalid);
                     }
                     let cost = tokens.saturating_mul(provider.cost_microunits_per_token);
@@ -716,8 +714,7 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                         .get(&provider.key())
                         .ok_or(ModelError::DataPolicyDenied)?;
                     let data_policy_decision_digest = hex(Sha256::digest(
-                        serde_jcs::to_vec(decision)
-                            .map_err(|_| ModelError::DataPolicyDenied)?,
+                        serde_jcs::to_vec(decision).map_err(|_| ModelError::DataPolicyDenied)?,
                     ));
                     return Ok(ModelGatewayResult {
                         output: response.output.clone(),
@@ -741,10 +738,8 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                 // ambiguous external outcome. Do not fall back and risk a second bill/side
                 // effect. Account the full reservation until durable reconciliation resolves it.
                 Ok(Err(_)) | Err(_) => {
-                    self.budget.finalize(
-                        &reservation.reservation_id,
-                        reservation.amount_microunits,
-                    )?;
+                    self.budget
+                        .finalize(&reservation.reservation_id, reservation.amount_microunits)?;
                     return Err(ModelError::ProviderOutcomeUnknown);
                 }
             }
@@ -862,8 +857,7 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                         .get(&provider.key())
                         .ok_or(ModelError::DataPolicyDenied)?;
                     let data_policy_decision_digest = hex(Sha256::digest(
-                        serde_jcs::to_vec(decision)
-                            .map_err(|_| ModelError::DataPolicyDenied)?,
+                        serde_jcs::to_vec(decision).map_err(|_| ModelError::DataPolicyDenied)?,
                     ));
                     return Ok(ModelStreamGatewayResult {
                         chunks: response.chunks,
@@ -884,10 +878,8 @@ impl<D: DataPolicyPort, R: RoutePlanner> ModelGateway<D, R> {
                     });
                 }
                 Ok(Err(_)) | Err(_) => {
-                    self.budget.finalize(
-                        &reservation.reservation_id,
-                        reservation.amount_microunits,
-                    )?;
+                    self.budget
+                        .finalize(&reservation.reservation_id, reservation.amount_microunits)?;
                     return Err(ModelError::ProviderOutcomeUnknown);
                 }
             }

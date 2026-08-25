@@ -124,12 +124,18 @@ impl CampaignBudgetGuard {
         }
         let mut state = self.state.lock();
         let next = BudgetState {
-            steps: state.steps.checked_add(steps).ok_or(EvalLabError::CampaignInvalid)?,
+            steps: state
+                .steps
+                .checked_add(steps)
+                .ok_or(EvalLabError::CampaignInvalid)?,
             requests: state
                 .requests
                 .checked_add(requests)
                 .ok_or(EvalLabError::CampaignInvalid)?,
-            tokens: state.tokens.checked_add(tokens).ok_or(EvalLabError::CampaignInvalid)?,
+            tokens: state
+                .tokens
+                .checked_add(tokens)
+                .ok_or(EvalLabError::CampaignInvalid)?,
             cost_microunits: state
                 .cost_microunits
                 .checked_add(cost_microunits)
@@ -173,7 +179,11 @@ impl FailureController {
     }
 
     pub fn check_dataset(&self) -> Result<(), EvalLabError> {
-        if self.active.lock().contains(&FailureInjection::DatasetCorruption) {
+        if self
+            .active
+            .lock()
+            .contains(&FailureInjection::DatasetCorruption)
+        {
             Err(EvalLabError::DatasetInvalid)
         } else {
             Ok(())
@@ -200,7 +210,11 @@ impl FailureController {
     }
 
     pub fn cleanup(&self) -> Result<(), EvalLabError> {
-        if self.active.lock().contains(&FailureInjection::CleanupFailure) {
+        if self
+            .active
+            .lock()
+            .contains(&FailureInjection::CleanupFailure)
+        {
             Err(EvalLabError::CleanupFailed)
         } else {
             Ok(())
@@ -273,7 +287,10 @@ mod tests {
             .count();
         assert_eq!(successes, 32);
         assert!(guard.killed());
-        assert_eq!(guard.reserve(1, 1, 1, 1), Err(EvalLabError::EnvironmentDenied));
+        assert_eq!(
+            guard.reserve(1, 1, 1, 1),
+            Err(EvalLabError::EnvironmentDenied)
+        );
     }
 
     #[test]
@@ -283,9 +300,15 @@ mod tests {
         controller.activate(FailureInjection::CleanupFailure);
         controller.activate(FailureInjection::EvidenceDrop);
         controller.activate(FailureInjection::DetectionServiceUnavailable);
-        assert_eq!(controller.check_dataset(), Err(EvalLabError::DatasetInvalid));
+        assert_eq!(
+            controller.check_dataset(),
+            Err(EvalLabError::DatasetInvalid)
+        );
         assert_eq!(controller.cleanup(), Err(EvalLabError::CleanupFailed));
-        assert_eq!(controller.check_evidence(), Err(EvalLabError::ExecutionFailed));
+        assert_eq!(
+            controller.check_evidence(),
+            Err(EvalLabError::ExecutionFailed)
+        );
         assert!(controller.baseline_guard_available());
     }
 }

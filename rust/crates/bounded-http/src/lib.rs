@@ -139,8 +139,7 @@ mod tests {
     #[tokio::test]
     async fn declared_length_over_limit_fails_before_a_short_body_is_trusted() {
         let (response, handle) = response_from(vec![
-            b"HTTP/1.1 200 OK\r\nContent-Length: 9999\r\nConnection: close\r\n\r\nshort"
-                .to_vec(),
+            b"HTTP/1.1 200 OK\r\nContent-Length: 9999\r\nConnection: close\r\n\r\nshort".to_vec(),
         ])
         .await;
         assert_eq!(
@@ -153,8 +152,7 @@ mod tests {
     #[tokio::test]
     async fn chunked_body_crossing_limit_fails_before_append() {
         let (response, handle) = response_from(vec![
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
-                .to_vec(),
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".to_vec(),
             b"4\r\nabcd\r\n4\r\nefgh\r\n0\r\n\r\n".to_vec(),
         ])
         .await;
@@ -168,8 +166,7 @@ mod tests {
     #[tokio::test]
     async fn chunked_body_at_exact_limit_is_accepted() {
         let (response, handle) = response_from(vec![
-            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
-                .to_vec(),
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".to_vec(),
             b"4\r\nabcd\r\n4\r\nefgh\r\n0\r\n\r\n".to_vec(),
         ])
         .await;

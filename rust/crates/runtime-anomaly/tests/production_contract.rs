@@ -2,28 +2,22 @@ const AUTHORITY: &str = include_str!("../src/authority.rs");
 const DETECTOR: &str = include_str!("../src/lib.rs");
 const ADAPTERS: &str = include_str!("../src/production.rs");
 const SERVER: &str = include_str!("../src/server.rs");
-const BINARY: &str =
-    include_str!("../src/bin/agenttrust-runtime-anomaly-authority.rs");
+const BINARY: &str = include_str!("../src/bin/agenttrust-runtime-anomaly-authority.rs");
 const MIGRATION: &str = include_str!(
     "../../../../migrations/runtime-anomaly/0036_01_17_production_runtime_anomaly.sql"
 );
-const OPENAPI: &str =
-    include_str!("../../../../schemas/openapi/runtime-anomaly-v1.yaml");
+const OPENAPI: &str = include_str!("../../../../schemas/openapi/runtime-anomaly-v1.yaml");
 const SIGNAL_SCHEMA: &str =
     include_str!("../../../../schemas/runtime-anomaly/risk-signal.schema.json");
 const COMMAND_SCHEMA: &str =
     include_str!("../../../../schemas/runtime-anomaly/runtime-anomaly-command.schema.json");
-const RESPONSE_REQUEST_SCHEMA: &str = include_str!(
-    "../../../../schemas/runtime-anomaly/controlled-response-request.schema.json"
-);
-const RESPONSE_RECEIPT_SCHEMA: &str = include_str!(
-    "../../../../schemas/runtime-anomaly/controlled-response-receipt.schema.json"
-);
+const RESPONSE_REQUEST_SCHEMA: &str =
+    include_str!("../../../../schemas/runtime-anomaly/controlled-response-request.schema.json");
+const RESPONSE_RECEIPT_SCHEMA: &str =
+    include_str!("../../../../schemas/runtime-anomaly/controlled-response-receipt.schema.json");
 const DOCKERFILE: &str = include_str!("../../../../Dockerfile.runtime-anomaly");
-const IMAGE_BUILDER: &str =
-    include_str!("../../../../scripts/build-production-image.py");
-const RUNBOOK: &str =
-    include_str!("../../../../docs/runtime-anomaly/operations-runbook.md");
+const IMAGE_BUILDER: &str = include_str!("../../../../scripts/build-production-image.py");
+const RUNBOOK: &str = include_str!("../../../../docs/runtime-anomaly/operations-runbook.md");
 const FAILURE_MATRIX: &str =
     include_str!("../../../../tests/runtime-anomaly/failure-injection-matrix.json");
 
@@ -39,9 +33,18 @@ fn governed_operations_match_code_schema_and_database_contract() {
         "RECOVER_PAUSED_TASK",
         "COMPLETE_TRAJECTORY",
     ] {
-        assert!(AUTHORITY.contains(operation), "authority missing {operation}");
-        assert!(COMMAND_SCHEMA.contains(operation), "schema missing {operation}");
-        assert!(MIGRATION.contains(operation), "migration missing {operation}");
+        assert!(
+            AUTHORITY.contains(operation),
+            "authority missing {operation}"
+        );
+        assert!(
+            COMMAND_SCHEMA.contains(operation),
+            "schema missing {operation}"
+        );
+        assert!(
+            MIGRATION.contains(operation),
+            "migration missing {operation}"
+        );
     }
     assert!(AUTHORITY.contains("APPLY_CONTINUOUS_AUTHORIZATION"));
 }
@@ -88,15 +91,26 @@ fn signed_signals_are_bounded_source_and_workload_bound() {
         "workload_identity",
         "safe_features",
     ] {
-        assert!(SIGNAL_SCHEMA.contains(marker), "signal schema missing {marker}");
+        assert!(
+            SIGNAL_SCHEMA.contains(marker),
+            "signal schema missing {marker}"
+        );
         assert!(AUTHORITY.contains(marker), "authority missing {marker}");
     }
     assert!(SIGNAL_SCHEMA.contains("maxProperties"));
     assert!(SIGNAL_SCHEMA.contains("maxLength"));
     assert!(AUTHORITY.contains("maximum_signal_clock_skew_seconds"));
     assert!(AUTHORITY.contains("maximum_signal_lookback"));
-    for forbidden in ["raw_prompt", "raw_output", "credential_value", "authorization_header"] {
-        assert!(!MIGRATION.contains(forbidden), "raw material column {forbidden}");
+    for forbidden in [
+        "raw_prompt",
+        "raw_output",
+        "credential_value",
+        "authorization_header",
+    ] {
+        assert!(
+            !MIGRATION.contains(forbidden),
+            "raw material column {forbidden}"
+        );
     }
 }
 
@@ -122,7 +136,10 @@ fn deterministic_detection_drives_fail_closed_continuous_authorization() {
         "REVOKE_CREDENTIAL",
         "KILL",
     ] {
-        assert!(DETECTOR.contains(adjustment), "adjustment missing {adjustment}");
+        assert!(
+            DETECTOR.contains(adjustment),
+            "adjustment missing {adjustment}"
+        );
     }
     assert!(AUTHORITY.contains("new_revocation_epoch"));
     assert!(AUTHORITY.contains("RECOVER_PAUSED_TASK"));
@@ -139,7 +156,10 @@ fn response_receipts_and_evidence_are_exactly_bound_and_recoverable() {
         "payload_digest",
         "evidence_ref",
     ] {
-        assert!(AUTHORITY.contains(marker), "receipt binding missing {marker}");
+        assert!(
+            AUTHORITY.contains(marker),
+            "receipt binding missing {marker}"
+        );
     }
     assert!(AUTHORITY.contains("MUTATED_PENDING_EVIDENCE"));
     assert!(AUTHORITY.contains("recover_pending_evidence"));
@@ -157,8 +177,7 @@ fn response_receipts_and_evidence_are_exactly_bound_and_recoverable() {
     assert!(BINARY.contains("AGENT_TRUST_RUNTIME_ANOMALY_EVIDENCE_CLIENT_IDENTITY"));
     assert!(RESPONSE_REQUEST_SCHEMA.contains("agenttrust.controlled-runtime-response.v1"));
     assert!(RESPONSE_REQUEST_SCHEMA.contains("authorization_evidence_digest"));
-    assert!(RESPONSE_RECEIPT_SCHEMA
-        .contains("agenttrust.controlled-runtime-response-receipt.v1"));
+    assert!(RESPONSE_RECEIPT_SCHEMA.contains("agenttrust.controlled-runtime-response-receipt.v1"));
     assert!(RESPONSE_RECEIPT_SCHEMA.contains("command_digest"));
 }
 
@@ -176,12 +195,14 @@ fn production_boundary_is_tls13_single_san_exact_scope_and_fixed_ports() {
         assert!(SERVER.contains(scope));
     }
     assert!(BINARY.contains("Uid::effective().is_root()"));
-    assert!(BINARY.contains(
-        "required_exact_port(\"AGENT_TRUST_RUNTIME_ANOMALY_DATA_PORT\", 8_094)"
-    ));
-    assert!(BINARY.contains(
-        "required_exact_port(\"AGENT_TRUST_RUNTIME_ANOMALY_MANAGEMENT_PORT\", 9_104)"
-    ));
+    assert!(
+        BINARY.contains("required_exact_port(\"AGENT_TRUST_RUNTIME_ANOMALY_DATA_PORT\", 8_094)")
+    );
+    assert!(
+        BINARY.contains(
+            "required_exact_port(\"AGENT_TRUST_RUNTIME_ANOMALY_MANAGEMENT_PORT\", 9_104)"
+        )
+    );
 }
 
 #[test]
@@ -216,7 +237,10 @@ fn force_rls_immutability_state_and_failure_boundaries_are_structural() {
         "EVIDENCE_RECEIPT_SIGNATURE_MISMATCH",
         "EVIDENCE_DELAYED_EXACT_REPLAY",
     ] {
-        assert!(FAILURE_MATRIX.contains(scenario), "missing scenario {scenario}");
+        assert!(
+            FAILURE_MATRIX.contains(scenario),
+            "missing scenario {scenario}"
+        );
     }
     assert!(FAILURE_MATRIX.contains("NOT_RUN_EXTERNAL_ENVIRONMENT"));
 }

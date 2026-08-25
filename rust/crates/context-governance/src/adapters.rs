@@ -8,26 +8,25 @@
 use crate::authority::{
     AdapterReceipt, ContextAuthorityError, ContextEffectReceipt, ContextExecutionBinding,
     ContextExecutorRequest, ContextOperation, ContextOrchestratorPort, ContextRetrievalRequest,
-    ContextRuntimePort, EvidenceDeliveryReceipt, RetrievalAuthorizationBinding,
-    RetrievalDecision, VectorSearchHit, canonical_digest, digest, evidence_reference, identifier,
-    index_reference, object_reference, valid_idempotency_key,
+    ContextRuntimePort, EvidenceDeliveryReceipt, RetrievalAuthorizationBinding, RetrievalDecision,
+    VectorSearchHit, canonical_digest, digest, evidence_reference, identifier, index_reference,
+    object_reference, valid_idempotency_key,
 };
 use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
-    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
-    AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
-    EvidenceEventType, ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId,
-    TenantId,
+    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft, EvidenceEventType, ExecutionId,
+    IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId, TenantId,
 };
 use agent_trust_gateway::InboundEnvelope;
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::VerifyingKey;
+use nix::unistd::Uid;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use nix::unistd::Uid;
 use std::collections::{BTreeMap, BTreeSet};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -175,7 +174,9 @@ impl ContextOrchestratorPort for HttpContextOrchestrator {
             return false;
         };
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 4096)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 4096)
         {
             return false;
         }
@@ -216,7 +217,9 @@ impl ContextOrchestratorPort for HttpContextOrchestrator {
             return Err(ContextAuthorityError::IdempotencyConflict);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 65_536)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 65_536)
         {
             return Err(ContextAuthorityError::DependencyUnavailable);
         }
@@ -226,8 +229,8 @@ impl ContextOrchestratorPort for HttpContextOrchestrator {
         if bytes.is_empty() || bytes.len() > 65_536 {
             return Err(ContextAuthorityError::DependencyUnavailable);
         }
-        let value: OrchestratorAcceptance = strict_json(&bytes)
-            .map_err(|_| ContextAuthorityError::DependencyUnavailable)?;
+        let value: OrchestratorAcceptance =
+            strict_json(&bytes).map_err(|_| ContextAuthorityError::DependencyUnavailable)?;
         if value.schema_version != "agenttrust.action-acceptance.v1"
             || !value.accepted
             || !value.start_requested
@@ -313,7 +316,13 @@ impl HttpContextRuntime {
         };
         let request_digest = canonical_digest(&request)?;
         let response: AdapterResponse = self
-            .post(endpoint, path, &binding.tenant_id, &binding.idempotency_key, &request)
+            .post(
+                endpoint,
+                path,
+                &binding.tenant_id,
+                &binding.idempotency_key,
+                &request,
+            )
             .await?;
         validate_adapter_response(
             &response,
@@ -382,7 +391,9 @@ impl HttpContextRuntime {
             return false;
         };
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 4096)
+            || response
+                .content_length()
+                .is_some_and(|length| length > 4096)
         {
             return false;
         }
@@ -531,13 +542,7 @@ impl HttpContextRuntime {
         payload: Value,
     ) -> Result<AdapterReceipt, ContextAuthorityError> {
         self.effect_call(
-            endpoint,
-            path,
-            adapter,
-            operation,
-            binding,
-            resource,
-            payload,
+            endpoint, path, adapter, operation, binding, resource, payload,
         )
         .await
         .map(|response| response.receipt)
@@ -582,8 +587,9 @@ impl ContextRuntimePort for HttpContextRuntime {
             ContextOperation::WriteMemory => {
                 let staging = required_string(payload, "staging_object_ref")?;
                 let content = required_string(payload, "content_digest")?;
-                let (poison_receipt, observed) =
-                    self.poison_scan(binding, resource, staging, content).await?;
+                let (poison_receipt, observed) = self
+                    .poison_scan(binding, resource, staging, content)
+                    .await?;
                 receipts.push(poison_receipt);
                 findings = observed;
                 let (object_receipt, promoted) = self
@@ -613,8 +619,9 @@ impl ContextRuntimePort for HttpContextRuntime {
                 );
                 let staging = required_string(payload, "staging_object_ref")?;
                 let content = required_string(payload, "content_digest")?;
-                let (poison_receipt, observed) =
-                    self.poison_scan(binding, resource, staging, content).await?;
+                let (poison_receipt, observed) = self
+                    .poison_scan(binding, resource, staging, content)
+                    .await?;
                 receipts.push(poison_receipt);
                 findings = observed;
                 let (object_receipt, promoted) = self
@@ -637,8 +644,9 @@ impl ContextRuntimePort for HttpContextRuntime {
                 );
                 let staging = required_string(payload, "staging_object_ref")?;
                 let content = required_string(payload, "content_digest")?;
-                let (poison_receipt, observed) =
-                    self.poison_scan(binding, resource, staging, content).await?;
+                let (poison_receipt, observed) = self
+                    .poison_scan(binding, resource, staging, content)
+                    .await?;
                 receipts.push(poison_receipt);
                 findings = observed;
                 let (object_receipt, promoted) = self
@@ -754,8 +762,9 @@ impl ContextRuntimePort for HttpContextRuntime {
                 receipts.push(poison_receipt);
                 findings = observed;
                 if findings.is_empty() {
-                    let (vector_receipt, index) =
-                        self.vector_upsert(binding, resource, object, content).await?;
+                    let (vector_receipt, index) = self
+                        .vector_upsert(binding, resource, object, content)
+                        .await?;
                     receipts.push(vector_receipt);
                     index_ref = Some(index);
                     receipts.push(
@@ -870,10 +879,7 @@ impl ContextRuntimePort for HttpContextRuntime {
                 fence_digest: evidence_digest_field(payload, "fence_digest")?,
                 policy_decision_id: evidence_string_field(payload, "policy_decision_id", 256)?
                     .into(),
-                policy_decision_digest: evidence_digest_field(
-                    payload,
-                    "policy_decision_digest",
-                )?,
+                policy_decision_digest: evidence_digest_field(payload, "policy_decision_digest")?,
                 authorization_evidence_ref: evidence_string_field(
                     payload,
                     "authorization_evidence_ref",
@@ -926,10 +932,14 @@ impl ContextRuntimePort for HttpContextRuntime {
             return Err(ContextAuthorityError::IdempotencyConflict);
         }
         if !response.status().is_success()
-            || response.content_length().is_some_and(|length| length > 65_536)
-            || response.headers().get(reqwest::header::CONTENT_TYPE).and_then(|value| {
-                value.to_str().ok()
-            }) != Some("application/json")
+            || response
+                .content_length()
+                .is_some_and(|length| length > 65_536)
+            || response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                != Some("application/json")
         {
             return Err(ContextAuthorityError::DependencyUnavailable);
         }
@@ -1057,10 +1067,7 @@ fn evidence_uuid_field(payload: &Value, name: &str) -> Result<Uuid, ContextAutho
         .ok_or(ContextAuthorityError::RequestInvalid)
 }
 
-fn evidence_digest_field(
-    payload: &Value,
-    name: &str,
-) -> Result<String, ContextAuthorityError> {
+fn evidence_digest_field(payload: &Value, name: &str) -> Result<String, ContextAuthorityError> {
     let value = evidence_string_field(payload, name, 64)?;
     if !digest(value) {
         return Err(ContextAuthorityError::RequestInvalid);
@@ -1148,8 +1155,8 @@ fn validate_https_root(value: &Url) -> Result<(), ContextAuthorityError> {
 }
 
 fn read_token(path: &Path) -> Result<String, ContextAuthorityError> {
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|_| ContextAuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        std::fs::symlink_metadata(path).map_err(|_| ContextAuthorityError::ConfigurationInvalid)?;
     if !path.is_absolute()
         || !metadata.file_type().is_file()
         || metadata.file_type().is_symlink()

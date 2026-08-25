@@ -487,9 +487,8 @@ fn build_profiles(
                     operation.method.as_str(),
                     "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
                 )
-                || internal_route.is_some_and(|route| {
-                    operation.method != "POST" || operation.path != route
-                })
+                || internal_route
+                    .is_some_and(|route| operation.method != "POST" || operation.path != route)
                 || operations
                     .insert(
                         operation_id,
@@ -752,16 +751,11 @@ fn internal_control_plane_route(
     if port != 443 {
         return None;
     }
-    let (service, route) = match (
-        executor_profile,
-        target_profile,
-        credential_profile,
-    ) {
-        (
-            "enterprise-control-executor",
-            "enterprise-control-authority",
-            "enterprise-executor",
-        ) => ("agenttrust-enterprise-authority", "/v1/enterprise/mutations"),
+    let (service, route) = match (executor_profile, target_profile, credential_profile) {
+        ("enterprise-control-executor", "enterprise-control-authority", "enterprise-executor") => (
+            "agenttrust-enterprise-authority",
+            "/v1/enterprise/mutations",
+        ),
         (
             "policy-administration-executor",
             "policy-administration-authority",

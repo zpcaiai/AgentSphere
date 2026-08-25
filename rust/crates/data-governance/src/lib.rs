@@ -79,7 +79,11 @@ impl LabelPropagator {
         let mut transforms = Vec::new();
         for label in labels {
             validate_label(label)?;
-            if transforms.len().saturating_add(label.lineage.transformation_hashes.len()) >= 1024 {
+            if transforms
+                .len()
+                .saturating_add(label.lineage.transformation_hashes.len())
+                >= 1024
+            {
                 return Err(DataError::LabelInvalid);
             }
             domain_tags.extend(label.domain_tags.clone());
@@ -172,7 +176,10 @@ impl<'a> DataClassifier<'a> {
         if request.schema_version != DATA_SCHEMA_VERSION
             || request.source_id.is_empty()
             || request.source_id.len() > 512
-            || !request.source_id.bytes().all(|byte| byte.is_ascii_graphic())
+            || !request
+                .source_id
+                .bytes()
+                .all(|byte| byte.is_ascii_graphic())
             || !valid_jurisdiction(&request.jurisdiction)
             || request.domain_tags.len() > 64
             || request.domain_tags.iter().any(|value| {
@@ -180,7 +187,10 @@ impl<'a> DataClassifier<'a> {
                     || value.len() > 256
                     || !value.bytes().all(|byte| byte.is_ascii_graphic())
             })
-            || !match (&request.human_override, &request.human_override_evidence_ref) {
+            || !match (
+                &request.human_override,
+                &request.human_override_evidence_ref,
+            ) {
                 (None, None) => true,
                 (Some(_), Some(value)) => {
                     value.starts_with("evidence://")
@@ -241,22 +251,22 @@ impl<'a> DataClassifier<'a> {
 impl Default for DlpScanner {
     fn default() -> Self {
         let secret_patterns = [
-                r"(?i)password\s*[:=]",
-                r"(?i)api[_-]?key\s*[:=]",
-                r"(?i)authorization\s*:\s*bearer",
-                r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
-            ]
-            .iter()
-            .map(|pattern| Regex::new(pattern))
-            .collect::<Result<Vec<_>, _>>();
+            r"(?i)password\s*[:=]",
+            r"(?i)api[_-]?key\s*[:=]",
+            r"(?i)authorization\s*:\s*bearer",
+            r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
+        ]
+        .iter()
+        .map(|pattern| Regex::new(pattern))
+        .collect::<Result<Vec<_>, _>>();
         let personal_patterns = [
-                r"\b\d{17}[0-9Xx]\b",
-                r"\b1[3-9]\d{9}\b",
-                r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-            ]
-            .iter()
-            .map(|pattern| Regex::new(pattern))
-            .collect::<Result<Vec<_>, _>>();
+            r"\b\d{17}[0-9Xx]\b",
+            r"\b1[3-9]\d{9}\b",
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
+        ]
+        .iter()
+        .map(|pattern| Regex::new(pattern))
+        .collect::<Result<Vec<_>, _>>();
         let patterns_valid = secret_patterns.is_ok() && personal_patterns.is_ok();
         Self {
             available: RwLock::new(patterns_valid),
@@ -398,9 +408,10 @@ impl DeploymentPolicy {
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
             || self.update_channel.is_empty()
             || self.update_channel.len() > 128
-            || !self.update_channel.bytes().all(|byte| {
-                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
-            })
+            || !self
+                .update_channel
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
             || self.allowed_external_endpoints.len() > 100
             || self.allowed_external_endpoints.iter().any(|endpoint| {
                 url::Url::parse(endpoint).map_or(true, |value| {
@@ -478,17 +489,23 @@ impl DataPolicyPortImpl {
             || !valid_jurisdiction(&request.destination_jurisdiction)
             || request.destination_kind.is_empty()
             || request.destination_kind.len() > 2048
-            || !request.destination_kind.bytes().all(|byte| byte.is_ascii_graphic())
+            || !request
+                .destination_kind
+                .bytes()
+                .all(|byte| byte.is_ascii_graphic())
             || request.deployment_profile.is_empty()
             || request.deployment_profile.len() > 128
             || !request
                 .deployment_profile
                 .bytes()
                 .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
-            || request.cross_domain_approval_id.as_ref().is_some_and(|approval| {
-                !uuid::Uuid::parse_str(&approval.0)
-                    .is_ok_and(|value| value.to_string() == approval.0)
-            })
+            || request
+                .cross_domain_approval_id
+                .as_ref()
+                .is_some_and(|approval| {
+                    !uuid::Uuid::parse_str(&approval.0)
+                        .is_ok_and(|value| value.to_string() == approval.0)
+                })
         {
             return Err(DataError::PolicyInvalid);
         }
@@ -537,9 +554,12 @@ impl DataPolicyPortImpl {
             || destination.contains("external")
             || destination.contains("saas");
         let url_is_private = destination_url.is_some()
-            && matches!(&deployment.mode, DeploymentMode::Vpc | DeploymentMode::OnPrem);
-        let url_is_saas = destination_url.is_some()
-            && matches!(&deployment.mode, DeploymentMode::Saas);
+            && matches!(
+                &deployment.mode,
+                DeploymentMode::Vpc | DeploymentMode::OnPrem
+            );
+        let url_is_saas =
+            destination_url.is_some() && matches!(&deployment.mode, DeploymentMode::Saas);
         let crosses_private_boundary = named_private_boundary_crossing || url_is_saas;
         let external_egress = crosses_private_boundary
             || destination.contains("internet")
@@ -568,7 +588,9 @@ impl DataPolicyPortImpl {
             if destination_url.scheme() != "https"
                 || !destination_url.username().is_empty()
                 || destination_url.password().is_some()
-                || !deployment.allowed_external_endpoints.contains(origin.as_str())
+                || !deployment
+                    .allowed_external_endpoints
+                    .contains(origin.as_str())
             {
                 allowed = false;
                 reasons.push("DESTINATION_ENDPOINT_DENIED".into());
@@ -827,7 +849,9 @@ fn scan_json_value(
             for finding in &mut text_findings {
                 finding.path = path.into();
             }
-            if findings.len().checked_add(text_findings.len())
+            if findings
+                .len()
+                .checked_add(text_findings.len())
                 .is_none_or(|count| count > MAX_DLP_FINDINGS)
             {
                 return Err(DataError::ContentInvalid);
@@ -849,11 +873,13 @@ fn finding(kind: DlpFindingKind, path: &str, bytes: &[u8], blocking: bool) -> Dl
 fn looks_base64(text: &str) -> bool {
     let value = text.trim();
     value.len() >= 16
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'_' | b'-' | b'='))
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'_' | b'-' | b'=')
+        })
         && value.bytes().filter(|byte| *byte == b'=').count() <= 2
-        && value.find('=').is_none_or(|index| value[index..].bytes().all(|byte| byte == b'='))
+        && value
+            .find('=')
+            .is_none_or(|index| value[index..].bytes().all(|byte| byte == b'='))
 }
 
 fn decode_base64_layer(value: &str) -> Option<Vec<u8>> {
@@ -865,10 +891,17 @@ fn validate_label(label: &DataLabel) -> Result<(), DataError> {
     if label.schema_version != DATA_SCHEMA_VERSION
         || label.retention_label.is_empty()
         || label.retention_label.len() > 128
-        || !label.retention_label.bytes().all(|byte| byte.is_ascii_graphic())
+        || !label
+            .retention_label
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic())
         || label.lineage.source_id.is_empty()
         || label.lineage.source_id.len() > 512
-        || !label.lineage.source_id.bytes().all(|byte| byte.is_ascii_graphic())
+        || !label
+            .lineage
+            .source_id
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic())
         || !is_digest(&label.lineage.source_hash)
         || label.lineage.transformation_hashes.len() > 1024
         || label
@@ -891,15 +924,16 @@ fn validate_label(label: &DataLabel) -> Result<(), DataError> {
         })
         || label.jurisdictions.is_empty()
         || label.jurisdictions.len() > 32
-        || label.jurisdictions.iter().any(|value| !valid_jurisdiction(value))
+        || label
+            .jurisdictions
+            .iter()
+            .any(|value| !valid_jurisdiction(value))
         || label.confidence == LabelConfidence::Unknown
             && label.classification < DataClassification::Restricted
         || label.contains_secret
-            && (label.classification < DataClassification::Restricted
-                || !label.export_restricted)
+            && (label.classification < DataClassification::Restricted || !label.export_restricted)
         || label.contains_personal_data
-            && (label.classification != DataClassification::Regulated
-                || !label.export_restricted)
+            && (label.classification != DataClassification::Regulated || !label.export_restricted)
     {
         Err(DataError::LabelInvalid)
     } else {
@@ -1111,9 +1145,7 @@ mod tests {
             .register(DeploymentPolicy {
                 profile_id: "saas".into(),
                 mode: DeploymentMode::Saas,
-                allowed_external_endpoints: BTreeSet::from([
-                    "https://approved.example/".into(),
-                ]),
+                allowed_external_endpoints: BTreeSet::from(["https://approved.example/".into()]),
                 telemetry_export: false,
                 update_channel: "signed".into(),
                 maximum_classification: DataClassification::Confidential,
@@ -1155,9 +1187,7 @@ mod tests {
             .register(DeploymentPolicy {
                 profile_id: "private-url".into(),
                 mode: DeploymentMode::OnPrem,
-                allowed_external_endpoints: BTreeSet::from([
-                    "https://approved.private/".into(),
-                ]),
+                allowed_external_endpoints: BTreeSet::from(["https://approved.private/".into()]),
                 telemetry_export: false,
                 update_channel: "signed".into(),
                 maximum_classification: DataClassification::Regulated,
@@ -1168,9 +1198,7 @@ mod tests {
             .register(DeploymentPolicy {
                 profile_id: "saas-url".into(),
                 mode: DeploymentMode::Saas,
-                allowed_external_endpoints: BTreeSet::from([
-                    "https://approved.saas/".into(),
-                ]),
+                allowed_external_endpoints: BTreeSet::from(["https://approved.saas/".into()]),
                 telemetry_export: false,
                 update_channel: "signed".into(),
                 maximum_classification: DataClassification::Regulated,
@@ -1264,8 +1292,16 @@ mod tests {
         let scanner = DlpScanner::default();
         let encoded = STANDARD.encode([0x1f, 0x8b, 0x08, 0x00]);
         let findings = scanner.scan_bytes(encoded.as_bytes()).unwrap_or_default();
-        assert!(findings.iter().any(|value| value.kind == DlpFindingKind::EncodedPayload));
-        assert!(findings.iter().any(|value| value.kind == DlpFindingKind::CompressedPayload));
+        assert!(
+            findings
+                .iter()
+                .any(|value| value.kind == DlpFindingKind::EncodedPayload)
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|value| value.kind == DlpFindingKind::CompressedPayload)
+        );
         assert_eq!(
             scanner.scan_bytes(&vec![b'a'; MAX_INSPECTION_BYTES + 1]),
             Err(DataError::ContentInvalid)
@@ -1286,26 +1322,31 @@ mod tests {
             expires_at: Utc::now() + chrono::Duration::minutes(1),
             single_use: true,
         };
-        service.issue(grant.clone()).unwrap_or_else(|_| panic!("issue"));
+        service
+            .issue(grant.clone())
+            .unwrap_or_else(|_| panic!("issue"));
         let barrier = Arc::new(Barrier::new(3));
-        let handles = (0..2).map(|_| {
-            let service = service.clone();
-            let grant = grant.clone();
-            let barrier = barrier.clone();
-            thread::spawn(move || {
-                barrier.wait();
-                service.verify_and_consume(
-                    &grant.grant_id,
-                    &grant.tenant_id,
-                    "zone-a",
-                    "zone-b",
-                    &grant.data_hash,
-                    Utc::now(),
-                )
+        let handles = (0..2)
+            .map(|_| {
+                let service = service.clone();
+                let grant = grant.clone();
+                let barrier = barrier.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    service.verify_and_consume(
+                        &grant.grant_id,
+                        &grant.tenant_id,
+                        "zone-a",
+                        "zone-b",
+                        &grant.data_hash,
+                        Utc::now(),
+                    )
+                })
             })
-        }).collect::<Vec<_>>();
+            .collect::<Vec<_>>();
         barrier.wait();
-        let successes = handles.into_iter()
+        let successes = handles
+            .into_iter()
             .filter_map(|handle| handle.join().ok())
             .filter(Result::is_ok)
             .count();
@@ -1315,18 +1356,20 @@ mod tests {
     #[test]
     fn deterministic_classifier_never_assigns_untrusted_unknown_content_public() {
         let scanner = DlpScanner::default();
-        let label = DataClassifier::new(&scanner).classify(
-            &ClassificationRequest {
-                schema_version: DATA_SCHEMA_VERSION.into(),
-                source_id: "untrusted-upload".into(),
-                jurisdiction: "CN".into(),
-                source_trusted: false,
-                domain_tags: BTreeSet::from(["upload".into()]),
-                human_override: None,
-                human_override_evidence_ref: None,
-            },
-            b"ordinary looking but unverified text",
-        ).unwrap_or_else(|_| panic!("classification"));
+        let label = DataClassifier::new(&scanner)
+            .classify(
+                &ClassificationRequest {
+                    schema_version: DATA_SCHEMA_VERSION.into(),
+                    source_id: "untrusted-upload".into(),
+                    jurisdiction: "CN".into(),
+                    source_trusted: false,
+                    domain_tags: BTreeSet::from(["upload".into()]),
+                    human_override: None,
+                    human_override_evidence_ref: None,
+                },
+                b"ordinary looking but unverified text",
+            )
+            .unwrap_or_else(|_| panic!("classification"));
         assert_eq!(label.classification, DataClassification::Restricted);
         assert!(label.export_restricted);
     }

@@ -5,8 +5,8 @@ use agent_trust_security_evaluation_lab::authority::{
 };
 use agent_trust_security_evaluation_lab::server::{
     HttpIsolatedRunner, HttpSecurityEvalEvidence, HttpSecurityEvalOrchestrator,
-    SecurityEvalEvidenceKeyring, SecurityEvalServerConfig, SecurityEvalTokenAuthorizer, data_router,
-    management_router, serve,
+    SecurityEvalEvidenceKeyring, SecurityEvalServerConfig, SecurityEvalTokenAuthorizer,
+    data_router, management_router, serve,
 };
 use ed25519_dalek::SigningKey;
 use reqwest::{Certificate, Identity};
@@ -79,9 +79,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             service_agent_id: AgentInstanceId(required_uuid(
                 "AGENT_TRUST_SECURITY_EVAL_AGENT_INSTANCE_ID",
             )?),
-            organization_id: required_identifier(
-                "AGENT_TRUST_SECURITY_EVAL_ORGANIZATION_ID",
-            )?,
+            organization_id: required_identifier("AGENT_TRUST_SECURITY_EVAL_ORGANIZATION_ID")?,
             agent_version: required_identifier("AGENT_TRUST_SECURITY_EVAL_AGENT_VERSION")?,
             region: required_identifier("AGENT_TRUST_SECURITY_EVAL_REGION")?,
             tool_id: ToolId(required_identifier("AGENT_TRUST_SECURITY_EVAL_TOOL_ID")?),
@@ -91,9 +89,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             credential_profile: required_identifier(
                 "AGENT_TRUST_SECURITY_EVAL_EXECUTOR_CREDENTIAL_PROFILE",
             )?,
-            service_subject: required_identifier(
-                "AGENT_TRUST_SECURITY_EVAL_SERVICE_SUBJECT",
-            )?,
+            service_subject: required_identifier("AGENT_TRUST_SECURITY_EVAL_SERVICE_SUBJECT")?,
         },
     )?;
     let runner = Arc::new(HttpIsolatedRunner::new(
@@ -113,11 +109,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let keyring_path = required_private_path("AGENT_TRUST_SECURITY_EVAL_DATASET_KEYRING_FILE")?;
     let keyring_bytes = std::fs::read(&keyring_path)?;
     let dataset_keys = DatasetTrustKeyring::from_json(&keyring_bytes, chrono::Utc::now())?;
-    let mut signing_key_bytes = read_binary_secret(
-        "AGENT_TRUST_SECURITY_EVAL_REPORT_SIGNING_KEY_FILE",
-        32,
-        32,
-    )?;
+    let mut signing_key_bytes =
+        read_binary_secret("AGENT_TRUST_SECURITY_EVAL_REPORT_SIGNING_KEY_FILE", 32, 32)?;
     let signing_key_array: [u8; 32] = signing_key_bytes
         .as_slice()
         .try_into()
@@ -138,11 +131,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         &required_private_path("AGENT_TRUST_SECURITY_EVAL_TOKEN_BINDINGS_FILE")?,
         &identities,
     )?);
-    let maximum_concurrency = required_usize(
-        "AGENT_TRUST_SECURITY_EVAL_MAXIMUM_CONCURRENCY",
-        1,
-        10_000,
-    )?;
+    let maximum_concurrency =
+        required_usize("AGENT_TRUST_SECURITY_EVAL_MAXIMUM_CONCURRENCY", 1, 10_000)?;
     let data = data_router(
         ingress.clone(),
         executor.clone(),
@@ -222,7 +212,9 @@ async fn verify_database_role(
     {
         return Err("SECURITY_EVAL_DATABASE_ROLE_UNSAFE".into());
     }
-    let row_security: String = sqlx::query_scalar("SHOW row_security").fetch_one(pool).await?;
+    let row_security: String = sqlx::query_scalar("SHOW row_security")
+        .fetch_one(pool)
+        .await?;
     if row_security != "on" {
         return Err("SECURITY_EVAL_DATABASE_RLS_DISABLED".into());
     }
@@ -249,7 +241,13 @@ async fn verify_database_role(
     .fetch_all(pool)
     .await?
     .into_iter()
-    .map(|row| format!("{}:{}", row.get::<String, _>("table_name"), row.get::<String, _>("privilege_type")))
+    .map(|row| {
+        format!(
+            "{}:{}",
+            row.get::<String, _>("table_name"),
+            row.get::<String, _>("privilege_type")
+        )
+    })
     .collect::<BTreeSet<_>>();
     if grants != expected_grants() {
         return Err("SECURITY_EVAL_DATABASE_GRANTS_INVALID".into());
@@ -412,7 +410,12 @@ fn validate_file(path: &Path, private: bool) -> Result<(), Box<dyn std::error::E
     let effective_gid = nix::unistd::Gid::effective().as_raw();
     let mode = metadata.mode() & 0o777;
     let private_access = if private {
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         readable && mode & !allowed == 0
@@ -480,11 +483,7 @@ fn required_identities(name: &str) -> Result<BTreeSet<String>, Box<dyn std::erro
     Ok(identities)
 }
 
-fn required_u16(
-    name: &str,
-    minimum: u16,
-    maximum: u16,
-) -> Result<u16, Box<dyn std::error::Error>> {
+fn required_u16(name: &str, minimum: u16, maximum: u16) -> Result<u16, Box<dyn std::error::Error>> {
     let value: u16 = required_env(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("SECURITY_EVAL_NUMBER_INVALID".into());
@@ -492,11 +491,7 @@ fn required_u16(
     Ok(value)
 }
 
-fn required_u32(
-    name: &str,
-    minimum: u32,
-    maximum: u32,
-) -> Result<u32, Box<dyn std::error::Error>> {
+fn required_u32(name: &str, minimum: u32, maximum: u32) -> Result<u32, Box<dyn std::error::Error>> {
     let value: u32 = required_env(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("SECURITY_EVAL_NUMBER_INVALID".into());
@@ -504,11 +499,7 @@ fn required_u32(
     Ok(value)
 }
 
-fn required_i64(
-    name: &str,
-    minimum: i64,
-    maximum: i64,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
     let value: i64 = required_env(name)?.parse()?;
     if !(minimum..=maximum).contains(&value) {
         return Err("SECURITY_EVAL_NUMBER_INVALID".into());

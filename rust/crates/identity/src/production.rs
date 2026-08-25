@@ -1,8 +1,7 @@
 use super::*;
 use agent_trust_contracts::{
     IdempotencyKey, SignedWorkloadCredentialBindingReceipt, TenantId,
-    WORKLOAD_CREDENTIAL_BINDING_KEY_USAGE,
-    WORKLOAD_CREDENTIAL_BINDING_RECEIPT_SCHEMA_VERSION,
+    WORKLOAD_CREDENTIAL_BINDING_KEY_USAGE, WORKLOAD_CREDENTIAL_BINDING_RECEIPT_SCHEMA_VERSION,
     WORKLOAD_CREDENTIAL_BINDING_REQUEST_SCHEMA_VERSION, WORKLOAD_CREDENTIAL_CLAIMS_SCHEMA_VERSION,
     WorkloadCredentialBindingRequest, WorkloadCredentialClaims, WorkloadCredentialIssuance,
 };

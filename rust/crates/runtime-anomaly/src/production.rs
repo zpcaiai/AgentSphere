@@ -5,10 +5,9 @@ use crate::authority::*;
 use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION, ActionHash, ArtifactRef,
-    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest,
-    AuthorityEvidenceSourceKind, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft,
-    EvidenceEventType, ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId,
-    TenantId,
+    AuthorityEvidenceControlBinding, AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind,
+    EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft, EvidenceEventType, ExecutionId,
+    IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId, TenantId,
 };
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -86,7 +85,9 @@ impl RuntimeAnomalyEvidenceKeyring {
                 return Err(RuntimeAnomalyAuthorityError::ConfigurationInvalid);
             }
         }
-        Ok(Self { keys: Arc::new(keys) })
+        Ok(Self {
+            keys: Arc::new(keys),
+        })
     }
 
     fn key(&self, key_id: &str) -> Option<&VerifyingKey> {
@@ -147,8 +148,8 @@ impl HttpsRuntimeAnomalyRuntime {
         private_key.zeroize();
         let identity_result = Identity::from_pem(&identity_pem);
         identity_pem.zeroize();
-        let identity = identity_result
-            .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
+        let identity =
+            identity_result.map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
         let client = reqwest::Client::builder()
             .https_only(true)
             .tls_built_in_root_certs(false)
@@ -161,7 +162,10 @@ impl HttpsRuntimeAnomalyRuntime {
             .pool_max_idle_per_host(8)
             .build()
             .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
-        Ok(Self { client, dependencies })
+        Ok(Self {
+            client,
+            dependencies,
+        })
     }
 
     async fn all_ready(&self) -> bool {
@@ -399,12 +403,10 @@ impl RuntimeAnomalyEffectsPort for HttpsRuntimeAnomalyRuntime {
     }
 }
 
-fn required_uuid_field(
-    payload: &Value,
-    key: &str,
-) -> Result<Uuid, RuntimeAnomalyAuthorityError> {
+fn required_uuid_field(payload: &Value, key: &str) -> Result<Uuid, RuntimeAnomalyAuthorityError> {
     let value = required_string_field(payload, key, 36)?;
-    let parsed = Uuid::parse_str(value).map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
+    let parsed =
+        Uuid::parse_str(value).map_err(|_| RuntimeAnomalyAuthorityError::RequestInvalid)?;
     if parsed.is_nil() || parsed.to_string() != value {
         return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
     }
@@ -601,9 +603,8 @@ async fn dependency_ready(client: &reqwest::Client, endpoint: &RuntimeAnomalyEnd
     if bytes.is_empty() || bytes.len() > 4_096 {
         return false;
     }
-    serde_json::from_slice::<DependencyReadiness>(&bytes).is_ok_and(|value| {
-        value.schema_version == endpoint.readiness_schema && value.ready
-    })
+    serde_json::from_slice::<DependencyReadiness>(&bytes)
+        .is_ok_and(|value| value.schema_version == endpoint.readiness_schema && value.ready)
 }
 
 async fn bounded_json<T: for<'de> Deserialize<'de>>(
@@ -627,8 +628,8 @@ async fn bounded_json<T: for<'de> Deserialize<'de>>(
 
 fn read_token(path: &Path) -> Result<String, RuntimeAnomalyAuthorityError> {
     validate_file(path, true, 8_194)?;
-    let metadata = std::fs::metadata(path)
-        .map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
+    let metadata =
+        std::fs::metadata(path).map_err(|_| RuntimeAnomalyAuthorityError::ConfigurationInvalid)?;
     if !path.is_absolute() || !metadata.is_file() || metadata.len() > 8_194 {
         return Err(RuntimeAnomalyAuthorityError::ConfigurationInvalid);
     }
@@ -665,7 +666,12 @@ fn validate_file(
         let mode = metadata.mode() & 0o777;
         let effective_uid = nix::unistd::Uid::effective().as_raw();
         let effective_gid = nix::unistd::Gid::effective().as_raw();
-        let allowed = 0o400 | if metadata.gid() == effective_gid { 0o040 } else { 0 };
+        let allowed = 0o400
+            | if metadata.gid() == effective_gid {
+                0o040
+            } else {
+                0
+            };
         let private_ok = ((metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0))
             && mode & !allowed == 0;

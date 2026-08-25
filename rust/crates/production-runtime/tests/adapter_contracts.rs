@@ -478,10 +478,9 @@ fn example_configuration_binds_every_adapter_fail_closed() {
                 }
             }
             "authority_env" => {
-                let template = fs::read_to_string(
-                    root.join("deploy/kubernetes/production-stack.yaml.tmpl"),
-                )
-                .unwrap_or_else(|error| panic!("production stack template: {error}"));
+                let template =
+                    fs::read_to_string(root.join("deploy/kubernetes/production-stack.yaml.tmpl"))
+                        .unwrap_or_else(|error| panic!("production stack template: {error}"));
                 for required in [
                     binding.selector.as_str(),
                     "AGENT_TRUST_POLICY_PEP_ACTIVATION_TOKEN_FILE",
@@ -490,7 +489,10 @@ fn example_configuration_binds_every_adapter_fail_closed() {
                     "AGENT_TRUST_POLICY_OUTBOUND_PRIVATE_KEY_FILE",
                     "AGENT_TRUST_POLICY_PEP_ACTIVATION_VERIFYING_KEY_FILE",
                 ] {
-                    assert!(template.contains(required), "missing authority binding {required}");
+                    assert!(
+                        template.contains(required),
+                        "missing authority binding {required}"
+                    );
                 }
             }
             other => panic!("unsupported configuration binding: {other}"),

@@ -11,8 +11,8 @@ use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use axum_server::accept::Accept;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
-use ring::hmac;
 use nix::unistd::Uid;
+use ring::hmac;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
@@ -114,8 +114,7 @@ impl ContextTokenAuthorizer {
         {
             return Err(ContextAuthorityError::ConfigurationInvalid);
         }
-        let raw =
-            std::fs::read(path).map_err(|_| ContextAuthorityError::ConfigurationInvalid)?;
+        let raw = std::fs::read(path).map_err(|_| ContextAuthorityError::ConfigurationInvalid)?;
         if raw.is_empty() || raw.len() > 1_048_576 {
             return Err(ContextAuthorityError::ConfigurationInvalid);
         }
@@ -214,7 +213,10 @@ pub fn router(
         .route("/v1/context/actions", post(submit_action))
         .route("/v1/context/executions", post(execute_mutation))
         .route("/v1/context/retrievals", post(retrieve_context))
-        .route("/v1/authoritative/context/resources", get(authoritative_resources))
+        .route(
+            "/v1/authoritative/context/resources",
+            get(authoritative_resources),
+        )
         .layer(DefaultBodyLimit::max(1_048_576))
         .layer(TimeoutLayer::new(Duration::from_secs(45)))
         .with_state(ServerState {
@@ -238,10 +240,9 @@ async fn submit_action(
     require_json_content_type(&headers)?;
     let request: ContextCommandRequest = strict_json(&body)?;
     let tenant = exact_tenant(&headers, request.tenant_id)?;
-    let subject =
-        state
-            .tokens
-            .authorize(&peer, &tenant.0, CONTEXT_MUTATE_SCOPE, &headers)?;
+    let subject = state
+        .tokens
+        .authorize(&peer, &tenant.0, CONTEXT_MUTATE_SCOPE, &headers)?;
     let idempotency_key = required_idempotency_key(&headers)?;
     let request_digest = service_request_digest(
         "/v1/context/actions",
@@ -254,13 +255,7 @@ async fn submit_action(
     )?;
     let receipt = state
         .ingress
-        .submit(
-            tenant,
-            subject,
-            request,
-            &request_digest,
-            idempotency_key,
-        )
+        .submit(tenant, subject, request, &request_digest, idempotency_key)
         .await?;
     Ok((StatusCode::ACCEPTED, Json(receipt)))
 }
@@ -284,32 +279,18 @@ async fn execute_mutation(
     let binding = ContextExecutionBinding {
         tenant_id: tenant,
         action_hash: required_header(&headers, "x-agenttrust-action-hash")?.into(),
-        ledger_execution_id: parse_uuid_header(
-            &headers,
-            "x-agenttrust-ledger-execution-id",
-        )?,
+        ledger_execution_id: parse_uuid_header(&headers, "x-agenttrust-ledger-execution-id")?,
         ledger_event_id: parse_uuid_header(&headers, "x-agenttrust-ledger-entry-id")?,
-        ledger_event_digest: required_header(
-            &headers,
-            "x-agenttrust-ledger-entry-digest",
-        )?
-        .into(),
+        ledger_event_digest: required_header(&headers, "x-agenttrust-ledger-entry-digest")?.into(),
         fence_digest: required_header(&headers, "x-agenttrust-fence-digest")?.into(),
         resource_version: required_header(&headers, "x-agenttrust-resource-version")?
             .parse()
             .map_err(|_| ContextAuthorityError::RequestInvalid)?,
         idempotency_key: required_idempotency_key(&headers)?.into(),
         trace_id: required_header(&headers, "x-agenttrust-trace-id")?.into(),
-        policy_decision_id: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-id",
-        )?
-        .into(),
-        policy_decision_digest: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-digest",
-        )?
-        .into(),
+        policy_decision_id: required_header(&headers, "x-agenttrust-policy-decision-id")?.into(),
+        policy_decision_digest: required_header(&headers, "x-agenttrust-policy-decision-digest")?
+            .into(),
         authorization_evidence_ref: required_header(
             &headers,
             "x-agenttrust-authorization-evidence-ref",
@@ -342,21 +323,11 @@ async fn retrieve_context(
     let binding = RetrievalAuthorizationBinding {
         tenant_id: tenant,
         client_subject: subject,
-        policy_decision_id: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-id",
-        )?
-        .into(),
-        policy_decision_digest: required_header(
-            &headers,
-            "x-agenttrust-policy-decision-digest",
-        )?
-        .into(),
-        policy_evidence_ref: required_header(
-            &headers,
-            "x-agenttrust-authorization-evidence-ref",
-        )?
-        .into(),
+        policy_decision_id: required_header(&headers, "x-agenttrust-policy-decision-id")?.into(),
+        policy_decision_digest: required_header(&headers, "x-agenttrust-policy-decision-digest")?
+            .into(),
+        policy_evidence_ref: required_header(&headers, "x-agenttrust-authorization-evidence-ref")?
+            .into(),
         policy_evidence_digest: required_header(
             &headers,
             "x-agenttrust-authorization-evidence-digest",
@@ -602,10 +573,7 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn exact_tenant(
-    headers: &HeaderMap,
-    body_tenant: Uuid,
-) -> Result<TenantId, ContextAuthorityError> {
+fn exact_tenant(headers: &HeaderMap, body_tenant: Uuid) -> Result<TenantId, ContextAuthorityError> {
     let tenant = exact_tenant_from_header(headers)?;
     if tenant.0 != body_tenant.to_string() {
         return Err(ContextAuthorityError::PrincipalDenied);
@@ -714,9 +682,7 @@ fn constant_time_equal(first: &str, second: &str) -> bool {
     hmac::verify(&key, first.as_bytes(), tag.as_ref()).is_ok()
 }
 
-fn validate_identities(
-    identities: &BTreeSet<String>,
-) -> Result<(), ContextAuthorityError> {
+fn validate_identities(identities: &BTreeSet<String>) -> Result<(), ContextAuthorityError> {
     if identities.is_empty()
         || identities.iter().any(|identity| {
             identity.len() > 512
