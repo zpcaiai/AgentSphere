@@ -152,14 +152,25 @@ impl SupplyTokenAuthorizer {
             .filter(|value| (16..=8192).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_graphic()))
             .ok_or(SupplyAuthorityError::PrincipalDenied)?;
         let supplied = hex::encode(Sha256::digest(bearer.as_bytes()));
-        let matches = self.bindings.iter().filter(|binding| {
-            binding.client_identity == peer
-                && binding.tenant_id == tenant.to_string()
+        let tenant = tenant.to_string();
+        let mut subject = None;
+        let mut match_count = 0_usize;
+        for binding in &self.bindings {
+            if binding.client_identity == peer
+                && binding.tenant_id == tenant
                 && binding.scope == scope
                 && constant_time_equal(&supplied, &binding.token_sha256)
-        }).collect::<Vec<_>>();
-        if matches.len()!=1 { return Err(SupplyAuthorityError::PrincipalDenied); }
-        Ok(matches[0].subject.clone())
+            {
+                match_count += 1;
+                if subject.is_none() {
+                    subject = Some(binding.subject.clone());
+                }
+            }
+        }
+        match subject {
+            Some(subject) if match_count == 1 => Ok(subject),
+            _ => Err(SupplyAuthorityError::PrincipalDenied),
+        }
     }
 }
 
@@ -503,7 +514,7 @@ fn single_header<'a>(headers:&'a HeaderMap,name:&'static str)->Option<&'a str>{l
 fn read_token(path:&Path)->Result<String,SupplyAuthorityError>{let raw=read_private_bytes(path,16,8194)?;let value=std::str::from_utf8(&raw).map_err(|_|SupplyAuthorityError::ConfigurationInvalid)?;let token=value.trim_end_matches(['\r','\n']);if !(16..=8192).contains(&token.len())||token.bytes().any(|byte|!byte.is_ascii_graphic())||value.len().saturating_sub(token.len())>2{return Err(SupplyAuthorityError::ConfigurationInvalid);}Ok(token.to_string())}
 fn read_private_bytes(path:&Path,minimum:u64,maximum:u64)->Result<Vec<u8>,SupplyAuthorityError>{let metadata=std::fs::symlink_metadata(path).map_err(|_|SupplyAuthorityError::ConfigurationInvalid)?;if !path.is_absolute()||!metadata.file_type().is_file()||metadata.file_type().is_symlink()||metadata.len()<minimum||metadata.len()>maximum{return Err(SupplyAuthorityError::ConfigurationInvalid);}#[cfg(unix)]{use std::os::unix::fs::MetadataExt;let mode=metadata.mode()&0o777;let uid=nix::unistd::Uid::effective().as_raw();let gid=nix::unistd::Gid::effective().as_raw();let allowed=0o400|if metadata.gid()==gid{0o040}else{0};let readable=(metadata.uid()==uid&&mode&0o400!=0)||(metadata.gid()==gid&&mode&0o040!=0);if metadata.nlink()!=1||!readable||mode&!allowed!=0{return Err(SupplyAuthorityError::ConfigurationInvalid);}}std::fs::read(path).map_err(|_|SupplyAuthorityError::ConfigurationInvalid)}
 fn constant_time_equal(first:&str,second:&str)->bool{let key=hmac::Key::new(hmac::HMAC_SHA256,b"agenttrust-supply-token-compare-v1");let tag=hmac::sign(&key,second.as_bytes());hmac::verify(&key,first.as_bytes(),tag.as_ref()).is_ok()}
-fn digest(value:&str)->bool{value.len()==64&&value.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))}
+fn digest(value:&str)->bool{value.len()==64&&value.bytes().all(|byte|byte.is_ascii_hexdigit()&&!byte.is_ascii_uppercase())}
 fn canonical_uuid(value:&str)->bool{Uuid::parse_str(value).is_ok_and(|parsed|parsed.to_string()==value)}
 fn identifier(value:&str,maximum:usize)->bool{!value.is_empty()&&value.len()<=maximum&&value.bytes().all(|byte|byte.is_ascii_alphanumeric()||matches!(byte,b'-'|b'_'|b'.'|b':'|b'/'|b'@'))}
 fn parse_evidence_time(payload:&serde_json::Value,key:&str)->Result<chrono::DateTime<Utc>,SupplyAuthorityError>{

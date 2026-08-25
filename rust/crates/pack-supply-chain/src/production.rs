@@ -41,7 +41,7 @@ pub enum SupplyOperation {
 }
 
 impl SupplyOperation {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Publish => "PUBLISH",
             Self::Validate => "VALIDATE",
@@ -1673,7 +1673,7 @@ fn uuid_field(map: &Map<String, Value>, key: &str) -> Result<Uuid, SupplyAuthori
 
 fn i32_field(map: &Map<String, Value>, key: &str, minimum: i32, maximum: i32) -> Result<i32, SupplyAuthorityError> {
     map.get(key).and_then(Value::as_i64).and_then(|value| i32::try_from(value).ok())
-        .filter(|value| (*value>=minimum)&&(*value<=maximum)).ok_or(SupplyAuthorityError::RequestInvalid)
+        .filter(|value| (minimum..=maximum).contains(value)).ok_or(SupplyAuthorityError::RequestInvalid)
 }
 
 fn datetime_field(map: &Map<String, Value>, key: &str) -> Result<DateTime<Utc>, SupplyAuthorityError> {

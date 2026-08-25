@@ -72,8 +72,9 @@ impl DomainTokenAuthorizer{
     }
     fn authorize(&self,peer:&str,tenant:Uuid,scope:&str,headers:&HeaderMap)->Result<String,DomainAuthorityError>{
         let token=single_header(headers,"authorization").and_then(|value|value.strip_prefix("Bearer ")).filter(|value|(16..=8192).contains(&value.len())&&value.bytes().all(|byte|byte.is_ascii_graphic())).ok_or(DomainAuthorityError::PrincipalDenied)?;
-        let supplied=hex::encode(Sha256::digest(token.as_bytes()));let matches=self.bindings.iter().filter(|binding|binding.client_identity==peer&&binding.tenant_id==tenant.to_string()&&binding.scope==scope&&constant_time_equal(&supplied,&binding.token_sha256)).collect::<Vec<_>>();
-        if matches.len()!=1{return Err(DomainAuthorityError::PrincipalDenied);}Ok(matches[0].subject.clone())
+        let supplied=hex::encode(Sha256::digest(token.as_bytes()));let tenant=tenant.to_string();let mut subject=None;let mut match_count=0_usize;
+        for binding in &self.bindings{if binding.client_identity==peer&&binding.tenant_id==tenant&&binding.scope==scope&&constant_time_equal(&supplied,&binding.token_sha256){match_count+=1;if subject.is_none(){subject=Some(binding.subject.clone());}}}
+        match subject{Some(subject)if match_count==1=>Ok(subject),_=>Err(DomainAuthorityError::PrincipalDenied)}
     }
 }
 
@@ -229,7 +230,7 @@ fn read_private(path:&Path,minimum:u64,maximum:u64)->Result<Vec<u8>,DomainAuthor
 fn constant_time_equal(first:&str,second:&str)->bool{let key=hmac::Key::new(hmac::HMAC_SHA256,b"agenttrust-domain-token-compare-v1");let tag=hmac::sign(&key,second.as_bytes());hmac::verify(&key,first.as_bytes(),tag.as_ref()).is_ok()}
 fn canonical_uuid(value:&str)->bool{Uuid::parse_str(value).is_ok_and(|parsed|parsed.to_string()==value)}
 fn identifier(value:&str,maximum:usize)->bool{!value.is_empty()&&value.len()<=maximum&&!value.chars().any(char::is_control)}
-fn digest(value:&str)->bool{value.len()==64&&value.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))}
+fn digest(value:&str)->bool{value.len()==64&&value.bytes().all(|byte|byte.is_ascii_hexdigit()&&!byte.is_ascii_uppercase())}
 fn payload_string<'a>(payload:&'a serde_json::Value,key:&str,maximum:usize)->Result<&'a str,DomainAuthorityError>{payload.get(key).and_then(serde_json::Value::as_str).filter(|value|identifier(value,maximum)).ok_or(DomainAuthorityError::ReceiptInvalid)}
 fn parse_evidence_time(payload:&serde_json::Value,key:&str)->Result<chrono::DateTime<chrono::Utc>,DomainAuthorityError>{let value=payload_string(payload,key,64)?;chrono::DateTime::parse_from_rfc3339(value).map(|parsed|parsed.with_timezone(&chrono::Utc)).map_err(|_|DomainAuthorityError::ReceiptInvalid)}
 fn read_token(path:&Path)->Result<String,DomainAuthorityError>{let raw=read_private(path,16,8194)?;let value=std::str::from_utf8(&raw).map_err(|_|DomainAuthorityError::ConfigurationInvalid)?;let token=value.trim_end_matches(['\r','\n']);if !(16..=8192).contains(&token.len())||token.bytes().any(|byte|!byte.is_ascii_graphic())||value.len().saturating_sub(token.len())>2{return Err(DomainAuthorityError::ConfigurationInvalid);}Ok(token.to_string())}

@@ -209,18 +209,10 @@ impl PackSdk {
     }
 }
 
+#[derive(Default)]
 pub struct ArtifactVerifier {
     authorized_publishers: RwLock<BTreeMap<String, (String, VerifyingKey)>>,
     revoked_digests: RwLock<BTreeSet<String>>,
-}
-
-impl Default for ArtifactVerifier {
-    fn default() -> Self {
-        Self {
-            authorized_publishers: RwLock::new(BTreeMap::new()),
-            revoked_digests: RwLock::new(BTreeSet::new()),
-        }
-    }
 }
 
 impl ArtifactVerifier {
@@ -577,7 +569,7 @@ fn valid_semver(version: &str) -> bool {
 }
 
 fn lower_digest(value:&str)->bool{
-    value.len()==64&&value.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))
+    value.len()==64&&value.bytes().all(|byte|byte.is_ascii_hexdigit()&&!byte.is_ascii_uppercase())
 }
 
 fn immutable_reference(value:&str,kind:&str)->bool{

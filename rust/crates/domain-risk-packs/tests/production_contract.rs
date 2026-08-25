@@ -52,7 +52,7 @@ fn domain_runtime_has_authoritative_wire_and_shared_evidence_bridge() {
     assert!(server.contains("/v1/domain-runtime/executions"));
     assert!(authority.contains("TypedDomainEffectReceipt"));
     assert!(authority.contains("TypedDomainEvaluatorResult"));
-    assert!(authority.contains("\"schema_version\":DOMAIN_STATE_SCHEMA"));
+    assert!(authority.contains("\"schema_version\": DOMAIN_STATE_SCHEMA"));
     assert!(server.contains("v1/evidence/authority-events"));
     assert!(server.contains("SignedAuthorityEvidenceReceipt"));
     assert!(!server.contains("expected_task_state_version"));
@@ -79,7 +79,7 @@ fn review_evidence_producer_is_executable_bounded_and_scope_separated() {
         "v1/evidence/authority-events",
         "verify_for_source_kind",
         "AuthorityEvidenceSourceKind::AuthenticatedEvent",
-        "read_bounded_body(response,262_144)",
+        "read_bounded_body(response, 262_144)",
         "X-AgentTrust-Authority-Event-Id",
         "X-AgentTrust-Payload-Digest",
     ] {
@@ -87,8 +87,9 @@ fn review_evidence_producer_is_executable_bounded_and_scope_separated() {
     }
     assert!(contracts.contains("pub struct ApprovalReviewEvidenceIssueRequest"));
     assert!(contracts.contains("pub struct ApprovalReviewEvidence"));
-    assert!(server.contains("issue.to_authority_event(&self.evidence_client_identity"));
-    assert!(binary.contains("router(authority.clone(),tokens,runtime)"));
+    assert!(server.contains(".to_authority_event("));
+    assert!(server.contains("&self.evidence_client_identity"));
+    assert!(binary.contains("router(authority.clone(), tokens, runtime)"));
     assert!(!server.contains("SigningKey"));
 }
 
@@ -96,9 +97,10 @@ fn review_evidence_producer_is_executable_bounded_and_scope_separated() {
 fn domain_management_routes_match_production_probes() {
     let server = include_str!("../server.rs");
     let stack = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
-    assert!(server.contains("route(\"/live\",get(management_live))"));
-    assert!(server.contains("route(\"/ready\",get(management_ready))"));
-    assert!(server.contains("\"schema_version\":DOMAIN_READINESS_SCHEMA,\"live\":true"));
+    assert!(server.contains("route(\"/live\", get(management_live))"));
+    assert!(server.contains("route(\"/ready\", get(management_ready))"));
+    assert!(server.contains("\"schema_version\": DOMAIN_READINESS_SCHEMA"));
+    assert!(server.contains("\"live\": true"));
     assert!(stack.contains("livenessProbe: {httpGet: {path: /live, port: management}"));
     assert!(stack.contains("readinessProbe: {httpGet: {path: /ready, port: management}"));
 }

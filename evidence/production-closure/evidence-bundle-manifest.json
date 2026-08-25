@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T18:59:01Z",
+  "generated_at": "2026-08-25T19:26:31Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -836,6 +836,10 @@
       "sha256": "f2f13eb28f5195188294357cc90f20d22d8182f204ce5efc2eca45f0132ea15c"
     },
     {
+      "path": "python/production_gates/tests/test_rust_source_checks.py",
+      "sha256": "f3113877b7edc2eb5da81868ca63116ce70277d90f2f00f222c667973e143dc0"
+    },
+    {
       "path": "python/production_gates/tests/test_signed_git_provenance.py",
       "sha256": "f6c5a6d2c5911dff8d73806dedaf479a0b7c9c5122dd59117328d905ab1cca09"
     },
@@ -917,11 +921,15 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/authority.rs",
-      "sha256": "dcde4d987fa4c657f1dfc3b2d42886b0225b710d9393a2286f6a0016c46f3056"
+      "sha256": "40d2242d1f0dea4d7eca5f68848c85dd5e270dd52f20caa61b1dc974cf36b769"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/production.rs",
+      "sha256": "3b9dbcba2ec309c2abb24815f22b4ecfb26a1468e6b0ce6d23d4828d2f5e3265"
     },
     {
       "path": "rust/crates/domain-risk-packs/server.rs",
-      "sha256": "99eb18ffe741003677cb676d0882d44b605cfb55172b2752a55961c2fd07e2f3"
+      "sha256": "9b29214efcbbd9965719d7cabef4f14d6ceb2cd9764db320cb89d3bd781767d1"
     },
     {
       "path": "rust/crates/domain-risk-packs/src/bin/agenttrust-domain-runtime-authority.rs",
@@ -929,7 +937,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/tests/production_contract.rs",
-      "sha256": "d354cd848e683230c303b06fce2eceec48670ca8334708a745e14c716041ae68"
+      "sha256": "b9cc14f6d0bfd623f77577bd871a1f54d9a75b46184e0da647c5ea5df5548c02"
     },
     {
       "path": "rust/crates/durable-orchestrator/src/facts.rs",
@@ -1052,12 +1060,20 @@
       "sha256": "e29088407f139b2ac26e1a59b1a5f38bc7dbbf0bdf2b7c6522c84348f4fadb7c"
     },
     {
+      "path": "rust/crates/pack-supply-chain/src/lib.rs",
+      "sha256": "81adc6c2c6f4b6128a6faa510f1c9d3dc594f7304b9886cf43656a0d974d69ad"
+    },
+    {
+      "path": "rust/crates/pack-supply-chain/src/production.rs",
+      "sha256": "8fe30db5a9a7041efc0a797fa26b36e64433a184f39645b4bcf990854319ba89"
+    },
+    {
       "path": "rust/crates/pack-supply-chain/src/server.rs",
-      "sha256": "9537cde1edf0c65a98703436835bb2231de1d416951ccd0cfd74446361b76a94"
+      "sha256": "0c400e2de0d0fc0da66bd6fba0960660a00d088386f84cc508e2df3ff52171f6"
     },
     {
       "path": "rust/crates/pack-supply-chain/tests/production_contract.rs",
-      "sha256": "d90ef119a7012f13cbe0aca78fa314708fb3537306201f3b6546016b75ae223e"
+      "sha256": "49d4283fdbda70e631f4874204287d901a968456802fd72347bccedf11b455a0"
     },
     {
       "path": "rust/crates/platform-sre/src/authority.rs",
@@ -1276,8 +1292,12 @@
       "sha256": "dcde43b1e693b5dafa1efa86b8317076be95ce0ff7031f9b218ffbed47f2bd17"
     },
     {
+      "path": "scripts/rust_source_checks.py",
+      "sha256": "076fb1af92934f05c729133798d8c02c65449c766f321bc7a19ce62726cee7e9"
+    },
+    {
       "path": "scripts/validate-enterprise-api-contract.py",
-      "sha256": "e39306b93ee2bdd4934aa7e44b76ee846a4f8285193919027f6e56599b8183b8"
+      "sha256": "ffe29dcdbd0ca2b0eaeca646b72e37d7ca5017d33d3c02d5c9e9cc1b82a4fe51"
     },
     {
       "path": "scripts/validate-node-supply-chain.py",
@@ -1293,7 +1313,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "2fb5559bdcfeeece71a00aa311abd3882749918979614e3f5ca85be62b0b7a4c"
+      "sha256": "6009c1d9298aac5a41d948d731e840a06c7fee578c4cb787c545a1c4abe8d7fb"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",

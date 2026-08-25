@@ -527,10 +527,10 @@ fn normalized_tools(tools:&[agent_trust_pack_supply_chain::PackToolDefinition])-
     tools.iter().map(|tool|(tool.tool_id.clone(),(tool.effect_class,tool.approval_required,tool.compensation_ref.clone(),tool.executor_template.clone()))).collect()
 }
 fn immutable_reference(value:&str,kind:&str)->bool{value.strip_prefix(&format!("{kind}:sha256:")).is_some_and(digest)}
-fn digest(value:&str)->bool{value.len()==64&&value.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))}
+fn digest(value:&str)->bool{value.len()==64&&value.bytes().all(|byte|byte.is_ascii_hexdigit()&&!byte.is_ascii_uppercase())}
 fn identifier(value:&str,maximum:usize)->bool{!value.is_empty()&&value.len()<=maximum&&!value.chars().any(char::is_control)}
 fn reference(value:&str)->bool{identifier(value,1024)&&!value.contains("..")}
-fn hex_length(value:&str,lengths:&[usize])->bool{lengths.contains(&value.len())&&value.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))}
+fn hex_length(value:&str,lengths:&[usize])->bool{lengths.contains(&value.len())&&value.bytes().all(|byte|byte.is_ascii_hexdigit()&&!byte.is_ascii_uppercase())}
 fn https_reference(value:&str)->bool{url::Url::parse(value).is_ok_and(|parsed|parsed.scheme()=="https"&&parsed.host_str().is_some()&&parsed.username().is_empty()&&parsed.password().is_none()&&parsed.query().is_none()&&parsed.fragment().is_none())}
 fn unsafe_repository_path(value:&str)->bool{let lower=value.to_ascii_lowercase();value.is_empty()||value.starts_with('/')||value.split('/').any(|part|part.is_empty()||part=="..")||lower==".env"||lower.starts_with(".git/")||lower.ends_with(".pem")||lower.ends_with(".key")||lower.contains("docker.sock")}
 fn safe_field_name(value:&str)->bool{!value.is_empty()&&value.len()<=128&&value.bytes().all(|byte|byte.is_ascii_alphanumeric()||matches!(byte,b'_'|b'.'|b'-'|b'/'))}

@@ -5,6 +5,14 @@ from pathlib import Path
 import json
 import re
 
+from rust_source_checks import (
+    extract_rust_functions,
+    rust_call_contains,
+    rust_code_contains,
+    rust_function_code_contains,
+    rust_json_object_key_sets,
+)
+
 root = Path(__file__).resolve().parents[1]
 openapi = (root / "schemas/openapi/control-plane-v1.yaml").read_text(encoding="utf-8")
 java_controller = "\n".join(
@@ -88,7 +96,9 @@ assert pep_approval["observed_resource_version"]["pattern"] == r"^[^\u0000\r\n]*
 for marker in ("valid_approval_reason", "value.chars().count() <= 2_000",
                "value.len() <= 4_096", "valid_approval_resource_version",
                "fresh_human_principal_key_status(key.status)"):
-    assert marker in pep_governance, f"PEP approval Unicode contract missing {marker}"
+    assert rust_code_contains(pep_governance, marker), (
+        f"PEP approval Unicode contract missing {marker}"
+    )
 
 for java_type in (
     "TenantRequest", "OrganizationRequest", "ProjectRequest", "IntegrationRequest",
@@ -358,15 +368,6 @@ def java_map_entries(source: str, declaration: str) -> dict[str, str]:
     end = source.index(");", start)
     return dict(re.findall(r'Map\.entry\("([a-z_]+)",\s*"([^"]+)"\)', source[start:end]))
 
-def rust_readiness_field_sets(source: str) -> list[set[str]]:
-    candidates = []
-    for marker in re.finditer(r'"schema_version"\s*:\s*[A-Z_]+', source):
-        block = source[marker.start():marker.start() + 2_500].split("})))", 1)[0]
-        fields = set(re.findall(r'"([a-z_]+)"\s*:', block))
-        if "ready" in fields:
-            candidates.append(fields)
-    return candidates
-
 bff_paths = java_map_entries(bff, "AUTHORITY_DASHBOARD_PATHS =")
 bff_schemas = java_map_entries(bff, "STANDARD_PAGE_SCHEMAS =")
 bff_cursors = java_map_entries(bff, "STANDARD_PAGE_CURSORS =")
@@ -492,41 +493,55 @@ for marker in (
 ):
     assert marker in approval_openapi, f"approval v2 OpenAPI marker missing: {marker}"
 for marker in ("deny_unknown_fields", "review_context", "review_evidence"):
-    assert marker in approval_rust, f"strict Rust approval request marker missing: {marker}"
+    assert rust_code_contains(approval_rust, marker), (
+        f"strict Rust approval request marker missing: {marker}"
+    )
 for marker in (
     "verify_request(&envelope.request, now)", "verify_historical_request(&request, created_at)",
     "LegacyApprovalRequestV0", "parse_authoritative_request", ".evidence_refs()",
 ):
-    assert marker in approval_store, f"approval persistence compatibility marker missing: {marker}"
+    assert rust_code_contains(approval_store, marker), (
+        f"approval persistence compatibility marker missing: {marker}"
+    )
 for marker in (
     "ApprovalReviewEvidenceKeyring", "ApprovalReviewMaterial", "review_material_digest",
     "AuthorityEvidenceSourceKind::AuthenticatedEvent", "risk_package_ref", "state_snapshot_ref",
     "VerifyingKey", "to_authority_event",
 ):
-    assert marker in review_evidence_rust, f"review evidence verifier missing: {marker}"
+    assert rust_code_contains(review_evidence_rust, marker), (
+        f"review evidence verifier missing: {marker}"
+    )
 for marker in (
     "pub struct ApprovalReviewEvidenceIssueRequest", "pub struct ApprovalReviewMaterial",
     "pub struct ApprovalReviewEvidence", "AuthorityEvidenceEventRequest",
     "SignedAuthorityEvidenceReceipt", "EvidenceEventType::ApprovalReviewPrepared",
 ):
-    assert marker in review_shared_contracts, f"shared review contract missing: {marker}"
+    assert rust_code_contains(review_shared_contracts, marker), (
+        f"shared review contract missing: {marker}"
+    )
 for forbidden in ("bind_and_sign", "SigningKey", "private_key", "evidence:authority-event"):
     assert forbidden not in review_evidence_rust, f"approval review verifier owns issuer material: {forbidden}"
 for marker in (
-    "/v1/domain-runtime/approval-review-evidence", "issue_approval_review_evidence",
-    "v1/evidence/authority-events", "issue.to_authority_event(&self.evidence_client_identity",
+    '"/v1/domain-runtime/approval-review-evidence"', "issue_approval_review_evidence",
+    '"v1/evidence/authority-events"', "issue.to_authority_event(&self.evidence_client_identity",
     "verify_for_source_kind", "AuthorityEvidenceSourceKind::AuthenticatedEvent",
-    "read_bounded_body(response,262_144)", "X-AgentTrust-Authority-Event-Id",
-    "X-AgentTrust-Payload-Digest",
+    "read_bounded_body(response,262_144)", '"X-AgentTrust-Authority-Event-Id"',
+    '"X-AgentTrust-Payload-Digest"',
 ):
-    assert marker in domain_review_producer, f"executable review producer missing: {marker}"
+    assert rust_code_contains(domain_review_producer, marker), (
+        f"executable review producer missing: {marker}"
+    )
 for marker in (
     "/v1/domain-runtime/approval-review-evidence",
     "domain-runtime:approval-review-evidence",
     "review-evidence-issue.schema.json",
 ):
     assert marker in domain_review_openapi, f"review producer OpenAPI drift: {marker}"
-assert "router(authority.clone(),tokens,runtime)" in domain_review_binary
+assert rust_call_contains(
+    domain_review_binary,
+    "router",
+    ("authority.clone()", "tokens", "runtime"),
+)
 assert "domain-runtime:approval-review-evidence" in (
     domain_token_schema["properties"]["bindings"]["items"]["properties"]["scope"]["enum"]
 )
@@ -686,13 +701,14 @@ for authority, contract in production_runtime_contracts.items():
         assert field in readiness_contract, f"OpenAPI readiness field drift: {authority}: {field}"
     assert f'EXPOSE {contract["data_port"]} {contract["management_port"]}' in dockerfile
     for marker in contract["port_markers"]:
-        assert marker in binary_source, f"fixed runtime port missing: {authority}: {marker}"
-    ready_handler = re.search(
-        r"async fn data_ready\b(.*?)(?=\n(?:async fn |#\[derive|struct ))",
-        server_source, re.DOTALL,
-    )
-    assert ready_handler is not None, f"data readiness handler missing: {authority}"
-    assert ".authorize(" not in ready_handler.group(1) and "exact_tenant" not in ready_handler.group(1), (
+        assert rust_code_contains(binary_source, marker), (
+            f"fixed runtime port missing: {authority}: {marker}"
+        )
+    data_ready_functions = extract_rust_functions(server_source, "data_ready")
+    assert len(data_ready_functions) == 1, f"data readiness handler missing: {authority}"
+    assert not rust_function_code_contains(
+        server_source, "data_ready", ".authorize("
+    ) and not rust_function_code_contains(server_source, "data_ready", "exact_tenant"), (
         f"BFF-incompatible tenant bearer requirement on readiness: {authority}"
     )
     readiness_entry = re.search(
@@ -702,7 +718,7 @@ for authority, contract in production_runtime_contracts.items():
     assert readiness_entry is not None, f"BFF readiness schema missing: {authority}"
     readiness_fields = set(re.findall(r'"([a-z_]+)"', readiness_entry.group(1)))
     assert readiness_fields == contract["readiness_fields"], f"BFF readiness field drift: {authority}"
-    assert contract["readiness_fields"] in rust_readiness_field_sets(server_source), (
+    assert contract["readiness_fields"] in rust_json_object_key_sets(server_source), (
         f"Rust readiness field drift: {authority}"
     )
 for browser_file in (typescript_client,
