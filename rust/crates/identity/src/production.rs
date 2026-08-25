@@ -1,7 +1,7 @@
 use super::*;
 use agent_trust_contracts::{
-    ActionHash, AgentInstanceId, IdempotencyKey, SignedWorkloadCredentialBindingReceipt, StepId,
-    TaskId, TenantId, ToolId, WORKLOAD_CREDENTIAL_BINDING_KEY_USAGE,
+    IdempotencyKey, SignedWorkloadCredentialBindingReceipt, TenantId,
+    WORKLOAD_CREDENTIAL_BINDING_KEY_USAGE,
     WORKLOAD_CREDENTIAL_BINDING_RECEIPT_SCHEMA_VERSION,
     WORKLOAD_CREDENTIAL_BINDING_REQUEST_SCHEMA_VERSION, WORKLOAD_CREDENTIAL_CLAIMS_SCHEMA_VERSION,
     WorkloadCredentialBindingRequest, WorkloadCredentialClaims, WorkloadCredentialIssuance,
@@ -1855,6 +1855,7 @@ fn idempotency_aad(request_digest: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agent_trust_contracts::{ActionHash, AgentInstanceId, StepId, TaskId, ToolId};
 
     #[test]
     fn handles_and_protected_replay_are_secret_safe_and_exact() {

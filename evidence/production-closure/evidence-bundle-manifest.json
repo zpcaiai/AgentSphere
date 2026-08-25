@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T17:30:17Z",
+  "generated_at": "2026-08-25T17:37:31Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -848,8 +848,16 @@
       "sha256": "4f1d952b722d54d0471fb8e575d06663818f09b1ff3982a6c43b0898b56b4c70"
     },
     {
+      "path": "rust/crates/data-governance/src/authority.rs",
+      "sha256": "8f44d73f52d5e09b90eedc18e5819132ca554113289933dbb59c3e09b8c501c9"
+    },
+    {
       "path": "rust/crates/data-governance/src/server.rs",
       "sha256": "49fe84cdee8721b3e487383beb9568c1fc132aeb270169701fcf367d03cbfddb"
+    },
+    {
+      "path": "rust/crates/data-governance/src/service.rs",
+      "sha256": "6dddb66a43d08f47f527f980c7630cc9c793e8570608138d804705a4bca7620a"
     },
     {
       "path": "rust/crates/data-governance/tests/production_contract.rs",
@@ -910,6 +918,14 @@
     {
       "path": "rust/crates/identity/src/lib.rs",
       "sha256": "981cccd6f27755ca9c3b4c463ee2dd18b6739a20087c4f9a11cb4102f308c4fd"
+    },
+    {
+      "path": "rust/crates/identity/src/production.rs",
+      "sha256": "a634677be131b81533f739a14ad0508b99a22617b29196825509e9dfabe9d967"
+    },
+    {
+      "path": "rust/crates/identity/src/server.rs",
+      "sha256": "cac9b660711fbd3790c9fc8c60d0e8427b4336a647ddb79824d5745d0254f1df"
     },
     {
       "path": "rust/crates/model-gateway/src/lib.rs",
@@ -1073,7 +1089,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "fb06b2859c3da8b486b45ea5831123b59afa88dc96dc7cfdb3829cb42293f078"
+      "sha256": "811eeb934e3d44cd16d08b24811488d949e6b3cbbf99850d88dc8b3392fa2b77"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",
@@ -1125,7 +1141,7 @@
     },
     {
       "path": "web/control-console/src/generated/control-plane-v1.d.ts",
-      "sha256": "a885e434167a7af30fd9bcf091bcd1ae5f7edd0e63dd2a2d756c6d631f64a74a"
+      "sha256": "a99130c784a9998730578d2141b7c7576bfb34c41a1b1d4762239b662cec9c17"
     },
     {
       "path": "web/control-console/tsconfig.json",

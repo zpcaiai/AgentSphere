@@ -518,13 +518,14 @@ impl PostgresDataAuthorityStore {
         request: &DataExecutorRequest,
     ) -> Result<(), DataAuthorityError> {
         let tenant_uuid = parse_tenant(tenant)?;
+        let payload = payload_object(&request.command.payload)?;
         let mut tx = self.begin_tenant(tenant).await?;
         match request.command.operation {
             DataOperation::AuthorizeExport => {
                 verify_authorize_export_prerequisites(
                     &mut tx,
                     tenant_uuid,
-                    &request.command.payload,
+                    payload,
                 ).await?;
             }
             DataOperation::CompleteExport => {
@@ -534,8 +535,8 @@ impl PostgresDataAuthorityStore {
                        AND state='AUTHORIZED' AND expires_at>now())",
                 )
                 .bind(tenant_uuid)
-                .bind(text(&request.command.payload, "export_id")?)
-                .bind(text(&request.command.payload, "object_digest")?)
+                .bind(text(payload, "export_id")?)
+                .bind(text(payload, "object_digest")?)
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(dependency)?;
@@ -1838,7 +1839,7 @@ async fn apply_domain_mutation(
 async fn verify_authorize_export_prerequisites(
     tx: &mut Transaction<'_, Postgres>,
     tenant: Uuid,
-    payload: &Value,
+    payload: &serde_json::Map<String, Value>,
 ) -> Result<Uuid, DataAuthorityError> {
     let export_id = parse_uuid(text(payload, "export_id")?)?;
     let decision_id = parse_uuid(text(payload, "decision_id")?)?;

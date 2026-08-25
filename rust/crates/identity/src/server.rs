@@ -1,6 +1,7 @@
 //! Fail-closed TLS 1.3 boundary for the production workload credential authority.
 
 use super::*;
+use crate::production::AuthoritativeCredentialView;
 use agent_trust_contracts::{IdempotencyKey, WorkloadCredentialBindingRequest};
 use axum::extract::{DefaultBodyLimit, Path as AxumPath, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -307,7 +308,10 @@ pub async fn serve(
         .with_state(api_state)
         .layer(Extension(management_state.clone()))
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)));
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(30),
+        ));
     let management = Router::new()
         .route("/ready", get(management_ready))
         .with_state(management_state);
