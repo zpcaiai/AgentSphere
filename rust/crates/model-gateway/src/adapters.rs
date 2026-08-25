@@ -7,7 +7,7 @@ use agent_trust_contracts::{
     ActionHash, ApprovalId, ArtifactRef, AuthorityEvidenceControlBinding,
     AuthorityEvidenceEventRequest, AuthorityEvidenceSourceKind, DataPolicyDecision,
     DataPolicyRequest, EVIDENCE_EVENT_SCHEMA_VERSION, EvidenceEventDraft, EvidenceEventType,
-    ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TaskId, TenantId,
+    ExecutionId, IdempotencyKey, SignedAuthorityEvidenceReceipt, TenantId,
     AUTHORITY_EVIDENCE_EVENT_REQUEST_SCHEMA_VERSION,
 };
 use async_trait::async_trait;

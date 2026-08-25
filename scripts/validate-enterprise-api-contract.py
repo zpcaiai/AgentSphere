@@ -19,6 +19,7 @@ typescript_client = (root / "web/control-console/src/api-client.ts").read_text(e
 typescript_models = (root / "web/control-console/src/enterprise-api-types.ts").read_text(encoding="utf-8")
 generated = (root / "web/control-console/src/generated/control-plane-v1.d.ts").read_text(encoding="utf-8")
 package_json = (root / "web/control-console/package.json").read_text(encoding="utf-8")
+vite_config = (root / "web/control-console/vite.config.ts").read_text(encoding="utf-8")
 
 # Every public operation has a concrete server handler and a browser-client entry point.
 operations = {
@@ -145,6 +146,17 @@ for status in ("400", "401", "403", "409", "413", "415", "429", "500", "503"):
 assert approval_intent_operation.count("#/components/schemas/SafeError") == 9
 
 assert '"generate:api"' in package_json and "openapi-typescript" in package_json
+vite_fs_allow_urls = re.findall(
+    r'fileURLToPath\(new URL\("([^"]+)", import\.meta\.url\)\)', vite_config
+)
+assert vite_fs_allow_urls == [".", "../approval-console/src", "../shared"], (
+    f"Vite file-system allowlist drift: {vite_fs_allow_urls}"
+)
+assert re.search(
+    r"fs:\s*\{\s*strict:\s*true,\s*allow:\s*serverFileSystemAllowlist\s*\}",
+    vite_config,
+), "Vite strict file-system allowlist is not wired into the server"
+assert "searchForWorkspaceRoot" not in vite_config, "Vite must not allow the repository workspace root"
 assert "name: Idempotency-Key" in openapi and "name: X-XSRF-TOKEN" in openapi
 assert "one_time_secret" not in openapi and "oneTimeSecret" not in java_models
 assert "one_time_secret" not in generated and "one_time_secret" not in typescript_client

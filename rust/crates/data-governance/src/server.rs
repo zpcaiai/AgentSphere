@@ -231,7 +231,10 @@ pub fn router(
         )
         .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
         .layer(ConcurrencyLimitLayer::new(64))
-        .layer(TimeoutLayer::new(Duration::from_secs(45)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(45),
+        ))
         .with_state(ServerState { ingress, executor, decision, tokens })
 }
 

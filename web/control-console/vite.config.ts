@@ -1,5 +1,12 @@
 import { defineConfig, loadEnv } from "vite";
 import vue from "@vitejs/plugin-vue";
+import { fileURLToPath } from "node:url";
+
+const serverFileSystemAllowlist = [
+  fileURLToPath(new URL(".", import.meta.url)),
+  fileURLToPath(new URL("../approval-console/src", import.meta.url)),
+  fileURLToPath(new URL("../shared", import.meta.url)),
+];
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
@@ -21,7 +28,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [vue()],
     build: { sourcemap: false, target: "es2022" },
-    server: { host: "127.0.0.1", strictPort: true },
+    server: {
+      host: "127.0.0.1",
+      strictPort: true,
+      fs: { strict: true, allow: serverFileSystemAllowlist },
+    },
     test: {
       environment: "jsdom",
       setupFiles: ["./src/test/setup.ts"],

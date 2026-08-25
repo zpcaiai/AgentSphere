@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T17:37:31Z",
+  "generated_at": "2026-08-25T17:46:06Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -853,7 +853,7 @@
     },
     {
       "path": "rust/crates/data-governance/src/server.rs",
-      "sha256": "49fe84cdee8721b3e487383beb9568c1fc132aeb270169701fcf367d03cbfddb"
+      "sha256": "17f5d3eb58c0c3b8303922142c30a4f2349ceb11a3dcfbe5c02de2d80689f25e"
     },
     {
       "path": "rust/crates/data-governance/src/service.rs",
@@ -928,8 +928,16 @@
       "sha256": "cac9b660711fbd3790c9fc8c60d0e8427b4336a647ddb79824d5745d0254f1df"
     },
     {
+      "path": "rust/crates/model-gateway/src/adapters.rs",
+      "sha256": "b03c3b4d978fa94edb4a8793afca214c1917badfd3c4bbe683a19b00247276e3"
+    },
+    {
       "path": "rust/crates/model-gateway/src/lib.rs",
       "sha256": "16fe362c2958aba69b08df4995441e47d98435d36769a17a00e7d47d4f8f6d44"
+    },
+    {
+      "path": "rust/crates/model-gateway/src/server.rs",
+      "sha256": "20b0570c2a0083822bad57ec83a44764cc683ac27d79cb5b157b5d0d22db3583"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/server.rs",
@@ -966,6 +974,10 @@
     {
       "path": "rust/crates/production-closure/src/lib.rs",
       "sha256": "a1c33cf45a9e6a0d282d3337c1f47ca4ff9e392da37916bf756d61a4e8f82a23"
+    },
+    {
+      "path": "rust/crates/registry/src/server.rs",
+      "sha256": "db7cb1034bbfc64e4fa1c46be427092ec8d14ea87d1a1f198a41e8c98bb07f46"
     },
     {
       "path": "rust/crates/tool-proxy/src/lib.rs",
@@ -1077,7 +1089,7 @@
     },
     {
       "path": "scripts/validate-enterprise-api-contract.py",
-      "sha256": "e7ea158880dd6cc904d78b9ea293e9b10accf416bf80246e02a1c025aae51b3f"
+      "sha256": "e39306b93ee2bdd4934aa7e44b76ee846a4f8285193919027f6e56599b8183b8"
     },
     {
       "path": "scripts/validate-production-migrations.py",
@@ -1089,7 +1101,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "811eeb934e3d44cd16d08b24811488d949e6b3cbbf99850d88dc8b3392fa2b77"
+      "sha256": "ddcf7188a0520ad813d90ff50fed43d548f4b7e2e261720e9bae33bbbd41cd74"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",
@@ -1149,7 +1161,7 @@
     },
     {
       "path": "web/control-console/vite.config.ts",
-      "sha256": "a8af3d5f4dc00e8bf30702e438a1729dc0c7835e8b301c11b7d1c95edd723f55"
+      "sha256": "f04a778754474f82a852a104b4ff23b4c5d3a0116586ac8c6747a2dc57bcd8b8"
     },
     {
       "path": "web/shared/agui-client.ts",

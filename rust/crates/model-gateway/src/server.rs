@@ -7,7 +7,7 @@ use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, OriginalUri, State};
 use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::middleware::AddExtension;
-use axum::response::sse::{Event, KeepAlive, Sse};
+use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
@@ -19,7 +19,7 @@ use ring::hmac;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -204,7 +204,10 @@ pub fn router(
             post(reconcile_billing),
         )
         .layer(DefaultBodyLimit::max(64 * 1_048_576))
-        .layer(TimeoutLayer::new(Duration::from_secs(310)))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(310),
+        ))
         .with_state(ServerState { authority, tokens })
 }
 
@@ -282,8 +285,7 @@ async fn model_stream(
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Sse::new(stream::iter(
         encoded.into_iter().map(Ok::<Event, Infallible>),
-    ))
-    .keep_alive(KeepAlive::disabled()))
+    )))
 }
 
 async fn reconcile_billing(

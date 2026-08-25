@@ -2,7 +2,7 @@
 
 use super::*;
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::AddExtension;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -221,7 +221,10 @@ pub async fn serve(
         .route("/ready", get(data_ready))
         .layer(Extension(management_state.clone()))
         .layer(DefaultBodyLimit::max(1_048_576))
-        .layer(TimeoutLayer::new(std::time::Duration::from_secs(30)));
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(30),
+        ));
     let management = Router::new()
         .route("/ready", get(ready))
         .with_state(management_state);
