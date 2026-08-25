@@ -3210,4 +3210,30 @@ mod adapter_tests {
         let raw = br#"{"id":"one","id":"two"}"#;
         assert!(strict_json::<Value>(raw, 1024).is_err());
     }
+
+    #[test]
+    fn data_operations_use_exact_wire_values() {
+        let cases = [
+            (DataOperation::RegisterLabel, "\"REGISTER_LABEL\""),
+            (
+                DataOperation::RecordPolicyDecision,
+                "\"RECORD_POLICY_DECISION\"",
+            ),
+            (DataOperation::RecordDlpScan, "\"RECORD_DLP_SCAN\""),
+            (
+                DataOperation::RecordTransformReceipt,
+                "\"RECORD_TRANSFORM_RECEIPT\"",
+            ),
+            (
+                DataOperation::ConsumeCrossDomainGrant,
+                "\"CONSUME_CROSS_DOMAIN_GRANT\"",
+            ),
+            (DataOperation::AuthorizeExport, "\"AUTHORIZE_EXPORT\""),
+            (DataOperation::CompleteExport, "\"COMPLETE_EXPORT\""),
+        ];
+        for (operation, expected) in cases {
+            let encoded = serde_json::to_string(&operation).ok();
+            assert_eq!(encoded.as_deref(), Some(expected));
+        }
+    }
 }

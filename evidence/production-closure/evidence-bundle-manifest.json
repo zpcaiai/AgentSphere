@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T18:23:11Z",
+  "generated_at": "2026-08-25T18:29:40Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -820,6 +820,10 @@
       "sha256": "62df7c0bbf42400f2ae73b8ad5a86b077130ae21e3328b3edae3d4e9920ab41d"
     },
     {
+      "path": "python/production_gates/tests/test_model_gateway_contract.py",
+      "sha256": "ee22ad3ce66d1dddd964811b085948f22374a449088968d622966ec4e9a39c16"
+    },
+    {
       "path": "python/production_gates/tests/test_node_supply_chain.py",
       "sha256": "2edae7a01b6e6ceb617600b150e7b1082eb0536384768b678cbc01d117bbb949"
     },
@@ -941,7 +945,7 @@
     },
     {
       "path": "rust/crates/model-gateway/src/adapters.rs",
-      "sha256": "2a405957af6fd35c1a077ff0812123d9a161b14ea0cb344316b10f1fef6040da"
+      "sha256": "f9a3bac7c851ae93e73cb1c23a49b82e287cb06de07df24970b67e4cb3405ed2"
     },
     {
       "path": "rust/crates/model-gateway/src/lib.rs",
@@ -998,6 +1002,10 @@
     {
       "path": "rust/crates/tool-proxy/src/lib.rs",
       "sha256": "21684fb8b11ee56cbf65702178fc35fe3e961327c6314fb86cbbd9a2608fe640"
+    },
+    {
+      "path": "rust/crates/tool-proxy/src/production.rs",
+      "sha256": "2e244b826335beae0c6be68ec656f55d264562a0ee6fbafbd8bea018a8655984"
     },
     {
       "path": "schemas/approval/approval-case.schema.json",
@@ -1121,7 +1129,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "d7c80a8162709dc6b59335610dda62aa6bbddede4dd5dac0cd5297f6cf75042e"
+      "sha256": "d6a54338badc297f541ea04bab28a2001ab5b6b46e67b328f24e33b5714501fd"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",

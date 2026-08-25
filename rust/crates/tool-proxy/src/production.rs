@@ -1090,7 +1090,7 @@ impl HttpsRegistryClient {
         tokio::time::timeout(Duration::from_secs(10), check)
             .await
             .ok()
-            .is_some_and(Result::is_ok)
+            .is_some_and(|result| result.is_ok())
     }
 }
 
