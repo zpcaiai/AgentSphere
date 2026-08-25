@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T19:49:59Z",
+  "generated_at": "2026-08-25T19:54:28Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -889,7 +889,7 @@
     },
     {
       "path": "rust/crates/contracts/src/lib.rs",
-      "sha256": "473853c93b646e3526779906d03a591628da7680737f45d04a94e7550ac39bb4"
+      "sha256": "d9352f0dda16ec40bc1a324434304482f42ffb9b030556661199f5a81cb3aa9b"
     },
     {
       "path": "rust/crates/data-governance/src/adapters.rs",

@@ -3210,7 +3210,7 @@ impl ExecutionAuthorization {
                 .approval_ids
                 .iter()
                 .any(|approval_id| Uuid::parse_str(&approval_id.0).is_err())
-            || approval_binding_present != !self.approval_ids.is_empty()
+            || approval_binding_present == self.approval_ids.is_empty()
             || self.approval_consumption_ref.is_some() != self.approval_receipt_digest.is_some()
             || self
                 .approval_consumption_ref
