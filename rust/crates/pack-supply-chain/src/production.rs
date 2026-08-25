@@ -238,9 +238,15 @@ struct ReceiptKeyDocument {
     revoked: bool,
 }
 
+struct ActiveSupplyReceiptKey {
+    verifying_key: VerifyingKey,
+    not_before: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+}
+
 #[derive(Clone)]
 pub struct SupplyReceiptKeyring {
-    keys: Arc<BTreeMap<String, (VerifyingKey, DateTime<Utc>, DateTime<Utc>)>>,
+    keys: Arc<BTreeMap<String, ActiveSupplyReceiptKey>>,
 }
 
 impl SupplyReceiptKeyring {
@@ -272,7 +278,14 @@ impl SupplyReceiptKeyring {
                 || entry.expires_at <= now
                 || !identifier(&entry.key_id, 256)
                 || keys
-                    .insert(entry.key_id, (key, entry.not_before, entry.expires_at))
+                    .insert(
+                        entry.key_id,
+                        ActiveSupplyReceiptKey {
+                            verifying_key: key,
+                            not_before: entry.not_before,
+                            expires_at: entry.expires_at,
+                        },
+                    )
                     .is_some()
             {
                 return Err(SupplyAuthorityError::ConfigurationInvalid);
@@ -290,7 +303,7 @@ impl SupplyReceiptKeyring {
         request_digest: &str,
         now: DateTime<Utc>,
     ) -> Result<(), SupplyAuthorityError> {
-        let (key, not_before, expires_at) = self
+        let active_key = self
             .keys
             .get(&receipt.key_id)
             .ok_or(SupplyAuthorityError::ReceiptInvalid)?;
@@ -301,8 +314,8 @@ impl SupplyReceiptKeyring {
             || receipt.request_digest != request_digest
             || receipt.completed_at < request.command.requested_at
             || receipt.completed_at > now + Duration::minutes(1)
-            || now < *not_before
-            || now >= *expires_at
+            || now < active_key.not_before
+            || now >= active_key.expires_at
             || receipt.external_effect_count > 64
             || receipt.production_access_detected
         {
@@ -372,7 +385,9 @@ impl SupplyReceiptKeyring {
             .map_err(|_| SupplyAuthorityError::ReceiptInvalid)?;
         let signature = Signature::from_slice(&signature_bytes)
             .map_err(|_| SupplyAuthorityError::ReceiptInvalid)?;
-        key.verify(&receipt.signing_bytes()?, &signature)
+        active_key
+            .verifying_key
+            .verify(&receipt.signing_bytes()?, &signature)
             .map_err(|_| SupplyAuthorityError::ReceiptInvalid)
     }
 }

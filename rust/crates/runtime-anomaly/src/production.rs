@@ -353,7 +353,7 @@ impl RuntimeAnomalyEffectsPort for HttpsRuntimeAnomalyRuntime {
                     "Authenticated runtime risk signal persisted".into()
                 },
                 artifact_refs: Vec::<ArtifactRef>::new(),
-                occurred_at: occurred_at.clone(),
+                occurred_at,
             },
             requested_at: occurred_at,
         };

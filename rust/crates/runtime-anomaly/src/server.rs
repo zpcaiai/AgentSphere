@@ -157,9 +157,8 @@ impl RuntimeAnomalyTokenAuthorizer {
     pub fn tenants(&self) -> BTreeSet<TenantId> {
         self.bindings
             .iter()
-            .filter_map(|binding| {
-                canonical_uuid(&binding.tenant_id).then(|| TenantId(binding.tenant_id.clone()))
-            })
+            .filter(|binding| canonical_uuid(&binding.tenant_id))
+            .map(|binding| TenantId(binding.tenant_id.clone()))
             .collect()
     }
 

@@ -2674,8 +2674,8 @@ fn validate_signed_envelope(
     {
         return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
     }
-    if let Some(score) = &envelope.semantic_score {
-        if score.schema_version != ANOMALY_SCHEMA_VERSION
+    if let Some(score) = &envelope.semantic_score
+        && (score.schema_version != ANOMALY_SCHEMA_VERSION
             || !identifier(&score.model_id, 128)
             || !identifier(&score.model_version, 128)
             || score.score_millionths > 1_000_000
@@ -2684,10 +2684,9 @@ fn validate_signed_envelope(
             || score
                 .reason_codes
                 .iter()
-                .any(|value| !identifier(value, 128))
-        {
-            return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
-        }
+                .any(|value| !identifier(value, 128)))
+    {
+        return Err(RuntimeAnomalyAuthorityError::RequestInvalid);
     }
     config.validate()
 }

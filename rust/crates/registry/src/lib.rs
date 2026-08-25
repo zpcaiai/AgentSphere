@@ -493,13 +493,12 @@ fn validate_manifest_shape(manifest: &ToolManifest) -> Result<(), RegistryError>
     {
         return Err(RegistryError::SchemaInvalid);
     }
-    if let Some(compensation) = &manifest.compensation {
-        if !valid_tool_id(&compensation.tool.tool_id.0)
+    if let Some(compensation) = &manifest.compensation
+        && (!valid_tool_id(&compensation.tool.tool_id.0)
             || !valid_semver(&compensation.tool.tool_version.0)
-            || !valid_profile_ref(&compensation.precondition_kind)
-        {
-            return Err(RegistryError::CompensationInvalid);
-        }
+            || !valid_profile_ref(&compensation.precondition_kind))
+    {
+        return Err(RegistryError::CompensationInvalid);
     }
     if let Some(signature) = &manifest.signature {
         let decoded = URL_SAFE_NO_PAD
@@ -735,13 +734,12 @@ fn validate_schema_security(schema: &Value) -> Result<(), RegistryError> {
                     return Err(RegistryError::SchemaInvalid);
                 }
                 for keyword in ["$ref", "$dynamicRef", "$recursiveRef"] {
-                    if let Some(reference) = map.get(keyword) {
-                        if !reference
+                    if let Some(reference) = map.get(keyword)
+                        && !reference
                             .as_str()
                             .is_some_and(|reference| reference.starts_with('#'))
-                        {
-                            return Err(RegistryError::SchemaInvalid);
-                        }
+                    {
+                        return Err(RegistryError::SchemaInvalid);
                     }
                 }
                 for child in map.values() {

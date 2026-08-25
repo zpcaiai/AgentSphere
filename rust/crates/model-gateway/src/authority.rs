@@ -379,7 +379,7 @@ pub enum PrepareOutcome {
         request_id: Uuid,
         reservation_id: Uuid,
     },
-    Replay(ModelExecutionResult),
+    Replay(Box<ModelExecutionResult>),
     Failed(String),
     Unknown,
 }
@@ -533,7 +533,7 @@ impl PostgresModelAuthorityStore {
                     let mut replay: ModelExecutionResult = serde_json::from_value(value)
                         .map_err(|_| AuthorityError::DependencyUnavailable)?;
                     replay.replayed = true;
-                    PrepareOutcome::Replay(replay)
+                    PrepareOutcome::Replay(Box::new(replay))
                 }
                 _ => return Err(AuthorityError::DependencyUnavailable),
             };
@@ -768,6 +768,7 @@ impl PostgresModelAuthorityStore {
             .map_err(|_| AuthorityError::DependencyUnavailable)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn succeed(
         &self,
         request: &ModelExecutionRequest,
@@ -1436,7 +1437,7 @@ impl ModelExecutionAuthority {
                 request_id,
                 reservation_id,
             } => (request_id, reservation_id),
-            PrepareOutcome::Replay(result) => return Ok((result, Vec::new())),
+            PrepareOutcome::Replay(result) => return Ok((*result, Vec::new())),
             PrepareOutcome::Failed(_) => return Err(AuthorityError::StateConflict),
             PrepareOutcome::Unknown => return Err(AuthorityError::ProviderOutcomeUnknown),
         };
@@ -2222,7 +2223,7 @@ fn build_stream_events(
                 chunk_utf8: chunk.clone(),
                 terminal,
                 finish_reason: terminal.then(|| outcome.finish_reason.clone()),
-                usage: terminal.then(|| ModelUsage {
+                usage: terminal.then_some(ModelUsage {
                     input_tokens: outcome.input_tokens,
                     output_tokens: outcome.output_tokens,
                     cost_microunits: outcome.cost_microunits,

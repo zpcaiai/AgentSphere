@@ -2577,7 +2577,7 @@ fn verify_revocation(
         provider_revision: revocation.provider_revision,
         provider_manifest_digest: &revocation.provider_manifest_digest,
         reason_code: &revocation.reason_code,
-        revoked_at: revocation.revoked_at.clone(),
+        revoked_at: revocation.revoked_at,
         issuer: &revocation.issuer,
         key_id: &revocation.key_id,
         key_usage: &revocation.key_usage,
@@ -2785,10 +2785,9 @@ fn parse_openai_sse(bytes: &[u8], plan: &RoutePlan) -> Result<ProviderOutcome, A
         if let Some(reason) = value
             .pointer("/choices/0/finish_reason")
             .and_then(Value::as_str)
+            && finish_reason.replace(reason.to_owned()).is_some()
         {
-            if finish_reason.replace(reason.to_owned()).is_some() {
-                return Err(AuthorityError::ProviderOutcomeUnknown);
-            }
+            return Err(AuthorityError::ProviderOutcomeUnknown);
         }
         if let Some(usage) = value.get("usage") {
             input_tokens = usage
@@ -2914,7 +2913,7 @@ async fn bounded_json_response<T: DeserializeOwned>(
     maximum: usize,
 ) -> Result<T, AuthorityError> {
     if !response.status().is_success()
-        || response
+        || !response
             .headers()
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
@@ -2923,8 +2922,7 @@ async fn bounded_json_response<T: DeserializeOwned>(
             .next()
             .unwrap_or("")
             .trim()
-            .to_ascii_lowercase()
-            != "application/json"
+            .eq_ignore_ascii_case("application/json")
     {
         return Err(AuthorityError::DependencyUnavailable);
     }

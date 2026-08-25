@@ -1030,6 +1030,7 @@ impl PostgresRegistryStore {
         Ok(receipt)
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn transition_published(
         &self,
         tenant: &TenantId,
@@ -2281,6 +2282,7 @@ fn activation_receipt(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mutation_receipt(
     tenant: &TenantId,
     tool: &ToolRef,

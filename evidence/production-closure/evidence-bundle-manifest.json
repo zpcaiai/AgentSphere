@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T20:20:56Z",
+  "generated_at": "2026-08-25T20:30:20Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -1061,11 +1061,11 @@
     },
     {
       "path": "rust/crates/model-gateway/src/adapters.rs",
-      "sha256": "137cb9907b1d9879188da68a55c2b08e79f4a777cbb545004c2f66f120b71f0d"
+      "sha256": "741768fe5728fbf3fe6a87391ac3903a81162a18e0cfe982bc679c2695b48833"
     },
     {
       "path": "rust/crates/model-gateway/src/authority.rs",
-      "sha256": "d0d817a05246db6d09a46683a5cbe683600ae8ea4b80cd8c0a6e9ee08a1536ba"
+      "sha256": "60ab080c4345b08babcbb0265d28680e04541fb492fe2b21fc3d366578e481f5"
     },
     {
       "path": "rust/crates/model-gateway/src/bin/agenttrust-model-gateway-service.rs",
@@ -1097,7 +1097,7 @@
     },
     {
       "path": "rust/crates/pack-supply-chain/src/production.rs",
-      "sha256": "845a3c6db4bcaabd4ef7621cd5e2f4ee0e121272c6d5a66c72bc89cb5d89e2b9"
+      "sha256": "f8908e6aa9cb77b9c58ab29e31240ac4b6af360fa1e32b48e476c5f43c2a2bb0"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/server.rs",
@@ -1164,12 +1164,20 @@
       "sha256": "365a4eafc7457f0181990c91977b791f8da6332488443706060777ea2a558679"
     },
     {
+      "path": "rust/crates/registry/src/lib.rs",
+      "sha256": "e89e7e69c8ebd70a2bb9c371a71ede2db9bb8fee30c7517a158f50d4c1b1fb82"
+    },
+    {
+      "path": "rust/crates/registry/src/postgres.rs",
+      "sha256": "afad1e59ba3b4375c9237f74b5434ecd1f9acf77b21d0339c4411119d2228a73"
+    },
+    {
       "path": "rust/crates/registry/src/server.rs",
       "sha256": "db7cb1034bbfc64e4fa1c46be427092ec8d14ea87d1a1f198a41e8c98bb07f46"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/authority.rs",
-      "sha256": "cd34c45acb8a119779289b23572d2b88dc9b959109dd49b7561121180264d4c7"
+      "sha256": "7bcef79fb2e528c3b038feba7fb757e91eed6b8b9ce60dc7aa150bfe20b0e973"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/bin/agenttrust-runtime-anomaly-authority.rs",
@@ -1181,11 +1189,11 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/production.rs",
-      "sha256": "fc7000d2e89c37d055df43b26962398b11c820bfadf5707d6b49921faa10ffeb"
+      "sha256": "5ab47ea142854009be8b62339dcad35aa01ba32cecd0a0f65dd7f1186dea1c52"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/server.rs",
-      "sha256": "0d8b09870ca5f3e47ece5d9b1247aedbf2ee3e5f98df6b4077fbe11bd0ca6221"
+      "sha256": "ad2a926f5e1de57879f6b178c76d77d15c0931bd65453ce2a8cc6580a1718ca3"
     },
     {
       "path": "rust/crates/runtime-anomaly/tests/production_contract.rs",
