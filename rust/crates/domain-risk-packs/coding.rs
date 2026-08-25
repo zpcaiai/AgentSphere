@@ -267,9 +267,22 @@ pub struct GitOperationReceipt {
 }
 
 pub trait GitProxyAdapter: Send + Sync {
-    fn create_task_branch(&self, task_id: &str, baseline_sha: &str) -> Result<GitOperationReceipt, CodingError>;
-    fn create_pull_request(&self, task_id: &str, branch: &str, build_evidence_digest: &str) -> Result<GitOperationReceipt, CodingError>;
-    fn rollback(&self, task_id: &str, baseline_sha: &str) -> Result<GitOperationReceipt, CodingError>;
+    fn create_task_branch(
+        &self,
+        task_id: &str,
+        baseline_sha: &str,
+    ) -> Result<GitOperationReceipt, CodingError>;
+    fn create_pull_request(
+        &self,
+        task_id: &str,
+        branch: &str,
+        build_evidence_digest: &str,
+    ) -> Result<GitOperationReceipt, CodingError>;
+    fn rollback(
+        &self,
+        task_id: &str,
+        baseline_sha: &str,
+    ) -> Result<GitOperationReceipt, CodingError>;
 }
 
 #[cfg(test)]

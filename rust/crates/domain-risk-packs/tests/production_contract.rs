@@ -52,7 +52,10 @@ fn domain_runtime_has_authoritative_wire_and_shared_evidence_bridge() {
     assert!(server.contains("/v1/domain-runtime/executions"));
     assert!(authority.contains("TypedDomainEffectReceipt"));
     assert!(authority.contains("TypedDomainEvaluatorResult"));
-    assert!(authority.contains("\"schema_version\": DOMAIN_STATE_SCHEMA"));
+    assert!(
+        authority.contains("\"schema_version\":DOMAIN_STATE_SCHEMA")
+            || authority.contains("\"schema_version\": DOMAIN_STATE_SCHEMA")
+    );
     assert!(server.contains("v1/evidence/authority-events"));
     assert!(server.contains("SignedAuthorityEvidenceReceipt"));
     assert!(!server.contains("expected_task_state_version"));
@@ -99,8 +102,11 @@ fn domain_management_routes_match_production_probes() {
     let stack = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
     assert!(server.contains("route(\"/live\", get(management_live))"));
     assert!(server.contains("route(\"/ready\", get(management_ready))"));
-    assert!(server.contains("\"schema_version\": DOMAIN_READINESS_SCHEMA"));
-    assert!(server.contains("\"live\": true"));
+    assert!(
+        server.contains("\"schema_version\":DOMAIN_READINESS_SCHEMA")
+            || server.contains("\"schema_version\": DOMAIN_READINESS_SCHEMA")
+    );
+    assert!(server.contains("\"live\":true") || server.contains("\"live\": true"));
     assert!(stack.contains("livenessProbe: {httpGet: {path: /live, port: management}"));
     assert!(stack.contains("readinessProbe: {httpGet: {path: /ready, port: management}"));
 }

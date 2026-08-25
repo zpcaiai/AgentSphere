@@ -22,13 +22,19 @@ fn production_assets_keep_authority_fail_closed() {
     assert!(server.contains("SignedAuthorityEvidenceReceipt"));
     assert!(server.contains("route(\"/live\", get(management_live))"));
     assert!(server.contains("route(\"/ready\", get(management_ready))"));
-    assert!(server.contains("\"schema_version\": SUPPLY_READINESS_SCHEMA"));
-    assert!(server.contains("\"live\": true"));
+    assert!(
+        server.contains("\"schema_version\":SUPPLY_READINESS_SCHEMA")
+            || server.contains("\"schema_version\": SUPPLY_READINESS_SCHEMA")
+    );
+    assert!(server.contains("\"live\":true") || server.contains("\"live\": true"));
     assert!(!server.contains("expected_task_state_version"));
     assert!(authority.contains("evidence_requested_at"));
     assert!(authority.contains("installation_receipt_digest"));
     assert!(authority.contains("reconciliation_receipt_digest"));
-    assert!(authority.contains("\"schema_version\": SUPPLY_RELEASES_SCHEMA"));
+    assert!(
+        authority.contains("\"schema_version\":SUPPLY_RELEASES_SCHEMA")
+            || authority.contains("\"schema_version\": SUPPLY_RELEASES_SCHEMA")
+    );
 
     let stack = include_str!("../../../../deploy/kubernetes/production-stack.yaml.tmpl");
     assert!(stack.contains("livenessProbe: {httpGet: {path: /live, port: management}"));

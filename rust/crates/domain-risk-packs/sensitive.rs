@@ -101,10 +101,7 @@ impl InMemoryConsentService {
         Ok(())
     }
 
-    fn lookup_share(
-        &self,
-        request: &ShareAuthorizationRequest,
-    ) -> Result<(), SensitiveError> {
+    fn lookup_share(&self, request: &ShareAuthorizationRequest) -> Result<(), SensitiveError> {
         if request.consent_id.is_empty()
             || request.user_subject.is_empty()
             || request.purpose.is_empty()

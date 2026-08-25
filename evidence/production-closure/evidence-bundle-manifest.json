@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T19:26:31Z",
+  "generated_at": "2026-08-25T19:42:00Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -921,15 +921,31 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/authority.rs",
-      "sha256": "40d2242d1f0dea4d7eca5f68848c85dd5e270dd52f20caa61b1dc974cf36b769"
+      "sha256": "5c5a1850d3bce4596d316657fd7dec694bc27032130a249add068a721627e281"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/coding.rs",
+      "sha256": "9cb888a1f82f87fc9788a39ea667e712dc255a4f6e5b1f05b77f091bf7eee4d1"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/lib.rs",
+      "sha256": "4c198b131d112bd0f65ca2e8d9920b5951ac6d211b7d6f612add99b83fe83163"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/medical.rs",
+      "sha256": "c4e3dc3f1500613a955fbf430e612d634488466993a555ff460f4ed1aebcff73"
     },
     {
       "path": "rust/crates/domain-risk-packs/production.rs",
-      "sha256": "3b9dbcba2ec309c2abb24815f22b4ecfb26a1468e6b0ce6d23d4828d2f5e3265"
+      "sha256": "df7e3448ee23c3e784ac1bf503a97e9a249b83a499bcdd20e9bd7fca7fe2e549"
+    },
+    {
+      "path": "rust/crates/domain-risk-packs/sensitive.rs",
+      "sha256": "d50ed6d76808d74272516d7e1a11d085963925a2aa86bef2bfdd05e01abd265b"
     },
     {
       "path": "rust/crates/domain-risk-packs/server.rs",
-      "sha256": "9b29214efcbbd9965719d7cabef4f14d6ceb2cd9764db320cb89d3bd781767d1"
+      "sha256": "62d896f475fce69daf6ec4989b3d68b6c8e6428a300f655bd848a10fa9ee2da5"
     },
     {
       "path": "rust/crates/domain-risk-packs/src/bin/agenttrust-domain-runtime-authority.rs",
@@ -937,7 +953,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/tests/production_contract.rs",
-      "sha256": "b9cc14f6d0bfd623f77577bd871a1f54d9a75b46184e0da647c5ea5df5548c02"
+      "sha256": "edc5d66fd451dc2413503f290ccc342d42d652c90a6f304b35760d13351b190b"
     },
     {
       "path": "rust/crates/durable-orchestrator/src/facts.rs",
@@ -1057,23 +1073,23 @@
     },
     {
       "path": "rust/crates/pack-supply-chain/src/bin/agenttrust-pack-supply-chain-authority.rs",
-      "sha256": "e29088407f139b2ac26e1a59b1a5f38bc7dbbf0bdf2b7c6522c84348f4fadb7c"
+      "sha256": "76fe82f437413451d57a39165cf139e020e97f5f7181116ac165837c9d8e1139"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/lib.rs",
-      "sha256": "81adc6c2c6f4b6128a6faa510f1c9d3dc594f7304b9886cf43656a0d974d69ad"
+      "sha256": "dcc30e46c64f724fecca7ff402fcd3fd90ebb1a39761b60a926cc022c586e9a0"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/production.rs",
-      "sha256": "8fe30db5a9a7041efc0a797fa26b36e64433a184f39645b4bcf990854319ba89"
+      "sha256": "fe7974e5372c02161acaaa2ea84643825df81109731b7c8dc031938f5d23122f"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/server.rs",
-      "sha256": "0c400e2de0d0fc0da66bd6fba0960660a00d088386f84cc508e2df3ff52171f6"
+      "sha256": "c1f0f313902f99efc4f5ae99da777b512469ceeb6de6e1398de328c9fd797126"
     },
     {
       "path": "rust/crates/pack-supply-chain/tests/production_contract.rs",
-      "sha256": "49d4283fdbda70e631f4874204287d901a968456802fd72347bccedf11b455a0"
+      "sha256": "1a0b1bee0e8cdfae7e62949fbcb1bc9f51cf1b15063c5bd7529a6ef2286f0511"
     },
     {
       "path": "rust/crates/platform-sre/src/authority.rs",

@@ -442,7 +442,8 @@ mod tests {
             model_digest: "m".repeat(64),
         };
         assert_eq!(
-            MedicalEvaluator::evaluate(&input, &InMemoryHumanReviewService::default(), Utc::now()).status,
+            MedicalEvaluator::evaluate(&input, &InMemoryHumanReviewService::default(), Utc::now())
+                .status,
             EvaluationStatus::NeedsHuman
         );
     }

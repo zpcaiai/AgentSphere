@@ -224,9 +224,79 @@ fn outbound_client(
         .build()?)
 }
 
-fn read_secret_file(name:&str,minimum:usize,maximum:usize)->Result<String,Box<dyn std::error::Error>>{let value=std::fs::read_to_string(required_private_path(name)?)?;let secret=value.trim_end_matches(['\r','\n']);if !(minimum..=maximum).contains(&secret.len())||secret.bytes().any(|byte|!byte.is_ascii_graphic())||value.len().saturating_sub(secret.len())>2{return Err("SUPPLY_CHAIN_SECRET_FILE_INVALID".into());}Ok(secret.to_string())}
-fn required_url(name:&str)->Result<url::Url,Box<dyn std::error::Error>>{let value=url::Url::parse(&env::var(name)?)?;if value.scheme()!="https"||value.host_str().is_none()||!value.username().is_empty()||value.password().is_some()||value.path()!="/"||value.query().is_some()||value.fragment().is_some(){return Err("SUPPLY_CHAIN_ENDPOINT_INVALID".into());}Ok(value)}
-fn required_identifier(name:&str)->Result<String,Box<dyn std::error::Error>>{let value=env::var(name)?;if value.is_empty()||value.len()>256||value.bytes().any(|byte|!(byte.is_ascii_alphanumeric()||matches!(byte,b'-'|b'_'|b'.'|b':'|b'/'|b'@'))){return Err("SUPPLY_CHAIN_IDENTIFIER_INVALID".into());}Ok(value)}
-fn required_uuid(name:&str)->Result<String,Box<dyn std::error::Error>>{let value=env::var(name)?;if !Uuid::parse_str(&value).is_ok_and(|parsed|parsed.to_string()==value){return Err("SUPPLY_CHAIN_UUID_INVALID".into());}Ok(value)}
-fn required_i64(name:&str,minimum:i64,maximum:i64)->Result<i64,Box<dyn std::error::Error>>{let value:i64=env::var(name)?.parse()?;if !(minimum..=maximum).contains(&value){return Err("SUPPLY_CHAIN_INTEGER_INVALID".into());}Ok(value)}
-fn required_identities(name:&str)->Result<BTreeSet<String>,Box<dyn std::error::Error>>{let parsed=env::var(name)?.split(',').map(str::trim).map(str::to_string).collect::<BTreeSet<_>>();if parsed.is_empty()||parsed.len()>64||parsed.iter().any(|identity|identity.len()>512||!(identity.starts_with("DNS:")||identity.starts_with("URI:"))||identity.split_once(':').is_none_or(|(_,value)|value.is_empty()||!value.bytes().all(|byte|byte.is_ascii_graphic()))){return Err("SUPPLY_CHAIN_CLIENT_IDENTITIES_INVALID".into());}Ok(parsed)}
+fn read_secret_file(
+    name: &str,
+    minimum: usize,
+    maximum: usize,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let value = std::fs::read_to_string(required_private_path(name)?)?;
+    let secret = value.trim_end_matches(['\r', '\n']);
+    if !(minimum..=maximum).contains(&secret.len())
+        || secret.bytes().any(|byte| !byte.is_ascii_graphic())
+        || value.len().saturating_sub(secret.len()) > 2
+    {
+        return Err("SUPPLY_CHAIN_SECRET_FILE_INVALID".into());
+    }
+    Ok(secret.to_string())
+}
+fn required_url(name: &str) -> Result<url::Url, Box<dyn std::error::Error>> {
+    let value = url::Url::parse(&env::var(name)?)?;
+    if value.scheme() != "https"
+        || value.host_str().is_none()
+        || !value.username().is_empty()
+        || value.password().is_some()
+        || value.path() != "/"
+        || value.query().is_some()
+        || value.fragment().is_some()
+    {
+        return Err("SUPPLY_CHAIN_ENDPOINT_INVALID".into());
+    }
+    Ok(value)
+}
+fn required_identifier(name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let value = env::var(name)?;
+    if value.is_empty()
+        || value.len() > 256
+        || value.bytes().any(|byte| {
+            !(byte.is_ascii_alphanumeric()
+                || matches!(byte, b'-' | b'_' | b'.' | b':' | b'/' | b'@'))
+        })
+    {
+        return Err("SUPPLY_CHAIN_IDENTIFIER_INVALID".into());
+    }
+    Ok(value)
+}
+fn required_uuid(name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let value = env::var(name)?;
+    if !Uuid::parse_str(&value).is_ok_and(|parsed| parsed.to_string() == value) {
+        return Err("SUPPLY_CHAIN_UUID_INVALID".into());
+    }
+    Ok(value)
+}
+fn required_i64(name: &str, minimum: i64, maximum: i64) -> Result<i64, Box<dyn std::error::Error>> {
+    let value: i64 = env::var(name)?.parse()?;
+    if !(minimum..=maximum).contains(&value) {
+        return Err("SUPPLY_CHAIN_INTEGER_INVALID".into());
+    }
+    Ok(value)
+}
+fn required_identities(name: &str) -> Result<BTreeSet<String>, Box<dyn std::error::Error>> {
+    let parsed = env::var(name)?
+        .split(',')
+        .map(str::trim)
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+    if parsed.is_empty()
+        || parsed.len() > 64
+        || parsed.iter().any(|identity| {
+            identity.len() > 512
+                || !(identity.starts_with("DNS:") || identity.starts_with("URI:"))
+                || identity.split_once(':').is_none_or(|(_, value)| {
+                    value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_graphic())
+                })
+        })
+    {
+        return Err("SUPPLY_CHAIN_CLIENT_IDENTITIES_INVALID".into());
+    }
+    Ok(parsed)
+}

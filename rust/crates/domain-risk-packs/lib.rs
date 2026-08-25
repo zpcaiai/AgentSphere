@@ -1,13 +1,13 @@
 //! Domain risk packs built on the shared Batch 20 SDK.
 
+pub mod authority;
 pub mod coding;
 pub mod energy;
-pub mod authority;
 pub mod industrial;
 pub mod medical;
 pub mod production;
-pub mod server;
 pub mod sensitive;
+pub mod server;
 
 use agent_trust_contracts::EffectClass;
 use agent_trust_pack_supply_chain::{

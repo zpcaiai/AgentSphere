@@ -131,47 +131,85 @@ pub struct PackSdk;
 
 impl PackSdk {
     pub fn validate(manifest: &DomainPackManifest) -> Result<(), PackError> {
-        let declared_tools=manifest.tools.iter().map(|tool|tool.tool_id.clone()).collect::<BTreeSet<_>>();
-        let approval_tools=manifest.tools.iter().filter(|tool|tool.approval_required).map(|tool|tool.tool_id.clone()).collect::<BTreeSet<_>>();
-        let compensation_refs=manifest.tools.iter().filter_map(|tool|tool.compensation_ref.clone()).collect::<BTreeSet<_>>();
+        let declared_tools = manifest
+            .tools
+            .iter()
+            .map(|tool| tool.tool_id.clone())
+            .collect::<BTreeSet<_>>();
+        let approval_tools = manifest
+            .tools
+            .iter()
+            .filter(|tool| tool.approval_required)
+            .map(|tool| tool.tool_id.clone())
+            .collect::<BTreeSet<_>>();
+        let compensation_refs = manifest
+            .tools
+            .iter()
+            .filter_map(|tool| tool.compensation_ref.clone())
+            .collect::<BTreeSet<_>>();
         if manifest.schema_version != PACK_SCHEMA_VERSION
-            || !bounded_identifier(&manifest.pack_id,256)
+            || !bounded_identifier(&manifest.pack_id, 256)
             || !valid_semver(&manifest.version)
-            || !bounded_text(&manifest.description,4096)
-            || !immutable_reference(&manifest.policy_bundle_ref,"policy")
-            || !immutable_reference(&manifest.evaluator_ref,"evaluator")
+            || !bounded_text(&manifest.description, 4096)
+            || !immutable_reference(&manifest.policy_bundle_ref, "policy")
+            || !immutable_reference(&manifest.evaluator_ref, "evaluator")
             || manifest.threat_scenario_refs.is_empty()
             || manifest.artifact_refs.is_empty()
             || manifest.compatibility.is_empty()
             || manifest.tools.is_empty()
-            || manifest.tools.len()>1024
-            || manifest.artifact_refs.len()>256
-            || manifest.threat_scenario_refs.len()>256
-            || manifest.compatibility.len()>256
-            || manifest.compensation_refs.len()>1024
+            || manifest.tools.len() > 1024
+            || manifest.artifact_refs.len() > 256
+            || manifest.threat_scenario_refs.len() > 256
+            || manifest.compatibility.len() > 256
+            || manifest.compensation_refs.len() > 1024
             || !lower_digest(&manifest.digest)
-            || !bounded_identifier(&manifest.publisher_identity,256)
-            || manifest.permissions.tools!=declared_tools
-            || manifest.permissions.approval_scopes!=approval_tools
-            || manifest.compensation_refs!=compensation_refs
-            || manifest.artifact_refs.iter().any(|value|!immutable_reference(value,"artifact"))
-            || manifest.threat_scenario_refs.iter().any(|value|!bounded_identifier(value,512))
-            || manifest.compatibility.iter().any(|value|!bounded_identifier(value,256))
-            || manifest.permissions.network_destinations.len()>256
-            || manifest.permissions.data_classes.len()>256
-            || manifest.permissions.secret_scopes.len()>256
-            || manifest.permissions.executors.len()>256
-            || manifest.permissions.approval_scopes.len()>1024
-            || manifest.permissions.network_destinations.iter().any(|value|!bounded_identifier(value,512))
-            || manifest.permissions.data_classes.iter().any(|value|!bounded_identifier(value,256))
-            || manifest.permissions.secret_scopes.iter().any(|value|!bounded_identifier(value,256))
-            || manifest.permissions.executors.iter().any(|value|!bounded_identifier(value,256))
+            || !bounded_identifier(&manifest.publisher_identity, 256)
+            || manifest.permissions.tools != declared_tools
+            || manifest.permissions.approval_scopes != approval_tools
+            || manifest.compensation_refs != compensation_refs
+            || manifest
+                .artifact_refs
+                .iter()
+                .any(|value| !immutable_reference(value, "artifact"))
+            || manifest
+                .threat_scenario_refs
+                .iter()
+                .any(|value| !bounded_identifier(value, 512))
+            || manifest
+                .compatibility
+                .iter()
+                .any(|value| !bounded_identifier(value, 256))
+            || manifest.permissions.network_destinations.len() > 256
+            || manifest.permissions.data_classes.len() > 256
+            || manifest.permissions.secret_scopes.len() > 256
+            || manifest.permissions.executors.len() > 256
+            || manifest.permissions.approval_scopes.len() > 1024
+            || manifest
+                .permissions
+                .network_destinations
+                .iter()
+                .any(|value| !bounded_identifier(value, 512))
+            || manifest
+                .permissions
+                .data_classes
+                .iter()
+                .any(|value| !bounded_identifier(value, 256))
+            || manifest
+                .permissions
+                .secret_scopes
+                .iter()
+                .any(|value| !bounded_identifier(value, 256))
+            || manifest
+                .permissions
+                .executors
+                .iter()
+                .any(|value| !bounded_identifier(value, 256))
         {
             return Err(PackError::ManifestInvalid);
         }
         for tool in &manifest.tools {
-            if !bounded_identifier(&tool.tool_id,256)
-                || !bounded_identifier(&tool.executor_template,256)
+            if !bounded_identifier(&tool.tool_id, 256)
+                || !bounded_identifier(&tool.executor_template, 256)
                 || tool.executor_template.contains("/bin/sh")
                 || tool.executor_template.contains("bash -c")
                 || !manifest.permissions.tools.contains(&tool.tool_id)
@@ -180,21 +218,26 @@ impl PackSdk {
             }
             match tool.effect_class {
                 EffectClass::Pure | EffectClass::Idempotent => {
-                    if tool.compensation_ref.is_some()||tool.irreversible_reason.is_some(){return Err(PackError::ToolInvalid);}
+                    if tool.compensation_ref.is_some() || tool.irreversible_reason.is_some() {
+                        return Err(PackError::ToolInvalid);
+                    }
                 }
                 EffectClass::Compensatable => {
                     let compensation = tool
                         .compensation_ref
                         .as_ref()
                         .ok_or(PackError::CompensationMissing)?;
-                    if !manifest.compensation_refs.contains(compensation) || !tool.approval_required
-                        ||!bounded_identifier(compensation,512)||tool.irreversible_reason.is_some()
+                    if !manifest.compensation_refs.contains(compensation)
+                        || !tool.approval_required
+                        || !bounded_identifier(compensation, 512)
+                        || tool.irreversible_reason.is_some()
                     {
                         return Err(PackError::CompensationMissing);
                     }
                 }
                 EffectClass::Irreversible => {
-                    if !tool.approval_required||tool.compensation_ref.is_some()
+                    if !tool.approval_required
+                        || tool.compensation_ref.is_some()
                         || tool
                             .irreversible_reason
                             .as_deref()
@@ -252,11 +295,22 @@ impl ArtifactVerifier {
             || !lower_digest(&artifact.digest)
             || !lower_digest(&artifact.sbom.digest)
             || artifact.provenance.source_commit.len() < 7
-            || artifact.immutable_reference.to_ascii_lowercase().contains(":latest")
-            || !artifact.immutable_reference.contains(&format!("sha256:{}",artifact.digest))
-            || !matches!(artifact.sbom.format.as_str(),"SPDX_JSON"|"CYCLONEDX_JSON")
-            || artifact.sbom.component_count==0
-            || !matches!(artifact.vulnerability_severity.as_deref(),None|Some("NONE"|"LOW"|"MEDIUM"|"HIGH"|"CRITICAL"))
+            || artifact
+                .immutable_reference
+                .to_ascii_lowercase()
+                .contains(":latest")
+            || !artifact
+                .immutable_reference
+                .contains(&format!("sha256:{}", artifact.digest))
+            || !matches!(
+                artifact.sbom.format.as_str(),
+                "SPDX_JSON" | "CYCLONEDX_JSON"
+            )
+            || artifact.sbom.component_count == 0
+            || !matches!(
+                artifact.vulnerability_severity.as_deref(),
+                None | Some("NONE" | "LOW" | "MEDIUM" | "HIGH" | "CRITICAL")
+            )
             || artifact.signature.subject_digest != artifact.digest
             || self.revoked_digests.read().contains(&artifact.digest)
             || matches!(
@@ -568,20 +622,25 @@ fn valid_semver(version: &str) -> bool {
             .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
-fn lower_digest(value:&str)->bool{
-    value.len()==64&&value.bytes().all(|byte|byte.is_ascii_hexdigit()&&!byte.is_ascii_uppercase())
+fn lower_digest(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn immutable_reference(value:&str,kind:&str)->bool{
-    value.strip_prefix(&format!("{kind}:sha256:")).is_some_and(lower_digest)
+fn immutable_reference(value: &str, kind: &str) -> bool {
+    value
+        .strip_prefix(&format!("{kind}:sha256:"))
+        .is_some_and(lower_digest)
 }
 
-fn bounded_identifier(value:&str,maximum:usize)->bool{
-    !value.is_empty()&&value.len()<=maximum&&value.bytes().all(|byte|byte.is_ascii_graphic())
+fn bounded_identifier(value: &str, maximum: usize) -> bool {
+    !value.is_empty() && value.len() <= maximum && value.bytes().all(|byte| byte.is_ascii_graphic())
 }
 
-fn bounded_text(value:&str,maximum:usize)->bool{
-    !value.trim().is_empty()&&value.len()<=maximum&&!value.chars().any(char::is_control)
+fn bounded_text(value: &str, maximum: usize) -> bool {
+    !value.trim().is_empty() && value.len() <= maximum && !value.chars().any(char::is_control)
 }
 
 fn hex(bytes: impl AsRef<[u8]>) -> String {
@@ -653,11 +712,11 @@ mod tests {
                 irreversible_reason: None,
                 executor_template: "repo-read-v1".into(),
             }],
-            policy_bundle_ref: format!("policy:sha256:{}","1".repeat(64)),
-            evaluator_ref: format!("evaluator:sha256:{}","2".repeat(64)),
+            policy_bundle_ref: format!("policy:sha256:{}", "1".repeat(64)),
+            evaluator_ref: format!("evaluator:sha256:{}", "2".repeat(64)),
             compensation_refs: BTreeSet::new(),
             threat_scenario_refs: BTreeSet::from(["threat:path-traversal".into()]),
-            artifact_refs: BTreeSet::from([format!("artifact:sha256:{}","3".repeat(64))]),
+            artifact_refs: BTreeSet::from([format!("artifact:sha256:{}", "3".repeat(64))]),
             compatibility: BTreeSet::from(["agenttrust.contracts.v1".into()]),
             signature: SignatureEnvelope {
                 key_id: String::new(),
