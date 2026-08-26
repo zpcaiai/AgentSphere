@@ -477,18 +477,10 @@ impl HttpSreEffectPort {
                 "v1/topology/zone-health",
             )),
             SreOperation::CreateBackup => Some((SreAdapterKind::Backup, "v1/backups")),
-            SreOperation::VerifyRestore => {
-                Some((SreAdapterKind::Recovery, "v1/restores/verify"))
-            }
-            SreOperation::Failover => {
-                Some((SreAdapterKind::DisasterRecovery, "v1/dr/failover"))
-            }
-            SreOperation::Failback => {
-                Some((SreAdapterKind::DisasterRecovery, "v1/dr/failback"))
-            }
-            SreOperation::ExecuteChaos => {
-                Some((SreAdapterKind::Chaos, "v1/chaos/execute"))
-            }
+            SreOperation::VerifyRestore => Some((SreAdapterKind::Recovery, "v1/restores/verify")),
+            SreOperation::Failover => Some((SreAdapterKind::DisasterRecovery, "v1/dr/failover")),
+            SreOperation::Failback => Some((SreAdapterKind::DisasterRecovery, "v1/dr/failback")),
+            SreOperation::ExecuteChaos => Some((SreAdapterKind::Chaos, "v1/chaos/execute")),
             SreOperation::ExecuteLoad => Some((SreAdapterKind::Load, "v1/load/execute")),
             SreOperation::RollbackUpgrade => {
                 Some((SreAdapterKind::Upgrade, "v1/upgrades/rollback"))

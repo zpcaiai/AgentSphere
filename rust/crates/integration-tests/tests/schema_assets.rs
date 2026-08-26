@@ -173,8 +173,7 @@ fn platform_sre_zone_health_contract_rejects_client_facts_and_malformed_receipts
         .remove("probe_spec_digest");
     assert!(!command_validator.is_valid(&missing_probe_spec));
 
-    let receipt_schema =
-        read_schema("schemas/platform-sre/sre-external-receipt.schema.json");
+    let receipt_schema = read_schema("schemas/platform-sre/sre-external-receipt.schema.json");
     let receipt_validator = jsonschema::validator_for(&receipt_schema)
         .unwrap_or_else(|error| panic!("compile receipt schema: {error}"));
     let valid_receipt = serde_json::json!({

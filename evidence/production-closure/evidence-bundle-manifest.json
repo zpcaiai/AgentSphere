@@ -1021,7 +1021,7 @@
     },
     {
       "path": "rust/crates/integration-tests/tests/schema_assets.rs",
-      "sha256": "cf19da485d7134aeaa22f8b450b48aa19b1cc4942c018b4d06e16527477d9fa5"
+      "sha256": "7b61e88ea17eb31bf86e2b822b562cc081ae12a8e677bbedcbc3a4bd84d52e67"
     },
     {
       "path": "rust/crates/evidence-evaluator/src/lib.rs",
@@ -1125,7 +1125,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "c24bd90d5634824ec030d5dcd381bfc3f9120f35ab5d004bd1f088151439d5d3"
+      "sha256": "ffe9943c1c282f36a1ae09baa47672e95d4816d6ffc2a34232f93e9b7d29be97"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",
