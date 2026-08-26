@@ -605,6 +605,21 @@ pub enum AuthorizationAdjustment {
     Kill,
 }
 
+impl AuthorizationAdjustment {
+    /// Stable wire name shared by response commands, persistence, and evidence.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NoChange => "NO_CHANGE",
+            Self::RequireApproval => "REQUIRE_APPROVAL",
+            Self::ReduceScope => "REDUCE_SCOPE",
+            Self::Pause => "PAUSE",
+            Self::RevokeLease => "REVOKE_LEASE",
+            Self::RevokeCredential => "REVOKE_CREDENTIAL",
+            Self::Kill => "KILL",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ResponseCommand {
     pub schema_version: String,

@@ -7,8 +7,10 @@ const MIGRATION: &str = include_str!(
     "../../../../migrations/runtime-anomaly/0036_01_17_production_runtime_anomaly.sql"
 );
 const OPENAPI: &str = include_str!("../../../../schemas/openapi/runtime-anomaly-v1.yaml");
-const SIGNAL_SCHEMA: &str =
+const RISK_SIGNAL_SCHEMA: &str =
     include_str!("../../../../schemas/runtime-anomaly/risk-signal.schema.json");
+const SIGNED_SIGNAL_SCHEMA: &str =
+    include_str!("../../../../schemas/runtime-anomaly/signed-risk-signal.schema.json");
 const COMMAND_SCHEMA: &str =
     include_str!("../../../../schemas/runtime-anomaly/runtime-anomaly-command.schema.json");
 const RESPONSE_REQUEST_SCHEMA: &str =
@@ -84,21 +86,20 @@ fn production_action_requires_canonical_pep_ledger_fence_and_evidence() {
 
 #[test]
 fn signed_signals_are_bounded_source_and_workload_bound() {
-    for marker in [
-        "source_id",
-        "source_key_id",
-        "source_signature",
-        "workload_identity",
-        "safe_features",
-    ] {
+    // Source/key/signature provenance is carried by the signed outer envelope;
+    // workload identity is bound by the mTLS request and checked by authority.
+    for marker in ["source_id", "key_id", "signature", "signal", "semantic_score"] {
         assert!(
-            SIGNAL_SCHEMA.contains(marker),
-            "signal schema missing {marker}"
+            SIGNED_SIGNAL_SCHEMA.contains(marker),
+            "signed signal schema missing {marker}"
         );
+    }
+    for marker in ["workload_identity", "safe_features"] {
         assert!(AUTHORITY.contains(marker), "authority missing {marker}");
     }
-    assert!(SIGNAL_SCHEMA.contains("maxProperties"));
-    assert!(SIGNAL_SCHEMA.contains("maxLength"));
+    assert!(RISK_SIGNAL_SCHEMA.contains("safeValue"));
+    assert!(RISK_SIGNAL_SCHEMA.contains("maxProperties"));
+    assert!(RISK_SIGNAL_SCHEMA.contains("maxLength"));
     assert!(AUTHORITY.contains("maximum_signal_clock_skew_seconds"));
     assert!(AUTHORITY.contains("maximum_signal_lookback"));
     for forbidden in [

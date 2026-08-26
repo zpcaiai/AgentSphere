@@ -1185,7 +1185,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/authority.rs",
-      "sha256": "7bcef79fb2e528c3b038feba7fb757e91eed6b8b9ce60dc7aa150bfe20b0e973"
+      "sha256": "0561b965d98872e7cb0a2fb6d01495ad8d263076c1467f457c6086dcfb088db5"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/bin/agenttrust-runtime-anomaly-authority.rs",
@@ -1193,7 +1193,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/lib.rs",
-      "sha256": "dfe93eadc6e814cf044500af073ba13811f23046ec450428b19512750b2960b4"
+      "sha256": "d0921c770c34cbea93acdc4420673d562cebcf7e29f5cc876e97bff773d55f0f"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/production.rs",
@@ -1205,7 +1205,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/tests/production_contract.rs",
-      "sha256": "dd56b0ce2f09c63add281062a56ea680a67567f5737ace174809c88c39541da8"
+      "sha256": "b2dc51c1bf21e6fa484c643616fcef27e85a37dbdfe4282a30fc201fb97205c4"
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/authority.rs",

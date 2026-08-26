@@ -3441,15 +3441,7 @@ fn risk_level_name(level: RiskLevel) -> &'static str {
 }
 
 fn adjustment_name(adjustment: AuthorizationAdjustment) -> &'static str {
-    match adjustment {
-        AuthorizationAdjustment::NoChange => "NO_CHANGE",
-        AuthorizationAdjustment::RequireApproval => "REQUIRE_APPROVAL",
-        AuthorizationAdjustment::ReduceScope => "REDUCE_SCOPE",
-        AuthorizationAdjustment::Pause => "PAUSE",
-        AuthorizationAdjustment::RevokeLease => "REVOKE_LEASE",
-        AuthorizationAdjustment::RevokeCredential => "REVOKE_CREDENTIAL",
-        AuthorizationAdjustment::Kill => "KILL",
-    }
+    adjustment.as_str()
 }
 
 fn ensure_one(rows: u64) -> Result<(), RuntimeAnomalyAuthorityError> {
