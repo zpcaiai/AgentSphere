@@ -2478,8 +2478,8 @@ async fn simulate_policy(
     let baseline_digest = request.command.payload["baseline_bundle_digest"]
         .as_str()
         .ok_or(PolicyAuthorityError::RequestInvalid)?;
-    let source_revision = u64::try_from(revision)
-        .map_err(|_| PolicyAuthorityError::DependencyUnavailable)?;
+    let source_revision =
+        u64::try_from(revision).map_err(|_| PolicyAuthorityError::DependencyUnavailable)?;
     let baseline = if baseline_digest == "0".repeat(64) {
         PolicyBundle {
             schema_version: POLICY_ADMIN_SCHEMA_VERSION.into(),
