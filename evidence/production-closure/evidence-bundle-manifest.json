@@ -901,7 +901,7 @@
     },
     {
       "path": "rust/crates/contracts/src/lib.rs",
-      "sha256": "d9352f0dda16ec40bc1a324434304482f42ffb9b030556661199f5a81cb3aa9b"
+      "sha256": "ba0721bd0a19ecc9494fa04604b3972dcce2e1d85552d497c51ee352a76a9c97"
     },
     {
       "path": "rust/crates/data-governance/src/adapters.rs",

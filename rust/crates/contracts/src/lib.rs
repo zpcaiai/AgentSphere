@@ -3228,13 +3228,6 @@ impl ExecutionAuthorization {
             || !bounded_nonempty(&self.policy_decision_id, 256)
             || !is_lower_hex_digest(&self.policy_decision_digest)
             || !bounded_nonempty(&self.policy_version.0, 256)
-            || !is_lower_hex_digest(&self.authorization_evidence_digest)
-            || self.authorization_evidence_ref
-                != format!(
-                    "urn:agenttrust:pep-authorization:{}:{}:sha256:{}",
-                    self.tenant_id.0, self.authorization_id, self.authorization_evidence_digest
-                )
-            || self.compute_evidence_digest()? != self.authorization_evidence_digest
             || !bounded_nonempty(&self.resource_version.0, 256)
             || !bounded_nonempty(&self.sandbox_profile, 256)
             || !bounded_nonempty(&self.network_profile, 256)
@@ -3262,7 +3255,18 @@ impl ExecutionAuthorization {
             .map_err(|_| ContractError::SignatureInvalid)?;
         let sig = Signature::from_slice(&raw).map_err(|_| ContractError::SignatureInvalid)?;
         key.verify(&self.signing_bytes()?, &sig)
-            .map_err(|_| ContractError::SignatureInvalid)
+            .map_err(|_| ContractError::SignatureInvalid)?;
+        if !is_lower_hex_digest(&self.authorization_evidence_digest)
+            || self.authorization_evidence_ref
+                != format!(
+                    "urn:agenttrust:pep-authorization:{}:{}:sha256:{}",
+                    self.tenant_id.0, self.authorization_id, self.authorization_evidence_digest
+                )
+            || self.compute_evidence_digest()? != self.authorization_evidence_digest
+        {
+            return Err(ContractError::ScopeExceeded);
+        }
+        Ok(())
     }
 }
 
