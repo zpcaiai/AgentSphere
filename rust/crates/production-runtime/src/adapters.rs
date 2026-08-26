@@ -571,10 +571,9 @@ fn parse_sse_response(bytes: &[u8], maximum: usize) -> Result<ProviderStreamResp
             finish_reason: finish,
         });
     }
-    if chunks.is_empty()
-        || !chunks
-            .last()
-            .is_some_and(|chunk| chunk.finish_reason.is_some())
+    if chunks
+        .last()
+        .is_none_or(|chunk| chunk.finish_reason.is_none())
     {
         return Err(ModelError::StreamInvalid);
     }

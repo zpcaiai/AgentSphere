@@ -15,7 +15,7 @@ use agent_trust_contracts::{
     EXECUTION_AUTHORIZATION_SCHEMA_VERSION, EXECUTION_EVIDENCE_RECEIPT_SCHEMA_VERSION,
     EXECUTION_EVIDENCE_REQUEST_SCHEMA_VERSION, EffectClass, EnforcementStage,
     EnterpriseApprovalGrant, EvidenceEventDraft, EvidenceEventType, ExecutionAuthorization,
-    ExecutionEvidenceRequest as SharedExecutionEvidenceRequest, ExecutionId, ExecutionStatus,
+    ExecutionEvidenceRequest as SharedExecutionEvidenceRequest, ExecutionStatus,
     IdempotencyKey, MinimalApprovalGrant, Obligation, PEP_EXECUTION_AUTHORIZATION_KEY_USAGE,
     PEP_PRE_APPROVAL_KEY_USAGE, PepFinalAuthorizationRequest, PepPreApprovalEnvelope,
     PepPreApprovalRequest, PepPreExecutionAuthorization, ResourceVersion, SignedEvidenceEvent,
@@ -454,9 +454,11 @@ struct PepKeyEntry {
     key_usages: BTreeSet<String>,
 }
 
+type AuthorizationKey = (String, VerifyingKey, BTreeSet<String>);
+
 #[derive(Clone)]
 pub struct PepAuthorizationKeyring {
-    keys: Arc<BTreeMap<String, (String, VerifyingKey, BTreeSet<String>)>>,
+    keys: Arc<BTreeMap<String, AuthorizationKey>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -557,7 +559,7 @@ impl ApprovalGrantKeyring {
 
 #[derive(Clone)]
 pub struct EvidenceEventKeyring {
-    keys: Arc<BTreeMap<String, (String, VerifyingKey, BTreeSet<String>)>>,
+    keys: Arc<BTreeMap<String, AuthorizationKey>>,
 }
 
 impl EvidenceEventKeyring {
@@ -1645,8 +1647,7 @@ fn validate_preapproval(
     let expected_resource_version = materialized
         .action
         .current_state_version
-        .as_ref()
-        .map(String::as_str)
+        .as_deref()
         .or_else(|| {
             materialized
                 .action
@@ -1881,10 +1882,10 @@ fn outcome_from_record(
 ) -> Result<ExecutionOutcome, ExecutionError> {
     // Every status exposes the exact durable outbox event ID. Signed evidence is additional.
     let mut evidence_refs = vec![ledger_ref];
-    if let Some(reference) = &record.evidence_ref {
-        if !evidence_refs.contains(reference) {
-            evidence_refs.push(reference.clone());
-        }
+    if let Some(reference) = &record.evidence_ref
+        && !evidence_refs.contains(reference)
+    {
+        evidence_refs.push(reference.clone());
     }
     let material = serde_json::json!({
         "execution_id": record.execution_id.0,
