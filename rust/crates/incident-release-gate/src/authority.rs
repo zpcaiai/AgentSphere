@@ -1711,7 +1711,7 @@ fn string_array(
             (minimum..=maximum).contains(&items.len())
                 && items
                     .iter()
-                    .all(|item| item.as_str().is_some_and(|value| validator(value)))
+                    .all(|item| item.as_str().is_some_and(&validator))
                 && items
                     .iter()
                     .filter_map(Value::as_str)
@@ -2827,7 +2827,7 @@ impl IncidentExecutor {
             .claim_execution(&binding, &request, self.execution_lease_seconds)
             .await?
         {
-            ExecutionClaim::Completed(result) => return Ok(result),
+            ExecutionClaim::Completed(result) => return Ok(*result),
             ExecutionClaim::Claimed(claim) => claim,
         };
         let effect = self.effects.execute(&binding, &request).await?;
@@ -2909,7 +2909,7 @@ impl IncidentExecutor {
 
 #[derive(Debug)]
 enum ExecutionClaim {
-    Completed(IncidentMutationResult),
+    Completed(Box<IncidentMutationResult>),
     Claimed(Uuid),
 }
 
@@ -3044,7 +3044,7 @@ impl PostgresIncidentAuthorityStore {
             tx.commit()
                 .await
                 .map_err(|_| IncidentAuthorityError::OutcomeUnknown)?;
-            return Ok(ExecutionClaim::Completed(result));
+            return Ok(ExecutionClaim::Completed(Box::new(result)));
         }
         if state != "EXECUTING" {
             return Err(IncidentAuthorityError::OutcomeUnknown);
@@ -3252,7 +3252,7 @@ impl PostgresIncidentAuthorityStore {
             result_digest,
             evidence_outbox_ref,
             effect_receipt: effect
-                .map(|value| serde_json::to_value(value))
+                .map(serde_json::to_value)
                 .transpose()
                 .map_err(|_| IncidentAuthorityError::OutcomeUnknown)?,
             release_receipt,

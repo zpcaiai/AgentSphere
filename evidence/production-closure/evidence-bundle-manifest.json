@@ -1057,7 +1057,7 @@
     },
     {
       "path": "rust/crates/incident-release-gate/src/authority.rs",
-      "sha256": "4277affae71fea745be82f10f032a99d817fd04c4352950c1338a26876288b3b"
+      "sha256": "9ee7148ae6361173b6a620155ff341be43ce8ed5b5a23d62be081646cde352c1"
     },
     {
       "path": "rust/crates/incident-release-gate/src/bin/agenttrust-incident-release-authority.rs",
