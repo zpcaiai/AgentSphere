@@ -118,6 +118,9 @@ pub type PreExecutionAuthorization =
     PepPreExecutionAuthorization<ResolvedToolSnapshot, CredentialHandle>;
 pub type PreApprovalOutcome = PepPreApprovalEnvelope<CompensationPlan>;
 
+/// The approval transport is pinned to the shared `agenttrust.approval-grant-request.v1`
+/// and `agenttrust.approval-grant-receipt.v1` wire contracts.  The values are
+/// imported from `contracts` below rather than re-declared in this client.
 pub type ApprovalGrantRequest = ApprovalConsumptionRequest;
 
 pub type ExecutionEvidenceRequest = SharedExecutionEvidenceRequest<SanitizedToolResult>;
