@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agenttrust.local/schemas/evidence/authority-evidence-event-request.schema.json",
+  "$comment": "GOVERNED_ACTION control_binding is checked against the pep_execution_authorizations record and its signed authorization evidence.",
   "type": "object",
   "additionalProperties": false,
   "required": [
