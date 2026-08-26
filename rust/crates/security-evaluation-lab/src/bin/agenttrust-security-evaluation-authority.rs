@@ -409,16 +409,17 @@ fn validate_file(path: &Path, private: bool) -> Result<(), Box<dyn std::error::E
     let effective_uid = nix::unistd::Uid::effective().as_raw();
     let effective_gid = nix::unistd::Gid::effective().as_raw();
     let mode = metadata.mode() & 0o777;
+    let group_world_mode = metadata.mode() & 0o077;
     let private_access = if private {
         let allowed = 0o400
             | if metadata.gid() == effective_gid {
                 0o040
             } else {
                 0
-            };
+        };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
-        readable && mode & !allowed == 0
+        readable && mode & !allowed == 0 && group_world_mode & !allowed == 0
     } else {
         mode & 0o022 == 0
     };
