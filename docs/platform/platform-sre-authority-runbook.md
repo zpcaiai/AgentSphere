@@ -79,8 +79,8 @@ All file variables are absolute secure files. Core variables are:
   `AGENT_TRUST_SRE_PORT=8097`, `AGENT_TRUST_SRE_MANAGEMENT_LISTEN_ADDRESS`,
   `AGENT_TRUST_SRE_MANAGEMENT_PORT=9107`;
 - outbound CA/certificate/key: `AGENT_TRUST_SRE_OUTBOUND_*`;
-- orchestrator and seven separated targets: `AGENT_TRUST_SRE_ORCHESTRATOR_*` and
-  `AGENT_TRUST_SRE_{BACKUP,RECOVERY,DR,CHAOS,LOAD,UPGRADE,EVIDENCE}_{ENDPOINT,TOKEN_FILE}`;
+- orchestrator and eight separated targets: `AGENT_TRUST_SRE_ORCHESTRATOR_*` and
+  `AGENT_TRUST_SRE_{TOPOLOGY_PROBE,BACKUP,RECOVERY,DR,CHAOS,LOAD,UPGRADE,EVIDENCE}_{ENDPOINT,TOKEN_FILE}`;
 - exact client SANs, token bindings, route subjects and human keyring/audience:
   `AGENT_TRUST_SRE_CLIENT_IDENTITIES`, `AGENT_TRUST_SRE_TOKEN_BINDINGS_FILE`,
   `AGENT_TRUST_SRE_{INGRESS,EXECUTOR,QUERY}_SUBJECT`, and
@@ -94,7 +94,20 @@ All file variables are absolute secure files. Core variables are:
 
 Every endpoint is a distinct HTTPS root; every dependency uses a distinct bearer secret. The
 outbound client requires TLS 1.3 mTLS, disables redirects, uses fixed connect/overall timeouts and
-never reads a token from an environment value.
+never reads a token from an environment value. The topology probe address must resolve through the
+declared DNS path into `EXTERNAL_SERVICE_EGRESS_CIDR`; the platform SRE NetworkPolicy permits only
+that explicit CIDR on 443/8443 and must not be widened for probe rollout.
+
+## Zone health probes
+
+`RECORD_ZONE_HEALTH` accepts only the observation/topology IDs, zone and a canonical
+`probe_spec_digest`. The dedicated topology-probe adapter performs the measurement and returns the
+component/dependency booleans, replica counts, observation time and immutable probe digest. The
+authority rejects client-supplied measurements, an incomplete or extra fact, and any receipt whose
+`probe_spec_digest` differs from the command. Missing configuration, readiness failure, transport
+failure, malformed content type, oversized response or absent receipt all fail closed before the
+database mutation. This corrects the unreleased v1 schema to match its runtime trust boundary; it
+does not certify any real multi-zone environment.
 
 ## Backup and recovery
 

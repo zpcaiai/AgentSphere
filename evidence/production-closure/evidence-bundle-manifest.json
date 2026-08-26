@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-25T20:30:20Z",
+  "generated_at": "2026-08-26T00:00:00Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -29,15 +29,19 @@
     },
     {
       "path": "deploy/kubernetes/production-stack-values.schema.json",
-      "sha256": "6c79dced291954ecedc1e51577e175fdf98b7f141b0417d41e5ded0c9d227d97"
+      "sha256": "2a7ab8f330b78d54abff240a083ebaeac42435cdd12f103bc940ba3f8bb72ea3"
     },
     {
       "path": "deploy/kubernetes/production-stack.yaml.tmpl",
-      "sha256": "0770f527b5683edbd6bf0aa2b13ebc5c39b15a06c029c173fb7250ad5d73adce"
+      "sha256": "2957fd76f8f1d237fbe64168be897153fb30c25418e52cb2d4eea5e14384c7c1"
     },
     {
       "path": "docs/enterprise/control-console-runbook.md",
       "sha256": "0172c5aa7965a9740e2c3b9fa54e4352f4dc1f382149e376a7cf6155649fac30"
+    },
+    {
+      "path": "docs/platform/platform-sre-authority-runbook.md",
+      "sha256": "068ebff7c671ad80656aeeb3c3045632d82e2a931a2dfab19e879effb89f5ed4"
     },
     {
       "path": "docs/release/production-closure-runbook.md",
@@ -829,7 +833,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "b12610f372add3d845b5fc500396a5ed759d4630df32bc45b9a8f3dc89a30595"
+      "sha256": "3114aea6efe63c6623fd4df5e212caff2a8c6851a34cf2a54f38583bd7ab4327"
     },
     {
       "path": "python/production_gates/tests/test_release_binding.py",
@@ -853,7 +857,7 @@
     },
     {
       "path": "rust/crates/agent-registry-posture/src/server.rs",
-      "sha256": "13ecc0ed180278f6488119e6e4817cd1f3824e32064247c08b43ba176d83a6af"
+      "sha256": "da3202e99160c0846de04a3b79525f0f2c9d1d2eff6a6938b7d55e241c3e4732"
     },
     {
       "path": "rust/crates/audit-retention/src/server.rs",
@@ -1016,6 +1020,10 @@
       "sha256": "579b52a93414e561cf7a0e3cece2cb05f3d75205583fafd52b2c949e8a125310"
     },
     {
+      "path": "rust/crates/integration-tests/tests/schema_assets.rs",
+      "sha256": "cf19da485d7134aeaa22f8b450b48aa19b1cc4942c018b4d06e16527477d9fa5"
+    },
+    {
       "path": "rust/crates/evidence-evaluator/src/lib.rs",
       "sha256": "e42f7e317dc8dcdf52df9fa2aab3ccf97486a8d5153280a8287da2327254c23d"
     },
@@ -1109,19 +1117,19 @@
     },
     {
       "path": "rust/crates/platform-sre/src/authority.rs",
-      "sha256": "099d1b4c01b0c73c7ce10ea5f5b5a72a2ee968aad27d42cfb47179ed7d5d3dc6"
+      "sha256": "7b11471f17d69950f94380a08e14d0730faf5ad75df7bba5eac47bcc9e7aa554"
     },
     {
       "path": "rust/crates/platform-sre/src/bin/agenttrust-platform-sre-service.rs",
-      "sha256": "84bc664fb431789e480025ea53e437f5630842f434a6c8df8f9a7043b753aeb4"
+      "sha256": "598ef2feb998ef706378d27ba844f167307ffe9832149dc8452d225e6c061988"
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "55df43fbc3b90551a4f7681cae601f98fa42e7c33c19f83d81d0c24854ae3942"
+      "sha256": "c24bd90d5634824ec030d5dcd381bfc3f9120f35ab5d004bd1f088151439d5d3"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",
-      "sha256": "8f5f1972421141e7fefc0d0b768f91ae24952cf3f358aaad571f136f2ff9721f"
+      "sha256": "985a0b4dc41634f4b41146c12ab2543a67401027fbbf20f445b282086ebd9631"
     },
     {
       "path": "rust/crates/policy-administration/src/server.rs",
@@ -1296,6 +1304,14 @@
       "sha256": "b4ee2193a5fa90776789ac47a7ea6677dd0d46436c178b542d4fa8191e82a11c"
     },
     {
+      "path": "schemas/platform-sre/sre-command.schema.json",
+      "sha256": "253f9b037626de08044502b86353cf3d29baf0803c8c2289e92ff28bf268ef94"
+    },
+    {
+      "path": "schemas/platform-sre/sre-external-receipt.schema.json",
+      "sha256": "8e7c6eb37b66cee5ca91f98c430fe2e8cd97f61c7beff14e2b34f737b3e8f6c3"
+    },
+    {
       "path": "schemas/release/domain-assurance-attestation.schema.json",
       "sha256": "292347343b7b9ce7a86f994e2c261fc45187e386e04131fba67bb24de602b6ac"
     },
@@ -1329,7 +1345,7 @@
     },
     {
       "path": "scripts/render-production-stack.py",
-      "sha256": "843715961a01782a4d18fe4cd818e9e3963d89393198bd79b7deb63bbbe8f4aa"
+      "sha256": "624f2137ddee11ac0912433c0e0e0c84d9c49ea22f8c3c37ae0690090f85d0ca"
     },
     {
       "path": "scripts/run-linux-isolation-gate.sh",
@@ -1361,7 +1377,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "6009c1d9298aac5a41d948d731e840a06c7fee578c4cb787c545a1c4abe8d7fb"
+      "sha256": "a367a9d0d7302e71f265af55dd72be4787456d5faf96ec0fc3d8e1ced1b61761"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",

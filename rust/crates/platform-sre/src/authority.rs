@@ -161,7 +161,7 @@ impl SreOperation {
         }
     }
 
-    fn external_effect(self) -> bool {
+    pub(crate) fn external_effect(self) -> bool {
         matches!(
             self,
             Self::RecordZoneHealth
@@ -902,35 +902,6 @@ async fn apply_operation(
             )
             .await
         }
-        SreOperation::RecordZoneHealth => {
-            exact_keys(
-                value,
-                &[
-                    "component_health",
-                    "dependency_health",
-                    "ready_replicas",
-                    "required_replicas",
-                    "topology_probe_digest",
-                    "probe_spec_digest",
-                    "observed_at",
-                ],
-            ) && value
-                .get("component_health")
-                .and_then(Value::as_object)
-                .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
-                && value
-                    .get("dependency_health")
-                    .and_then(Value::as_object)
-                    .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
-                && u64_field(value, "ready_replicas")
-                    .zip(u64_field(value, "required_replicas"))
-                    .is_some_and(|(ready, required)| {
-                        required > 0 && ready <= 1_000_000 && required <= 1_000_000
-                    })
-                && digest_field(value, "topology_probe_digest")
-                && digest_field(value, "probe_spec_digest")
-                && time_field(value, "observed_at")
-        }
         SreOperation::PlanDr => {
             sqlx::query(
                 "INSERT INTO sre_dr_plans \
@@ -1594,6 +1565,35 @@ fn external_fact_shape(operation: SreOperation, facts: &Value) -> bool {
         return false;
     };
     match operation {
+        SreOperation::RecordZoneHealth => {
+            exact_keys(
+                value,
+                &[
+                    "component_health",
+                    "dependency_health",
+                    "ready_replicas",
+                    "required_replicas",
+                    "topology_probe_digest",
+                    "probe_spec_digest",
+                    "observed_at",
+                ],
+            ) && value
+                .get("component_health")
+                .and_then(Value::as_object)
+                .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
+                && value
+                    .get("dependency_health")
+                    .and_then(Value::as_object)
+                    .is_some_and(|items| !items.is_empty() && items.values().all(Value::is_boolean))
+                && u64_field(value, "ready_replicas")
+                    .zip(u64_field(value, "required_replicas"))
+                    .is_some_and(|(ready, required)| {
+                        required > 0 && ready <= 1_000_000 && required <= 1_000_000
+                    })
+                && digest_field(value, "topology_probe_digest")
+                && digest_field(value, "probe_spec_digest")
+                && time_field(value, "observed_at")
+        }
         SreOperation::CreateBackup => {
             exact_keys(
                 value,
@@ -1796,6 +1796,20 @@ fn facts(receipt: &SreExternalReceipt) -> Result<&Map<String, Value>, SreAuthori
         .facts
         .as_object()
         .ok_or(SreAuthorityError::ExternalReceiptInvalid)
+}
+
+fn validate_zone_health_probe_binding(
+    payload: &Map<String, Value>,
+    observed: &Map<String, Value>,
+) -> Result<(), SreAuthorityError> {
+    let expected = string_field(payload, "probe_spec_digest")
+        .ok_or(SreAuthorityError::RequestInvalid)?;
+    let actual = string_field(observed, "probe_spec_digest")
+        .ok_or(SreAuthorityError::ExternalReceiptInvalid)?;
+    if actual != expected {
+        return Err(SreAuthorityError::ExternalReceiptInvalid);
+    }
+    Ok(())
 }
 
 fn require_one(rows: u64) -> Result<(), SreAuthorityError> {
@@ -2151,6 +2165,44 @@ mod tests {
             }),
         );
         assert!(!payload_shape(&request));
+    }
+
+    #[test]
+    fn zone_health_receipt_requires_complete_facts_and_exact_probe_binding() {
+        let probe_spec_digest = "a".repeat(64);
+        let payload = json!({"probe_spec_digest": probe_spec_digest})
+            .as_object()
+            .cloned()
+            .expect("payload object");
+        let facts = json!({
+            "component_health": {"control-plane": true},
+            "dependency_health": {"postgres": true},
+            "ready_replicas": 3,
+            "required_replicas": 3,
+            "topology_probe_digest": "b".repeat(64),
+            "probe_spec_digest": "a".repeat(64),
+            "observed_at": Utc::now(),
+        });
+        assert!(external_fact_shape(SreOperation::RecordZoneHealth, &facts));
+        assert_eq!(
+            validate_zone_health_probe_binding(
+                &payload,
+                facts.as_object().expect("facts object"),
+            ),
+            Ok(())
+        );
+
+        let mut mismatched = facts.as_object().cloned().expect("facts object");
+        mismatched.insert("probe_spec_digest".into(), Value::String("c".repeat(64)));
+        assert_eq!(
+            validate_zone_health_probe_binding(&payload, &mismatched),
+            Err(SreAuthorityError::ExternalReceiptInvalid)
+        );
+        mismatched.remove("dependency_health");
+        assert!(!external_fact_shape(
+            SreOperation::RecordZoneHealth,
+            &Value::Object(mismatched)
+        ));
     }
 
     #[test]
@@ -3346,6 +3398,19 @@ fn validate_external_receipt(
         || !external_fact_shape(request.command.operation, &receipt.facts)
     {
         return Err(SreAuthorityError::ExternalReceiptInvalid);
+    }
+    if request.command.operation == SreOperation::RecordZoneHealth {
+        validate_zone_health_probe_binding(
+            request
+                .command
+                .payload
+                .as_object()
+                .ok_or(SreAuthorityError::RequestInvalid)?,
+            receipt
+                .facts
+                .as_object()
+                .ok_or(SreAuthorityError::ExternalReceiptInvalid)?,
+        )?;
     }
     Ok(())
 }

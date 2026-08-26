@@ -161,8 +161,8 @@ PRODUCTION_AUTHORITY_DEPENDENCIES = {
     },
     "domain_runtime": {"executor", "evidence"},
     "platform_sre": {
-        "orchestrator", "backup", "recovery", "dr", "chaos", "load", "upgrade",
-        "evidence",
+        "orchestrator", "topology_probe", "backup", "recovery", "dr", "chaos", "load",
+        "upgrade", "evidence",
     },
 }
 DEPENDENCY_READINESS_SCHEMAS = {
@@ -590,17 +590,26 @@ def render(
         if set(dependencies) != PRODUCTION_AUTHORITY_DEPENDENCIES[service_name]:
             raise RenderError(f"PRODUCTION_STACK_{service_name.upper()}_DEPENDENCIES_INVALID")
         normalized_dependencies = {}
+        observed_dependency_endpoints = set()
         for dependency_name, dependency in dependencies.items():
             endpoint = require_https(
                 dependency,
                 f"PRODUCTION_STACK_{service_name.upper()}_{dependency_name.upper()}_ENDPOINT_INVALID",
                 allowed_ports={443, 8443},
             )
-            if urlparse(endpoint).path not in {"", "/"}:
+            parsed_endpoint = urlparse(endpoint)
+            if parsed_endpoint.path not in {"", "/"}:
                 raise RenderError(
                     f"PRODUCTION_STACK_{service_name.upper()}_{dependency_name.upper()}_ENDPOINT_INVALID"
                 )
-            normalized_dependencies[dependency_name] = endpoint.rstrip("/")
+            normalized_endpoint = endpoint.rstrip("/")
+            endpoint_identity = (parsed_endpoint.hostname.lower(), parsed_endpoint.port or 443)
+            if endpoint_identity in observed_dependency_endpoints:
+                raise RenderError(
+                    f"PRODUCTION_STACK_{service_name.upper()}_DEPENDENCY_ENDPOINT_REUSE_DENIED"
+                )
+            observed_dependency_endpoints.add(endpoint_identity)
+            normalized_dependencies[dependency_name] = normalized_endpoint
         validated_production_authorities[service_name] = {
             "client_identities": identities,
             "outbound_client_identity": outbound_identity,

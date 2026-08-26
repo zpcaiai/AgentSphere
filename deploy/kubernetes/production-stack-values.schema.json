@@ -262,6 +262,27 @@
         }
       }
     },
+    "platformSreDependencies": {
+      "type": "object", "additionalProperties": false,
+      "required": ["orchestrator", "topology_probe", "backup", "recovery", "dr", "chaos", "load", "upgrade", "evidence"],
+      "properties": {
+        "orchestrator": {"$ref": "#/$defs/https"},
+        "topology_probe": {"$ref": "#/$defs/https"},
+        "backup": {"$ref": "#/$defs/https"},
+        "recovery": {"$ref": "#/$defs/https"},
+        "dr": {"$ref": "#/$defs/https"},
+        "chaos": {"$ref": "#/$defs/https"},
+        "load": {"$ref": "#/$defs/https"},
+        "upgrade": {"$ref": "#/$defs/https"},
+        "evidence": {"$ref": "#/$defs/https"}
+      }
+    },
+    "platformSreAuthority": {
+      "allOf": [
+        {"$ref": "#/$defs/productionAuthority"},
+        {"type": "object", "properties": {"dependencies": {"$ref": "#/$defs/platformSreDependencies"}}}
+      ]
+    },
     "productionAuthorities": {
       "type": "object", "additionalProperties": false,
       "required": ["model_gateway", "data_governance", "context_governance", "runtime_anomaly", "security_evaluation", "pack_supply_chain", "domain_runtime", "platform_sre"],
@@ -273,7 +294,7 @@
         "security_evaluation": {"$ref": "#/$defs/productionAuthority"},
         "pack_supply_chain": {"$ref": "#/$defs/productionAuthority"},
         "domain_runtime": {"$ref": "#/$defs/productionAuthority"},
-        "platform_sre": {"$ref": "#/$defs/productionAuthority"}
+        "platform_sre": {"$ref": "#/$defs/platformSreAuthority"}
       }
     },
     "clientAuthority": {"type": "object", "additionalProperties": false, "required": ["client_identities"], "properties": {"client_identities": {"$ref": "#/$defs/clientIdentities"}}},

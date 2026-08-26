@@ -808,6 +808,81 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertIn('objectName: "human-principal-signing-key"', result)
         self.assertIn('objectName: "human-principal-keyring.json"', result)
 
+    def test_platform_sre_topology_probe_is_rendered_as_a_separate_dependency(self) -> None:
+        rendered = RENDER.render(
+            (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text(),
+            values(),
+            runtime_config(),
+        )
+        secret_provider = rendered.split(
+            "kind: SecretProviderClass\nmetadata: {name: agenttrust-platform-sre,", 1
+        )[1].split("---", 1)[0]
+        deployment = rendered.split(
+            "kind: Deployment\nmetadata: {name: agenttrust-platform-sre,", 1
+        )[1].split("---", 1)[0]
+        self.assertEqual(secret_provider.count('objectName: "topology-probe.token"'), 1)
+        self.assertIn(
+            'objectName: "topology-probe.token", secretPath: "kv/data/agenttrust/platform-sre", '
+            'secretKey: "topology_probe_token", filePermission: 0o440',
+            secret_provider,
+        )
+        self.assertEqual(
+            deployment.count("AGENT_TRUST_SRE_TOPOLOGY_PROBE_ENDPOINT"), 1
+        )
+        self.assertIn(
+            'AGENT_TRUST_SRE_TOPOLOGY_PROBE_ENDPOINT, value: '
+            '"https://platform-sre-topology-probe.prod.test"',
+            deployment,
+        )
+        self.assertEqual(
+            deployment.count("AGENT_TRUST_SRE_TOPOLOGY_PROBE_TOKEN_FILE"), 1
+        )
+        self.assertIn(
+            "AGENT_TRUST_SRE_TOPOLOGY_PROBE_TOKEN_FILE, value: "
+            "/var/run/agenttrust/secrets/platform-sre/topology-probe.token",
+            deployment,
+        )
+        values_schema = json.loads(
+            (ROOT / "deploy/kubernetes/production-stack-values.schema.json").read_text()
+        )
+        platform_sre_schema = values_schema["$defs"]["platformSreDependencies"]
+        self.assertEqual(
+            set(platform_sre_schema["required"]),
+            {
+                "orchestrator", "topology_probe", "backup", "recovery", "dr",
+                "chaos", "load", "upgrade", "evidence",
+            },
+        )
+        self.assertFalse(platform_sre_schema["additionalProperties"])
+
+    def test_platform_sre_dependency_endpoints_fail_closed_on_missing_or_reused_probe(self) -> None:
+        unsafe = values()
+        del unsafe["production_authorities"]["platform_sre"]["dependencies"][
+            "topology_probe"
+        ]
+        with self.assertRaisesRegex(
+            RENDER.RenderError, "PRODUCTION_STACK_PLATFORM_SRE_DEPENDENCIES_INVALID"
+        ):
+            RENDER.render("", unsafe, runtime_config())
+
+        unsafe = values()
+        dependencies = unsafe["production_authorities"]["platform_sre"]["dependencies"]
+        dependencies["topology_probe"] = dependencies["backup"] + "/"
+        with self.assertRaisesRegex(
+            RENDER.RenderError,
+            "PRODUCTION_STACK_PLATFORM_SRE_DEPENDENCY_ENDPOINT_REUSE_DENIED",
+        ):
+            RENDER.render("", unsafe, runtime_config())
+
+        unsafe = values()
+        dependencies = unsafe["production_authorities"]["platform_sre"]["dependencies"]
+        dependencies["topology_probe"] = "https://PLATFORM-SRE-BACKUP.PROD.TEST:443"
+        with self.assertRaisesRegex(
+            RENDER.RenderError,
+            "PRODUCTION_STACK_PLATFORM_SRE_DEPENDENCY_ENDPOINT_REUSE_DENIED",
+        ):
+            RENDER.render("", unsafe, runtime_config())
+
     def test_native_tls_ports_probes_and_network_policy_are_aligned(self) -> None:
         template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
         result = RENDER.render(template, values(), runtime_config())

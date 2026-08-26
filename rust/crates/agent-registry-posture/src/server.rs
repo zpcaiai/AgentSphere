@@ -158,10 +158,10 @@ impl TokenBindingAgentRegistryAuthorizer {
             })
             .map(|tenant| tenant.to_string())
             .ok_or(RegistryError::ManagementForbidden)?;
-        if let Some(legacy) = optional_single_header(headers, "x-tenant-id")? {
-            if legacy != tenant {
-                return Err(RegistryError::ManagementForbidden);
-            }
+        if let Some(legacy) = optional_single_header(headers, "x-tenant-id")?
+            && legacy != tenant
+        {
+            return Err(RegistryError::ManagementForbidden);
         }
         let token = single_header(headers, "authorization")
             .and_then(|value| value.strip_prefix("Bearer "))

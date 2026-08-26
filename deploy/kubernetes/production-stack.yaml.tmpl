@@ -2726,6 +2726,7 @@ spec:
       - {objectName: "human-principal-keyring.json", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "human_principal_keyring", filePermission: 0o440}
       - {objectName: "report-signing.key", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "report_signing_key", filePermission: 0o440}
       - {objectName: "orchestrator.token", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "orchestrator_token", filePermission: 0o440}
+      - {objectName: "topology-probe.token", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "topology_probe_token", filePermission: 0o440}
       - {objectName: "backup.token", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "backup_token", filePermission: 0o440}
       - {objectName: "recovery.token", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "recovery_token", filePermission: 0o440}
       - {objectName: "dr.token", secretPath: "@@VAULT_PLATFORM_SRE_PATH@@", secretKey: "dr_token", filePermission: 0o440}
@@ -2798,6 +2799,8 @@ spec:
             - {name: AGENT_TRUST_SRE_MANAGEMENT_PORT, value: "@@PLATFORM_SRE_MANAGEMENT_PORT@@"}
             - {name: AGENT_TRUST_SRE_ORCHESTRATOR_ENDPOINT, value: "@@PLATFORM_SRE_ORCHESTRATOR_ENDPOINT@@"}
             - {name: AGENT_TRUST_SRE_ORCHESTRATOR_TOKEN_FILE, value: /var/run/agenttrust/secrets/platform-sre/orchestrator.token}
+            - {name: AGENT_TRUST_SRE_TOPOLOGY_PROBE_ENDPOINT, value: "@@PLATFORM_SRE_TOPOLOGY_PROBE_ENDPOINT@@"}
+            - {name: AGENT_TRUST_SRE_TOPOLOGY_PROBE_TOKEN_FILE, value: /var/run/agenttrust/secrets/platform-sre/topology-probe.token}
             - {name: AGENT_TRUST_SRE_BACKUP_ENDPOINT, value: "@@PLATFORM_SRE_BACKUP_ENDPOINT@@"}
             - {name: AGENT_TRUST_SRE_BACKUP_TOKEN_FILE, value: /var/run/agenttrust/secrets/platform-sre/backup.token}
             - {name: AGENT_TRUST_SRE_RECOVERY_ENDPOINT, value: "@@PLATFORM_SRE_RECOVERY_ENDPOINT@@"}

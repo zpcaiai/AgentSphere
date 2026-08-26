@@ -173,6 +173,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn adapter_targets()
 -> Result<BTreeMap<SreAdapterKind, SreAdapterTarget>, Box<dyn std::error::Error>> {
     let definitions = [
+        (SreAdapterKind::TopologyProbe, "TOPOLOGY_PROBE"),
         (SreAdapterKind::Backup, "BACKUP"),
         (SreAdapterKind::Recovery, "RECOVERY"),
         (SreAdapterKind::DisasterRecovery, "DR"),

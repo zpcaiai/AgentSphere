@@ -9,6 +9,8 @@ const MIGRATION: &str =
 const OPENAPI: &str = include_str!("../../../../schemas/openapi/platform-sre-v1.yaml");
 const COMMAND_SCHEMA: &str =
     include_str!("../../../../schemas/platform-sre/sre-command.schema.json");
+const EXTERNAL_RECEIPT_SCHEMA: &str =
+    include_str!("../../../../schemas/platform-sre/sre-external-receipt.schema.json");
 const ENGINE_SCHEMA: &str =
     include_str!("../../../../schemas/platform-sre/sre-engine-report.schema.json");
 const DOCKERFILE: &str = include_str!("../../../../Dockerfile.platform-sre");
@@ -39,6 +41,15 @@ fn expected_operations() -> BTreeSet<&'static str> {
     ])
 }
 
+fn string_set(value: &Value) -> BTreeSet<&str> {
+    value
+        .as_array()
+        .unwrap_or_else(|| panic!("string array missing"))
+        .iter()
+        .map(|item| item.as_str().unwrap_or_else(|| panic!("string expected")))
+        .collect()
+}
+
 #[test]
 fn command_schema_and_authority_cover_the_same_production_operations() {
     let schema: Value = serde_json::from_str(COMMAND_SCHEMA)
@@ -57,6 +68,175 @@ fn command_schema_and_authority_cover_the_same_production_operations() {
     for operation in expected_operations() {
         assert!(AUTHORITY.contains(&format!("\"{operation}\"")));
     }
+}
+
+#[test]
+fn zone_health_and_external_receipt_schemas_match_the_runtime_boundary() {
+    let command: Value = serde_json::from_str(COMMAND_SCHEMA)
+        .unwrap_or_else(|error| panic!("command schema JSON invalid: {error}"));
+    let zone_payload = &command["$defs"]["recordZoneHealth"]["properties"]["payload"];
+    assert_eq!(zone_payload["additionalProperties"], false);
+    assert_eq!(
+        string_set(&zone_payload["required"]),
+        BTreeSet::from([
+            "observation_id",
+            "topology_id",
+            "zone",
+            "probe_spec_digest",
+        ])
+    );
+    for client_supplied_fact in [
+        "component_health",
+        "dependency_health",
+        "ready_replicas",
+        "required_replicas",
+        "topology_probe_digest",
+        "observed_at",
+    ] {
+        assert!(zone_payload["properties"].get(client_supplied_fact).is_none());
+    }
+
+    let receipt: Value = serde_json::from_str(EXTERNAL_RECEIPT_SCHEMA)
+        .unwrap_or_else(|error| panic!("external receipt schema JSON invalid: {error}"));
+    let expected_receipt_operations = BTreeSet::from([
+        "RECORD_ZONE_HEALTH",
+        "CREATE_BACKUP",
+        "VERIFY_RESTORE",
+        "FAILOVER",
+        "FAILBACK",
+        "EXECUTE_CHAOS",
+        "EXECUTE_LOAD",
+        "ROLLBACK_UPGRADE",
+    ]);
+    assert_eq!(
+        string_set(&receipt["properties"]["operation"]["enum"]),
+        expected_receipt_operations
+    );
+    let expected_facts = [
+        (
+            "zoneHealthFacts",
+            BTreeSet::from([
+                "component_health",
+                "dependency_health",
+                "ready_replicas",
+                "required_replicas",
+                "topology_probe_digest",
+                "probe_spec_digest",
+                "observed_at",
+            ]),
+        ),
+        (
+            "backupFacts",
+            BTreeSet::from([
+                "database_lsn",
+                "database_artifact_digest",
+                "object_manifest_digest",
+                "ledger_head_digest",
+                "worm_retention_until",
+                "key_recovery_evidence_ref",
+                "record_counts",
+                "manifest_digest",
+                "signature_key_id",
+                "signature",
+                "artifacts",
+            ]),
+        ),
+        (
+            "restoreFacts",
+            BTreeSet::from([
+                "expected_record_counts",
+                "restored_record_counts",
+                "object_integrity_passed",
+                "ledger_reconciled",
+                "key_recovery_passed",
+                "measured_rto_seconds",
+                "measured_rpo_seconds",
+                "report_digest",
+                "command_digest",
+                "started_at",
+                "completed_at",
+            ]),
+        ),
+        (
+            "drEventFacts",
+            BTreeSet::from([
+                "adapter_receipt_digest",
+                "health_evidence_ref",
+                "measured_rto_seconds",
+                "measured_rpo_seconds",
+                "succeeded",
+            ]),
+        ),
+        (
+            "chaosFacts",
+            BTreeSet::from([
+                "started_at",
+                "completed_at",
+                "safety_abort_triggered",
+                "cleanup_verified",
+                "dependency_failure_semantics_verified",
+                "emergency_stop_verified",
+                "command_digest",
+                "report_digest",
+                "evidence_refs",
+            ]),
+        ),
+        (
+            "loadFacts",
+            BTreeSet::from([
+                "requests",
+                "success_millionths",
+                "p50_milliseconds",
+                "p95_milliseconds",
+                "p99_milliseconds",
+                "throughput_millionths",
+                "backpressure_rejections",
+                "noisy_neighbor_isolation_passed",
+                "report_digest",
+                "evidence_refs",
+                "started_at",
+                "completed_at",
+            ]),
+        ),
+        (
+            "rollbackFacts",
+            BTreeSet::from(["rollback_artifact_digest", "succeeded"]),
+        ),
+    ];
+    for (definition, required) in expected_facts {
+        let shape = &receipt["$defs"][definition];
+        assert_eq!(shape["additionalProperties"], false, "{definition}");
+        assert_eq!(string_set(&shape["required"]), required, "{definition}");
+    }
+    let branches = receipt["allOf"]
+        .as_array()
+        .unwrap_or_else(|| panic!("external receipt discriminator missing"));
+    for (operation, definition) in [
+        ("RECORD_ZONE_HEALTH", "zoneHealthFacts"),
+        ("CREATE_BACKUP", "backupFacts"),
+        ("VERIFY_RESTORE", "restoreFacts"),
+        ("FAILOVER", "drEventFacts"),
+        ("FAILBACK", "drEventFacts"),
+        ("EXECUTE_CHAOS", "chaosFacts"),
+        ("EXECUTE_LOAD", "loadFacts"),
+        ("ROLLBACK_UPGRADE", "rollbackFacts"),
+    ] {
+        assert!(branches.iter().any(|branch| {
+            let discriminator = &branch["if"]["properties"]["operation"];
+            let matches_operation = discriminator["const"] == operation
+                || discriminator["enum"]
+                    .as_array()
+                    .is_some_and(|items| items.iter().any(|item| item == operation));
+            matches_operation
+                && branch["then"]["properties"]["facts"]["$ref"]
+                    == format!("#/$defs/{definition}")
+        }));
+    }
+    assert!(branches.iter().any(|branch| {
+        branch["if"]["properties"]["production_evidence"]["const"] == true
+            && branch["then"]["properties"]["external_evidence_status"]["const"]
+                == "VERIFIED"
+    }));
 }
 
 #[test]
@@ -176,6 +356,7 @@ fn adapters_and_transport_fail_closed() {
         assert!(SERVICE.contains(required));
     }
     for adapter in [
+        "TopologyProbe",
         "Backup",
         "Recovery",
         "DisasterRecovery",
@@ -187,6 +368,7 @@ fn adapters_and_transport_fail_closed() {
         assert!(SERVER.contains(&format!("SreAdapterKind::{adapter}")));
     }
     assert!(SERVER.contains("TLS13"));
+    assert!(SERVER.contains("v1/topology/zone-health"));
     assert!(SERVER.contains("exact_certificate_identity"));
     assert!(SERVER.contains("identities.len() == 1"));
     assert!(SERVER.contains("v1/evidence/authority-events"));
@@ -197,6 +379,10 @@ fn adapters_and_transport_fail_closed() {
     assert!(SERVER.contains("X-AgentTrust-Payload-Digest"));
     assert!(SERVICE.contains("AGENT_TRUST_SRE_EVIDENCE_CLIENT_IDENTITY"));
     assert!(SERVICE.contains("AGENT_TRUST_SRE_EVIDENCE_KEYRING_FILE"));
+    assert!(SERVICE.contains("TOPOLOGY_PROBE"));
+    assert!(STACK.contains("AGENT_TRUST_SRE_TOPOLOGY_PROBE_ENDPOINT"));
+    assert!(STACK.contains("AGENT_TRUST_SRE_TOPOLOGY_PROBE_TOKEN_FILE"));
+    assert!(STACK.contains("topology-probe.token"));
 }
 
 #[test]

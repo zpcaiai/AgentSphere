@@ -369,6 +369,7 @@ async fn authoritative_resources(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SreAdapterKind {
+    TopologyProbe,
     Backup,
     Recovery,
     DisasterRecovery,
@@ -444,13 +445,9 @@ impl SreEvidenceKeyring {
 }
 
 impl HttpSreEffectPort {
-    pub fn new(
-        client: reqwest::Client,
-        targets: BTreeMap<SreAdapterKind, SreAdapterTarget>,
-        evidence_client_identity: String,
-        evidence_keyring: SreEvidenceKeyring,
-    ) -> Result<Self, SreAuthorityError> {
-        let required = BTreeSet::from([
+    fn required_adapter_kinds() -> BTreeSet<SreAdapterKind> {
+        BTreeSet::from([
+            SreAdapterKind::TopologyProbe,
             SreAdapterKind::Backup,
             SreAdapterKind::Recovery,
             SreAdapterKind::DisasterRecovery,
@@ -458,7 +455,54 @@ impl HttpSreEffectPort {
             SreAdapterKind::Load,
             SreAdapterKind::Upgrade,
             SreAdapterKind::Evidence,
-        ]);
+        ])
+    }
+
+    fn adapter_route(operation: SreOperation) -> Option<(SreAdapterKind, &'static str)> {
+        match operation {
+            SreOperation::ConfigureSlo
+            | SreOperation::RecordSli
+            | SreOperation::UpdateBurnAlert
+            | SreOperation::LinkIncident
+            | SreOperation::RegisterTopology
+            | SreOperation::PlanDr
+            | SreOperation::PlanChaos
+            | SreOperation::PlanLoad
+            | SreOperation::PlanUpgrade
+            | SreOperation::RecordCanary
+            | SreOperation::RecordCostCapacity
+            | SreOperation::RecordObservability => None,
+            SreOperation::RecordZoneHealth => Some((
+                SreAdapterKind::TopologyProbe,
+                "v1/topology/zone-health",
+            )),
+            SreOperation::CreateBackup => Some((SreAdapterKind::Backup, "v1/backups")),
+            SreOperation::VerifyRestore => {
+                Some((SreAdapterKind::Recovery, "v1/restores/verify"))
+            }
+            SreOperation::Failover => {
+                Some((SreAdapterKind::DisasterRecovery, "v1/dr/failover"))
+            }
+            SreOperation::Failback => {
+                Some((SreAdapterKind::DisasterRecovery, "v1/dr/failback"))
+            }
+            SreOperation::ExecuteChaos => {
+                Some((SreAdapterKind::Chaos, "v1/chaos/execute"))
+            }
+            SreOperation::ExecuteLoad => Some((SreAdapterKind::Load, "v1/load/execute")),
+            SreOperation::RollbackUpgrade => {
+                Some((SreAdapterKind::Upgrade, "v1/upgrades/rollback"))
+            }
+        }
+    }
+
+    pub fn new(
+        client: reqwest::Client,
+        targets: BTreeMap<SreAdapterKind, SreAdapterTarget>,
+        evidence_client_identity: String,
+        evidence_keyring: SreEvidenceKeyring,
+    ) -> Result<Self, SreAuthorityError> {
+        let required = Self::required_adapter_kinds();
         if targets.keys().copied().collect::<BTreeSet<_>>() != required {
             return Err(SreAuthorityError::ConfigurationInvalid);
         }
@@ -494,18 +538,7 @@ impl HttpSreEffectPort {
         &self,
         operation: SreOperation,
     ) -> Result<Option<(&SreAdapterTarget, &'static str)>, SreAuthorityError> {
-        let selected = match operation {
-            SreOperation::CreateBackup => Some((SreAdapterKind::Backup, "v1/backups")),
-            SreOperation::VerifyRestore => Some((SreAdapterKind::Recovery, "v1/restores/verify")),
-            SreOperation::Failover => Some((SreAdapterKind::DisasterRecovery, "v1/dr/failover")),
-            SreOperation::Failback => Some((SreAdapterKind::DisasterRecovery, "v1/dr/failback")),
-            SreOperation::ExecuteChaos => Some((SreAdapterKind::Chaos, "v1/chaos/execute")),
-            SreOperation::ExecuteLoad => Some((SreAdapterKind::Load, "v1/load/execute")),
-            SreOperation::RollbackUpgrade => {
-                Some((SreAdapterKind::Upgrade, "v1/upgrades/rollback"))
-            }
-            _ => None,
-        };
+        let selected = Self::adapter_route(operation);
         selected
             .map(|(kind, path)| {
                 self.targets
@@ -609,6 +642,9 @@ impl SreEffectPort for HttpSreEffectPort {
         request: &SreExecutorRequest,
     ) -> Result<Option<SreExternalReceipt>, SreAuthorityError> {
         let Some((target, path)) = self.target(request.command.operation)? else {
+            if request.command.operation.external_effect() {
+                return Err(SreAuthorityError::ConfigurationInvalid);
+            }
             return Ok(None);
         };
         self.invoke(target, path, binding, request).await.map(Some)
@@ -1522,6 +1558,73 @@ fn der_element(input: &[u8], offset: usize) -> Result<(u8, &[u8], usize), ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_external_effect_has_exactly_one_production_adapter_route() {
+        let expected = [
+            (SreOperation::ConfigureSlo, None),
+            (SreOperation::RecordSli, None),
+            (SreOperation::UpdateBurnAlert, None),
+            (SreOperation::LinkIncident, None),
+            (SreOperation::RegisterTopology, None),
+            (
+                SreOperation::RecordZoneHealth,
+                Some((SreAdapterKind::TopologyProbe, "v1/topology/zone-health")),
+            ),
+            (
+                SreOperation::CreateBackup,
+                Some((SreAdapterKind::Backup, "v1/backups")),
+            ),
+            (
+                SreOperation::VerifyRestore,
+                Some((SreAdapterKind::Recovery, "v1/restores/verify")),
+            ),
+            (SreOperation::PlanDr, None),
+            (
+                SreOperation::Failover,
+                Some((SreAdapterKind::DisasterRecovery, "v1/dr/failover")),
+            ),
+            (
+                SreOperation::Failback,
+                Some((SreAdapterKind::DisasterRecovery, "v1/dr/failback")),
+            ),
+            (SreOperation::PlanChaos, None),
+            (
+                SreOperation::ExecuteChaos,
+                Some((SreAdapterKind::Chaos, "v1/chaos/execute")),
+            ),
+            (SreOperation::PlanLoad, None),
+            (
+                SreOperation::ExecuteLoad,
+                Some((SreAdapterKind::Load, "v1/load/execute")),
+            ),
+            (SreOperation::PlanUpgrade, None),
+            (SreOperation::RecordCanary, None),
+            (
+                SreOperation::RollbackUpgrade,
+                Some((SreAdapterKind::Upgrade, "v1/upgrades/rollback")),
+            ),
+            (SreOperation::RecordCostCapacity, None),
+            (SreOperation::RecordObservability, None),
+        ];
+        for (operation, route) in expected {
+            assert_eq!(HttpSreEffectPort::adapter_route(operation), route);
+            assert_eq!(operation.external_effect(), route.is_some());
+        }
+        assert_eq!(
+            HttpSreEffectPort::required_adapter_kinds(),
+            BTreeSet::from([
+                SreAdapterKind::TopologyProbe,
+                SreAdapterKind::Backup,
+                SreAdapterKind::Recovery,
+                SreAdapterKind::DisasterRecovery,
+                SreAdapterKind::Chaos,
+                SreAdapterKind::Load,
+                SreAdapterKind::Upgrade,
+                SreAdapterKind::Evidence,
+            ])
+        );
+    }
 
     #[test]
     fn token_document_rejects_duplicate_json_members() {

@@ -134,6 +134,98 @@ fn every_json_schema_compiles_under_draft_2020_12() {
 }
 
 #[test]
+fn platform_sre_zone_health_contract_rejects_client_facts_and_malformed_receipts() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+    let read_schema = |relative: &str| {
+        let path = root.join(relative);
+        serde_json::from_slice::<serde_json::Value>(
+            &fs::read(&path).unwrap_or_else(|_| panic!("read {}", path.display())),
+        )
+        .unwrap_or_else(|_| panic!("parse {}", path.display()))
+    };
+    let command_schema = read_schema("schemas/platform-sre/sre-command.schema.json");
+    let command_validator = jsonschema::validator_for(&command_schema)
+        .unwrap_or_else(|error| panic!("compile command schema: {error}"));
+    let valid_command = serde_json::json!({
+        "schema_version": "agenttrust.sre-command.v1",
+        "tenant_id": "11111111-1111-4111-8111-111111111111",
+        "command_id": "22222222-2222-4222-8222-222222222222",
+        "task_id": "33333333-3333-4333-8333-333333333333",
+        "resource": "sre:topology/44444444-4444-4444-8444-444444444444",
+        "operation": "RECORD_ZONE_HEALTH",
+        "expected_resource_version": 7,
+        "requested_at": "2026-08-26T00:00:00Z",
+        "payload": {
+            "observation_id": "44444444-4444-4444-8444-444444444444",
+            "topology_id": "55555555-5555-4555-8555-555555555555",
+            "zone": "cn-east-1a",
+            "probe_spec_digest": "a".repeat(64)
+        }
+    });
+    assert!(command_validator.is_valid(&valid_command));
+    let mut client_facts = valid_command.clone();
+    client_facts["payload"]["component_health"] = serde_json::json!({"api": true});
+    assert!(!command_validator.is_valid(&client_facts));
+    let mut missing_probe_spec = valid_command;
+    missing_probe_spec["payload"]
+        .as_object_mut()
+        .unwrap_or_else(|| panic!("payload object"))
+        .remove("probe_spec_digest");
+    assert!(!command_validator.is_valid(&missing_probe_spec));
+
+    let receipt_schema =
+        read_schema("schemas/platform-sre/sre-external-receipt.schema.json");
+    let receipt_validator = jsonschema::validator_for(&receipt_schema)
+        .unwrap_or_else(|error| panic!("compile receipt schema: {error}"));
+    let valid_receipt = serde_json::json!({
+        "schema_version": "agenttrust.sre-external-receipt.v1",
+        "tenant_id": "11111111-1111-4111-8111-111111111111",
+        "operation": "RECORD_ZONE_HEALTH",
+        "resource": "sre:topology/44444444-4444-4444-8444-444444444444",
+        "idempotency_key": "zone-health-0001",
+        "action_hash": "b".repeat(64),
+        "ledger_execution_id": "66666666-6666-4666-8666-666666666666",
+        "ledger_event_id": "77777777-7777-4777-8777-777777777777",
+        "ledger_event_digest": "c".repeat(64),
+        "fence_digest": "d".repeat(64),
+        "policy_decision_digest": "e".repeat(64),
+        "authorization_evidence_ref": "evidence://authorization/zone-health-0001",
+        "authorization_evidence_digest": "f".repeat(64),
+        "request_digest": "1".repeat(64),
+        "result_digest": "2".repeat(64),
+        "immutable_evidence_refs": ["evidence://probe/zone-health-0001"],
+        "immutable_evidence_digests": ["3".repeat(64)],
+        "external_evidence_status": "OBSERVED",
+        "production_evidence": false,
+        "facts": {
+            "component_health": {"api": true},
+            "dependency_health": {"postgres": true},
+            "ready_replicas": 3,
+            "required_replicas": 3,
+            "topology_probe_digest": "4".repeat(64),
+            "probe_spec_digest": "a".repeat(64),
+            "observed_at": "2026-08-26T00:00:01Z"
+        }
+    });
+    assert!(receipt_validator.is_valid(&valid_receipt));
+    let mut missing_fact = valid_receipt.clone();
+    missing_fact["facts"]
+        .as_object_mut()
+        .unwrap_or_else(|| panic!("facts object"))
+        .remove("probe_spec_digest");
+    assert!(!receipt_validator.is_valid(&missing_fact));
+    let mut extra_fact = valid_receipt.clone();
+    extra_fact["facts"]["untrusted_client_status"] = serde_json::json!(true);
+    assert!(!receipt_validator.is_valid(&extra_fact));
+    let mut invalid_health = valid_receipt.clone();
+    invalid_health["facts"]["component_health"]["api"] = serde_json::json!("healthy");
+    assert!(!receipt_validator.is_valid(&invalid_health));
+    let mut false_production_claim = valid_receipt;
+    false_production_claim["production_evidence"] = serde_json::json!(true);
+    assert!(!receipt_validator.is_valid(&false_production_claim));
+}
+
+#[test]
 fn all_batch_status_files_match_the_implementation_evidence_schema() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     for (package, batches) in [
