@@ -1189,7 +1189,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/bin/agenttrust-runtime-anomaly-authority.rs",
-      "sha256": "7a1024696ac4383e91b5c3c273807d2baffb9161cf32af4b72284ae54eb6a82f"
+      "sha256": "f862e76beb94a0fbb138801a6c0c1c7ca8dbd3dbbbab03db4161616469213949"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/lib.rs",

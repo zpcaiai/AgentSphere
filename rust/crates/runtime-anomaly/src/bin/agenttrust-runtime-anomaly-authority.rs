@@ -121,9 +121,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         runtime.clone(),
         runtime.clone(),
         RuntimeAnomalyAuthorityConfig {
-            service_agent_id: AgentInstanceId(required_uuid(
-                "AGENT_TRUST_RUNTIME_ANOMALY_AGENT_INSTANCE_ID",
-            )?),
+            service_agent_id: AgentInstanceId(
+                required_uuid("AGENT_TRUST_RUNTIME_ANOMALY_AGENT_INSTANCE_ID")?.to_string(),
+            ),
             organization_id: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_ORGANIZATION_ID")?,
             agent_version: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_AGENT_VERSION")?,
             region: required_identifier("AGENT_TRUST_RUNTIME_ANOMALY_REGION")?,
