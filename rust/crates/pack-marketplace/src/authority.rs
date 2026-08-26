@@ -160,6 +160,7 @@ impl RunningTaskResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE", deny_unknown_fields)]
+#[allow(clippy::large_enum_variant)]
 pub enum MarketplaceCommand {
     OnboardPublisher {
         publisher_id: String,

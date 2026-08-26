@@ -679,7 +679,7 @@ impl SecurityEvalEvidencePort for HttpSecurityEvalEvidence {
                 payload_hash: record.payload_digest.clone(),
                 safe_summary: "Security evaluation authority mutation persisted".into(),
                 artifact_refs: Vec::<ArtifactRef>::new(),
-                occurred_at: recorded_at.clone(),
+                occurred_at: recorded_at,
             },
             requested_at: recorded_at,
         };

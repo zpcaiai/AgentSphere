@@ -381,9 +381,11 @@ struct DatasetKeyEntry {
     revoked: bool,
 }
 
+type DatasetKey = (VerifyingKey, DateTime<Utc>, DateTime<Utc>);
+
 #[derive(Clone)]
 pub struct DatasetTrustKeyring {
-    keys: Arc<BTreeMap<String, (VerifyingKey, DateTime<Utc>, DateTime<Utc>)>>,
+    keys: Arc<BTreeMap<String, DatasetKey>>,
 }
 
 impl DatasetTrustKeyring {

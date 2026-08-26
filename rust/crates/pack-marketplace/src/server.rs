@@ -198,6 +198,7 @@ impl MarketplaceTokenAuthorizer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn router(
     ingress: MarketplaceIngressAuthority,
     executor: MarketplaceExecutor,
