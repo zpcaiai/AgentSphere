@@ -1979,7 +1979,7 @@ async fn apply_operation(
     .fetch_optional(&mut **tx)
     .await
     .map_err(|_| IncidentAuthorityError::DependencyUnavailable)?;
-    let (state, reason_code) = match command.operation {
+    let (state, reason_code): (String, String) = match command.operation {
         IncidentAuthorityOperation::Detect => {
             if from_status.is_some()
                 || required_string(payload, "incident_id")? != incident_id.to_string()

@@ -63,7 +63,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "/v1/policies/activations",
         )?,
         required_private_path("AGENT_TRUST_POLICY_PEP_ACTIVATION_TOKEN_FILE")?,
-        pep_activation_verifying_key.clone(),
+        pep_activation_verifying_key,
     )?);
     let orchestrator = Arc::new(HttpPolicyOrchestrator::new(
         outbound,
