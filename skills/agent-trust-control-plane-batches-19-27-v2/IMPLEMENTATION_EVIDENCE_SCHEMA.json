@@ -3,16 +3,7 @@
   "$id": "agent-trust-implementation-status-v2",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "project",
-    "batch",
-    "status",
-    "commit",
-    "commands",
-    "tests",
-    "evidence",
-    "unresolved_risks"
-  ],
+  "required": ["project", "batch", "status", "commit", "evidence"],
   "properties": {
     "project": {
       "const": "agent-trust-control-plane"
@@ -37,10 +28,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "command",
-          "exit_code"
-        ],
+        "required": ["command"],
         "properties": {
           "command": {
             "type": "string"
@@ -48,10 +36,20 @@
           "exit_code": {
             "type": "integer"
           },
+          "status": {
+            "enum": ["PASS", "FAIL", "SKIP", "NOT_RUN_RESOURCE_FREEZE", "NOT_RUN_EXTERNAL"]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          },
           "report": {
             "type": "string"
           }
-        }
+        },
+        "oneOf": [{"required": ["exit_code"]}, {"required": ["status"]}]
       }
     },
     "tests": {
@@ -70,7 +68,10 @@
             "enum": [
               "PASS",
               "FAIL",
-              "SKIP"
+              "SKIP",
+              "PASS_STATIC",
+              "NOT_RUN_RESOURCE_FREEZE",
+              "NOT_RUN_EXTERNAL"
             ]
           },
           "evidence_ref": {
@@ -91,9 +92,50 @@
         "type": "string"
       }
     },
+    "historical_external_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["evidence_ref", "status"],
+        "properties": {
+          "evidence_ref": {"type": "string"},
+          "status": {"type": "string"}
+        }
+      }
+    },
+    "production_eligible": {
+      "type": "boolean"
+    },
+    "current_validation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "status"],
+        "properties": {
+          "command": {"type": "string"},
+          "status": {
+            "enum": ["PASS", "FAIL", "SKIP", "NOT_RUN_RESOURCE_FREEZE", "NOT_RUN_EXTERNAL"]
+          },
+          "tests": {"type": "integer"},
+          "migrations": {"type": "integer"}
+        }
+      }
+    },
+    "implemented": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "unresolved_gates": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
     "verified_at": {
       "type": "string",
       "format": "date-time"
     }
-  }
+  },
+  "oneOf": [
+    {"required": ["commands", "tests", "unresolved_risks"]},
+    {"required": ["current_validation", "implemented", "unresolved_gates"]}
+  ]
 }
