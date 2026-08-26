@@ -1459,7 +1459,10 @@ impl<R: ToolRegistry> ToolProxy<R> {
                 }
                 _ => ProxyError::RegistryUnavailable,
             })?;
-        if resolved != request.tool {
+        // `resolved_at` is a retrieval timestamp and is intentionally excluded
+        // from the registry snapshot hash. Bind the request to the stable,
+        // content-addressed snapshot instead of comparing that timestamp.
+        if resolved.snapshot_hash != request.tool.snapshot_hash {
             return Err(ProxyError::AuthorizationInvalid);
         }
         if self
