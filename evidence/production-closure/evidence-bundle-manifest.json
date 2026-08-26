@@ -917,7 +917,7 @@
     },
     {
       "path": "rust/crates/data-governance/src/lib.rs",
-      "sha256": "e84f99c5cbc6542223b8599335aa6e9a70480d4230fc967056e19d4ee2a6d4ad"
+      "sha256": "72bdfe73ad72a905628c332400dcbcdb31cd7912e28769ec2a2022f40865a05b"
     },
     {
       "path": "rust/crates/data-governance/src/server.rs",

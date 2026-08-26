@@ -872,7 +872,10 @@ fn finding(kind: DlpFindingKind, path: &str, bytes: &[u8], blocking: bool) -> Dl
 }
 fn looks_base64(text: &str) -> bool {
     let value = text.trim();
-    value.len() >= 16
+    // Eight characters is the shortest padded base64 representation that can
+    // carry a compressed/archive magic prefix; shorter values cannot encode
+    // enough bytes to identify one safely.
+    value.len() >= 8
         && value.bytes().all(|byte| {
             byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'_' | b'-' | b'=')
         })
