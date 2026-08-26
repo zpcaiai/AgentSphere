@@ -24,8 +24,8 @@ fn production_contract_assets_are_versioned_and_parseable() {
         )
         .unwrap_or_else(|error| panic!("parse {relative}: {error}"));
         assert_eq!(
-            value.path("$schema"),
-            "https://json-schema.org/draft/2020-12/schema"
+            value.get("$schema").and_then(Value::as_str),
+            Some("https://json-schema.org/draft/2020-12/schema")
         );
     }
     let openapi = fs::read_to_string(root().join("schemas/openapi/agent-registry-v1.yaml"))
