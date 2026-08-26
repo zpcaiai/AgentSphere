@@ -226,8 +226,8 @@ fn zone_health_and_external_receipt_schemas_match_the_runtime_boundary() {
                 || discriminator["enum"]
                     .as_array()
                     .is_some_and(|items| items.iter().any(|item| item == operation));
-            matches_operation && branch["then"]["properties"]["facts"]["$ref"]
-                == format!("#/$defs/{definition}")
+            matches_operation
+                && branch["then"]["properties"]["facts"]["$ref"] == format!("#/$defs/{definition}")
         }));
     }
     assert!(branches.iter().any(|branch| {
