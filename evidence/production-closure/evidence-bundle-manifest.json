@@ -1209,7 +1209,7 @@
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/authority.rs",
-      "sha256": "42b3db12e752e8d88806425d3d69868701a78bc207b21d41da8980111fb89ea8"
+      "sha256": "113620f73dff4c00b40698aed4d8d69e2a7609a5031f32fcf7ac801492c19291"
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/bin/agenttrust-security-evaluation-authority.rs",
@@ -1217,7 +1217,7 @@
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/production_harness.rs",
-      "sha256": "cbe1cd93f112a02914ed28d411deaebd2c31b9b1d54004c865151de07310bea9"
+      "sha256": "795e067fbdbb0d5deefff320785930790d0b24f66e6e79a8d737e038e3af011d"
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/server.rs",

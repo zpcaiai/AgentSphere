@@ -1258,7 +1258,7 @@ impl PostgresSecurityEvalStore {
                 .bind(dataset_id)
                 .bind(new_version)
                 .bind(expected)
-                .execute(&mut **tx)
+                .execute(&mut *tx)
                 .await
                 .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
                 require_one(updated.rows_affected())?;
@@ -1340,7 +1340,7 @@ impl PostgresSecurityEvalStore {
                 .bind(report.evidence_complete)
                 .bind(new_version)
                 .bind(expected)
-                .execute(&mut **tx)
+                .execute(&mut *tx)
                 .await
                 .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
                 require_one(updated.rows_affected())?;
@@ -1364,7 +1364,7 @@ impl PostgresSecurityEvalStore {
                 .bind(campaign_id)
                 .bind(new_version)
                 .bind(expected)
-                .execute(&mut **tx)
+                .execute(&mut *tx)
                 .await
                 .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
                 require_one(updated.rows_affected())?;

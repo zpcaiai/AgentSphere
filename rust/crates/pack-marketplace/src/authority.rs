@@ -1567,7 +1567,7 @@ impl MarketplaceExecutor {
             "tenant_id": tenant_uuid,
             "resource_id": request.command.resource_id,
             "command_id": request.command.command_id,
-            "operation": request.command.operation(),
+            "operation": request.command.command.operation(),
             "principal_subject": request.principal_subject,
             "principal_assertion_digest": request.principal_assertion_digest,
             "action_hash": binding.action_hash,
@@ -1598,7 +1598,7 @@ impl MarketplaceExecutor {
         .bind(tenant_uuid)
         .bind(event_id)
         .bind(&request.command.resource_id)
-        .bind(format!("MARKETPLACE_{}", request.command.operation()))
+        .bind(format!("MARKETPLACE_{}", request.command.command.operation()))
         .bind(&request.principal_subject)
         .bind(&evidence_payload)
         .bind(&evidence_digest)

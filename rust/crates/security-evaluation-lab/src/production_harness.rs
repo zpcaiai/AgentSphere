@@ -278,12 +278,8 @@ mod tests {
             .collect::<Vec<_>>();
         let successes = threads
             .into_iter()
-            .filter(|thread| {
-                thread
-                    .join()
-                    .unwrap_or_else(|_| panic!("thread panicked"))
-                    .is_ok()
-            })
+            .filter_map(|thread| thread.join().ok())
+            .filter(|result| result.is_ok())
             .count();
         assert_eq!(successes, 32);
         assert!(guard.killed());
