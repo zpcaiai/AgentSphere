@@ -1316,19 +1316,19 @@ impl PostgresDataAuthorityStore {
             {
                 return Err(DataAuthorityError::IdempotencyConflict);
             }
-            let completed: DataMutationResult =
+            let result: DataMutationResult =
                 serde_json::from_value(outbox.get::<Value, _>("result"))
                     .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
-            if completed.command_id != pending.result.command_id
-                || completed.result_digest != pending.result.result_digest
-                || completed.state != "COMPLETED"
-                || completed.evidence_ref.as_deref() != Some(receipt.evidence_ref.as_str())
-                || completed.evidence_digest.as_deref() != Some(receipt.evidence_digest.as_str())
+            if result.command_id != pending.result.command_id
+                || result.result_digest != pending.result.result_digest
+                || result.state != "COMPLETED"
+                || result.evidence_ref.as_deref() != Some(receipt.evidence_ref.as_str())
+                || result.evidence_digest.as_deref() != Some(receipt.evidence_digest.as_str())
             {
                 return Err(DataAuthorityError::IdempotencyConflict);
             }
             tx.commit().await.map_err(dependency)?;
-            return Ok(completed);
+            return Ok(result);
         } else if state == "PENDING" {
             if outbox.get::<String, _>("execution_state") != "MUTATED_PENDING_EVIDENCE"
                 || outbox.get::<Value, _>("result")

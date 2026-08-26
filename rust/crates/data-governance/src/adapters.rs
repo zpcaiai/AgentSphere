@@ -541,9 +541,8 @@ impl DataRuntimePort for HttpDataRuntime {
             .verifying_keys
             .get(&receipt.key_id)
             .ok_or(DataAuthorityError::DependencyUnavailable)?;
-        receipt
-            .verify(verifying_key, Utc::now())
-            .map_err(|_| DataAuthorityError::DependencyUnavailable)?;
+        let verification = receipt.verify(verifying_key, Utc::now());
+        verification.map_err(|_| DataAuthorityError::DependencyUnavailable)?;
         if receipt.issuer != self.evidence_verification.issuer
             || receipt.tenant_id != request.tenant_id
             || receipt.task_id != request.task_id

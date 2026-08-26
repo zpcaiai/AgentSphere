@@ -76,7 +76,7 @@
     },
     "artifactAuthorization": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema_version", "tenant_id", "authorization_id", "object_ref", "object_digest", "destination_digest", "media_type", "content_encoding", "content_base64", "label", "label_digest", "policy_request", "decision_id", "dlp_scan_id", "dlp_receipt_digest", "transform_id", "transform_receipt_digest", "cross_domain_grant_id", "redirect_target_digests", "requested_at"],
+      "required": ["schema_version", "tenant_id", "authorization_id", "object_ref", "object_digest", "destination_digest", "media_type", "content_encoding", "content_base64", "label", "label_digest", "policy_request", "decision_id", "dlp_scan_id", "dlp_receipt_digest", "transform_id", "transform_receipt_digest", "cross_domain_grant_id", "object_authorization_ref", "object_authorization_digest", "redirect_target_digests", "requested_at"],
       "properties": {
         "schema_version": {"const": "agenttrust.artifact-authorization.v1"},
         "tenant_id": {"$ref": "#/$defs/uuid"}, "authorization_id": {"$ref": "#/$defs/uuid"},
@@ -89,6 +89,8 @@
         "dlp_scan_id": {"$ref": "#/$defs/uuid"}, "dlp_receipt_digest": {"$ref": "#/$defs/digest"},
         "transform_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
         "transform_receipt_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "object_authorization_ref": {"type": "string", "pattern": "^object://", "maxLength": 2048},
+        "object_authorization_digest": {"$ref": "#/$defs/digest"},
         "cross_domain_grant_id": {"oneOf": [{"$ref": "#/$defs/uuid"}, {"type": "null"}]},
         "redirect_target_digests": {"type": "array", "maxItems": 0, "items": {"$ref": "#/$defs/digest"}},
         "requested_at": {"type": "string", "format": "date-time"}

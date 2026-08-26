@@ -905,11 +905,11 @@
     },
     {
       "path": "rust/crates/data-governance/src/adapters.rs",
-      "sha256": "0c7def6c1c06e2da5d9f6fb6f723df9a26eaf8843f96434887a2dd674c313bf2"
+      "sha256": "2489483ce6ec242a99ec94bfedf67133bb7d3e484b47a07908e21943f1c1b0fd"
     },
     {
       "path": "rust/crates/data-governance/src/authority.rs",
-      "sha256": "a25af04bc7bdfab5f9ebf7064ffa0e5c6d689b0d0001bdc520008dba0aa10bed"
+      "sha256": "96617ec144dc2fe088be941f406d0151293a0ed81b64b3aba83a62af79e5150e"
     },
     {
       "path": "rust/crates/data-governance/src/bin/agenttrust-data-governance-service.rs",
