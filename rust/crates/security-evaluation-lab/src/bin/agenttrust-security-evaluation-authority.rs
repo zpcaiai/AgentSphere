@@ -416,7 +416,7 @@ fn validate_file(path: &Path, private: bool) -> Result<(), Box<dyn std::error::E
                 0o040
             } else {
                 0
-        };
+            };
         let readable = (metadata.uid() == effective_uid && mode & 0o400 != 0)
             || (metadata.gid() == effective_gid && mode & 0o040 != 0);
         readable && mode & !allowed == 0 && group_world_mode & !allowed == 0
