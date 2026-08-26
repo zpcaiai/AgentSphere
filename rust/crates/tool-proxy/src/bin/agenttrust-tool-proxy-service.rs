@@ -385,18 +385,15 @@ fn read_and_verify_profiles(
     Ok(document)
 }
 
+type ConnectorProfile = Arc<dyn agent_trust_tool_proxy::Connector>;
+type BuiltProfiles = (Vec<VaultLeaseProfile>, Vec<ConnectorProfile>);
+
 fn build_profiles(
     profiles: Vec<TargetProfile>,
     ca_file: &Path,
     certificate_file: &Path,
     private_key_file: &Path,
-) -> Result<
-    (
-        Vec<VaultLeaseProfile>,
-        Vec<Arc<dyn agent_trust_tool_proxy::Connector>>,
-    ),
-    Box<dyn std::error::Error>,
-> {
+) -> Result<BuiltProfiles, Box<dyn std::error::Error>> {
     let mut vault_profiles = Vec::new();
     let mut connector_profiles: BTreeMap<String, BTreeMap<PoolIsolationKey, HttpTargetProfile>> =
         BTreeMap::new();

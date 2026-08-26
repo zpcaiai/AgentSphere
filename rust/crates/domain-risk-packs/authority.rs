@@ -176,9 +176,12 @@ struct KeyDocument {
     revoked: bool,
 }
 
+type DomainReceiptKey = (VerifyingKey, DateTime<Utc>, DateTime<Utc>);
+type DomainReceiptKeys = BTreeMap<String, DomainReceiptKey>;
+
 #[derive(Clone)]
 pub struct DomainReceiptKeyring {
-    keys: Arc<BTreeMap<String, (VerifyingKey, DateTime<Utc>, DateTime<Utc>)>>,
+    keys: Arc<DomainReceiptKeys>,
 }
 
 impl DomainReceiptKeyring {

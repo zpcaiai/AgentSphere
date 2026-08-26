@@ -933,7 +933,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/authority.rs",
-      "sha256": "ac3343cf2ba50496b4379991af1ae0949ddc23f3ccc42e31c7d25e22210dbc47"
+      "sha256": "5117383525511ef079d893685cbe98114b2906fd539a27a2ab99abc057e83665"
     },
     {
       "path": "rust/crates/domain-risk-packs/coding.rs",
@@ -957,7 +957,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/server.rs",
-      "sha256": "8c0a9949efb0d2ae2fd28950ac56f4489222e3f3513679811713da1dca8ed595"
+      "sha256": "03f6e409a5b850507d996127981d74b2c5e1e2387b9fff1e2c3d8241817e2162"
     },
     {
       "path": "rust/crates/domain-risk-packs/src/bin/agenttrust-domain-runtime-authority.rs",
@@ -1229,7 +1229,7 @@
     },
     {
       "path": "rust/crates/tool-proxy/src/bin/agenttrust-tool-proxy-service.rs",
-      "sha256": "3984b07ed6e625034a4108106c9e788d3249f44d4dabcb9aacfa1c01aa7b7e45"
+      "sha256": "5f72c77fd0a1f732c30f33fc8b8dd30b644e47b175c2263589006b49c191b19b"
     },
     {
       "path": "rust/crates/tool-proxy/src/lib.rs",

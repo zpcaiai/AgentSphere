@@ -545,6 +545,7 @@ pub struct PostgresAuditAuthority {
 }
 
 impl PostgresAuditAuthority {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool: PgPool,
         issuer: String,
@@ -1989,6 +1990,7 @@ impl PostgresAuditAuthority {
         Ok(records)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn receipt(
         &self,
         tenant_id: TenantId,

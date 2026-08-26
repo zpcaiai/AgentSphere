@@ -203,10 +203,10 @@ impl HttpDomainRuntimePort {
             || read_token(&coordinator.token_file)? == read_token(&evidence.token_file)?
             || !identifier(&coordinator.readiness_schema, 128)
             || !identifier(&evidence.readiness_schema, 128)
-            || !evidence_client_identity
+            || evidence_client_identity
                 .strip_prefix("DNS:")
                 .or_else(|| evidence_client_identity.strip_prefix("URI:"))
-                .is_some_and(|identity| !identity.is_empty())
+                .is_none_or(|identity| identity.is_empty())
             || !identifier(&evidence_client_identity, 256)
         {
             return Err(DomainAuthorityError::ConfigurationInvalid);
