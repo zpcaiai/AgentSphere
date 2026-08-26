@@ -301,7 +301,7 @@ fn read_signing_key(name: &str) -> Result<SigningKey, Box<dyn std::error::Error>
             .try_into()
             .map_err(|_| format!("{name}_INVALID"))?,
     );
-    Ok(SigningKey::from_bytes(&*bytes))
+    Ok(SigningKey::from_bytes(&bytes))
 }
 
 fn required_file(name: &str, private: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
