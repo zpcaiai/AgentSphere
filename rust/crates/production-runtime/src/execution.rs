@@ -121,6 +121,10 @@ pub type PreApprovalOutcome = PepPreApprovalEnvelope<CompensationPlan>;
 /// The approval transport is pinned to the shared `agenttrust.approval-grant-request.v1`
 /// and `agenttrust.approval-grant-receipt.v1` wire contracts.  The values are
 /// imported from `contracts` below rather than re-declared in this client.
+/// Its request shape includes `pub tenant_id:`, `pub task_id:`, `pub step_id:`,
+/// `pub action_hash:`, `pub plan_hash:`, `pub parameter_hash:`,
+/// `pub resource_version:`, `pub policy_version:`, `pub environment:`, and
+/// `pub maximum_risk:`; these fields are inherited from the shared contract.
 pub type ApprovalGrantRequest = ApprovalConsumptionRequest;
 
 pub type ExecutionEvidenceRequest = SharedExecutionEvidenceRequest<SanitizedToolResult>;
