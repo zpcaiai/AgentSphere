@@ -638,6 +638,7 @@ impl PepAuthority {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn governance_input<T: Serialize>(
     stage: GovernanceStage,
     request: &GovernanceAuthorizationRequest<T>,

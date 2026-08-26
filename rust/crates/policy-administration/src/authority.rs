@@ -18,8 +18,8 @@ use agent_trust_contracts::{
     DataContext, ExecutionEnvironment, ExpectedOutcome, Intent,
     PEP_POLICY_ACTIVATION_ACK_KEY_USAGE, POLICY_ACTIVATION_REQUEST_SCHEMA_VERSION,
     PepPolicyActivationAcknowledgement, PolicyActivationRequest, PolicyEnvironment,
-    ResourceSelector, RiskContext, RiskLevel, SchemaVersion, SignedPolicyBundle, StepId,
-    StrictJsonObject, TaskId, TenantId, ToolId, ToolRef, ToolVersion,
+    ResourceSelector, RiskContext, RiskLevel, SchemaVersion, SignedPolicyBundle, StepId, TaskId,
+    TenantId, ToolId, ToolRef, ToolVersion,
 };
 use agent_trust_gateway::{
     GATEWAY_SCHEMA_VERSION, IdentityContext, InboundEnvelope, IngressProtocol, TenantContext,
@@ -30,7 +30,7 @@ use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::BTreeSet;
@@ -2478,11 +2478,15 @@ async fn simulate_policy(
     let baseline_digest = request.command.payload["baseline_bundle_digest"]
         .as_str()
         .ok_or(PolicyAuthorityError::RequestInvalid)?;
+    let source_revision = u64::try_from(revision)
+        .map_err(|_| PolicyAuthorityError::DependencyUnavailable)?;
     let baseline = if baseline_digest == "0".repeat(64) {
         PolicyBundle {
             schema_version: POLICY_ADMIN_SCHEMA_VERSION.into(),
             bundle_id: "bootstrap-deny-baseline".into(),
             tenant_id: source.tenant_id.clone(),
+            policy_id: request.command.policy_id.clone(),
+            source_revision,
             version: "0".into(),
             source_digest: baseline_digest.into(),
             bundle_digest: baseline_digest.into(),
@@ -2529,6 +2533,8 @@ async fn simulate_policy(
         schema_version: POLICY_ADMIN_SCHEMA_VERSION.into(),
         bundle_id: format!("simulation:{}:{}", request.command.policy_id, revision),
         tenant_id: source.tenant_id.clone(),
+        policy_id: request.command.policy_id.clone(),
+        source_revision,
         version: source.version.clone(),
         source_digest: source.source_digest.clone(),
         bundle_digest: source.source_digest.clone(),

@@ -703,7 +703,7 @@ impl SreEffectPort for HttpSreEffectPort {
                 payload_hash: payload_digest.into(),
                 safe_summary: "Platform SRE governed action persisted".into(),
                 artifact_refs: Vec::<ArtifactRef>::new(),
-                occurred_at: occurred_at.clone(),
+                occurred_at,
             },
             requested_at: occurred_at,
         };

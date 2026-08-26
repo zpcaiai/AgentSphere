@@ -1125,7 +1125,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "00a9e894605c96e9015a376225ae02108727b541cd96fee44715ceab8f4aa6af"
+      "sha256": "89aed2060e9d020861085932a2cb9d1baccbc4f398ce93aa4ff2442bd569d93c"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",
@@ -1145,7 +1145,7 @@
     },
     {
       "path": "rust/crates/policy-pep/src/governance.rs",
-      "sha256": "81c159367837b3e4a11a970cbeed67b377db7903f69977fbef1abf11fb4109cb"
+      "sha256": "01552208e2b8f84828cefa2d87747e13e0e26e8ec81a722e88e8e777e50505c1"
     },
     {
       "path": "rust/crates/policy-pep/src/server.rs",
