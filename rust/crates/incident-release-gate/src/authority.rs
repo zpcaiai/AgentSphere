@@ -1909,12 +1909,19 @@ mod production_authority_tests {
                 })
             })
             .collect::<Vec<_>>();
+        let definition_digest = canonical_digest(&json!({
+            "gate_id": "production-engine",
+            "version": "1.0.0",
+            "required_controls": controls,
+            "maximum_evidence_age_seconds": 3600,
+        }))
+        .unwrap_or_else(|error| panic!("definition digest: {error}"));
         let payload = json!({
             "release_digest": "a".repeat(64),
             "definition": {
                 "gate_id": "production-engine",
                 "version": "1.0.0",
-                "definition_digest": "d".repeat(64),
+                "definition_digest": definition_digest,
                 "required_controls": controls,
                 "maximum_evidence_age_seconds": 3600
             },
