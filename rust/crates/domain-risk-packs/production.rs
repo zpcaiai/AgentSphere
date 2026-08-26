@@ -4,7 +4,9 @@
 //! Sandbox, ToolProxy, ledger, fence, kill-switch or Evidence controls. The common production
 //! executor validates this envelope before dispatching any domain tool.
 
-use crate::{coding, energy, industrial, medical, sensitive};
+use crate::{
+    DOMAIN_PACKS_SCHEMA_VERSION, coding, energy, industrial, medical, sensitive,
+};
 use agent_trust_action_ir::{CanonicalAction, hash as action_hash};
 use agent_trust_contracts::EffectClass;
 use agent_trust_pack_supply_chain::{ArtifactVerifier, DomainPackManifest, PackSdk};
@@ -420,7 +422,9 @@ impl ProductionDomainPackContract {
             DomainKind::Medical => authorize_medical(envelope, now)?,
             DomainKind::Sensitive => authorize_sensitive(envelope, now)?,
         }
-        action_hash(&envelope.canonical_action).map_err(|_| DomainProductionError::BindingInvalid)
+        action_hash(&envelope.canonical_action)
+            .map(|hash| hash.0)
+            .map_err(|_| DomainProductionError::BindingInvalid)
     }
 }
 

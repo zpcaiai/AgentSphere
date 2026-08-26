@@ -246,9 +246,9 @@ impl DomainReceiptKeyring {
             || now < *not_before
             || now >= *expires_at
             || safe_digest(&receipt.effect_receipt).map_err(DomainAuthorityError::from)
-                != receipt.effect_receipt_digest
+                != Ok(receipt.effect_receipt_digest.clone())
             || safe_digest(&receipt.evaluator_result).map_err(DomainAuthorityError::from)
-                != receipt.evaluator_result_digest
+                != Ok(receipt.evaluator_result_digest.clone())
             || receipt
                 .evaluator_result
                 .get("conclusion")

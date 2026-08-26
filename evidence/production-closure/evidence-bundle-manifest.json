@@ -933,7 +933,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/authority.rs",
-      "sha256": "5c5a1850d3bce4596d316657fd7dec694bc27032130a249add068a721627e281"
+      "sha256": "ac3343cf2ba50496b4379991af1ae0949ddc23f3ccc42e31c7d25e22210dbc47"
     },
     {
       "path": "rust/crates/domain-risk-packs/coding.rs",
@@ -949,7 +949,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/production.rs",
-      "sha256": "3f3a5e30b20c3d03945fbab7cd82e17b96da6b54e86e7351e92b0c4721c93d11"
+      "sha256": "237c290cfddc5701c6f2778873d48c8e431f99b59ae21d8de52beb949face56c"
     },
     {
       "path": "rust/crates/domain-risk-packs/sensitive.rs",
