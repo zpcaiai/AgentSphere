@@ -7,7 +7,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY rust ./rust
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/workspace/target,sharing=locked \
-    cargo build --locked --release --package agent-trust-platform-sre \
+    cargo build --locked --release -p agent-trust-platform-sre \
       --bin agenttrust-platform-sre-service && \
     install -D -m 0555 /workspace/target/release/agenttrust-platform-sre-service \
       /out/agenttrust-platform-sre-service

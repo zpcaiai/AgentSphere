@@ -1125,7 +1125,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "89aed2060e9d020861085932a2cb9d1baccbc4f398ce93aa4ff2442bd569d93c"
+      "sha256": "83291241e189b5954e398c10eaf67435ffa290eccf9b2f7e8068d83afef06725"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",

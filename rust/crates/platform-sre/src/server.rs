@@ -744,9 +744,8 @@ impl SreEffectPort for HttpSreEffectPort {
             .evidence_keyring
             .key(&receipt.key_id)
             .ok_or(SreAuthorityError::DependencyUnavailable)?;
-        receipt
-            .verify(key, Utc::now())
-            .map_err(|_| SreAuthorityError::DependencyUnavailable)?;
+        let verification = receipt.verify(key, Utc::now());
+        verification.map_err(|_| SreAuthorityError::DependencyUnavailable)?;
         if receipt.tenant_id != request.tenant_id
             || receipt.task_id != request.task_id
             || receipt.authority_event_id != request.authority_event_id
