@@ -74,7 +74,7 @@ async fn postgres_issue_restarts_exactly_and_consume_has_one_concurrent_winner()
         max_uses: 1,
     };
     let now = Utc::now();
-    let first_now = now.clone();
+    let first_now = now;
     let second_now = now;
     let first = {
         let authority = authority.clone();
