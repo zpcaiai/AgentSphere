@@ -14,6 +14,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 
 FROM ${RUNTIME_BASE_IMAGE}
 COPY --from=build /out/agenttrust-platform-sre-service /usr/local/bin/agenttrust-platform-sre-service
-USER 65532:65532
+USER nonroot:nonroot
 EXPOSE 8097 9107
 ENTRYPOINT ["/usr/local/bin/agenttrust-platform-sre-service"]
