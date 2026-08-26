@@ -1233,7 +1233,7 @@
     },
     {
       "path": "rust/crates/tool-proxy/src/lib.rs",
-      "sha256": "46fe1c80be1aae4b2d08e1378a7743f6ad3d48345097308d3d28c3fba317ac19"
+      "sha256": "01713e21b09be900f1544e3b75eab539d809ad1bda28723fde03275e40769f63"
     },
     {
       "path": "rust/crates/tool-proxy/src/production.rs",
