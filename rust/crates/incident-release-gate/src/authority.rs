@@ -2160,7 +2160,7 @@ async fn apply_operation(
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
             (
-                from_status.unwrap_or_else(|| "UNKNOWN".into()),
+                from_status.clone().unwrap_or_else(|| "UNKNOWN".into()),
                 "EVIDENCE_PRESERVED".into(),
             )
         }
@@ -2200,7 +2200,7 @@ async fn apply_operation(
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
             (
-                from_status.unwrap_or_else(|| "UNKNOWN".into()),
+                from_status.clone().unwrap_or_else(|| "UNKNOWN".into()),
                 "REPLAY_PLANNED".into(),
             )
         }
@@ -2249,7 +2249,7 @@ async fn apply_operation(
             .await
             .map_err(|_| IncidentAuthorityError::StateConflict)?;
             (
-                from_status.unwrap_or_else(|| "UNKNOWN".into()),
+                from_status.clone().unwrap_or_else(|| "UNKNOWN".into()),
                 "REPLAY_COMPLETED".into(),
             )
         }

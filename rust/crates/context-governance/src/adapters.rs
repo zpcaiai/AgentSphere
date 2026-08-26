@@ -287,6 +287,7 @@ impl HttpContextRuntime {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn effect_call(
         &self,
         endpoint: &AdapterEndpoint,
@@ -531,6 +532,7 @@ impl HttpContextRuntime {
         Ok((response.receipt, index_ref))
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn purge_adapter(
         &self,
         endpoint: &AdapterEndpoint,
@@ -903,7 +905,7 @@ impl ContextRuntimePort for HttpContextRuntime {
                 payload_hash: payload_digest.into(),
                 safe_summary: "Context governance mutation persisted".into(),
                 artifact_refs: Vec::<ArtifactRef>::new(),
-                occurred_at: occurred_at.clone(),
+                occurred_at,
             },
             requested_at: occurred_at,
         };

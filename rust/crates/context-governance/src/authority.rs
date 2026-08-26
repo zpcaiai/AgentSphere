@@ -2924,7 +2924,7 @@ fn string_array(
             (minimum..=maximum).contains(&items.len())
                 && items
                     .iter()
-                    .all(|item| item.as_str().is_some_and(|value| validator(value)))
+                    .all(|item| item.as_str().is_some_and(&validator))
                 && items
                     .iter()
                     .filter_map(Value::as_str)
