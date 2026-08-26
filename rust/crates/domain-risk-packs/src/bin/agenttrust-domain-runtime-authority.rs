@@ -274,10 +274,10 @@ fn required_identifier(name: &str) -> Result<String, Box<dyn std::error::Error>>
 }
 fn required_identity(name: &str) -> Result<String, Box<dyn std::error::Error>> {
     let value = required_identifier(name)?;
-    if !value
+    if value
         .strip_prefix("DNS:")
         .or_else(|| value.strip_prefix("URI:"))
-        .is_some_and(|identity| !identity.is_empty())
+        .is_none_or(|identity| identity.is_empty())
     {
         return Err("DOMAIN_RUNTIME_IDENTITY_INVALID".into());
     }

@@ -961,7 +961,7 @@
     },
     {
       "path": "rust/crates/domain-risk-packs/src/bin/agenttrust-domain-runtime-authority.rs",
-      "sha256": "f29b2a5bfe576ee7ca6f029cd975f8adf8f3d3db8d5bc189a759a6127ca47732"
+      "sha256": "8259519b418631c7636c6e2d2e65dcfdc661dde0f2195db9bca14715ece2a2ab"
     },
     {
       "path": "rust/crates/domain-risk-packs/tests/production_contract.rs",
