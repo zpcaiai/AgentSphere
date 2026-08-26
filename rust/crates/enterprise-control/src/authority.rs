@@ -8,8 +8,7 @@ use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_contracts::{
     ActionId, AgentIdentity, AgentInstanceId, CONTRACT_SCHEMA_VERSION, DataClassification,
     DataContext, ExecutionEnvironment, ExpectedOutcome, Intent, ResourceSelector, RiskContext,
-    RiskLevel, SchemaVersion, StepId, TaskId, TenantId, ToolId, ToolRef,
-    ToolVersion,
+    RiskLevel, SchemaVersion, StepId, TaskId, TenantId, ToolId, ToolRef, ToolVersion,
 };
 use agent_trust_gateway::{
     GATEWAY_SCHEMA_VERSION, IdentityContext, InboundEnvelope, IngressProtocol, TenantContext,
