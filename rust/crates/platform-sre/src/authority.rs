@@ -1802,8 +1802,8 @@ fn validate_zone_health_probe_binding(
     payload: &Map<String, Value>,
     observed: &Map<String, Value>,
 ) -> Result<(), SreAuthorityError> {
-    let expected = string_field(payload, "probe_spec_digest")
-        .ok_or(SreAuthorityError::RequestInvalid)?;
+    let expected =
+        string_field(payload, "probe_spec_digest").ok_or(SreAuthorityError::RequestInvalid)?;
     let actual = string_field(observed, "probe_spec_digest")
         .ok_or(SreAuthorityError::ExternalReceiptInvalid)?;
     if actual != expected {
@@ -2185,10 +2185,7 @@ mod tests {
         });
         assert!(external_fact_shape(SreOperation::RecordZoneHealth, &facts));
         assert_eq!(
-            validate_zone_health_probe_binding(
-                &payload,
-                facts.as_object().expect("facts object"),
-            ),
+            validate_zone_health_probe_binding(&payload, facts.as_object().expect("facts object"),),
             Ok(())
         );
 

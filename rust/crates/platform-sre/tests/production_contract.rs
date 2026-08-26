@@ -78,12 +78,7 @@ fn zone_health_and_external_receipt_schemas_match_the_runtime_boundary() {
     assert_eq!(zone_payload["additionalProperties"], false);
     assert_eq!(
         string_set(&zone_payload["required"]),
-        BTreeSet::from([
-            "observation_id",
-            "topology_id",
-            "zone",
-            "probe_spec_digest",
-        ])
+        BTreeSet::from(["observation_id", "topology_id", "zone", "probe_spec_digest",])
     );
     for client_supplied_fact in [
         "component_health",
@@ -93,7 +88,11 @@ fn zone_health_and_external_receipt_schemas_match_the_runtime_boundary() {
         "topology_probe_digest",
         "observed_at",
     ] {
-        assert!(zone_payload["properties"].get(client_supplied_fact).is_none());
+        assert!(
+            zone_payload["properties"]
+                .get(client_supplied_fact)
+                .is_none()
+        );
     }
 
     let receipt: Value = serde_json::from_str(EXTERNAL_RECEIPT_SCHEMA)
@@ -227,15 +226,13 @@ fn zone_health_and_external_receipt_schemas_match_the_runtime_boundary() {
                 || discriminator["enum"]
                     .as_array()
                     .is_some_and(|items| items.iter().any(|item| item == operation));
-            matches_operation
-                && branch["then"]["properties"]["facts"]["$ref"]
-                    == format!("#/$defs/{definition}")
+            matches_operation && branch["then"]["properties"]["facts"]["$ref"]
+                == format!("#/$defs/{definition}")
         }));
     }
     assert!(branches.iter().any(|branch| {
         branch["if"]["properties"]["production_evidence"]["const"] == true
-            && branch["then"]["properties"]["external_evidence_status"]["const"]
-                == "VERIFIED"
+            && branch["then"]["properties"]["external_evidence_status"]["const"] == "VERIFIED"
     }));
 }
 

@@ -1117,7 +1117,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/authority.rs",
-      "sha256": "7b11471f17d69950f94380a08e14d0730faf5ad75df7bba5eac47bcc9e7aa554"
+      "sha256": "1a66a236d185b5dcd73e177981eaccc57d74afa95425b47a7b4b104e05824019"
     },
     {
       "path": "rust/crates/platform-sre/src/bin/agenttrust-platform-sre-service.rs",
@@ -1125,11 +1125,11 @@
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "ffe9943c1c282f36a1ae09baa47672e95d4816d6ffc2a34232f93e9b7d29be97"
+      "sha256": "bc6ed8a076d9e6af3ce3c613202a9aa6f0376f2b9c35a6e8fbbd1373411e2490"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",
-      "sha256": "985a0b4dc41634f4b41146c12ab2543a67401027fbbf20f445b282086ebd9631"
+      "sha256": "f4b9b1a04cfa30235fbc65c397bf639fb8144b85de9564bc7928b4cf271b75b2"
     },
     {
       "path": "rust/crates/policy-administration/src/server.rs",

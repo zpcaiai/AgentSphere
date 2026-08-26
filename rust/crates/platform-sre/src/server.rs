@@ -472,10 +472,9 @@ impl HttpSreEffectPort {
             | SreOperation::RecordCanary
             | SreOperation::RecordCostCapacity
             | SreOperation::RecordObservability => None,
-            SreOperation::RecordZoneHealth => Some((
-                SreAdapterKind::TopologyProbe,
-                "v1/topology/zone-health",
-            )),
+            SreOperation::RecordZoneHealth => {
+                Some((SreAdapterKind::TopologyProbe, "v1/topology/zone-health"))
+            }
             SreOperation::CreateBackup => Some((SreAdapterKind::Backup, "v1/backups")),
             SreOperation::VerifyRestore => Some((SreAdapterKind::Recovery, "v1/restores/verify")),
             SreOperation::Failover => Some((SreAdapterKind::DisasterRecovery, "v1/dr/failover")),
