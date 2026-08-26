@@ -239,6 +239,44 @@ fn read_secret_file(
     }
     Ok(secret.to_string())
 }
+
+fn required_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = PathBuf::from(env::var(name)?);
+    if !path.is_absolute() || !secure_file(&path, false)? {
+        return Err("SUPPLY_CHAIN_FILE_INVALID".into());
+    }
+    Ok(path)
+}
+
+fn required_private_path(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = PathBuf::from(env::var(name)?);
+    if !path.is_absolute() || !secure_file(&path, true)? {
+        return Err("SUPPLY_CHAIN_PRIVATE_FILE_INVALID".into());
+    }
+    Ok(path)
+}
+
+fn secure_file(path: &Path, private: bool) -> Result<bool, Box<dyn std::error::Error>> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    let mode = metadata.mode() & 0o777;
+    let uid = nix::unistd::Uid::effective().as_raw();
+    let gid = nix::unistd::Gid::effective().as_raw();
+    let access = if private {
+        let allowed = 0o400 | if metadata.gid() == gid { 0o040 } else { 0 };
+        let readable = (metadata.uid() == uid && mode & 0o400 != 0)
+            || (metadata.gid() == gid && mode & 0o040 != 0);
+        readable && mode & !allowed == 0
+    } else {
+        mode & 0o022 == 0
+    };
+    Ok(metadata.file_type().is_file()
+        && !metadata.file_type().is_symlink()
+        && metadata.nlink() == 1
+        && metadata.len() > 0
+        && metadata.len() <= 16 * 1024 * 1024
+        && access)
+}
+
 fn required_url(name: &str) -> Result<url::Url, Box<dyn std::error::Error>> {
     let value = url::Url::parse(&env::var(name)?)?;
     if value.scheme() != "https"

@@ -1097,7 +1097,7 @@
     },
     {
       "path": "rust/crates/pack-supply-chain/src/bin/agenttrust-pack-supply-chain-authority.rs",
-      "sha256": "76fe82f437413451d57a39165cf139e020e97f5f7181116ac165837c9d8e1139"
+      "sha256": "95cabb8bc7c9a6161e6907e6ea808bfe6ae783f15602c50c5c394ecacdb73b97"
     },
     {
       "path": "rust/crates/pack-supply-chain/src/lib.rs",
