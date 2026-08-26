@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -46,6 +47,22 @@ class GateError(RuntimeError):
 
 class ConfigurationMissing(GateError):
     """Required deployment-owned configuration is absent."""
+
+
+def is_non_public_host(host: str) -> bool:
+    """Return whether a host is a local/private literal or known local name.
+
+    DNS names are intentionally not resolved here: the deployment-owned egress
+    policy controls DNS, and an unbound resolver lookup would introduce a DNS
+    rebinding race into the gate itself.
+    """
+    normalized = host.rstrip(".").lower()
+    try:
+        return not ipaddress.ip_address(normalized).is_global
+    except ValueError:
+        return normalized == "metadata.google.internal" or normalized.endswith(
+            ".localhost"
+        )
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -89,13 +106,16 @@ class BoundedHttpClient:
         allow_http_local: bool = False,
     ) -> tuple[int, Mapping[str, str], bytes]:
         parsed = urlparse(url)
-        local = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        host = (parsed.hostname or "").rstrip(".").lower()
+        local = host in {"127.0.0.1", "localhost", "::1"}
+        non_public_literal = is_non_public_host(host)
         if (
             parsed.username is not None
             or parsed.password is not None
             or not parsed.hostname
             or parsed.scheme not in {"http", "https"}
             or parsed.scheme == "http" and not (allow_http_local and local)
+            or non_public_literal and not (allow_http_local and parsed.scheme == "http" and local)
             or not 1 <= maximum_bytes <= 8 * 1024 * 1024
             or method not in {"GET", "HEAD", "PUT", "POST", "DELETE"}
         ):

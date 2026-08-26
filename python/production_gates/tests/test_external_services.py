@@ -26,8 +26,9 @@ class FakeTls:
 
 
 class FakeExternalHttp:
-    def __init__(self) -> None:
+    def __init__(self, *, a2a_endpoint: str = "https://a2a.example.test/tasks") -> None:
         self.requests: list[tuple[str, str, dict[str, str], bytes | None]] = []
+        self.a2a_endpoint = a2a_endpoint
 
     def request(self, method, url, *, headers=None, body=None, maximum_bytes=1_048_576,
                 allow_http_local=False):
@@ -82,7 +83,7 @@ class FakeExternalHttp:
         if url.endswith("/.well-known/agent-card.json"):
             return 200, {}, json.dumps({
                 "name": "approved-agent",
-                "url": "https://a2a.example.test/tasks",
+                "url": self.a2a_endpoint,
                 "capabilities": {"streaming": True, "pushNotifications": False},
                 "skills": [{"id": "read"}, {"id": "evaluate"}],
             }).encode()
@@ -113,6 +114,11 @@ class ExternalServicesTests(unittest.TestCase):
             with self.assertRaises(GateError):
                 probe_mtls("identity.example.test", 443, ca, cert, key,
                            transport=FakeTls())
+
+    def test_mtls_denies_non_public_literal_targets(self):
+        with self.assertRaisesRegex(GateError, "MTLS_CONFIGURATION_INVALID"):
+            probe_mtls("10.0.0.7", 443, Path("/missing-ca"), Path("/missing-cert"),
+                       Path("/missing-key"), transport=FakeTls())
 
     def test_vault_health_token_and_dynamic_lease_lifecycle(self):
         os.environ["AGENTTRUST_TEST_VAULT_TOKEN"] = "vault-token"
@@ -154,6 +160,15 @@ class ExternalServicesTests(unittest.TestCase):
         self.assertTrue(mcp.checks["tool_call_not_executed"])
         self.assertEqual(a2a.checks["skill_count"], 2)
         self.assertTrue(a2a.checks["task_submission_not_executed"])
+
+    def test_a2a_task_endpoint_requires_strict_same_origin(self):
+        with self.assertRaisesRegex(GateError, "A2A_AGENT_CARD_INVALID"):
+            probe_a2a_agent_card(
+                "https://a2a.example.test/.well-known/agent-card.json",
+                transport=FakeExternalHttp(
+                    a2a_endpoint="https://a2a.example.test:8443/tasks"
+                ),
+            )
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ from python.production_gates.live_integrations import (
     GateError,
     GateResult,
     HttpTransport,
+    is_non_public_host,
 )
 
 
@@ -141,7 +142,7 @@ def probe_mtls(
 ) -> GateResult:
     if (
         not host
-        or host in {"localhost", "127.0.0.1", "::1", "169.254.169.254"}
+        or is_non_public_host(host)
         or not 1 <= port <= 65535
     ):
         raise GateError("MTLS_CONFIGURATION_INVALID")
@@ -495,7 +496,14 @@ def probe_a2a_agent_card(
     transport: HttpTransport | None = None,
 ) -> GateResult:
     parsed = urlparse(card_url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username is not None:
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
         raise GateError("A2A_CONFIGURATION_INVALID")
     status, _, payload = (transport or BoundedHttpClient()).request(
         "GET", card_url, headers={"Accept": "application/json"}, maximum_bytes=1_048_576
@@ -510,6 +518,11 @@ def probe_a2a_agent_card(
         or not isinstance(card.get("name"), str)
         or endpoint_parsed.scheme != "https"
         or endpoint_parsed.hostname != parsed.hostname
+        or endpoint_parsed.port != parsed.port
+        or endpoint_parsed.username is not None
+        or endpoint_parsed.password is not None
+        or endpoint_parsed.query
+        or endpoint_parsed.fragment
         or not isinstance(skills, list)
         or len(skills) > 1024
         or not isinstance(capabilities, dict)

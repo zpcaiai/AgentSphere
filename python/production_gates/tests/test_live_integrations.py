@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from python.production_gates.live_integrations import (
+    BoundedHttpClient,
     ConfigurationMissing,
     GateError,
     probe_model_provider,
@@ -70,6 +71,19 @@ class FakeRunner:
 
 
 class LiveIntegrationTests(unittest.TestCase):
+    def test_bounded_http_denies_non_public_literal_targets(self):
+        client = BoundedHttpClient(timeout_seconds=1)
+        for url in (
+            "https://127.0.0.1/healthz",
+            "https://192.168.1.10/healthz",
+            "https://[::ffff:127.0.0.1]/healthz",
+            "https://metadata.google.internal/computeMetadata/v1",
+        ):
+            with self.subTest(url=url), self.assertRaisesRegex(
+                GateError, "GATE_HTTP_TARGET_DENIED"
+            ):
+                client.request("GET", url)
+
     def test_oidc_discovery_and_jwks_are_strict(self):
         result = probe_oidc("https://iam.example.test/tenant", "agenttrust", transport=FakeHttp())
         self.assertEqual(result.status, "PASS_REAL_PROTOCOL")

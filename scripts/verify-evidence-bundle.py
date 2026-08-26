@@ -361,6 +361,7 @@ def main() -> int:
         "evidence/production-closure/external-condition-matrix.json",
         "evidence/production-closure/CERTIFICATE_NOT_ISSUED.json",
         "schemas/release/external-condition-matrix.schema.json",
+        "python/production_gates/live_integrations.py",
         "python/production_gates/git_provenance.py",
         "python/production_gates/release_binding.py",
         "scripts/render-production-stack.py",

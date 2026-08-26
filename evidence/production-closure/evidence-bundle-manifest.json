@@ -793,7 +793,11 @@
     },
     {
       "path": "python/production_gates/external_services.py",
-      "sha256": "4b7aee94f043503ddad663c52b4c58e3057841acb1a0c4a259902bb55259b9e2"
+      "sha256": "b07edccf18e6ed8c2fc92f42412cf0666aabe8e98177363a9aca1faba043a7c1"
+    },
+    {
+      "path": "python/production_gates/live_integrations.py",
+      "sha256": "68fb60016e71b8eb512486c5a1155dbf382e37f006b8bdd8d23fa8a9a1ad9399"
     },
     {
       "path": "python/production_gates/git_provenance.py",
@@ -1377,7 +1381,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "a367a9d0d7302e71f265af55dd72be4787456d5faf96ec0fc3d8e1ced1b61761"
+      "sha256": "83f009ee225d9d5c53da0b2ef7d3d3ff6d076b469d97fc39a5b9643590108544"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",
