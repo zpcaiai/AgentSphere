@@ -1013,7 +1013,7 @@
     },
     {
       "path": "rust/crates/enterprise-approval/tests/production_contract.rs",
-      "sha256": "9accb8367797cd02890e665eb53e578d2d1e34069e631e5ffabc6ada32325bf5"
+      "sha256": "49462573855f96272a41a651baa7146676f340605317631fa4d3a7863267e4e3"
     },
     {
       "path": "rust/crates/enterprise-control/src/server.rs",

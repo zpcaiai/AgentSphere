@@ -329,12 +329,11 @@ fn authoritative_review_facts_are_signed_exact_and_migrated_atomically() {
             "missing atomic v2 migration invariant {invariant}"
         );
     }
-    for invariant in ["AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE"] {
-        assert!(
-            APPROVAL_BINARY.contains(invariant),
-            "missing review evidence startup gate {invariant}"
-        );
-    }
+    let invariant = "AGENT_TRUST_APPROVAL_REVIEW_EVIDENCE_KEYRING_FILE";
+    assert!(
+        APPROVAL_BINARY.contains(invariant),
+        "missing review evidence startup gate {invariant}"
+    );
     assert!(
         APPROVAL_STORE.contains("review_evidence_covers"),
         "readiness must require active review-evidence key coverage"
