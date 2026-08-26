@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/approval-review-evidence-issue.schema.json",
+  "$id": "https://agenttrust.local/schemas/approval/review-evidence-issue.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [

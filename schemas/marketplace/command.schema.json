@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.agenttrust.dev/marketplace/command.schema.json",
+  "$id": "https://agentsphere.local/schemas/marketplace/command.schema.json",
   "title": "Governed Pack Marketplace command",
   "type": "object",
   "additionalProperties": false,

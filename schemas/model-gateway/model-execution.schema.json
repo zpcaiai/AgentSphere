@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.agenttrust.invalid/model-gateway/model-execution.schema.json",
+  "$id": "https://agenttrust.local/schemas/model-gateway/model-execution.schema.json",
   "title": "AgentTrust model execution wire contract",
   "$defs": {
     "uuid": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"},
@@ -22,7 +22,7 @@
         "tenant_id": {"$ref": "#/$defs/uuid"},
         "task_id": {"$ref": "#/$defs/uuid"},
         "action_id": {"$ref": "#/$defs/uuid"},
-        "canonical_action": {"$ref": "../json/action.schema.json"},
+        "canonical_action": {"$ref": "../action.schema.json"},
         "operation": {"enum": ["GENERATE", "STREAM", "EMBEDDINGS"]},
         "task_type": {"type": "string", "minLength": 1, "maxLength": 128},
         "classification": {"enum": ["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED", "REGULATED"]},

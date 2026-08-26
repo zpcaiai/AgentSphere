@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/data-governance/data-command.schema.json",
+  "$id": "https://agenttrust.local/schemas/data-governance/data-command.schema.json",
   "title": "Data governance durable mutation command",
   "type": "object",
   "additionalProperties": false,

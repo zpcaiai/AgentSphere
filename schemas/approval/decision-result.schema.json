@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/approval/decision-result.schema.json",
+  "$id": "https://agenttrust.local/schemas/approval/decision-result.schema.json",
   "title": "Approval decision result",
   "type": "object",
   "additionalProperties": false,

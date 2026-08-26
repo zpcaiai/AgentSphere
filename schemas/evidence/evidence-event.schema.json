@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenttrust.local/schemas/evidence/evidence-event.schema.json",
+  "$ref": "#/$defs/evidenceEventDraft",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "evidenceEventDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "tenant_id",
+        "task_id",
+        "event_type",
+        "actor_subject",
+        "source_service",
+        "trace_id",
+        "span_id",
+        "payload_hash",
+        "safe_summary",
+        "artifact_refs",
+        "occurred_at"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.evidence.v1"},
+        "tenant_id": {"$ref": "#/$defs/uuid"},
+        "task_id": {"$ref": "#/$defs/uuid"},
+        "event_type": {
+          "enum": [
+            "TASK_CREATED",
+            "PLAN_GENERATED",
+            "POLICY_EVALUATED",
+            "APPROVAL_DECISION",
+            "APPROVAL_REVIEW_PREPARED",
+            "CREDENTIAL_ISSUED",
+            "TOOL_PREPARED",
+            "TOOL_EXECUTED",
+            "COMPENSATION",
+            "EVALUATION",
+            "SECURITY_ALERT",
+            "STATE_TRANSITION",
+            "AUDIT_QUERY",
+            "AUDIT_EXPORT",
+            "LEGAL_HOLD",
+            "RETENTION_DELETION"
+          ]
+        },
+        "actor_subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "source_service": {"type": "string", "minLength": 1, "maxLength": 256},
+        "trace_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "span_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "payload_hash": {"$ref": "#/$defs/digest"},
+        "safe_summary": {"type": "string", "maxLength": 512},
+        "artifact_refs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"type": "string", "minLength": 1, "maxLength": 2048}
+        },
+        "occurred_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "signedEvidenceEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "event_id",
+        "sequence",
+        "previous_hash",
+        "event_hash",
+        "key_id",
+        "signature",
+        "draft"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.evidence.v1"},
+        "event_id": {"$ref": "#/$defs/uuid"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "previous_hash": {"$ref": "#/$defs/digest"},
+        "event_hash": {"$ref": "#/$defs/digest"},
+        "key_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "signature": {"type": "string", "minLength": 1, "maxLength": 256},
+        "draft": {"$ref": "#/$defs/evidenceEventDraft"}
+      }
+    }
+  }
+}

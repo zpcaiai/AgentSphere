@@ -12,7 +12,7 @@
     "expected_task_state_version": {"type": "integer", "minimum": 0},
     "event": {
       "allOf": [
-        {"$ref": "../openapi/execution-v1.yaml#/components/schemas/EvidenceEventDraft"},
+        {"$ref": "./evidence-event.schema.json#/$defs/evidenceEventDraft"},
         {"properties": {"event_type": {"not": {"const": "TOOL_EXECUTED"}}}}
       ]
     },

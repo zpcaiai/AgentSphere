@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/policy-admin/policy-bundle.schema.json",
+  "$id": "https://agenttrust.local/schemas/policy-admin/policy-bundle.schema.json",
   "title": "Immutable Ed25519 Policy Bundle",
   "type": "object",
   "additionalProperties": false,

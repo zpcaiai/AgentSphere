@@ -24,7 +24,7 @@
       "maxLength": 2048
     },
     "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "event": {"$ref": "../openapi/execution-v1.yaml#/components/schemas/SignedEvidenceEvent"},
+    "event": {"$ref": "./evidence-event.schema.json#/$defs/signedEvidenceEvent"},
     "persisted_at": {"type": "string", "format": "date-time"},
     "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
     "key_id": {"type": "string", "minLength": 1, "maxLength": 128},

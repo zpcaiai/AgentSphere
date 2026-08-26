@@ -1245,7 +1245,7 @@
     },
     {
       "path": "schemas/approval/approval-case.schema.json",
-      "sha256": "dc5016bab90c7054a964c5af3be2f349463a82c0d6d88fa98514f763d05c6d16"
+      "sha256": "7ec9517ca093140e7f8eeb828606e12feffb2c4e7aff81a4991b35ca33d2a43f"
     },
     {
       "path": "schemas/approval/decision-evidence-keyring.schema.json",
@@ -1253,7 +1253,7 @@
     },
     {
       "path": "schemas/approval/decision-evidence.schema.json",
-      "sha256": "f968c34a325c49de43064130d59fe3fb4a547d0d832772f412a47eb7d82b6761"
+      "sha256": "cf7efd43f4affcb4474124d5e2957234490ab17dbaf0a38a74f5be6923c3903f"
     },
     {
       "path": "schemas/approval/decision-request-binding.schema.json",
@@ -1261,11 +1261,11 @@
     },
     {
       "path": "schemas/approval/decision-result.schema.json",
-      "sha256": "197c5fa1ad67c053138a29f4094bcd13a4d765dd348f3ae56d7c9c2f56a006da"
+      "sha256": "2552fac843012f3a5503ba5a500917557d0b50d8f181b55b2fe8e2eeb2b19b0b"
     },
     {
       "path": "schemas/approval/review-evidence-issue.schema.json",
-      "sha256": "f44ef4d2dd9e0df76b9d0482b74048f78f0a003282aca3fa1e0063670fcc244c"
+      "sha256": "ac6346801d4901320be432c12fca32f07490433eda9da46b2e832cc9c7b396ec"
     },
     {
       "path": "schemas/approval/review-evidence-keyring.schema.json",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.agenttrust.dev/marketplace/domain-pack-manifest.schema.json",
+  "$id": "https://agentsphere.local/schemas/marketplace/domain-pack-manifest.schema.json",
   "title": "Marketplace verified Domain Pack manifest wire contract",
   "type": "object",
   "additionalProperties": false,

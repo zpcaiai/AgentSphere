@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenttrust.example/schemas/pep/policy-activation.schema.json",
+  "$id": "https://agenttrust.local/schemas/pep/policy-activation.schema.json",
   "title": "Tenant and environment bound policy activation",
   "oneOf": [
     {"$ref": "#/$defs/request"},

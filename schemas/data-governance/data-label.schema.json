@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/data-governance/data-label.schema.json",
+  "$id": "https://agenttrust.local/schemas/data-governance/data-label.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": [

@@ -130,7 +130,7 @@
       "items": {"type": "string"}
     },
     "verified_at": {
-      "type": "string",
+      "type": ["string", "null"],
       "format": "date-time"
     }
   },

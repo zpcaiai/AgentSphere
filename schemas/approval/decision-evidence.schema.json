@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/approval/decision-evidence.schema.json",
+  "$id": "https://agenttrust.local/schemas/approval/decision-evidence.schema.json",
   "title": "Immutable Approval authority decision evidence receipt",
   "type": "object",
   "additionalProperties": false,

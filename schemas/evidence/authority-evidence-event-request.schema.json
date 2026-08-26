@@ -43,7 +43,7 @@
     },
     "event": {
       "allOf": [
-        {"$ref": "../openapi/execution-v1.yaml#/components/schemas/EvidenceEventDraft"},
+        {"$ref": "./evidence-event.schema.json#/$defs/evidenceEventDraft"},
         {
           "properties": {
             "event_type": {

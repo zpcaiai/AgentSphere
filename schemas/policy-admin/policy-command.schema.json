@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/policy-admin/policy-command.schema.json",
+  "$id": "https://agenttrust.local/schemas/policy-admin/policy-command.schema.json",
   "title": "Governed Policy Lifecycle Command",
   "oneOf": [
     {"$ref": "#/$defs/create_draft"},
