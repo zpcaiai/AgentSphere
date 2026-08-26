@@ -179,7 +179,9 @@ impl PostgresPepStore {
                         return Err(PepAuthorityError::PersistenceUnavailable);
                     }
                     transaction.commit().await.map_err(database)?;
-                    return Ok(PolicyActivationClaimResult::Replay(Box::new(acknowledgement)));
+                    return Ok(PolicyActivationClaimResult::Replay(Box::new(
+                        acknowledgement,
+                    )));
                 }
                 "PENDING" if row.try_get::<bool, _>("lease_live").map_err(database)? => {
                     return Err(PepAuthorityError::IdempotencyInProgress);
