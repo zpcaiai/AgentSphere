@@ -1361,7 +1361,7 @@
     },
     {
       "path": "scripts/validate-enterprise-api-contract.py",
-      "sha256": "ffe29dcdbd0ca2b0eaeca646b72e37d7ca5017d33d3c02d5c9e9cc1b82a4fe51"
+      "sha256": "bf158ce268f4d9d37edae9e17350d3c77aef1028e4c0c4b0c5c2bd6559fd0e02"
     },
     {
       "path": "scripts/validate-node-supply-chain.py",

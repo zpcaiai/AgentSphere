@@ -665,9 +665,10 @@ assert {value.strip() for value in event_enum_match.group(1).split(",")} == (
 assert set(evaluation_schema["properties"]["required_event_types"]["items"]["enum"]) == (
     expected_evidence_event_types
 )
-assert authority_event_schema["properties"]["event"]["allOf"][0]["$ref"].endswith(
-    "execution-v1.yaml#/components/schemas/EvidenceEventDraft"
+assert authority_event_schema["properties"]["event"]["allOf"][0]["$ref"] == (
+    "./evidence-event.schema.json#/$defs/evidenceEventDraft"
 )
+assert (root / "schemas/evidence/evidence-event.schema.json").is_file()
 
 for authority, contract in production_runtime_contracts.items():
     service_openapi = (root / "schemas/openapi" / contract["openapi"]).read_text(encoding="utf-8")
