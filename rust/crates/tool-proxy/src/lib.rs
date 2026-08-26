@@ -2033,7 +2033,14 @@ fn validate_public_https_target(url: &Url) -> Result<(), ProxyError> {
     if host == "localhost" || host.ends_with(".localhost") || host == "metadata.google.internal" {
         return Err(ProxyError::SsrfDenied);
     }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>()
+    // `Url::host_str()` may retain brackets for an IPv6 literal. Strip them
+    // before parsing so IPv4-mapped IPv6 addresses cannot bypass the literal
+    // address SSRF guard (for example, `[::ffff:127.0.0.1]`).
+    let literal_host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(&host);
+    if let Ok(ip) = literal_host.parse::<std::net::IpAddr>()
         && !is_public_target_ip(ip)
     {
         return Err(ProxyError::SsrfDenied);
