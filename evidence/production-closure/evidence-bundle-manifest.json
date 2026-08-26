@@ -1209,7 +1209,7 @@
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/authority.rs",
-      "sha256": "9104a1064a03cf1b3e1b9a7b254f4c3435fce8eaeae8133d79b6994c5bf438ea"
+      "sha256": "303e5196c5817c511fbe711880f8b66901e9789a2e60ced49806bb421b0266ce"
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/bin/agenttrust-security-evaluation-authority.rs",

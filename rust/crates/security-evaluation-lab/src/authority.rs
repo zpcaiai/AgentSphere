@@ -3307,6 +3307,18 @@ fn validate_scenario_definition(
     physical_effect_mode: &str,
 ) -> Result<(), SecurityEvalAuthorityError> {
     let value = object(definition)?;
+    // Classify unsafe execution contexts before validating optional structural detail so a
+    // malformed request can never obscure a production or physical-isolation denial.
+    if value
+        .get("target")
+        .and_then(Value::as_object)
+        .and_then(|target| target.get("production"))
+        == Some(&Value::Bool(true))
+        || matches!(category, "INDUSTRIAL" | "ENERGY" | "MEDICAL")
+            && physical_effect_mode != "DIGITAL_TWIN_ONLY"
+    {
+        return Err(SecurityEvalAuthorityError::IsolationDenied);
+    }
     exact_fields(
         value,
         &[
