@@ -1197,7 +1197,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/src/production.rs",
-      "sha256": "5ab47ea142854009be8b62339dcad35aa01ba32cecd0a0f65dd7f1186dea1c52"
+      "sha256": "27513a22081c73302bbd0922fa08d4f7dd8b80be8773cc56707ecc9be2770516"
     },
     {
       "path": "rust/crates/runtime-anomaly/src/server.rs",
@@ -1221,7 +1221,7 @@
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/server.rs",
-      "sha256": "35c816ef586fd2a1be0ad93567f750ebfb08053df5a3756902b86289b738ff07"
+      "sha256": "2ac5e7c1788a519f1bcec3e10a6d2538b188d8e03c03482396e9303419200070"
     },
     {
       "path": "rust/crates/security-evaluation-lab/tests/production_contract.rs",

@@ -381,9 +381,8 @@ impl RuntimeAnomalyEffectsPort for HttpsRuntimeAnomalyRuntime {
             .evidence_keyring
             .key(&receipt.key_id)
             .ok_or(RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
-        receipt
-            .verify(key, Utc::now())
-            .map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
+        let verification = receipt.verify(key, Utc::now());
+        verification.map_err(|_| RuntimeAnomalyAuthorityError::DependencyUnavailable)?;
         if receipt.tenant_id != body.tenant_id
             || receipt.task_id != body.task_id
             || receipt.authority_event_id != body.authority_event_id

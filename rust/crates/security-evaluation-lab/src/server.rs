@@ -732,9 +732,8 @@ impl SecurityEvalEvidencePort for HttpSecurityEvalEvidence {
             .keyring
             .key(&receipt.key_id)
             .ok_or(SecurityEvalAuthorityError::DependencyUnavailable)?;
-        receipt
-            .verify(key, Utc::now())
-            .map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
+        let verification = receipt.verify(key, Utc::now());
+        verification.map_err(|_| SecurityEvalAuthorityError::DependencyUnavailable)?;
         if receipt.tenant_id != request.tenant_id
             || receipt.task_id != request.task_id
             || receipt.authority_event_id != request.authority_event_id
