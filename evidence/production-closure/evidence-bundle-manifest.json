@@ -1117,7 +1117,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/authority.rs",
-      "sha256": "2fda84cfeeac6b8756128adb7180077b6790411b9ee4b5fe405f4e62e2368c9c"
+      "sha256": "913cd843ae3f189b56bcde8956912d3a1d6c04fb06ae2791d8f40307efa936c6"
     },
     {
       "path": "rust/crates/platform-sre/src/bin/agenttrust-platform-sre-service.rs",

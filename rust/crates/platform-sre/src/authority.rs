@@ -2163,10 +2163,9 @@ mod tests {
     #[test]
     fn zone_health_receipt_requires_complete_facts_and_exact_probe_binding() {
         let probe_spec_digest = "a".repeat(64);
-        let payload = json!({"probe_spec_digest": probe_spec_digest})
-            .as_object()
-            .cloned()
-            .expect("payload object");
+        let payload_value = json!({"probe_spec_digest": probe_spec_digest});
+        assert!(payload_value.is_object());
+        let payload = payload_value.as_object().cloned().unwrap_or_default();
         let facts = json!({
             "component_health": {"control-plane": true},
             "dependency_health": {"postgres": true},
@@ -2177,12 +2176,13 @@ mod tests {
             "observed_at": Utc::now(),
         });
         assert!(external_fact_shape(SreOperation::RecordZoneHealth, &facts));
+        let facts_object = facts.as_object().cloned().unwrap_or_default();
         assert_eq!(
-            validate_zone_health_probe_binding(&payload, facts.as_object().expect("facts object"),),
+            validate_zone_health_probe_binding(&payload, &facts_object),
             Ok(())
         );
 
-        let mut mismatched = facts.as_object().cloned().expect("facts object");
+        let mut mismatched = facts_object;
         mismatched.insert("probe_spec_digest".into(), Value::String("c".repeat(64)));
         assert_eq!(
             validate_zone_health_probe_binding(&payload, &mismatched),
