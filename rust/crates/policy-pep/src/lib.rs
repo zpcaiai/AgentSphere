@@ -419,7 +419,7 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
                 .as_deref()
                 .is_some_and(valid_idempotency_key)
         {
-            return Err(PolicyError::ExecutionAuthInvalid);
+            return Err(PolicyError::LocalGuardDenied);
         }
         if action_hash(&request.action).map_err(|_| PolicyError::LocalGuardDenied)?
             != request.action_hash
