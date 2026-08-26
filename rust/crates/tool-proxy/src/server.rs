@@ -346,7 +346,7 @@ async fn execute(
     .await;
     match result {
         Ok(ProductionExecutionOutcome::Succeeded(result)) => {
-            (StatusCode::OK, Json(result)).into_response()
+            (StatusCode::OK, Json(*result)).into_response()
         }
         Ok(ProductionExecutionOutcome::Failed(code)) => (
             StatusCode::UNPROCESSABLE_ENTITY,

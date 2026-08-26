@@ -1233,11 +1233,11 @@
     },
     {
       "path": "rust/crates/tool-proxy/src/lib.rs",
-      "sha256": "6a77bea90584b6d14396c3a139748a02a46bf7d70e5eecebe134cb0bd3b85ad8"
+      "sha256": "46fe1c80be1aae4b2d08e1378a7743f6ad3d48345097308d3d28c3fba317ac19"
     },
     {
       "path": "rust/crates/tool-proxy/src/production.rs",
-      "sha256": "2e244b826335beae0c6be68ec656f55d264562a0ee6fbafbd8bea018a8655984"
+      "sha256": "8ff3a3da86700ff2bf96c6329bf2027fccfd9a2352cc670bad7e20880ca6c28d"
     },
     {
       "path": "rust/crates/transaction-ledger/src/lib.rs",

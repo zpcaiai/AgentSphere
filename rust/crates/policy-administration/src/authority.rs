@@ -985,7 +985,7 @@ impl PostgresPolicyAuthorityStore {
         }
         let receipt = row
             .get::<Option<Value>, _>("receipt")
-            .map(|value| serde_json::from_value(value))
+            .map(serde_json::from_value)
             .transpose()
             .map_err(|_| PolicyAuthorityError::DependencyUnavailable)?;
         tx.commit()
@@ -1314,7 +1314,7 @@ struct PreparedPolicyActivation {
 
 enum PolicyActivationPreparation {
     Replay(PolicyMutationResult),
-    Pending(PreparedPolicyActivation),
+    Pending(Box<PreparedPolicyActivation>),
 }
 
 #[derive(Clone)]
@@ -1590,7 +1590,7 @@ impl PolicyExecutor {
         let prepared = self.prepare_policy_activation(&binding, &request).await?;
         let prepared = match prepared {
             PolicyActivationPreparation::Replay(result) => return Ok(result),
-            PolicyActivationPreparation::Pending(value) => value,
+            PolicyActivationPreparation::Pending(value) => *value,
         };
         let acknowledgement = match self.activation.activate(&prepared.request).await {
             Ok(value) => value,
@@ -1778,13 +1778,13 @@ impl PolicyExecutor {
             tx.commit()
                 .await
                 .map_err(|_| PolicyAuthorityError::OutcomeUnknown)?;
-            return Ok(PolicyActivationPreparation::Pending(
+            return Ok(PolicyActivationPreparation::Pending(Box::new(
                 PreparedPolicyActivation {
                     request: activation_request,
                     claim_owner,
                     resource_version: current_version,
                 },
-            ));
+            )));
         }
         if execution.get::<String, _>("state") != "PREPARED" {
             return Err(PolicyAuthorityError::OutcomeUnknown);
@@ -2011,13 +2011,13 @@ impl PolicyExecutor {
         tx.commit()
             .await
             .map_err(|_| PolicyAuthorityError::OutcomeUnknown)?;
-        Ok(PolicyActivationPreparation::Pending(
+        Ok(PolicyActivationPreparation::Pending(Box::new(
             PreparedPolicyActivation {
                 request: activation_request,
                 claim_owner,
                 resource_version: current_version,
             },
-        ))
+        )))
     }
 
     async fn mark_policy_activation_unknown(

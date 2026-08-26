@@ -43,7 +43,7 @@ impl InvocationState {
 pub enum PrepareOutcome {
     New,
     RetryPrepared,
-    ReplaySucceeded(SanitizedToolResult),
+    ReplaySucceeded(Box<SanitizedToolResult>),
     ReplayFailed(String),
     Unknown,
 }
@@ -159,7 +159,7 @@ impl PostgresInvocationStore {
                         stored_consumption_id,
                         &stored_receipt_digest,
                     )?;
-                    PrepareOutcome::ReplaySucceeded(result)
+                    PrepareOutcome::ReplaySucceeded(Box::new(result))
                 }
                 InvocationState::Failed => PrepareOutcome::ReplayFailed({
                     let code: String = row
@@ -300,6 +300,7 @@ impl PostgresInvocationStore {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn transition_terminal(
         &self,
         tenant: &TenantId,
@@ -688,7 +689,7 @@ async fn record_safe_event(
 
 #[derive(Debug)]
 pub enum ProductionExecutionOutcome {
-    Succeeded(SanitizedToolResult),
+    Succeeded(Box<SanitizedToolResult>),
     Failed(String),
     Unknown,
 }
@@ -761,7 +762,7 @@ impl<R: ToolRegistry> ProductionToolProxyService<R> {
                         &audit,
                     )
                     .await?;
-                Ok(ProductionExecutionOutcome::Succeeded(result))
+                Ok(ProductionExecutionOutcome::Succeeded(Box::new(result)))
             }
             Err(error) => {
                 self.store
@@ -1068,10 +1069,11 @@ impl HttpsRegistryClient {
         }
         let state = VerifiedRegistryState { response, tools };
         let mut cache = self.verified.write();
-        if !cache.contains_key(tenant) && cache.len() >= MAX_CACHED_REGISTRY_TENANTS {
-            if let Some(oldest_key) = cache.keys().next().cloned() {
-                cache.remove(&oldest_key);
-            }
+        if !cache.contains_key(tenant)
+            && cache.len() >= MAX_CACHED_REGISTRY_TENANTS
+            && let Some(oldest_key) = cache.keys().next().cloned()
+        {
+            cache.remove(&oldest_key);
         }
         cache.insert(tenant.clone(), state.clone());
         Ok(state)

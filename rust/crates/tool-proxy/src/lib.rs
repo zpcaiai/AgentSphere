@@ -877,9 +877,12 @@ pub struct CredentialAuthorityVerificationKey {
     pub key: VerifyingKey,
 }
 
+type CredentialAuthorityKey = (String, BTreeSet<String>, VerifyingKey);
+type CredentialAuthorityKeys = BTreeMap<String, CredentialAuthorityKey>;
+
 #[derive(Clone)]
 pub struct CredentialAuthorityKeyring {
-    keys: Arc<BTreeMap<String, (String, BTreeSet<String>, VerifyingKey)>>,
+    keys: Arc<CredentialAuthorityKeys>,
 }
 
 impl CredentialAuthorityKeyring {
