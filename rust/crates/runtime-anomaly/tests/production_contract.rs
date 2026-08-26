@@ -88,7 +88,13 @@ fn production_action_requires_canonical_pep_ledger_fence_and_evidence() {
 fn signed_signals_are_bounded_source_and_workload_bound() {
     // Source/key/signature provenance is carried by the signed outer envelope;
     // workload identity is bound by the mTLS request and checked by authority.
-    for marker in ["source_id", "key_id", "signature", "signal", "semantic_score"] {
+    for marker in [
+        "source_id",
+        "key_id",
+        "signature",
+        "signal",
+        "semantic_score",
+    ] {
         assert!(
             SIGNED_SIGNAL_SCHEMA.contains(marker),
             "signed signal schema missing {marker}"

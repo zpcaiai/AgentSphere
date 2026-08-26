@@ -1205,7 +1205,7 @@
     },
     {
       "path": "rust/crates/runtime-anomaly/tests/production_contract.rs",
-      "sha256": "b2dc51c1bf21e6fa484c643616fcef27e85a37dbdfe4282a30fc201fb97205c4"
+      "sha256": "e778b67cdbe250842872f29aaed56673e83ccefc16fc952bb418ef4d542a3f48"
     },
     {
       "path": "rust/crates/security-evaluation-lab/src/authority.rs",
