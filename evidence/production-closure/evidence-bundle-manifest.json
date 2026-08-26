@@ -873,7 +873,7 @@
     },
     {
       "path": "rust/crates/context-governance/src/adapters.rs",
-      "sha256": "d508983fd3548a085a334f68457f983d901747f61806e58560ba6ac0130af2e0"
+      "sha256": "04b73c671cd4204d65e308d693f085e879d8ea8bead241accee59b12bc85c590"
     },
     {
       "path": "rust/crates/context-governance/src/authority.rs",

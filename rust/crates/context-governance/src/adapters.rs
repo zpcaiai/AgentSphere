@@ -957,8 +957,7 @@ impl ContextRuntimePort for HttpContextRuntime {
             .evidence_keyring
             .key(&receipt.key_id)
             .ok_or(ContextAuthorityError::DependencyUnavailable)?;
-        receipt
-            .verify(key, Utc::now())
+        receipt.verify(key, Utc::now())
             .map_err(|_| ContextAuthorityError::DependencyUnavailable)?;
         if receipt.tenant_id != request.tenant_id
             || receipt.task_id != request.task_id
