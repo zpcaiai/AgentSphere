@@ -148,6 +148,7 @@ impl PepAuthority {
         let claim = self.store.begin_policy_activation(&request).await?;
         let owner = match claim {
             PolicyActivationClaimResult::Replay(acknowledgement) => {
+                let acknowledgement = *acknowledgement;
                 acknowledgement
                     .verify(&self.signing_key.verifying_key())
                     .map_err(|_| PepAuthorityError::PersistenceUnavailable)?;

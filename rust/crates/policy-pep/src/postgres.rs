@@ -33,7 +33,7 @@ pub struct PolicyActivationClaimOwner(Uuid);
 
 pub enum PolicyActivationClaimResult {
     Acquired(PolicyActivationClaimOwner),
-    Replay(PepPolicyActivationAcknowledgement),
+    Replay(Box<PepPolicyActivationAcknowledgement>),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -179,7 +179,7 @@ impl PostgresPepStore {
                         return Err(PepAuthorityError::PersistenceUnavailable);
                     }
                     transaction.commit().await.map_err(database)?;
-                    return Ok(PolicyActivationClaimResult::Replay(acknowledgement));
+                    return Ok(PolicyActivationClaimResult::Replay(Box::new(acknowledgement)));
                 }
                 "PENDING" if row.try_get::<bool, _>("lease_live").map_err(database)? => {
                     return Err(PepAuthorityError::IdempotencyInProgress);
@@ -1009,7 +1009,7 @@ impl PostgresPepStore {
         .bind(evidence.evidence_digest)
         .bind(evidence.evidence_ref)
         .bind(evidence.evidence_body)
-        .bind(&occurred_at)
+        .bind(occurred_at)
         .execute(&mut *transaction)
         .await
         .map_err(database)?;
@@ -1024,7 +1024,7 @@ impl PostgresPepStore {
         .bind(evidence.evidence_id)
         .bind(event_digest)
         .bind(outbox_body)
-        .bind(&occurred_at)
+        .bind(occurred_at)
         .execute(&mut *transaction)
         .await
         .map_err(database)?;

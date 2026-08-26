@@ -997,7 +997,7 @@
     },
     {
       "path": "rust/crates/enterprise-approval/src/postgres.rs",
-      "sha256": "6f45377d65c83974c0ad68cbd3c50dd17df173e4d85558d1fab1ca943d257cd8"
+      "sha256": "1f506920a11a189fdf90797c25b42fe703ca00a6145606fd7299695f35d886d1"
     },
     {
       "path": "rust/crates/enterprise-approval/src/principal.rs",
@@ -1117,7 +1117,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/authority.rs",
-      "sha256": "1a66a236d185b5dcd73e177981eaccc57d74afa95425b47a7b4b104e05824019"
+      "sha256": "2fda84cfeeac6b8756128adb7180077b6790411b9ee4b5fe405f4e62e2368c9c"
     },
     {
       "path": "rust/crates/platform-sre/src/bin/agenttrust-platform-sre-service.rs",
@@ -1125,7 +1125,7 @@
     },
     {
       "path": "rust/crates/platform-sre/src/server.rs",
-      "sha256": "bc6ed8a076d9e6af3ce3c613202a9aa6f0376f2b9c35a6e8fbbd1373411e2490"
+      "sha256": "00a9e894605c96e9015a376225ae02108727b541cd96fee44715ceab8f4aa6af"
     },
     {
       "path": "rust/crates/platform-sre/tests/production_contract.rs",

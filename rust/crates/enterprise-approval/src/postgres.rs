@@ -2454,7 +2454,7 @@ async fn verify_consumption_replay(
     signed.verify(signer.issuer(), signer.key_id(), &signer.verifying_key())?;
     let payload_digest = hex(Sha256::digest(signed.signing_bytes()?));
     if &signed.request != request
-        || &signed.grant != &wire.grant
+        || signed.grant != wire.grant
         || signed.consumed_by != subject
         || signed.client_identity != client_identity
         || signed.consumed_at != wire.consumed_at

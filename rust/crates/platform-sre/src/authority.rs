@@ -1927,13 +1927,6 @@ fn identifier_field(value: &Map<String, Value>, field: &str, maximum: usize) -> 
     string_field(value, field).is_some_and(|item| identifier(item, maximum))
 }
 
-fn evidence_status_field(value: &Map<String, Value>, field: &str) -> bool {
-    matches!(
-        string_field(value, field),
-        Some("NOT_RUN" | "OBSERVED" | "VERIFIED")
-    )
-}
-
 fn string_array(
     value: &Map<String, Value>,
     field: &str,
@@ -1948,7 +1941,7 @@ fn string_array(
             (minimum..=maximum).contains(&items.len())
                 && items
                     .iter()
-                    .all(|item| item.as_str().is_some_and(|value| validator(value)))
+                    .all(|item| item.as_str().is_some_and(&validator))
                 && items
                     .iter()
                     .filter_map(Value::as_str)

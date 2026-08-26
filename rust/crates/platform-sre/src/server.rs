@@ -204,6 +204,7 @@ impl SreTokenAuthorizer {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn router(
     ingress: SreIngressAuthority,
     executor: SreExecutor,

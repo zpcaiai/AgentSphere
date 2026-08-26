@@ -391,8 +391,8 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
         {
             return Err(PolicyError::LocalGuardDenied);
         }
-        if let Some(context) = &request.execution_context {
-            if Uuid::parse_str(&context.ledger_execution_id.0).is_err()
+        if let Some(context) = &request.execution_context
+            && (Uuid::parse_str(&context.ledger_execution_id.0).is_err()
                 || Uuid::parse_str(&context.ledger_event_id).is_err()
                 || !is_lower_hex_digest(&context.ledger_event_digest)
                 || !is_lower_hex_digest(&context.fence_digest)
@@ -409,10 +409,9 @@ impl<R: ToolRegistry, P: PolicyDecisionPointPort> PolicyEnforcementPoint<R, P> {
                 || context
                     .approval_consumption_ref
                     .as_deref()
-                    .is_some_and(|reference| reference.is_empty() || reference.len() > 2_048)
-            {
-                return Err(PolicyError::ExecutionAuthInvalid);
-            }
+                    .is_some_and(|reference| reference.is_empty() || reference.len() > 2_048))
+        {
+            return Err(PolicyError::ExecutionAuthInvalid);
         }
         if request.stage == EnforcementStage::PreExecution
             && !request
