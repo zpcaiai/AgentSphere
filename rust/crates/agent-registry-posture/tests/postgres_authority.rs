@@ -126,9 +126,9 @@ async fn registration_replays_across_concurrency_and_restart_with_tenant_isolati
     let tenant = TenantId(Uuid::new_v4().to_string());
     let other = TenantId(Uuid::new_v4().to_string());
     let request = registration(&tenant, &format!("agent-{}", Uuid::new_v4()));
-    let authority = Arc::new(authority(pool.clone(), false));
+    let authority_instance = Arc::new(authority(pool.clone(), false));
     let first = {
-        let authority = authority.clone();
+        let authority = authority_instance.clone();
         let request = request.clone();
         tokio::spawn(async move {
             authority
@@ -137,7 +137,7 @@ async fn registration_replays_across_concurrency_and_restart_with_tenant_isolati
         })
     };
     let second = {
-        let authority = authority.clone();
+        let authority = authority_instance.clone();
         let request = request.clone();
         tokio::spawn(async move {
             authority
