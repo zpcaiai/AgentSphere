@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+default = []
+development-local-signing = []
+
 [dependencies]
 agent-trust-audit-retention = { path = "../audit-retention" }
 agent-trust-incident-release-gate = { path = "../incident-release-gate" }

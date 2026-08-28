@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-revocation-registry.schema.json",
+  "title": "Signed Production Closure Certificate Revocation Registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "registry_id", "sequence", "previous_registry_digest", "published_at", "expires_at", "key_id", "entries", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure-revocation-registry.v1"},
+    "registry_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "previous_registry_digest": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    },
+    "published_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+    "entries": {
+      "type": "array",
+      "maxItems": 100000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["certificate_id", "release_id", "reason_code", "evidence_digest", "revoked_at"],
+        "properties": {
+          "certificate_id": {"type": "string", "pattern": "^pc-[a-f0-9]{24}$"},
+          "release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+          "reason_code": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"},
+          "evidence_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "revoked_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

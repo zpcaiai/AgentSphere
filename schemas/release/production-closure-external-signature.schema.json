@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-external-signature.schema.json",
+  "title": "Production Closure External Signature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_digest", "algorithm", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure-external-signature.v1"},
+    "request_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "algorithm": {"const": "Ed25519"},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

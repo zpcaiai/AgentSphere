@@ -5,7 +5,7 @@
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "451140c058018145e527c0ef5924c4a6cda9e845ab0d3bf6ebc4fde5f94f5f1c"
+      "sha256": "062f42f4d3911b47a0109e198c0d0b3372cb29610c7bd4095bf6fafd2720972f"
     },
     {
       "path": ".github/workflows/linux-isolation.yml",
@@ -44,8 +44,12 @@
       "sha256": "068ebff7c671ad80656aeeb3c3045632d82e2a931a2dfab19e879effb89f5ed4"
     },
     {
+      "path": "docs/release/production-closure-external-signing.md",
+      "sha256": "aaecaf5bf6c730b57b8e10b98ba8f21cb5931c16aaaf8c8df1126504714af347"
+    },
+    {
       "path": "docs/release/production-closure-runbook.md",
-      "sha256": "d0bd9adeba6dde8523c65b4c031022922497071a97d80c731fe1fb3a21f8c4ae"
+      "sha256": "e31a103014dac64bf282b448b1c6f59f6225bfca4ee01f3055a07c70fc02c272"
     },
     {
       "path": "docs/sandbox/production-requirements.md",
@@ -840,6 +844,10 @@
       "sha256": "3114aea6efe63c6623fd4df5e212caff2a8c6851a34cf2a54f38583bd7ab4327"
     },
     {
+      "path": "python/production_gates/tests/test_production_closure_signing_contract.py",
+      "sha256": "51b5b9bc6af2bb6c8a3c5e74865c2afc94d991353ad60fd5ab57718d557cc77a"
+    },
+    {
       "path": "python/production_gates/tests/test_release_binding.py",
       "sha256": "f2f13eb28f5195188294357cc90f20d22d8182f204ce5efc2eca45f0132ea15c"
     },
@@ -1156,12 +1164,16 @@
       "sha256": "398c272d520f5e1ab7ffaef73c46759c5b6e9b8728925e6ca432471d34b83b1b"
     },
     {
+      "path": "rust/crates/production-closure/Cargo.toml",
+      "sha256": "7f6107ad199af69928c6d0554d65428f37acacef94d880063d24b6e6286a6ed4"
+    },
+    {
       "path": "rust/crates/production-closure/src/bin/production-closure.rs",
-      "sha256": "52f7a1c6d80c37de11e17ad6055caef13e00bd0ea11134dfaf3c712f8560cc9a"
+      "sha256": "1dcb822a52ce99099dc5c0194f9cdf2495733d76e4d864af9b5a1ea65be56ea5"
     },
     {
       "path": "rust/crates/production-closure/src/lib.rs",
-      "sha256": "a1c33cf45a9e6a0d282d3337c1f47ca4ff9e392da37916bf756d61a4e8f82a23"
+      "sha256": "b287dc608cbd4be2931cc05939220ad0fc21357dff7614e090caa49e66c7bc43"
     },
     {
       "path": "rust/crates/production-runtime/src/execution_server.rs",
@@ -1333,7 +1345,19 @@
     },
     {
       "path": "schemas/release/production-closure-certificate.schema.json",
-      "sha256": "def91e0b3f3152c5e0df1bae3ac9b9538548393a00fca25b13ff7fefa3067d9f"
+      "sha256": "b42547613fb3074b5a1f0c46d03a07ebdd278bffb9202643e59c7502abc46b1b"
+    },
+    {
+      "path": "schemas/release/production-closure-external-signature.schema.json",
+      "sha256": "3e3ae066faf44ddc9662609481f748efa86fcebd58756c390a8161d4d3fcc952"
+    },
+    {
+      "path": "schemas/release/production-closure-revocation-registry.schema.json",
+      "sha256": "9921a42a74045787f81d4e8e0de2954542941c804ee9fb4da40c49ef3bec5777"
+    },
+    {
+      "path": "schemas/release/production-closure-signing-request.schema.json",
+      "sha256": "3d9347343db3f42ff2f75dc22ccabc200d89fab464a2c8d4a57013c9f2af7ba3"
     },
     {
       "path": "schemas/release/release-binding-keyring.schema.json",
@@ -1381,7 +1405,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "83f009ee225d9d5c53da0b2ef7d3d3ff6d076b469d97fc39a5b9643590108544"
+      "sha256": "053167ccfdeabe8027f2539d7d1037ba9ae1782a2f42e99d1295ba118e98d230"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",

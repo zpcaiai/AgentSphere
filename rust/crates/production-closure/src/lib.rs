@@ -3,7 +3,7 @@
 //! Earlier release-gate certificates are inputs to this gate, never substitutes for it.
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -13,10 +13,17 @@ use thiserror::Error;
 
 pub const CLOSURE_SCHEMA_VERSION: &str = "agenttrust.production-closure.v1";
 pub const REQUIRED_BATCH_FIRST: u8 = 1;
-pub const REQUIRED_BATCH_LAST: u8 = 36;
+pub const REQUIRED_BATCH_LAST: u8 = 35;
 pub const DOMAIN_ASSURANCE_SCHEMA_VERSION: &str = "agenttrust.domain-assurance-attestation.v1";
 pub const EXTERNAL_GATE_ASSURANCE_SCHEMA_VERSION: &str =
     "agenttrust.external-gate-assurance-attestation.v1";
+pub const EXTERNAL_SIGNING_REQUEST_SCHEMA_VERSION: &str =
+    "agenttrust.production-closure-signing-request.v1";
+pub const EXTERNAL_SIGNATURE_SCHEMA_VERSION: &str =
+    "agenttrust.production-closure-external-signature.v1";
+pub const CLOSURE_SIGNATURE_ALGORITHM: &str = "Ed25519";
+pub const CERTIFICATE_REVOCATION_REGISTRY_SCHEMA_VERSION: &str =
+    "agenttrust.production-closure-revocation-registry.v1";
 
 const REQUIRED_GATES: [(&str, bool); 15] = [
     ("CONTRACT_COMPATIBILITY", false),
@@ -581,6 +588,10 @@ impl ClosureRunner {
     fn check_batches(statuses: &[BatchEvidenceStatus], blockers: &mut BTreeSet<String>) {
         let mut by_batch = BTreeMap::new();
         for status in statuses {
+            if !(REQUIRED_BATCH_FIRST..=REQUIRED_BATCH_LAST).contains(&status.batch) {
+                blockers.insert(format!("BATCH_{:02}_UNEXPECTED", status.batch));
+                continue;
+            }
             if by_batch.insert(status.batch, status).is_some() {
                 blockers.insert(format!("BATCH_{:02}_DUPLICATE", status.batch));
             }
@@ -771,7 +782,7 @@ pub struct ProductionClosureCertificate {
 }
 
 impl ProductionClosureCertificate {
-    fn signing_bytes(&self) -> Result<Vec<u8>, ClosureError> {
+    pub fn signing_bytes(&self) -> Result<Vec<u8>, ClosureError> {
         let mut unsigned = self.clone();
         unsigned.signature.clear();
         serde_jcs::to_vec(&unsigned).map_err(|_| ClosureError::SerializationFailed)
@@ -787,9 +798,11 @@ impl ProductionClosureCertificate {
         if self.schema_version != CLOSURE_SCHEMA_VERSION
             || !self.production_closure
             || !report.eligible
+            || self.certificate_id != format!("pc-{}", &report.report_digest[..24])
             || self.release_id != report.release_id
             || self.scope_digest != report.scope_digest
             || self.report_digest != report.report_digest
+            || !is_key_id(&self.key_id)
             || self.issued_at > now
             || self.expires_at <= now
         {
@@ -803,6 +816,165 @@ impl ProductionClosureCertificate {
         key.verify(&self.signing_bytes()?, &signature)
             .map_err(|_| ClosureError::CertificateInvalid)
     }
+}
+
+/// A private-key-free request that can be sent to an approved external KMS or
+/// signing service. The service signs `signing_payload` exactly as supplied;
+/// the finalizer independently reconstructs and verifies the payload.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalCertificateSigningRequest {
+    pub schema_version: String,
+    pub algorithm: String,
+    pub key_id: String,
+    pub certificate: ProductionClosureCertificate,
+    pub signing_payload: String,
+    pub payload_sha256: String,
+}
+
+impl ExternalCertificateSigningRequest {
+    pub fn prepare(
+        report: &ClosureReport,
+        scope: &ClosureScope,
+        key_id: impl Into<String>,
+        now: DateTime<Utc>,
+    ) -> Result<Self, ClosureError> {
+        let certificate = unsigned_certificate(report, scope, key_id.into(), now)?;
+        let payload = certificate.signing_bytes()?;
+        Ok(Self {
+            schema_version: EXTERNAL_SIGNING_REQUEST_SCHEMA_VERSION.into(),
+            algorithm: CLOSURE_SIGNATURE_ALGORITHM.into(),
+            key_id: certificate.key_id.clone(),
+            certificate,
+            signing_payload: URL_SAFE_NO_PAD.encode(&payload),
+            payload_sha256: hex(Sha256::digest(payload)),
+        })
+    }
+
+    pub fn digest(&self) -> Result<String, ClosureError> {
+        let bytes = serde_jcs::to_vec(self).map_err(|_| ClosureError::SerializationFailed)?;
+        Ok(hex(Sha256::digest(bytes)))
+    }
+
+    pub fn verify(
+        &self,
+        report: &ClosureReport,
+        scope: &ClosureScope,
+        now: DateTime<Utc>,
+    ) -> Result<(), ClosureError> {
+        report.verify_digest()?;
+        scope.validate(now)?;
+        if self.schema_version != EXTERNAL_SIGNING_REQUEST_SCHEMA_VERSION
+            || self.algorithm != CLOSURE_SIGNATURE_ALGORITHM
+            || !is_key_id(&self.key_id)
+            || self.key_id != self.certificate.key_id
+            || self.certificate.schema_version != CLOSURE_SCHEMA_VERSION
+            || self.certificate.certificate_id != format!("pc-{}", &report.report_digest[..24])
+            || !self.certificate.signature.is_empty()
+            || !self.certificate.production_closure
+            || !report.eligible
+            || self.certificate.release_id != report.release_id
+            || self.certificate.release_id != scope.release_id
+            || self.certificate.scope_digest != report.scope_digest
+            || self.certificate.scope_digest != scope.digest()?
+            || self.certificate.report_digest != report.report_digest
+            || report.evaluated_at > self.certificate.issued_at
+            || self.certificate.issued_at > now
+            || self.certificate.expires_at != scope.valid_until
+            || self.certificate.expires_at <= now
+            || report.verified_gate_digests.len() != REQUIRED_GATES.len()
+        {
+            return Err(ClosureError::ExternalSigningInvalid);
+        }
+        let payload = URL_SAFE_NO_PAD
+            .decode(&self.signing_payload)
+            .map_err(|_| ClosureError::ExternalSigningInvalid)?;
+        if !is_sha256(&self.payload_sha256)
+            || self.payload_sha256 != hex(Sha256::digest(&payload))
+            || payload != self.certificate.signing_bytes()?
+        {
+            return Err(ClosureError::ExternalSigningInvalid);
+        }
+        Ok(())
+    }
+}
+
+/// Detached result returned by an external KMS integration. The request digest
+/// prevents a signature response from being replayed for another certificate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ExternalCertificateSignature {
+    pub schema_version: String,
+    pub request_digest: String,
+    pub algorithm: String,
+    pub key_id: String,
+    pub signature: String,
+}
+
+impl ExternalCertificateSignature {
+    pub fn finalize(
+        &self,
+        request: &ExternalCertificateSigningRequest,
+        report: &ClosureReport,
+        scope: &ClosureScope,
+        key: &VerifyingKey,
+        now: DateTime<Utc>,
+    ) -> Result<ProductionClosureCertificate, ClosureError> {
+        request.verify(report, scope, now)?;
+        if self.schema_version != EXTERNAL_SIGNATURE_SCHEMA_VERSION
+            || self.algorithm != CLOSURE_SIGNATURE_ALGORITHM
+            || self.key_id != request.key_id
+            || self.request_digest != request.digest()?
+            || !is_sha256(&self.request_digest)
+        {
+            return Err(ClosureError::ExternalSigningInvalid);
+        }
+        let payload = URL_SAFE_NO_PAD
+            .decode(&request.signing_payload)
+            .map_err(|_| ClosureError::ExternalSigningInvalid)?;
+        let decoded = URL_SAFE_NO_PAD
+            .decode(&self.signature)
+            .map_err(|_| ClosureError::ExternalSigningInvalid)?;
+        let signature =
+            Signature::from_slice(&decoded).map_err(|_| ClosureError::ExternalSigningInvalid)?;
+        key.verify(&payload, &signature)
+            .map_err(|_| ClosureError::ExternalSigningInvalid)?;
+
+        let mut certificate = request.certificate.clone();
+        certificate.signature = self.signature.clone();
+        certificate
+            .verify_offline(report, key, now)
+            .map_err(|_| ClosureError::ExternalSigningInvalid)?;
+        Ok(certificate)
+    }
+}
+
+fn unsigned_certificate(
+    report: &ClosureReport,
+    scope: &ClosureScope,
+    key_id: String,
+    now: DateTime<Utc>,
+) -> Result<ProductionClosureCertificate, ClosureError> {
+    report.verify_digest()?;
+    scope.validate(now)?;
+    if !is_key_id(&key_id)
+        || !report.eligible
+        || report.scope_digest != scope.digest()?
+        || report.release_id != scope.release_id
+        || report.verified_gate_digests.len() != REQUIRED_GATES.len()
+    {
+        return Err(ClosureError::NotEligible);
+    }
+    Ok(ProductionClosureCertificate {
+        schema_version: CLOSURE_SCHEMA_VERSION.into(),
+        certificate_id: format!("pc-{}", &report.report_digest[..24]),
+        release_id: report.release_id.clone(),
+        scope_digest: report.scope_digest.clone(),
+        report_digest: report.report_digest.clone(),
+        production_closure: true,
+        issued_at: now,
+        expires_at: scope.valid_until,
+        key_id,
+        signature: String::new(),
+    })
 }
 
 pub struct ClosureAuthority {
@@ -828,28 +1000,7 @@ impl ClosureAuthority {
         scope: &ClosureScope,
         now: DateTime<Utc>,
     ) -> Result<ProductionClosureCertificate, ClosureError> {
-        report.verify_digest()?;
-        scope.validate(now)?;
-        if !report.eligible
-            || report.scope_digest != scope.digest()?
-            || report.release_id != scope.release_id
-            || report.verified_gate_digests.len() != REQUIRED_GATES.len()
-        {
-            return Err(ClosureError::NotEligible);
-        }
-        let certificate_id = format!("pc-{}", &report.report_digest[..24]);
-        let mut certificate = ProductionClosureCertificate {
-            schema_version: CLOSURE_SCHEMA_VERSION.into(),
-            certificate_id,
-            release_id: report.release_id.clone(),
-            scope_digest: report.scope_digest.clone(),
-            report_digest: report.report_digest.clone(),
-            production_closure: true,
-            issued_at: now,
-            expires_at: scope.valid_until,
-            key_id: self.key_id.clone(),
-            signature: String::new(),
-        };
+        let mut certificate = unsigned_certificate(report, scope, self.key_id.clone(), now)?;
         certificate.signature = URL_SAFE_NO_PAD.encode(
             self.signing_key
                 .sign(&certificate.signing_bytes()?)
@@ -917,6 +1068,132 @@ impl CertificateRegistry {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CertificateRevocationEntry {
+    pub certificate_id: String,
+    pub release_id: String,
+    pub reason_code: String,
+    pub evidence_digest: String,
+    pub revoked_at: DateTime<Utc>,
+}
+
+/// A short-lived, signed snapshot distributed to offline certificate consumers.
+/// Sequence and previous digest make rollback or snapshot deletion detectable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SignedCertificateRevocationRegistry {
+    pub schema_version: String,
+    pub registry_id: String,
+    pub sequence: u64,
+    pub previous_registry_digest: Option<String>,
+    pub published_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub key_id: String,
+    pub entries: Vec<CertificateRevocationEntry>,
+    pub signature: String,
+}
+
+impl SignedCertificateRevocationRegistry {
+    pub fn signing_bytes(&self) -> Result<Vec<u8>, ClosureError> {
+        let mut unsigned = self.clone();
+        unsigned.signature.clear();
+        serde_jcs::to_vec(&unsigned).map_err(|_| ClosureError::SerializationFailed)
+    }
+
+    pub fn digest(&self) -> Result<String, ClosureError> {
+        let bytes = serde_jcs::to_vec(self).map_err(|_| ClosureError::SerializationFailed)?;
+        Ok(hex(Sha256::digest(bytes)))
+    }
+
+    pub fn verify(&self, key: &VerifyingKey, now: DateTime<Utc>) -> Result<(), ClosureError> {
+        let valid_chain = if self.sequence == 1 {
+            self.previous_registry_digest.is_none()
+        } else {
+            self.previous_registry_digest
+                .as_deref()
+                .is_some_and(is_sha256)
+        };
+        let entries_ordered = self
+            .entries
+            .windows(2)
+            .all(|pair| pair[0].certificate_id.as_str() < pair[1].certificate_id.as_str());
+        let entries_valid = self.entries.iter().all(|entry| {
+            is_certificate_id(&entry.certificate_id)
+                && !entry.release_id.is_empty()
+                && entry.release_id.len() <= 256
+                && is_reason_code(&entry.reason_code)
+                && is_sha256(&entry.evidence_digest)
+                && entry.revoked_at <= self.published_at
+        });
+        if self.schema_version != CERTIFICATE_REVOCATION_REGISTRY_SCHEMA_VERSION
+            || !is_key_id(&self.registry_id)
+            || !is_key_id(&self.key_id)
+            || self.sequence == 0
+            || !valid_chain
+            || self.entries.len() > 100_000
+            || !entries_ordered
+            || !entries_valid
+            || self.published_at > now
+            || self.expires_at <= now
+            || self.expires_at <= self.published_at
+            || self.expires_at - self.published_at > Duration::days(7)
+        {
+            return Err(ClosureError::RevocationInvalid);
+        }
+        let decoded = URL_SAFE_NO_PAD
+            .decode(&self.signature)
+            .map_err(|_| ClosureError::RevocationInvalid)?;
+        let signature =
+            Signature::from_slice(&decoded).map_err(|_| ClosureError::RevocationInvalid)?;
+        key.verify(&self.signing_bytes()?, &signature)
+            .map_err(|_| ClosureError::RevocationInvalid)
+    }
+
+    pub fn verify_active(
+        &self,
+        certificate: &ProductionClosureCertificate,
+        report: &ClosureReport,
+        certificate_key: &VerifyingKey,
+        registry_key: &VerifyingKey,
+        now: DateTime<Utc>,
+    ) -> Result<(), ClosureError> {
+        self.verify(registry_key, now)?;
+        if self.published_at < certificate.issued_at {
+            return Err(ClosureError::RevocationInvalid);
+        }
+        if let Some(entry) = self
+            .entries
+            .iter()
+            .find(|entry| entry.certificate_id == certificate.certificate_id)
+        {
+            if entry.release_id != certificate.release_id {
+                return Err(ClosureError::RevocationInvalid);
+            }
+            return Err(ClosureError::CertificateRevoked);
+        }
+        certificate.verify_offline(report, certificate_key, now)
+    }
+
+    pub fn verify_successor(
+        &self,
+        previous: &SignedCertificateRevocationRegistry,
+        key: &VerifyingKey,
+        now: DateTime<Utc>,
+    ) -> Result<(), ClosureError> {
+        previous.verify(key, now)?;
+        self.verify(key, now)?;
+        let previous_digest = previous.digest()?;
+        if self.registry_id != previous.registry_id
+            || self.key_id != previous.key_id
+            || self.sequence != previous.sequence.saturating_add(1)
+            || self.previous_registry_digest.as_deref() != Some(previous_digest.as_str())
+            || self.published_at <= previous.published_at
+        {
+            return Err(ClosureError::RevocationInvalid);
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum ClosureError {
     #[error("CLOSURE_SCHEMA_UNSUPPORTED")]
@@ -945,6 +1222,8 @@ pub enum ClosureError {
     DomainAssuranceInvalid,
     #[error("CLOSURE_EXTERNAL_ASSURANCE_INVALID")]
     ExternalAssuranceInvalid,
+    #[error("CLOSURE_EXTERNAL_SIGNING_INVALID")]
+    ExternalSigningInvalid,
 }
 
 fn digest_gate(evidence: &GateEvidence) -> Result<String, ClosureError> {
@@ -954,6 +1233,28 @@ fn digest_gate(evidence: &GateEvidence) -> Result<String, ClosureError> {
 
 fn is_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn is_key_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
+        })
+}
+
+fn is_certificate_id(value: &str) -> bool {
+    value.strip_prefix("pc-").is_some_and(|digest| {
+        digest.len() == 24 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
+fn is_reason_code(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
 fn hex(bytes: impl AsRef<[u8]>) -> String {
@@ -1129,11 +1430,17 @@ mod tests {
         let now = Utc::now();
         let mut input = complete_input(now);
         input.batch_statuses.pop();
+        input.batch_statuses.push(BatchEvidenceStatus {
+            batch: 36,
+            status: BatchStatus::EvidenceVerified,
+            evidence_digest: "d".repeat(64),
+        });
         input.gate_evidence[0].source_certificate_type = Some("BATCH_22_ENGINE_CERTIFICATE".into());
         let report =
             ClosureRunner::evaluate(&input, now).unwrap_or_else(|error| panic!("report: {error}"));
         assert!(!report.eligible);
-        assert!(report.blockers.contains("BATCH_36_MISSING"));
+        assert!(report.blockers.contains("BATCH_35_MISSING"));
+        assert!(report.blockers.contains("BATCH_36_UNEXPECTED"));
         let authority = ClosureAuthority::new("closure-key", SigningKey::from_bytes(&[71_u8; 32]))
             .unwrap_or_else(|error| panic!("authority: {error}"));
         assert_eq!(
@@ -1192,6 +1499,254 @@ mod tests {
         assert_eq!(
             registry.verify_active(&certificate, &report, &key.verifying_key(), now),
             Err(ClosureError::CertificateRevoked)
+        );
+    }
+
+    #[test]
+    fn external_signing_request_closes_kms_flow_without_loading_a_private_key() {
+        let now = Utc::now();
+        let input = complete_input(now);
+        let report =
+            ClosureRunner::evaluate(&input, now).unwrap_or_else(|error| panic!("report: {error}"));
+        let request = ExternalCertificateSigningRequest::prepare(
+            &report,
+            &input.scope,
+            "kms:key:production-closure",
+            now,
+        )
+        .unwrap_or_else(|error| panic!("request: {error}"));
+        request
+            .verify(&report, &input.scope, now)
+            .unwrap_or_else(|error| panic!("request verify: {error}"));
+
+        let external_kms_key = SigningKey::from_bytes(&[73_u8; 32]);
+        let payload = URL_SAFE_NO_PAD
+            .decode(&request.signing_payload)
+            .unwrap_or_else(|error| panic!("payload: {error}"));
+        let response = ExternalCertificateSignature {
+            schema_version: EXTERNAL_SIGNATURE_SCHEMA_VERSION.into(),
+            request_digest: request
+                .digest()
+                .unwrap_or_else(|error| panic!("digest: {error}")),
+            algorithm: CLOSURE_SIGNATURE_ALGORITHM.into(),
+            key_id: request.key_id.clone(),
+            signature: URL_SAFE_NO_PAD.encode(external_kms_key.sign(&payload).to_bytes()),
+        };
+        let certificate = response
+            .finalize(
+                &request,
+                &report,
+                &input.scope,
+                &external_kms_key.verifying_key(),
+                now,
+            )
+            .unwrap_or_else(|error| panic!("finalize: {error}"));
+        assert_eq!(certificate.key_id, "kms:key:production-closure");
+        assert!(!certificate.signature.is_empty());
+        assert_eq!(
+            certificate.verify_offline(&report, &external_kms_key.verifying_key(), now),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn external_signing_rejects_request_response_and_signature_replay_tampering() {
+        let now = Utc::now();
+        let input = complete_input(now);
+        let report =
+            ClosureRunner::evaluate(&input, now).unwrap_or_else(|error| panic!("report: {error}"));
+        let request = ExternalCertificateSigningRequest::prepare(
+            &report,
+            &input.scope,
+            "kms:key:production-closure",
+            now,
+        )
+        .unwrap_or_else(|error| panic!("request: {error}"));
+        let external_kms_key = SigningKey::from_bytes(&[74_u8; 32]);
+        let payload = URL_SAFE_NO_PAD
+            .decode(&request.signing_payload)
+            .unwrap_or_else(|error| panic!("payload: {error}"));
+        let response = ExternalCertificateSignature {
+            schema_version: EXTERNAL_SIGNATURE_SCHEMA_VERSION.into(),
+            request_digest: request
+                .digest()
+                .unwrap_or_else(|error| panic!("digest: {error}")),
+            algorithm: CLOSURE_SIGNATURE_ALGORITHM.into(),
+            key_id: request.key_id.clone(),
+            signature: URL_SAFE_NO_PAD.encode(external_kms_key.sign(&payload).to_bytes()),
+        };
+
+        let mut tampered_request = request.clone();
+        tampered_request.certificate.release_id = "release:other".into();
+        assert_eq!(
+            response.finalize(
+                &tampered_request,
+                &report,
+                &input.scope,
+                &external_kms_key.verifying_key(),
+                now,
+            ),
+            Err(ClosureError::ExternalSigningInvalid)
+        );
+
+        let mut replayed_response = response.clone();
+        replayed_response.request_digest = "f".repeat(64);
+        assert_eq!(
+            replayed_response.finalize(
+                &request,
+                &report,
+                &input.scope,
+                &external_kms_key.verifying_key(),
+                now,
+            ),
+            Err(ClosureError::ExternalSigningInvalid)
+        );
+
+        let wrong_key = SigningKey::from_bytes(&[75_u8; 32]);
+        assert_eq!(
+            response.finalize(
+                &request,
+                &report,
+                &input.scope,
+                &wrong_key.verifying_key(),
+                now,
+            ),
+            Err(ClosureError::ExternalSigningInvalid)
+        );
+    }
+
+    #[test]
+    fn signed_revocation_registry_is_required_and_detects_revoked_certificate() {
+        let now = Utc::now();
+        let issued_at = now - Duration::minutes(1);
+        let input = complete_input(issued_at);
+        let report = ClosureRunner::evaluate(&input, issued_at)
+            .unwrap_or_else(|error| panic!("report: {error}"));
+        let certificate_key = SigningKey::from_bytes(&[76_u8; 32]);
+        let authority = ClosureAuthority::new("closure-key", certificate_key.clone())
+            .unwrap_or_else(|error| panic!("authority: {error}"));
+        let certificate = authority
+            .issue(&report, &input.scope, issued_at)
+            .unwrap_or_else(|error| panic!("certificate: {error}"));
+        let registry_key = SigningKey::from_bytes(&[77_u8; 32]);
+
+        let mut active_registry = SignedCertificateRevocationRegistry {
+            schema_version: CERTIFICATE_REVOCATION_REGISTRY_SCHEMA_VERSION.into(),
+            registry_id: "registry:production-closure".into(),
+            sequence: 1,
+            previous_registry_digest: None,
+            published_at: now - Duration::seconds(1),
+            expires_at: now + Duration::days(1),
+            key_id: "registry-key:1".into(),
+            entries: Vec::new(),
+            signature: String::new(),
+        };
+        active_registry.signature = URL_SAFE_NO_PAD.encode(
+            registry_key
+                .sign(
+                    &active_registry
+                        .signing_bytes()
+                        .unwrap_or_else(|error| panic!("registry payload: {error}")),
+                )
+                .to_bytes(),
+        );
+        assert_eq!(
+            active_registry.verify_active(
+                &certificate,
+                &report,
+                &certificate_key.verifying_key(),
+                &registry_key.verifying_key(),
+                now,
+            ),
+            Ok(())
+        );
+
+        let previous_digest = active_registry
+            .digest()
+            .unwrap_or_else(|error| panic!("registry digest: {error}"));
+        let mut revoked_registry = SignedCertificateRevocationRegistry {
+            sequence: 2,
+            previous_registry_digest: Some(previous_digest),
+            published_at: now,
+            entries: vec![CertificateRevocationEntry {
+                certificate_id: certificate.certificate_id.clone(),
+                release_id: certificate.release_id.clone(),
+                reason_code: "SECURITY_REGRESSION".into(),
+                evidence_digest: "e".repeat(64),
+                revoked_at: now,
+            }],
+            signature: String::new(),
+            ..active_registry.clone()
+        };
+        revoked_registry.signature = URL_SAFE_NO_PAD.encode(
+            registry_key
+                .sign(
+                    &revoked_registry
+                        .signing_bytes()
+                        .unwrap_or_else(|error| panic!("registry payload: {error}")),
+                )
+                .to_bytes(),
+        );
+        assert_eq!(
+            revoked_registry
+                .verify_successor(&active_registry, &registry_key.verifying_key(), now,),
+            Ok(())
+        );
+        assert_eq!(
+            revoked_registry.verify_active(
+                &certificate,
+                &report,
+                &certificate_key.verifying_key(),
+                &registry_key.verifying_key(),
+                now,
+            ),
+            Err(ClosureError::CertificateRevoked)
+        );
+    }
+
+    #[test]
+    fn revocation_registry_rejects_rollback_staleness_and_tampering() {
+        let now = Utc::now();
+        let registry_key = SigningKey::from_bytes(&[78_u8; 32]);
+        let mut registry = SignedCertificateRevocationRegistry {
+            schema_version: CERTIFICATE_REVOCATION_REGISTRY_SCHEMA_VERSION.into(),
+            registry_id: "registry:production-closure".into(),
+            sequence: 2,
+            previous_registry_digest: Some("a".repeat(64)),
+            published_at: now - Duration::minutes(1),
+            expires_at: now + Duration::days(1),
+            key_id: "registry-key:1".into(),
+            entries: Vec::new(),
+            signature: String::new(),
+        };
+        registry.signature = URL_SAFE_NO_PAD.encode(
+            registry_key
+                .sign(
+                    &registry
+                        .signing_bytes()
+                        .unwrap_or_else(|error| panic!("registry payload: {error}")),
+                )
+                .to_bytes(),
+        );
+        assert_eq!(registry.verify(&registry_key.verifying_key(), now), Ok(()));
+
+        let mut rollback = registry.clone();
+        rollback.sequence = 1;
+        assert_eq!(
+            rollback.verify(&registry_key.verifying_key(), now),
+            Err(ClosureError::RevocationInvalid)
+        );
+        let mut stale = registry.clone();
+        stale.expires_at = now;
+        assert_eq!(
+            stale.verify(&registry_key.verifying_key(), now),
+            Err(ClosureError::RevocationInvalid)
+        );
+        let mut tampered = registry;
+        tampered.registry_id = "registry:other".into();
+        assert_eq!(
+            tampered.verify(&registry_key.verifying_key(), now),
+            Err(ClosureError::RevocationInvalid)
         );
     }
 

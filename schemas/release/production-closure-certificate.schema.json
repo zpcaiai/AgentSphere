@@ -6,6 +6,7 @@
     "schema_version": {"const": "agenttrust.production-closure.v1"}, "certificate_id": {"type": "string", "minLength": 1}, "release_id": {"type": "string", "minLength": 1},
     "scope_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "report_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "production_closure": {"const": true}, "issued_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"},
-    "key_id": {"type": "string", "minLength": 1}, "signature": {"type": "string", "minLength": 16}
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
   }
 }

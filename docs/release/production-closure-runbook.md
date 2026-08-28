@@ -4,7 +4,12 @@ Batch 36 is the sole final closure authority. It binds commit, build, policy, pa
 
 Current repository state is `IN_PROGRESS`; no Production Closure Certificate is issued. To issue one, run all contract, migration, security, domain, HA/DR, upgrade, enterprise, and evidence-graph gates against the exact production candidate. Review residual risks and only then call the closure authority backed by external KMS.
 
-For revocation, record certificate ID, release, reason, approver, time, and replacement/rollback decision; publish it to the revocation registry; block new activations; notify active environments; and preserve evidence. Offline consumers must reject expired or revoked certificates after synchronizing revocation state.
+The production CLI does not accept a local private key. Use the private-key-free
+`prepare-external-signing` and `finalize-external-signing` commands documented in
+`docs/release/production-closure-external-signing.md`. The legacy `issue` command fails
+closed; `issue-local` is explicitly development-only and cannot satisfy production evidence.
+
+For revocation, record certificate ID, release, reason, approver, time, and replacement/rollback decision; publish it to the signed revocation registry; block new activations; notify active environments; and preserve evidence. Offline consumers must reject expired or revoked certificates after synchronizing the monotonic registry sequence and predecessor digest. `production-closure verify` requires the current signed registry; use `verify-revocation-successor` before advancing a persisted local checkpoint.
 
 Industrial, medical, and sensitive-interaction acceptance must be supplied as
 `agenttrust.domain-assurance-attestation.v1`. The complete reviewer roster signs

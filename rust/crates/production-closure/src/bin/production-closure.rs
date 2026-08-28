@@ -1,10 +1,16 @@
+#[cfg(feature = "development-local-signing")]
+use agent_trust_production_closure::ClosureAuthority;
 use agent_trust_production_closure::{
-    ClosureAuthority, ClosureInput, ClosureReport, ClosureRunner, ClosureScope,
-    DomainAssuranceAttestation, ExternalGateAssuranceAttestation, ProductionClosureCertificate,
+    ClosureInput, ClosureReport, ClosureRunner, ClosureScope, DomainAssuranceAttestation,
+    ExternalCertificateSignature, ExternalCertificateSigningRequest,
+    ExternalGateAssuranceAttestation, ProductionClosureCertificate,
+    SignedCertificateRevocationRegistry,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
-use ed25519_dalek::{SigningKey, VerifyingKey};
+#[cfg(feature = "development-local-signing")]
+use ed25519_dalek::SigningKey;
+use ed25519_dalek::VerifyingKey;
 use serde::Deserialize;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -17,6 +23,7 @@ use std::path::Path;
 
 const MAXIMUM_INPUT_BYTES: u64 = 128 * 1024 * 1024;
 
+#[cfg(feature = "development-local-signing")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SigningKeySpec {
@@ -70,7 +77,7 @@ fn decode_32(value: &str) -> Result<[u8; 32], &'static str> {
         .map_err(|_| "CLOSURE_KEY_INVALID")
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "development-local-signing"))]
 fn require_private_permissions(path: &Path) -> Result<(), &'static str> {
     use std::os::unix::fs::PermissionsExt;
     let mode = fs::metadata(path)
@@ -83,9 +90,28 @@ fn require_private_permissions(path: &Path) -> Result<(), &'static str> {
     Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), feature = "development-local-signing"))]
 fn require_private_permissions(_: &Path) -> Result<(), &'static str> {
     Err("CLOSURE_PRIVATE_KEY_PERMISSION_CHECK_UNSUPPORTED")
+}
+
+#[cfg(feature = "development-local-signing")]
+fn require_development_local_signing() -> Result<(), &'static str> {
+    if env::var("AGENT_TRUST_PROFILE").as_deref() != Ok("development")
+        || env::var("AGENT_TRUST_ALLOW_LOCAL_CLOSURE_SIGNING").as_deref()
+            != Ok("I_UNDERSTAND_LOCAL_KEYS_ARE_NOT_PRODUCTION")
+    {
+        return Err("CLOSURE_LOCAL_SIGNING_DISABLED");
+    }
+    Ok(())
+}
+
+fn valid_key_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
+        })
 }
 
 fn run() -> Result<(), &'static str> {
@@ -108,7 +134,10 @@ fn run() -> Result<(), &'static str> {
                 json!({"eligible":report.eligible,"report_digest":report.report_digest,"blocker_count":report.blockers.len()})
             );
         }
-        Some("issue") => {
+        Some("issue") => return Err("CLOSURE_EXTERNAL_SIGNING_REQUIRED"),
+        #[cfg(feature = "development-local-signing")]
+        Some("issue-local") => {
+            require_development_local_signing()?;
             let report_path = args.next().ok_or("CLOSURE_REPORT_REQUIRED")?;
             let scope_path = args.next().ok_or("CLOSURE_SCOPE_REQUIRED")?;
             let key_path = args.next().ok_or("CLOSURE_KEY_REQUIRED")?;
@@ -135,13 +164,73 @@ fn run() -> Result<(), &'static str> {
             write_new(Path::new(&output), &certificate)?;
             println!(
                 "{}",
-                json!({"certificate_id":certificate.certificate_id,"issued":true})
+                json!({"certificate_id":certificate.certificate_id,"issued":true,"production_signing":false})
+            );
+        }
+        Some("prepare-external-signing") => {
+            let report_path = args.next().ok_or("CLOSURE_REPORT_REQUIRED")?;
+            let scope_path = args.next().ok_or("CLOSURE_SCOPE_REQUIRED")?;
+            let key_id = args.next().ok_or("CLOSURE_KEY_ID_REQUIRED")?;
+            let output = args.next().ok_or("CLOSURE_OUTPUT_REQUIRED")?;
+            if args.next().is_some() || !valid_key_id(&key_id) {
+                return Err("CLOSURE_ARGUMENTS_INVALID");
+            }
+            let report: ClosureReport = read_json(Path::new(&report_path), MAXIMUM_INPUT_BYTES)?;
+            let scope: ClosureScope = read_json(Path::new(&scope_path), MAXIMUM_INPUT_BYTES)?;
+            let request =
+                ExternalCertificateSigningRequest::prepare(&report, &scope, key_id, Utc::now())
+                    .map_err(|_| "CLOSURE_CERTIFICATE_NOT_ELIGIBLE")?;
+            let request_digest = request
+                .digest()
+                .map_err(|_| "CLOSURE_SIGNING_REQUEST_INVALID")?;
+            write_new(Path::new(&output), &request)?;
+            println!(
+                "{}",
+                json!({"request_digest":request_digest,"prepared":true,"private_key_loaded":false})
+            );
+        }
+        Some("finalize-external-signing") => {
+            let request_path = args.next().ok_or("CLOSURE_SIGNING_REQUEST_REQUIRED")?;
+            let signature_path = args.next().ok_or("CLOSURE_EXTERNAL_SIGNATURE_REQUIRED")?;
+            let key_path = args.next().ok_or("CLOSURE_KEY_REQUIRED")?;
+            let report_path = args.next().ok_or("CLOSURE_REPORT_REQUIRED")?;
+            let scope_path = args.next().ok_or("CLOSURE_SCOPE_REQUIRED")?;
+            let output = args.next().ok_or("CLOSURE_OUTPUT_REQUIRED")?;
+            if args.next().is_some() {
+                return Err("CLOSURE_ARGUMENTS_INVALID");
+            }
+            let request: ExternalCertificateSigningRequest =
+                read_json(Path::new(&request_path), MAXIMUM_INPUT_BYTES)?;
+            let signature: ExternalCertificateSignature =
+                read_json(Path::new(&signature_path), 64 * 1024)?;
+            let spec: PublicKeySpec = read_json(Path::new(&key_path), 64 * 1024)?;
+            let report: ClosureReport = read_json(Path::new(&report_path), MAXIMUM_INPUT_BYTES)?;
+            let scope: ClosureScope = read_json(Path::new(&scope_path), MAXIMUM_INPUT_BYTES)?;
+            if spec.schema_version != "agenttrust.ed25519-public-key.v1"
+                || spec.key_id != request.key_id
+                || spec.key_id != signature.key_id
+            {
+                return Err("CLOSURE_KEY_INVALID");
+            }
+            let key = VerifyingKey::from_bytes(&decode_32(&spec.public_key)?)
+                .map_err(|_| "CLOSURE_KEY_INVALID")?;
+            let certificate = signature
+                .finalize(&request, &report, &scope, &key, Utc::now())
+                .map_err(|_| "CLOSURE_EXTERNAL_SIGNING_INVALID")?;
+            write_new(Path::new(&output), &certificate)?;
+            println!(
+                "{}",
+                json!({"certificate_id":certificate.certificate_id,"issued":true,"production_signing":true,"verified":true})
             );
         }
         Some("verify") => {
             let certificate_path = args.next().ok_or("CLOSURE_CERTIFICATE_REQUIRED")?;
             let report_path = args.next().ok_or("CLOSURE_REPORT_REQUIRED")?;
             let key_path = args.next().ok_or("CLOSURE_KEY_REQUIRED")?;
+            let registry_path = args.next().ok_or("CLOSURE_REVOCATION_REGISTRY_REQUIRED")?;
+            let registry_key_path = args
+                .next()
+                .ok_or("CLOSURE_REVOCATION_REGISTRY_KEY_REQUIRED")?;
             if args.next().is_some() {
                 return Err("CLOSURE_ARGUMENTS_INVALID");
             }
@@ -149,19 +238,85 @@ fn run() -> Result<(), &'static str> {
                 read_json(Path::new(&certificate_path), MAXIMUM_INPUT_BYTES)?;
             let report: ClosureReport = read_json(Path::new(&report_path), MAXIMUM_INPUT_BYTES)?;
             let spec: PublicKeySpec = read_json(Path::new(&key_path), 64 * 1024)?;
+            let registry: SignedCertificateRevocationRegistry =
+                read_json(Path::new(&registry_path), 32 * 1024 * 1024)?;
+            let registry_key_spec: PublicKeySpec =
+                read_json(Path::new(&registry_key_path), 64 * 1024)?;
             if spec.schema_version != "agenttrust.ed25519-public-key.v1"
                 || spec.key_id != certificate.key_id
+                || registry_key_spec.schema_version != "agenttrust.ed25519-public-key.v1"
+                || registry_key_spec.key_id != registry.key_id
             {
                 return Err("CLOSURE_KEY_INVALID");
             }
             let key = VerifyingKey::from_bytes(&decode_32(&spec.public_key)?)
                 .map_err(|_| "CLOSURE_KEY_INVALID")?;
-            certificate
-                .verify_offline(&report, &key, Utc::now())
+            let registry_key = VerifyingKey::from_bytes(&decode_32(&registry_key_spec.public_key)?)
+                .map_err(|_| "CLOSURE_KEY_INVALID")?;
+            registry
+                .verify_active(&certificate, &report, &key, &registry_key, Utc::now())
                 .map_err(|_| "CLOSURE_CERTIFICATE_INVALID")?;
             println!(
                 "{}",
-                json!({"certificate_id":certificate.certificate_id,"verified":true})
+                json!({"certificate_id":certificate.certificate_id,"verified":true,"revocation_registry_id":registry.registry_id,"revocation_sequence":registry.sequence,"revocation_registry_digest":registry.digest().map_err(|_| "CLOSURE_REVOCATION_REGISTRY_INVALID")?})
+            );
+        }
+        Some("verify-revocation-registry") => {
+            let registry_path = args.next().ok_or("CLOSURE_REVOCATION_REGISTRY_REQUIRED")?;
+            let key_path = args
+                .next()
+                .ok_or("CLOSURE_REVOCATION_REGISTRY_KEY_REQUIRED")?;
+            if args.next().is_some() {
+                return Err("CLOSURE_ARGUMENTS_INVALID");
+            }
+            let registry: SignedCertificateRevocationRegistry =
+                read_json(Path::new(&registry_path), 32 * 1024 * 1024)?;
+            let spec: PublicKeySpec = read_json(Path::new(&key_path), 64 * 1024)?;
+            if spec.schema_version != "agenttrust.ed25519-public-key.v1"
+                || spec.key_id != registry.key_id
+            {
+                return Err("CLOSURE_KEY_INVALID");
+            }
+            let key = VerifyingKey::from_bytes(&decode_32(&spec.public_key)?)
+                .map_err(|_| "CLOSURE_KEY_INVALID")?;
+            registry
+                .verify(&key, Utc::now())
+                .map_err(|_| "CLOSURE_REVOCATION_REGISTRY_INVALID")?;
+            println!(
+                "{}",
+                json!({"registry_id":registry.registry_id,"sequence":registry.sequence,"verified":true,"registry_digest":registry.digest().map_err(|_| "CLOSURE_REVOCATION_REGISTRY_INVALID")?})
+            );
+        }
+        Some("verify-revocation-successor") => {
+            let previous_path = args
+                .next()
+                .ok_or("CLOSURE_PREVIOUS_REVOCATION_REGISTRY_REQUIRED")?;
+            let current_path = args.next().ok_or("CLOSURE_REVOCATION_REGISTRY_REQUIRED")?;
+            let key_path = args
+                .next()
+                .ok_or("CLOSURE_REVOCATION_REGISTRY_KEY_REQUIRED")?;
+            if args.next().is_some() {
+                return Err("CLOSURE_ARGUMENTS_INVALID");
+            }
+            let previous: SignedCertificateRevocationRegistry =
+                read_json(Path::new(&previous_path), 32 * 1024 * 1024)?;
+            let current: SignedCertificateRevocationRegistry =
+                read_json(Path::new(&current_path), 32 * 1024 * 1024)?;
+            let spec: PublicKeySpec = read_json(Path::new(&key_path), 64 * 1024)?;
+            if spec.schema_version != "agenttrust.ed25519-public-key.v1"
+                || spec.key_id != previous.key_id
+                || spec.key_id != current.key_id
+            {
+                return Err("CLOSURE_KEY_INVALID");
+            }
+            let key = VerifyingKey::from_bytes(&decode_32(&spec.public_key)?)
+                .map_err(|_| "CLOSURE_KEY_INVALID")?;
+            current
+                .verify_successor(&previous, &key, Utc::now())
+                .map_err(|_| "CLOSURE_REVOCATION_REGISTRY_INVALID")?;
+            println!(
+                "{}",
+                json!({"registry_id":current.registry_id,"previous_sequence":previous.sequence,"sequence":current.sequence,"verified_successor":true,"registry_digest":current.digest().map_err(|_| "CLOSURE_REVOCATION_REGISTRY_INVALID")?})
             );
         }
         Some("verify-domain-assurance") => {
@@ -246,7 +401,7 @@ fn run() -> Result<(), &'static str> {
         }
         _ => {
             return Err(
-                "USAGE: production-closure evaluate|issue|verify|verify-domain-assurance|verify-external-assurance ...",
+                "USAGE: production-closure evaluate|prepare-external-signing|finalize-external-signing|issue-local|verify|verify-revocation-registry|verify-revocation-successor|verify-domain-assurance|verify-external-assurance ...",
             );
         }
     }
