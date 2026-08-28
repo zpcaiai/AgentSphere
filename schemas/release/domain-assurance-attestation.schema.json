@@ -7,17 +7,18 @@
   "required": ["schema_version", "attestation_id", "domain", "release_id", "scope_digest", "environment_reference", "decision", "automated", "evidence_digests", "issued_at", "expires_at", "reviewers"],
   "properties": {
     "schema_version": {"const": "agenttrust.domain-assurance-attestation.v1"},
-    "attestation_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "attestation_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
     "domain": {"enum": ["INDUSTRIAL", "MEDICAL", "SENSITIVE_INTERACTION"]},
-    "release_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
     "scope_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-    "environment_reference": {"type": "string", "pattern": "^environment://production/.+$", "maxLength": 512},
+    "environment_reference": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"},
     "decision": {"enum": ["APPROVED", "REJECTED"]},
     "automated": {"const": false},
     "evidence_digests": {
       "type": "object",
       "minProperties": 1,
       "maxProperties": 256,
+      "propertyNames": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
       "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
     },
     "issued_at": {"type": "string", "format": "date-time"},
@@ -34,8 +35,8 @@
           "reviewer_id": {"type": "string", "minLength": 1, "maxLength": 128},
           "organization": {"type": "string", "minLength": 1, "maxLength": 256},
           "role": {"enum": ["SAFETY_ENGINEER", "OPERATIONS_OWNER", "LICENSED_CLINICIAN", "PRIVACY_LEGAL_REVIEWER", "SAFEGUARDING_LEAD", "HUMAN_SUPPORT_OWNER"]},
-          "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
-          "signature": {"type": "string", "minLength": 80, "maxLength": 128}
+          "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"},
+          "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
         }
       }
     }

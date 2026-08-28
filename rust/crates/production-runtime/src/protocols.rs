@@ -1,23 +1,30 @@
-use crate::http::SecureHttpTransport;
+use crate::{activation::ActivationGuardian, http::SecureHttpTransport};
 use agent_trust_contracts::{EffectClass, TaskId};
 use agent_trust_identity::CredentialHandle;
 use agent_trust_mcp_security_proxy::{ControlledMcpTransport, McpError, RawMcpResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 use thiserror::Error;
 
 #[derive(Clone)]
 pub struct HttpMcpTransport {
     servers: BTreeMap<String, SecureHttpTransport>,
+    activation_guardian: Arc<ActivationGuardian>,
 }
 impl HttpMcpTransport {
-    pub fn new(servers: BTreeMap<String, SecureHttpTransport>) -> Result<Self, McpError> {
+    pub fn new(
+        servers: BTreeMap<String, SecureHttpTransport>,
+        activation_guardian: Arc<ActivationGuardian>,
+    ) -> Result<Self, McpError> {
         if servers.is_empty() || servers.keys().any(|key| key.is_empty()) {
             Err(McpError::ConfigurationInvalid)
         } else {
-            Ok(Self { servers })
+            Ok(Self {
+                servers,
+                activation_guardian,
+            })
         }
     }
 }
@@ -37,6 +44,9 @@ impl ControlledMcpTransport for HttpMcpTransport {
         arguments: &Value,
         credential_handle: &CredentialHandle,
     ) -> Result<RawMcpResult, McpError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| McpError::ServerUnavailable)?;
         if tool_name.is_empty() || credential_handle.0.is_empty() {
             return Err(McpError::ArgumentsInvalid);
         }
@@ -102,13 +112,20 @@ pub struct A2aAgentCard {
 #[derive(Clone)]
 pub struct A2aPeerClient {
     peers: BTreeMap<String, SecureHttpTransport>,
+    activation_guardian: Arc<ActivationGuardian>,
 }
 impl A2aPeerClient {
-    pub fn new(peers: BTreeMap<String, SecureHttpTransport>) -> Result<Self, A2aTransportError> {
+    pub fn new(
+        peers: BTreeMap<String, SecureHttpTransport>,
+        activation_guardian: Arc<ActivationGuardian>,
+    ) -> Result<Self, A2aTransportError> {
         if peers.is_empty() || peers.keys().any(|key| key.is_empty()) {
             Err(A2aTransportError::Configuration)
         } else {
-            Ok(Self { peers })
+            Ok(Self {
+                peers,
+                activation_guardian,
+            })
         }
     }
     pub async fn agent_card(&self, peer_id: &str) -> Result<A2aAgentCard, A2aTransportError> {
@@ -135,6 +152,9 @@ impl A2aPeerClient {
         &self,
         request: &A2aSubmission,
     ) -> Result<A2aSubmissionReceipt, A2aTransportError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| A2aTransportError::Unavailable)?;
         let transport = self
             .peers
             .get(&request.peer_id)
@@ -160,6 +180,9 @@ impl A2aPeerClient {
         remote_task_id: &str,
         after_sequence: u64,
     ) -> Result<Vec<Value>, A2aTransportError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| A2aTransportError::Unavailable)?;
         let transport = self
             .peers
             .get(peer_id)
@@ -193,6 +216,21 @@ fn is_digest(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::activation::ActivationGuardianConfig;
+    use std::path::PathBuf;
+
+    fn guardian() -> Arc<ActivationGuardian> {
+        Arc::new(
+            ActivationGuardian::new(ActivationGuardianConfig {
+                release_id: format!("git:sha256:{}", "a".repeat(64)),
+                receipt_path: PathBuf::from("/run/agenttrust/production-activation-receipt.json"),
+                max_staleness_seconds: 30,
+                receipt_owner_uid: 65531,
+                receipt_reader_gid: 65532,
+            })
+            .unwrap_or_else(|_| panic!("activation guardian")),
+        )
+    }
 
     #[test]
     fn agent_card_digest_is_exact_sha256() {
@@ -203,7 +241,7 @@ mod tests {
 
     #[test]
     fn empty_peer_sets_fail_closed() {
-        assert!(A2aPeerClient::new(BTreeMap::new()).is_err());
-        assert!(HttpMcpTransport::new(BTreeMap::new()).is_err());
+        assert!(A2aPeerClient::new(BTreeMap::new(), guardian()).is_err());
+        assert!(HttpMcpTransport::new(BTreeMap::new(), guardian()).is_err());
     }
 }

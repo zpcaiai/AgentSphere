@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/release/production-revocation-checkpoint.schema.json",
+  "title": "Deployment-owned production revocation checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "registry_id", "key_id", "sequence", "registry_digest", "updated_at", "checkpoint_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-revocation-checkpoint.v1"},
+    "registry_id": {"$ref": "#/$defs/identifier"},
+    "key_id": {"$ref": "#/$defs/identifier"},
+    "sequence": {"type": "integer", "minimum": 0},
+    "registry_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "checkpoint_digest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"sequence": {"const": 0}}, "required": ["sequence"]},
+      "then": {"properties": {"registry_digest": {"type": "null"}}},
+      "else": {"properties": {"registry_digest": {"$ref": "#/$defs/digest"}}}
+    }
+  ],
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

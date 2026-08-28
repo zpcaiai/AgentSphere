@@ -46,7 +46,7 @@
     "https": {"type": "string", "pattern": "^https://[^@/?#]+(?:/[^?#]*)?$"},
     "images": {
       "type": "object", "additionalProperties": false,
-      "required": ["runtime", "orchestrator", "transition", "execution", "registry", "agent_registry", "policy_admin", "incident_release", "pack_marketplace", "approval", "pep", "identity", "tool_proxy", "evidence", "audit", "enterprise", "enterprise_authority", "model_gateway", "data_governance", "context_governance", "runtime_anomaly", "security_evaluation", "pack_supply_chain", "domain_runtime", "platform_sre", "console", "migration", "envoy", "utility"],
+      "required": ["runtime", "orchestrator", "transition", "execution", "registry", "agent_registry", "policy_admin", "incident_release", "pack_marketplace", "approval", "pep", "identity", "tool_proxy", "evidence", "audit", "enterprise", "enterprise_authority", "model_gateway", "data_governance", "context_governance", "runtime_anomaly", "security_evaluation", "pack_supply_chain", "domain_runtime", "platform_sre", "console", "migration", "envoy", "utility", "release_admission", "sandbox_worker"],
       "properties": {
         "runtime": {"$ref": "#/$defs/image"}, "orchestrator": {"$ref": "#/$defs/image"},
         "transition": {"$ref": "#/$defs/image"}, "execution": {"$ref": "#/$defs/image"},
@@ -68,7 +68,9 @@
         "platform_sre": {"$ref": "#/$defs/image"},
         "console": {"$ref": "#/$defs/image"},
         "migration": {"$ref": "#/$defs/image"}, "envoy": {"$ref": "#/$defs/image"},
-        "utility": {"$ref": "#/$defs/image"}
+        "utility": {"$ref": "#/$defs/image"},
+        "release_admission": {"$ref": "#/$defs/image"},
+        "sandbox_worker": {"$ref": "#/$defs/image"}
       }
     },
     "database": {
@@ -372,7 +374,7 @@
     },
     "vault": {
       "type": "object", "additionalProperties": false,
-      "required": ["address", "runtime_role", "runtime_path", "orchestrator_role", "orchestrator_path", "transition_role", "transition_path", "execution_role", "execution_path", "registry_role", "registry_path", "agent_registry_role", "agent_registry_path", "policy_admin_role", "policy_admin_path", "incident_release_role", "incident_release_path", "pack_marketplace_role", "pack_marketplace_path", "approval_role", "approval_path", "pep_role", "pep_path", "identity_role", "identity_path", "tool_proxy_role", "tool_proxy_path", "evidence_role", "evidence_path", "audit_role", "audit_path", "enterprise_role", "enterprise_path", "enterprise_authority_role", "enterprise_authority_path", "model_gateway_role", "model_gateway_path", "data_governance_role", "data_governance_path", "context_governance_role", "context_governance_path", "runtime_anomaly_role", "runtime_anomaly_path", "security_evaluation_role", "security_evaluation_path", "pack_supply_chain_role", "pack_supply_chain_path", "domain_runtime_role", "domain_runtime_path", "platform_sre_role", "platform_sre_path", "migration_role", "migration_path"],
+      "required": ["address", "runtime_role", "runtime_path", "orchestrator_role", "orchestrator_path", "transition_role", "transition_path", "execution_role", "execution_path", "registry_role", "registry_path", "agent_registry_role", "agent_registry_path", "policy_admin_role", "policy_admin_path", "incident_release_role", "incident_release_path", "pack_marketplace_role", "pack_marketplace_path", "approval_role", "approval_path", "pep_role", "pep_path", "identity_role", "identity_path", "tool_proxy_role", "tool_proxy_path", "evidence_role", "evidence_path", "audit_role", "audit_path", "enterprise_role", "enterprise_path", "enterprise_authority_role", "enterprise_authority_path", "model_gateway_role", "model_gateway_path", "data_governance_role", "data_governance_path", "context_governance_role", "context_governance_path", "runtime_anomaly_role", "runtime_anomaly_path", "security_evaluation_role", "security_evaluation_path", "pack_supply_chain_role", "pack_supply_chain_path", "domain_runtime_role", "domain_runtime_path", "platform_sre_role", "platform_sre_path", "migration_role", "migration_path", "release_admission_role", "release_admission_path"],
       "properties": {
         "address": {"$ref": "#/$defs/https"},
         "runtime_role": {"type": "string"}, "runtime_path": {"type": "string"},
@@ -400,7 +402,8 @@
         "pack_supply_chain_role": {"type": "string"}, "pack_supply_chain_path": {"type": "string"},
         "domain_runtime_role": {"type": "string"}, "domain_runtime_path": {"type": "string"},
         "platform_sre_role": {"type": "string"}, "platform_sre_path": {"type": "string"},
-        "migration_role": {"type": "string"}, "migration_path": {"type": "string"}
+        "migration_role": {"type": "string"}, "migration_path": {"type": "string"},
+        "release_admission_role": {"type": "string"}, "release_admission_path": {"type": "string"}
       }
     },
     "network": {

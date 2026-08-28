@@ -56,7 +56,7 @@ class BuildProductionImageTests(unittest.TestCase):
                 self.assertIn(f"/target/release/{binary}", content)
                 self.assertIn(f"/usr/local/bin/{binary}", content)
             checked += 1
-        self.assertEqual(checked, 26)
+        self.assertEqual(checked, 28)
 
     def test_mutable_base_is_rejected(self) -> None:
         with self.assertRaisesRegex(_MODULE.BuildConfigurationError, "CONFIGURATION_INVALID"):
@@ -92,6 +92,59 @@ class BuildProductionImageTests(unittest.TestCase):
         self.assertIn(str(_ROOT / "Dockerfile.data-governance"), command)
         self.assertIn("RUST_BUILDER_IMAGE=rust@sha256:" + "a" * 64, command)
         self.assertIn("RUNTIME_BASE_IMAGE=distroless@sha256:" + "b" * 64, command)
+        self.assertIn("--pull=false", command)
+
+    def test_release_admission_is_built_from_pinned_rust_bases(self) -> None:
+        command = _MODULE.command_for(
+            "release-admission",
+            "agenttrust/release-admission:release-1",
+            ["rust@sha256:" + "a" * 64, "distroless@sha256:" + "b" * 64],
+            _ROOT,
+        )
+        self.assertIn(str(_ROOT / "Dockerfile.release-admission"), command)
+        self.assertIn("RUST_BUILDER_IMAGE=rust@sha256:" + "a" * 64, command)
+        self.assertIn("RUNTIME_BASE_IMAGE=distroless@sha256:" + "b" * 64, command)
+
+    def test_sandbox_worker_is_built_from_pinned_rust_bases(self) -> None:
+        command = _MODULE.command_for(
+            "sandbox-worker",
+            "agenttrust/sandbox-worker:release-1",
+            ["rust@sha256:" + "a" * 64, "distroless@sha256:" + "b" * 64],
+            _ROOT,
+        )
+        self.assertIn(str(_ROOT / "Dockerfile.sandbox-worker"), command)
+        self.assertIn("RUST_BUILDER_IMAGE=rust@sha256:" + "a" * 64, command)
+        self.assertIn("RUNTIME_BASE_IMAGE=distroless@sha256:" + "b" * 64, command)
+
+    def test_production_workflow_can_bind_the_verified_absolute_docker_cli(self) -> None:
+        command = _MODULE.command_for(
+            "sandbox-worker",
+            "agenttrust/sandbox-worker:release-1",
+            ["rust@sha256:" + "a" * 64, "distroless@sha256:" + "b" * 64],
+            _ROOT,
+            docker_binary="/opt/agenttrust/bin/docker",
+        )
+        self.assertEqual(command[0], "/opt/agenttrust/bin/docker")
+        with self.assertRaisesRegex(
+            _MODULE.BuildConfigurationError, "CONFIGURATION_INVALID"
+        ):
+            _MODULE.command_for(
+                "sandbox-worker",
+                "agenttrust/sandbox-worker:release-1",
+                ["rust@sha256:" + "a" * 64, "distroless@sha256:" + "b" * 64],
+                _ROOT,
+                docker_binary="relative/docker",
+            )
+
+    def test_vendor_runtime_is_rebuilt_as_an_attestable_subject(self) -> None:
+        command = _MODULE.command_for(
+            "envoy",
+            "agenttrust/envoy:release-1",
+            ["envoyproxy/envoy@sha256:" + "a" * 64],
+            _ROOT,
+        )
+        self.assertIn(str(_ROOT / "Dockerfile.vendor-runtime"), command)
+        self.assertIn("BASE_IMAGE=envoyproxy/envoy@sha256:" + "a" * 64, command)
         self.assertIn("--pull=false", command)
 
 

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/gvisor-runtime-attestation.schema.json",
+  "title": "Signed dedicated gVisor runtime attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "environment", "hostname", "node_pool", "dedicated", "runtime",
+    "execution_mode", "runtime_profile_id", "runtime_handler", "runsc_binary_digest", "runsc_version_digest",
+    "handler_config_digest", "cgroup_version", "seccomp_enabled", "user_namespaces_enabled",
+    "issuer", "key_id", "key_usage", "measured_at", "expires_at", "attestation_digest", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.gvisor-runtime-attestation.v1"},
+    "environment": {"const": "production"},
+    "hostname": {"type": "string", "minLength": 1, "maxLength": 253},
+    "node_pool": {"type": "string", "minLength": 1, "maxLength": 128},
+    "dedicated": {"const": true},
+    "runtime": {"const": "runsc"},
+    "execution_mode": {"const": "NATIVE_SYSTEMD_RUNSC"},
+    "runtime_profile_id": {"const": "agenttrust-gvisor"},
+    "runtime_handler": {"const": "runsc"},
+    "runsc_binary_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "runsc_version_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "handler_config_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "cgroup_version": {"const": "v2"},
+    "seccomp_enabled": {"const": true},
+    "user_namespaces_enabled": {"const": true},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "key_usage": {"const": "AGENTTRUST_GVISOR_RUNTIME_ATTESTATION_V1"},
+    "measured_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "attestation_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "prefixedDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}

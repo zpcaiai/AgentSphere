@@ -1,11 +1,33 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentsphere.local/schemas/industrial-asset-channel.schema.json",
-  "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "tenant_id", "resource", "engineering_unit", "minimum", "maximum", "maximum_delta", "writable", "criticality", "freshness_ms", "protocol_security_profile"],
+  "$id": "https://agentsphere.local/schemas/industrial/asset-channel.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resource", "engineering_unit", "minimum", "maximum", "maximum_delta_per_write", "writable", "criticality", "freshness_ms", "byte_order", "allowed_modbus_function_codes"],
   "properties": {
-    "schema_version": {"const": "agenttrust.industrial.v1"}, "tenant_id": {"type": "string", "minLength": 1}, "resource": {"type": "object"},
-    "engineering_unit": {"type": "string"}, "minimum": {"type": "number"}, "maximum": {"type": "number"}, "maximum_delta": {"type": "number", "minimum": 0},
-    "writable": {"type": "boolean"}, "criticality": {"type": "string"}, "freshness_ms": {"type": "integer", "minimum": 1}, "protocol_security_profile": {"type": "string", "minLength": 1}
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tenant_id", "site", "area", "line", "asset", "channel", "protocol", "protocol_address"],
+      "properties": {
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "site": {"type": "string", "minLength": 1, "maxLength": 256},
+        "area": {"type": "string", "minLength": 1, "maxLength": 256},
+        "line": {"type": "string", "minLength": 1, "maxLength": 256},
+        "asset": {"type": "string", "minLength": 1, "maxLength": 256},
+        "channel": {"type": "string", "minLength": 1, "maxLength": 256},
+        "protocol": {"enum": ["OPC_UA", "MQTT", "MODBUS"]},
+        "protocol_address": {"type": "string", "minLength": 1, "maxLength": 1024}
+      }
+    },
+    "engineering_unit": {"type": "string", "minLength": 1, "maxLength": 64},
+    "minimum": {"type": "number"},
+    "maximum": {"type": "number"},
+    "maximum_delta_per_write": {"type": "number", "exclusiveMinimum": 0},
+    "writable": {"type": "boolean"},
+    "criticality": {"enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"]},
+    "freshness_ms": {"type": "integer", "minimum": 1},
+    "byte_order": {"type": ["string", "null"], "enum": ["ABCD", "BADC", "CDAB", "DCBA", null]},
+    "allowed_modbus_function_codes": {"type": "array", "maxItems": 256, "uniqueItems": true, "items": {"type": "integer", "minimum": 0, "maximum": 255}}
   }
 }

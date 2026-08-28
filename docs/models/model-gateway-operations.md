@@ -52,11 +52,15 @@ For each candidate the gateway uses the exact Batch 18 typed sequence:
    `durable_record_required=true` is never sufficient. Only HTTP 200, `state=COMPLETED`, exact
    command/resource/result bindings and non-empty final `evidence_ref`/`evidence_digest` may be used.
 
-There is no invented residency attestation route. Residency is enforced by the exact policy request
-fields `source_jurisdiction`, `destination_jurisdiction`, `destination_kind`, `deployment_profile`
-and the optional cross-domain approval. DLP dependency failure, compressed/encoded/unknown content,
-secret findings, blocking findings, unsafe redirects, a missing completed mutation or an unsatisfied
-transformation fails closed.
+Residency is enforced by the exact policy request fields `source_jurisdiction`,
+`destination_jurisdiction`, `destination_kind`, `deployment_profile` and the optional cross-domain
+approval. In addition, the configured enterprise provider proxy must return a bounded base64url JCS
+object in `x-agenttrust-residency-attestation`. Its `MODEL_PROVIDER_RESIDENCY` signature binds the
+provider/model manifest, request and raw response digests, provider request ID, region,
+jurisdiction, token counts, expiry and evidence reference. It is not a self-asserted provider field;
+missing, expired, wrong-subject or mismatched attestations make the post-dispatch outcome `UNKNOWN`.
+DLP dependency failure, compressed/encoded/unknown content, secret findings, blocking findings,
+unsafe redirects, a missing completed mutation or an unsatisfied transformation fails closed.
 
 After the single provider response, the gateway performs output DLP and creates the output object's
 own durable `REGISTER_LABEL`, policy decision and DLP summary. It never reuses a prompt transform for
@@ -78,6 +82,13 @@ untrusted output to the caller, but durable replay and the authoritative read AP
 metadata and the governed `artifact://sha256/...` reference. Public execution requests cap the
 requested output at 1 MiB so the canonical JSON artifact remains inside the Batch 18 bounded DLP
 transport; provider manifests may advertise larger limits, but they cannot raise this request cap.
+
+Provider streaming is deliberately `DLP_VERIFIED_BUFFERED`: no provider chunk reaches the public
+SSE response until the complete bounded provider stream has passed output DLP, label/policy checks,
+governed WORM persistence and signed Evidence. This is streaming delivery after security closure,
+not low-latency pass-through. Billing reconciliation likewise requires a
+`MODEL_PROVIDER_BILLING` signature over provider, statement period/digest and bounded validity;
+the provider attestation digest is persisted and included in reconciliation Evidence.
 
 ## Evidence and crash replay
 
@@ -135,6 +146,12 @@ Mandatory adapters, each with `<PREFIX>_ENDPOINT` and `<PREFIX>_TOKEN_FILE`:
 The artifact writer also requires `AGENT_TRUST_MODEL_ARTIFACT_STORE_JURISDICTION` and
 `AGENT_TRUST_MODEL_ARTIFACT_STORE_DESTINATION_KIND`. `EVIDENCE_SOURCE_SERVICE` is exactly the one
 `DNS:` or `URI:` SAN presented by the outbound client certificate.
+
+The provider keyring must contain active subject-scoped keys for all four usages:
+`MODEL_PROVIDER_MANIFEST`, `MODEL_PROVIDER_REVOCATION`, `MODEL_PROVIDER_RESIDENCY` and
+`MODEL_PROVIDER_BILLING`. Each key declares its issuer and allowed provider IDs. Startup also checks
+that the residency and provider-billing attestation columns from migration
+`0036_01_28_protocol_runtime_hardening.sql` exist before readiness succeeds.
 
 All secret/token/key/database files are absolute regular non-symlink files owned by the effective
 UID with no group/world permission bits. Every endpoint is an origin-only HTTPS URL; redirects and

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-scope.schema.json",
+  "title": "Production Closure Scope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "release_id", "commit_digest", "signed_git_provenance_digest",
+    "signed_release_binding_digest", "release_digest", "reviewer_keyring_digest",
+    "build_digest", "policy_digest", "pack_set_digest", "prompt_set_digest",
+    "model_set_digest", "topology_digest", "environment", "valid_from", "valid_until"
+  ],
+  "properties": {
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+    "commit_digest": {"$ref": "#/$defs/digest"},
+    "signed_git_provenance_digest": {"$ref": "#/$defs/digest"},
+    "signed_release_binding_digest": {"$ref": "#/$defs/digest"},
+    "release_digest": {"$ref": "#/$defs/digest"},
+    "reviewer_keyring_digest": {"$ref": "#/$defs/digest"},
+    "build_digest": {"$ref": "#/$defs/digest"},
+    "policy_digest": {"$ref": "#/$defs/digest"},
+    "pack_set_digest": {"$ref": "#/$defs/digest"},
+    "prompt_set_digest": {"$ref": "#/$defs/digest"},
+    "model_set_digest": {"$ref": "#/$defs/digest"},
+    "topology_digest": {"$ref": "#/$defs/digest"},
+    "environment": {"const": "production"},
+    "valid_from": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

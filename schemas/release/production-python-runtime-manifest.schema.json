@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.dev/release/production-python-runtime-manifest.schema.json",
+  "title": "Production Python Runtime Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "python", "requirements_lock_sha256", "distributions"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-python-runtime.v1"},
+    "requirements_lock_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cache_tag", "executable_sha256", "implementation", "runtime_root", "version"],
+      "properties": {
+        "cache_tag": {"type": "string", "minLength": 1, "maxLength": 128},
+        "executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "implementation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "runtime_root": {"type": "string", "pattern": "^/", "maxLength": 4096},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[A-Za-z0-9.+-]*)?$", "maxLength": 64}
+      }
+    },
+    "distributions": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 4096,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["byte_count", "file_count", "files_digest", "name", "version"],
+        "properties": {
+          "byte_count": {"type": "integer", "minimum": 1, "maximum": 4294967296},
+          "file_count": {"type": "integer", "minimum": 1, "maximum": 200000},
+          "files_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "name": {"type": "string", "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$"},
+          "version": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    }
+  }
+}

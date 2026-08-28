@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-image-manifest.schema.json",
+  "title": "Attested production image manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "release_tag", "repository", "created_at", "images", "attestations", "manifest_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-image-manifest.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "release_tag": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"},
+    "repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "images": {"$ref": "#/$defs/images"},
+    "attestations": {"$ref": "#/$defs/attestations"},
+    "manifest_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "ociDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "image": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:/-]*@sha256:[0-9a-f]{64}$"},
+    "imageNames": {
+      "type": "object",
+      "minProperties": 31,
+      "maxProperties": 31,
+      "propertyNames": {
+        "enum": ["runtime", "orchestrator", "transition", "execution", "registry", "agent_registry", "policy_admin", "incident_release", "pack_marketplace", "approval", "pep", "identity", "tool_proxy", "evidence", "audit", "enterprise", "enterprise_authority", "model_gateway", "data_governance", "context_governance", "runtime_anomaly", "security_evaluation", "pack_supply_chain", "domain_runtime", "platform_sre", "console", "migration", "envoy", "utility", "release_admission", "sandbox_worker"]
+      }
+    },
+    "images": {
+      "allOf": [
+        {"$ref": "#/$defs/imageNames"},
+        {"additionalProperties": {"$ref": "#/$defs/image"}}
+      ]
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component", "subject_digest", "sbom_sha256", "provenance_attestation_url", "sbom_attestation_url"],
+      "properties": {
+        "component": {"type": "string", "minLength": 1, "maxLength": 128},
+        "subject_digest": {"$ref": "#/$defs/ociDigest"},
+        "sbom_sha256": {"$ref": "#/$defs/digest"},
+        "provenance_attestation_url": {"type": "string", "format": "uri", "pattern": "^https://"},
+        "sbom_attestation_url": {"type": "string", "format": "uri", "pattern": "^https://"}
+      }
+    },
+    "attestations": {
+      "allOf": [
+        {"$ref": "#/$defs/imageNames"},
+        {"additionalProperties": {"$ref": "#/$defs/attestation"}}
+      ]
+    }
+  }
+}

@@ -10,6 +10,13 @@ HOST_ATTESTATION=${AGENT_TRUST_DEDICATED_HOST_ATTESTATION:-}
 HOST_ATTESTATION_SIGNATURE=${AGENT_TRUST_DEDICATED_HOST_ATTESTATION_SIGNATURE:-}
 HOST_ATTESTATION_PUBLIC_KEY=${AGENT_TRUST_DEDICATED_HOST_ATTESTATION_PUBLIC_KEY:-}
 HOST_ATTESTATION_PUBLIC_KEY_SHA256=${AGENT_TRUST_DEDICATED_HOST_ATTESTATION_PUBLIC_KEY_SHA256:-}
+EXPECTED_RUNNER_GROUP=${AGENT_TRUST_EXPECTED_RUNNER_GROUP:-}
+EXPECTED_RUNNER_LABELS=${AGENT_TRUST_EXPECTED_RUNNER_LABELS:-}
+EXPECTED_NODE_POOL=${AGENT_TRUST_EXPECTED_NODE_POOL:-}
+SOURCE_REPOSITORY=${GITHUB_REPOSITORY:-NOT_APPLICABLE}
+SOURCE_COMMIT=${GITHUB_SHA:-NOT_APPLICABLE}
+SOURCE_WORKFLOW_REF=${GITHUB_WORKFLOW_REF:-NOT_APPLICABLE}
+RUNNER_IDENTITY=${RUNNER_NAME:-NOT_APPLICABLE}
 
 case "$MODE" in
   baseline|production) ;;
@@ -39,6 +46,8 @@ production_evidence=false
 runsc_binary_digest=NOT_APPLICABLE
 runsc_version_digest=NOT_APPLICABLE
 host_attestation_digest=NOT_APPLICABLE
+host_attestation_public_key_digest=NOT_APPLICABLE
+host_attestation_expires_at=NOT_APPLICABLE
 guest_kernel=NOT_MEASURED
 if test "$MODE" = production; then
   test "$(uname -s)" = Linux
@@ -72,17 +81,33 @@ if test "$MODE" = production; then
   esac
   case "$HOST_ATTESTATION_PUBLIC_KEY_SHA256" in *[!0-9a-f]*) echo "host attestation key digest must be lowercase hexadecimal" >&2; exit 2 ;; esac
   test "$(sha256sum "$HOST_ATTESTATION_PUBLIC_KEY" | awk '{print $1}')" = "$HOST_ATTESTATION_PUBLIC_KEY_SHA256"
+  host_attestation_public_key_digest=$HOST_ATTESTATION_PUBLIC_KEY_SHA256
   openssl dgst -sha256 -verify "$HOST_ATTESTATION_PUBLIC_KEY" \
     -signature "$HOST_ATTESTATION_SIGNATURE" "$HOST_ATTESTATION" >/dev/null
   host_attestation_digest=$(sha256sum "$HOST_ATTESTATION" | awk '{print $1}')
-  python3 - "$HOST_ATTESTATION" "$(hostname)" <<'PY'
+  test -n "$EXPECTED_RUNNER_GROUP"
+  test -n "$EXPECTED_RUNNER_LABELS"
+  test -n "$EXPECTED_NODE_POOL"
+  test "$RUNNER_IDENTITY" != NOT_APPLICABLE
+  test "$SOURCE_REPOSITORY" != NOT_APPLICABLE
+  test "$SOURCE_COMMIT" != NOT_APPLICABLE
+  test "$SOURCE_WORKFLOW_REF" != NOT_APPLICABLE
+  host_attestation_expires_at=$(python3 - "$HOST_ATTESTATION" "$(hostname)" "$RUNNER_IDENTITY" "$EXPECTED_RUNNER_GROUP" "$EXPECTED_RUNNER_LABELS" "$EXPECTED_NODE_POOL" "$RUNSC_SHA256" <<'PY'
 import json
 import os
 import stat
 import sys
 from datetime import datetime, timezone
 
-path, expected_hostname = sys.argv[1:]
+(
+    path,
+    expected_hostname,
+    expected_runner_name,
+    expected_runner_group,
+    expected_runner_labels,
+    expected_node_pool,
+    expected_runsc_digest,
+) = sys.argv[1:]
 metadata = os.stat(path, follow_symlinks=False)
 if metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) & 0o022:
     raise SystemExit("dedicated-host attestation must be root-owned and not group/world writable")
@@ -95,6 +120,11 @@ expected = {
     "runtime",
     "dedicated",
     "issuer",
+    "runner_name",
+    "runner_group",
+    "runner_labels",
+    "node_pool",
+    "runsc_binary_sha256",
     "issued_at",
     "expires_at",
 }
@@ -110,6 +140,24 @@ if attestation["dedicated"] is not True:
     raise SystemExit("host is not attested as dedicated")
 if not isinstance(attestation["issuer"], str) or not attestation["issuer"].strip():
     raise SystemExit("dedicated-host attestation issuer is missing")
+required_labels = {
+    "self-hosted", "linux", "gvisor", "cgroup-v2",
+    "production-isolation", "actions-runner-2-327-1",
+    "agenttrust-production-gvisor",
+}
+expected_labels = set(expected_runner_labels.split(","))
+actual_labels = attestation["runner_labels"]
+if (
+    attestation["runner_name"] != expected_runner_name
+    or attestation["runner_group"] != expected_runner_group
+    or not isinstance(actual_labels, list)
+    or len(actual_labels) != len(set(actual_labels))
+    or set(actual_labels) != expected_labels
+    or not required_labels.issubset(set(actual_labels))
+    or attestation["node_pool"] != expected_node_pool
+    or attestation["runsc_binary_sha256"] != expected_runsc_digest
+):
+    raise SystemExit("dedicated-host runner binding mismatch")
 def timestamp(value):
     if not isinstance(value, str) or not value.endswith("Z"):
         raise SystemExit("attestation timestamps must be UTC RFC3339")
@@ -121,7 +169,9 @@ if issued > now or expires <= now or expires <= issued:
     raise SystemExit("dedicated-host attestation is not currently valid")
 if (expires - issued).total_seconds() > 30 * 24 * 60 * 60:
     raise SystemExit("dedicated-host attestation validity exceeds 30 days")
+print(attestation["expires_at"])
 PY
+  )
   runtime_args='--runtime runsc'
   server_runtime=runsc
   production_evidence=true
@@ -204,14 +254,19 @@ if test -n "$REPORT"; then
     echo "isolation report already exists" >&2
     exit 2
   fi
-  python3 - "$REPORT" "$MODE" "$IMAGE" "$server_kernel" "$server_runtime" "$production_evidence" "$runsc_binary_digest" "$runsc_version_digest" "$host_attestation_digest" "$guest_kernel" <<'PY'
+  python3 - "$REPORT" "$MODE" "$IMAGE" "$server_kernel" "$server_runtime" "$production_evidence" "$runsc_binary_digest" "$runsc_version_digest" "$host_attestation_digest" "$host_attestation_public_key_digest" "$host_attestation_expires_at" "$guest_kernel" "$RUNNER_IDENTITY" "$EXPECTED_RUNNER_GROUP" "$EXPECTED_RUNNER_LABELS" "$EXPECTED_NODE_POOL" "$SOURCE_REPOSITORY" "$SOURCE_COMMIT" "$SOURCE_WORKFLOW_REF" <<'PY'
 import hashlib
 import json
 import os
 import sys
 from datetime import datetime, timezone
 
-path, mode, image, kernel, runtime, production, runsc_digest, version_digest, host_attestation_digest, guest_kernel = sys.argv[1:]
+(
+    path, mode, image, kernel, runtime, production, runsc_digest, version_digest,
+    host_attestation_digest, host_attestation_public_key_digest,
+    host_attestation_expires_at, guest_kernel, runner_name, runner_group,
+    runner_labels, node_pool, repository, commit, workflow_ref,
+) = sys.argv[1:]
 report = {
     "schema_version": "agenttrust.linux-isolation-report.v1",
     "mode": mode,
@@ -221,7 +276,16 @@ report = {
     "runsc_binary_digest": runsc_digest,
     "runsc_version_digest": version_digest,
     "dedicated_host_attestation_digest": host_attestation_digest,
+    "dedicated_host_attestation_public_key_digest": host_attestation_public_key_digest,
+    "dedicated_host_attestation_expires_at": host_attestation_expires_at,
     "sandbox_kernel": guest_kernel,
+    "runner_name": runner_name,
+    "runner_group": runner_group or "NOT_APPLICABLE",
+    "runner_labels": sorted(label for label in runner_labels.split(",") if label),
+    "node_pool": node_pool or "NOT_APPLICABLE",
+    "source_repository": repository,
+    "source_commit": commit,
+    "source_workflow_ref": workflow_ref,
     "checks": {
         "linux_oci_engine": True,
         "cgroup_v2": True,
@@ -245,6 +309,7 @@ report = {
     },
     "production_evidence": production == "true",
     "measured_at": datetime.now(timezone.utc).isoformat(),
+    "valid_until": host_attestation_expires_at,
 }
 canonical = json.dumps(report, sort_keys=True, separators=(",", ":")).encode()
 report["evidence_digest"] = hashlib.sha256(canonical).hexdigest()

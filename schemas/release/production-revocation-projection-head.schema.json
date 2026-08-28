@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-revocation-projection-head.schema.json",
+  "title": "Short-lived signed live revocation projection head",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "projection_id", "environment_reference",
+    "base_checkpoint_digest", "registry_id", "registry_key_id",
+    "registry_sequence", "registry_digest", "projected_at", "expires_at",
+    "projection_key_id", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-revocation-projection-head.v1"},
+    "projection_id": {"$ref": "#/$defs/identifier"},
+    "environment_reference": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9._:/-]{1,480}$"},
+    "base_checkpoint_digest": {"$ref": "#/$defs/digest"},
+    "registry_id": {"$ref": "#/$defs/identifier"},
+    "registry_key_id": {"$ref": "#/$defs/identifier"},
+    "registry_sequence": {"type": "integer", "minimum": 1},
+    "registry_digest": {"$ref": "#/$defs/digest"},
+    "projected_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "expires_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "projection_key_id": {"$ref": "#/$defs/identifier"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+  }
+}

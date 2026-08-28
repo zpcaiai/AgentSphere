@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-deployment-receipt.schema.json",
+  "title": "Production deployment orchestration receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "source_release_id", "environment_reference",
+    "target_revision", "source_revision", "rendered_stack_sha256",
+    "blue_green_plan_sha256", "fence_receipt_digest", "cutover_receipt_digest",
+    "unfreeze_receipt_digest", "applied_phases", "traffic_services",
+    "traffic_ingresses", "workload_deployments", "completed_at", "deployment_succeeded", "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-deployment-receipt.v2"},
+    "release_id": {"$ref": "#/$defs/releaseId"},
+    "source_release_id": {"$ref": "#/$defs/releaseId"},
+    "environment_reference": {"$ref": "#/$defs/environment"},
+    "target_revision": {"$ref": "#/$defs/identifier"},
+    "source_revision": {"$ref": "#/$defs/identifier"},
+    "rendered_stack_sha256": {"$ref": "#/$defs/digest"},
+    "blue_green_plan_sha256": {"$ref": "#/$defs/digest"},
+    "fence_receipt_digest": {"$ref": "#/$defs/digest"},
+    "cutover_receipt_digest": {"$ref": "#/$defs/digest"},
+    "unfreeze_receipt_digest": {"$ref": "#/$defs/digest"},
+    "applied_phases": {
+      "type": "array",
+      "prefixItems": [
+        {"const": "prerequisite"}, {"const": "admission"}, {"const": "migration"},
+        {"const": "workload"}, {"const": "traffic"}
+      ],
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true
+    },
+    "traffic_services": {"type": "array", "items": {"$ref": "#/$defs/identifier"}, "minItems": 1, "uniqueItems": true},
+    "traffic_ingresses": {"type": "array", "items": {"$ref": "#/$defs/identifier"}, "minItems": 1, "uniqueItems": true},
+    "workload_deployments": {"type": "array", "items": {"$ref": "#/$defs/identifier"}, "minItems": 1, "uniqueItems": true},
+    "completed_at": {"type": "string", "format": "date-time"},
+    "deployment_succeeded": {"const": true},
+    "receipt_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "environment": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"},
+    "identifier": {"type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9.]{0,251}[a-z0-9])?$"}
+  }
+}

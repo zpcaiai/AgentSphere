@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-cutover-broker-config.schema.json",
+  "title": "External production deployment cutover broker configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "endpoint", "server_name", "oidc_issuer", "oidc_audience",
+    "ca_file", "client_certificate_file", "client_private_key_file", "keyring_file",
+    "timeout_seconds", "maximum_response_bytes"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-cutover-broker-config.v1"},
+    "endpoint": {
+      "type": "string",
+      "pattern": "^https://[^/?#]+(?::(?:443|8443))?/v1/deployment-cutovers$"
+    },
+    "server_name": {"type": "string", "format": "hostname"},
+    "oidc_issuer": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "oidc_audience": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^\\S+$"},
+    "ca_file": {"type": "string", "pattern": "^/"},
+    "client_certificate_file": {"type": "string", "pattern": "^/"},
+    "client_private_key_file": {"type": "string", "pattern": "^/"},
+    "keyring_file": {"type": "string", "pattern": "^/"},
+    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30},
+    "maximum_response_bytes": {"type": "integer", "minimum": 4096, "maximum": 4194304}
+  }
+}

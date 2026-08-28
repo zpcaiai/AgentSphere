@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-blue-green-stack-plan.schema.json",
+  "title": "Production blue-green stack materialization plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "release_digest", "revision", "source_sha256",
+    "rendered_sha256", "versioned_resources", "traffic_services", "workload_deployments"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-blue-green-stack-plan.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "release_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "revision": {"type": "string", "pattern": "^r-[0-9a-f]{12}-[0-9a-f]{8}$"},
+    "source_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "rendered_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "versioned_resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ConfigMap", "Deployment", "PodDisruptionBudget", "SecretProviderClass"],
+      "properties": {
+        "ConfigMap": {"$ref": "#/$defs/nameMap"},
+        "Deployment": {"$ref": "#/$defs/nameMap"},
+        "PodDisruptionBudget": {"$ref": "#/$defs/nameMap"},
+        "SecretProviderClass": {"$ref": "#/$defs/nameMap"}
+      }
+    },
+    "traffic_services": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+    "workload_deployments": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}}
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$"},
+    "nameMap": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/name"},
+      "additionalProperties": {"$ref": "#/$defs/name"}
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/gvisor-receipt-signing-key.schema.json",
+  "title": "Host-local gVisor execution receipt signing key",
+  "description": "Secret Ed25519 seed provisioned through the systemd encrypted credential store. This document must never enter the dispatcher spool, OCI release artifact, logs, or Evidence storage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "environment", "issuer", "key_id", "key_usage", "private_key"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.gvisor-receipt-signing-key.v1"},
+    "environment": {"const": "production"},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "key_usage": {"const": "AGENTTRUST_GVISOR_EXECUTION_RECEIPT_V1"},
+    "private_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
+  }
+}

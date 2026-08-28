@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/a2a/a2a-task.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "task_id", "remote_task_id", "agent_id", "agent_card_hash", "agent_endpoint", "protocol_version", "state", "remote_status", "evaluation_status", "revision", "updated_at", "backend_signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.a2a-agui.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "remote_task_id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "agent_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "agent_card_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "agent_endpoint": {"type": "string", "pattern": "^https://", "maxLength": 2048},
+    "protocol_version": {"enum": ["0.3.0", "1.0"]},
+    "state": {"enum": ["SUBMITTED", "WORKING", "INPUT_REQUIRED", "AUTH_REQUIRED", "VERIFYING", "COMPLETED", "CANCELLING", "CANCELLED", "REJECTED", "FAILED"]},
+    "remote_status": {"enum": ["submitted", "working", "input-required", "auth-required", "completed", "canceled", "rejected", "failed"]},
+    "evaluation_status": {"type": ["string", "null"], "enum": ["PASS", "FAIL", "NEEDS_HUMAN", "ROLLED_BACK", "MANUAL_RECOVERY_REQUIRED", null]},
+    "revision": {"type": "integer", "minimum": 1},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "backend_signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

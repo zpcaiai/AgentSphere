@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/signed-worm-evidence-receipt.schema.json",
+  "title": "Signed compliance-retention evidence verification receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "receipt", "receipt_digest", "issuer", "key_id",
+    "key_usage", "algorithm", "signed_at", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-worm-evidence-receipt.v1"},
+    "receipt": {"$ref": "#/$defs/receipt"},
+    "receipt_digest": {"$ref": "#/$defs/digest"},
+    "issuer": {"$ref": "#/$defs/identifier"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "key_usage": {"const": "PRODUCTION_EVIDENCE_WORM_RECEIPT"},
+    "algorithm": {"const": "Ed25519"},
+    "signed_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {
+      "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "receipt_id", "artifact_kind", "artifact_id",
+        "artifact_digest", "release_id", "scope_digest", "environment_reference",
+        "object_uri", "retention_mode", "versioning_enabled", "verified_readback",
+        "verification_result", "verification_policy_digest", "stored_at", "retain_until"
+      ],
+      "properties": {
+        "schema_version": {"const": "agenttrust.worm-evidence-receipt.v1"},
+        "receipt_id": {"$ref": "#/$defs/identifier"},
+        "artifact_kind": {"enum": ["BATCH", "EXTERNAL_CONDITION"]},
+        "artifact_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "artifact_digest": {"$ref": "#/$defs/digest"},
+        "release_id": {"pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+        "scope_digest": {"$ref": "#/$defs/digest"},
+        "environment_reference": {
+          "type": "string", "pattern": "^environment://production/.+$", "maxLength": 512
+        },
+        "object_uri": {
+          "type": "string",
+          "pattern": "^s3-object-lock://[A-Za-z0-9.-]{1,253}/[^?#]{1,1024}\\?versionIdDigest=[0-9a-f]{64}$",
+          "maxLength": 1400
+        },
+        "retention_mode": {"const": "COMPLIANCE"},
+        "versioning_enabled": {"const": true},
+        "verified_readback": {"const": true},
+        "verification_result": {"const": "VERIFIED"},
+        "verification_policy_digest": {"$ref": "#/$defs/digest"},
+        "stored_at": {"type": "string", "format": "date-time", "maxLength": 64},
+        "retain_until": {"type": "string", "format": "date-time", "maxLength": 64}
+      }
+    }
+  }
+}

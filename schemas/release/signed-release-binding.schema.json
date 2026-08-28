@@ -9,7 +9,7 @@
     "key_usage", "algorithm", "signed_at", "signature"
   ],
   "properties": {
-    "schema_version": {"const": "agenttrust.signed-release-binding.v1"},
+    "schema_version": {"const": "agenttrust.signed-release-binding.v2"},
     "binding": {"$ref": "#/$defs/binding"},
     "binding_digest": {"$ref": "#/$defs/digest"},
     "issuer": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"},
@@ -34,10 +34,10 @@
         "schema_version", "release_id", "release_digest",
         "signed_git_provenance_digest", "template_git_path",
         "template_blob_object_id", "template_digest",
-        "values_without_release_digest", "runtime_config_digest"
+        "static_values", "runtime_config_digest"
       ],
       "properties": {
-        "schema_version": {"const": "agenttrust.release-binding.v1"},
+        "schema_version": {"const": "agenttrust.release-binding.v2"},
         "release_id": {
           "type": "string",
           "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"
@@ -49,11 +49,24 @@
         },
         "template_blob_object_id": {"$ref": "#/$defs/objectId"},
         "template_digest": {"$ref": "#/$defs/digest"},
-        "values_without_release_digest": {
+        "static_values": {
           "type": "object",
           "minProperties": 1,
           "maxProperties": 128,
-          "not": {"required": ["release_digest"]}
+          "allOf": [
+            {"not": {"required": ["release_digest"]}},
+            {
+              "not": {
+                "required": ["evidence"],
+                "properties": {
+                  "evidence": {
+                    "type": "object",
+                    "required": ["bundle_digest"]
+                  }
+                }
+              }
+            }
+          ]
         },
         "runtime_config_digest": {"$ref": "#/$defs/digest"}
       }

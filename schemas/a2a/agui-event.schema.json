@@ -10,6 +10,6 @@
     "trace_id": {"type": "string", "minLength": 1, "maxLength": 256},
     "kind": {"enum": ["PLAN_UPDATED", "TOOL_REQUESTED", "APPROVAL_REQUIRED", "APPROVAL_RECORDED", "EXECUTION_STATUS", "ARTIFACT_AVAILABLE", "EVALUATION_UPDATED", "INCIDENT"]},
     "safe_payload": {"type": "object"}, "occurred_at": {"type": "string", "format": "date-time"},
-    "backend_signature": {"type": "string", "minLength": 1}
+    "backend_signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
   }
 }

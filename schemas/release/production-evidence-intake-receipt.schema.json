@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-evidence-intake-receipt.schema.json",
+  "title": "Production evidence intake receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "scope_digest", "qualification_input_digest",
+    "closure_input_digest", "production_image_manifest_digest", "runtime_config_digest",
+    "revocation_update_digest", "revocation_checkpoint_digest",
+    "revocation_checkpoint_sequence", "revocation_registry_digest",
+    "previous_registry_artifact_digest", "verified_at", "verified", "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-evidence-intake-receipt.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "qualification_input_digest": {"$ref": "#/$defs/digest"},
+    "closure_input_digest": {"$ref": "#/$defs/digest"},
+    "production_image_manifest_digest": {"$ref": "#/$defs/digest"},
+    "runtime_config_digest": {"$ref": "#/$defs/digest"},
+    "revocation_update_digest": {"$ref": "#/$defs/digest"},
+    "revocation_checkpoint_digest": {"$ref": "#/$defs/digest"},
+    "revocation_checkpoint_sequence": {"type": "integer", "minimum": 0},
+    "revocation_registry_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "previous_registry_artifact_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "verified": {"const": true},
+    "receipt_digest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"revocation_checkpoint_sequence": {"const": 0}}, "required": ["revocation_checkpoint_sequence"]},
+      "then": {
+        "properties": {
+          "revocation_registry_digest": {"type": "null"},
+          "previous_registry_artifact_digest": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "revocation_registry_digest": {"$ref": "#/$defs/digest"},
+          "previous_registry_artifact_digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    }
+  ],
+  "$defs": {"digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

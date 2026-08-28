@@ -4,6 +4,8 @@
 //! policy-pep, transaction-ledger, tool-proxy, and evidence-evaluator. It does not
 //! duplicate any of their policy, fencing, connector, or evidence-chain semantics.
 
+use crate::activation::ActivationGuardian;
+
 use agent_trust_action_ir::{
     CanonicalAction, NormalizationContext, ParseLimits, RuntimeContext, TrajectoryRiskSnapshot,
     hash as canonical_action_hash, normalize, parse_draft, to_policy_input,
@@ -1107,6 +1109,7 @@ where
     tool_proxy: Arc<T>,
     evidence: Arc<E>,
     ledger: Arc<L>,
+    activation_guardian: Arc<ActivationGuardian>,
     source_service: String,
 }
 
@@ -1129,6 +1132,7 @@ where
         tool_proxy: Arc<T>,
         evidence: Arc<E>,
         ledger: Arc<L>,
+        activation_guardian: Arc<ActivationGuardian>,
         source_service: String,
     ) -> Result<Self, ExecutionError> {
         if source_service.is_empty()
@@ -1146,14 +1150,23 @@ where
             tool_proxy,
             evidence,
             ledger,
+            activation_guardian,
             source_service,
         })
+    }
+
+    fn require_activation(&self) -> Result<(), ExecutionError> {
+        self.activation_guardian
+            .require_active()
+            .map(|_| ())
+            .map_err(|_| ExecutionError::ActivationUnavailable)
     }
 
     pub async fn execute(
         &self,
         request: ExecutionRequest,
     ) -> Result<ExecutionOutcome, ExecutionError> {
+        self.require_activation()?;
         validate_request(&request)?;
         let materialized = self.materializer.materialize(&request).await?;
         let tenant = TenantId::parse(request.tenant_id.clone())
@@ -1253,6 +1266,9 @@ where
             compensation_plan,
             requested_at: materialized.action.requested_at,
         };
+        // Authorization and approval calls may take long enough for an activation watcher to
+        // revoke the release.  Reopen the receipt again before the first durable execution write.
+        self.require_activation()?;
         let reservation = self.ledger.reserve(intent).await?;
         let fence_digest = fence_digest(&reservation.fence)?;
         if reservation.existing {
@@ -1409,6 +1425,15 @@ where
                 })
                 .unwrap_or_else(|| "unversioned-read".into()),
         );
+        if self.require_activation().is_err() {
+            self.ledger
+                .mark_failed(
+                    &reservation.fence,
+                    "EXECUTION_PRODUCTION_ACTIVATION_INVALID".into(),
+                )
+                .await?;
+            return Err(ExecutionError::ActivationUnavailable);
+        }
         if let Err(error) = self.ledger.mark_started(&reservation.fence, None).await {
             if matches!(
                 error,
@@ -1420,6 +1445,17 @@ where
                     .await;
             }
             return Err(error.into());
+        }
+        // `mark_started` and the tool call are deliberately separated by another fresh receipt
+        // read.  Revocation during final authorization cannot open a stale side-effect window.
+        if self.require_activation().is_err() {
+            self.ledger
+                .mark_failed(
+                    &reservation.fence,
+                    "EXECUTION_PRODUCTION_ACTIVATION_INVALID".into(),
+                )
+                .await?;
+            return Err(ExecutionError::ActivationUnavailable);
         }
         let result = match self
             .tool_proxy
@@ -1580,7 +1616,10 @@ where
     }
 
     pub async fn ready(&self) -> bool {
-        tokio::time::timeout(Duration::from_millis(1_800), async {
+        if self.require_activation().is_err() {
+            return false;
+        }
+        let dependencies_ready = tokio::time::timeout(Duration::from_millis(1_800), async {
             let (materializer, registry, approvals, ledger, pep, tool, evidence) = tokio::join!(
                 self.materializer.ready(),
                 self.registry.ready(),
@@ -1593,7 +1632,8 @@ where
             materializer && registry && approvals && ledger && pep && tool && evidence
         })
         .await
-        .unwrap_or(false)
+        .unwrap_or(false);
+        dependencies_ready && self.require_activation().is_ok()
     }
 }
 
@@ -1988,6 +2028,8 @@ pub enum ExecutionError {
     DependencyUnavailable,
     #[error("EXECUTION_DEPENDENCY_RESPONSE_INVALID")]
     DependencyResponseInvalid,
+    #[error("EXECUTION_PRODUCTION_ACTIVATION_UNAVAILABLE")]
+    ActivationUnavailable,
     #[error("EXECUTION_EVIDENCE_INVALID")]
     EvidenceInvalid,
     #[error(transparent)]

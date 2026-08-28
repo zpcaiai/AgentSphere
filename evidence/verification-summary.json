@@ -33,7 +33,7 @@
     "json_schemas": {"status": "PASS_PARSE_ONLY_CURRENT_WORKTREE", "count": 187, "meta_schema_validation": "NOT_RUN_DEPENDENCY_UNAVAILABLE"},
     "implementation_status_files": {"status": "PASS_STATIC_CURRENT_WORKTREE", "count": 36, "in_progress": 36, "evidence_verified": 0},
     "skill_package_validators": {"status": "HISTORICAL_NOT_CURRENT_RELEASE", "current_release_status": "NOT_RUN_RESOURCE_FREEZE", "skills": 36},
-    "postgresql_17_migrations": {"status": "NOT_RUN_RESOURCE_FREEZE", "manifest_static_status": "PASS_66", "historical_status": "PASS", "historical_migration_files": 33, "historical_consecutive_applications": 2, "historical_declared_tables": 99},
+    "postgresql_17_migrations": {"status": "NOT_RUN_RESOURCE_FREEZE", "manifest_static_status": "PASS_70", "historical_status": "PASS", "historical_migration_files": 33, "historical_consecutive_applications": 2, "historical_declared_tables": 99},
     "enterprise_non_bypass_rls": {"status": "HISTORICAL_NOT_CURRENT_RELEASE", "current_release_status": "NOT_RUN_RESOURCE_FREEZE", "historical_role": "NOSUPERUSER NOBYPASSRLS", "historical_cross_tenant_visibility": "DENIED", "historical_transactional_idempotency": "PASS"},
     "global_tenant_table_rls": {"status": "HISTORICAL_NOT_CURRENT_RELEASE", "current_release_status": "NOT_RUN_RESOURCE_FREEZE", "historical_tenant_tables": 84, "historical_enable_rls": true, "historical_force_rls": true},
     "postgresql_rust_persistence_test": {"status": "HISTORICAL_NOT_CURRENT_RELEASE", "current_release_status": "NOT_RUN_RESOURCE_FREEZE", "historical_concurrent_reservations": 20, "historical_migration_applications": 2},

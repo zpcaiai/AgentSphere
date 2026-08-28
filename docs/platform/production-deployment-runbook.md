@@ -1,14 +1,19 @@
 # Production deployment runbook
 
 `deploy/kubernetes/production-stack.yaml.tmpl` is the production deployment unit for
-the Agent Trust control plane. It renders nineteen Deployments: the production runtime,
+the Agent Trust control plane. It renders twenty-seven Deployments: the production runtime,
 orchestrator API, Temporal worker, transition authority, execution service, Tool
 Registry, Agent Registry, Policy Administration Authority, Incident/Release Authority,
 Pack Marketplace Authority, Approval Authority, execution PEP, Identity/Credential
 Authority, Tool Proxy, Evidence Authority, Audit Retention, Enterprise Mutation Authority,
 enterprise BFF and browser console. It also renders the forward-only
 migration Job, Services, ServiceAccounts, PodDisruptionBudgets, SecretProviderClasses,
-default-deny and peer-scoped NetworkPolicies, ingress and immutable release metadata.
+default-deny and peer-scoped NetworkPolicies, ingress and immutable release metadata. It
+also creates the cluster-scoped `agenttrust-gvisor` RuntimeClass plus the restricted
+`agenttrust-sandboxes` namespace, ServiceAccount, quota and default-deny ingress/egress
+policy. The one-shot `sandbox_worker` image is an attested native-worker transport artifact;
+it is intentionally not deployed as a long-running Pod and never receives a Docker socket
+or host-root mount.
 
 This manifest is deployable configuration, not production certification. PostgreSQL,
 multi-zone Temporal, Vault, enterprise IdP, WORM object storage, public ingress
@@ -16,6 +21,26 @@ certificates, external authoritative fact services,
 HA/DR exercises, load evidence and customer or assessor sign-off remain external gates.
 Keep their evidence status `NOT_RUN`, `NOT_ISSUED`, `IN_PROGRESS` or `NOT_CERTIFIED`
 until the named production evidence exists.
+
+## Release-scoped blue/green cutover
+
+`scripts/materialize-production-blue-green-stack.py` derives a deterministic
+revision from the signed release ID and release digest. ConfigMaps,
+SecretProviderClasses, Deployments and PodDisruptionBudgets are revision-named
+and label-bound so two releases can coexist. Stable Services are the only
+traffic objects and receive a revision selector during the cutover operation.
+
+`scripts/execute-production-deployment.py` performs the apply order and never
+changes database state itself. It first obtains a short-lived GitHub OIDC token
+and calls the mTLS deployment-cutover broker for a signed `WRITER_FENCE`, then
+applies admission and migration Jobs, starts the new revision, waits for every
+Deployment, requests signed `CUTOVER`, verifies Service selectors and non-empty
+Endpoints, scales the source revision to zero, and requests signed `UNFREEZE`.
+The broker response must validate against the deployment keyring and the
+source/target inventory. A post-cutover failure requires signed `ROLLBACK` and
+source `UNFREEZE`; if those cannot be obtained the database remains fenced.
+No local flag, kubectl output, or CI account can substitute for these signed
+external receipts.
 
 ## PEP compatibility gate
 
@@ -48,7 +73,12 @@ Provide all of the following before rendering:
 - a Kubernetes cluster with at least three schedulable zones, enforced NetworkPolicy,
   an ingress class, Secrets Store CSI plus Vault provider, and kubelet/node probe
   addresses represented by `network.node_cidr`;
-- digest-pinned application images plus digest-pinned Envoy and utility images;
+- all thirty-one digest-pinned release images, including the `sandbox_worker` transport
+  artifact, AgentTrust-owned Envoy/utility wrapper subjects and release admission image;
+- dedicated Linux sandbox hosts with cgroup v2, user namespaces, a digest-pinned rootless
+  `runsc`, signed runtime attestation and the native systemd worker unit; Kubernetes-based
+  one-shot executors additionally require the `runsc` RuntimeClass handler and the exact
+  dedicated-node labels rendered by this stack;
 - production PostgreSQL with TLS hostname verification, reviewed backups and a separate
   migration login that owns or can alter migration objects without being superuser or
   `BYPASSRLS`;
@@ -157,7 +187,7 @@ asserts the negotiated `TLSv1.3` version from `pg_stat_ssl` inside the migration
 
 ## Vault and secret material
 
-The eighteen SecretProviderClasses list every required object. Policy Administration,
+The twenty-seven SecretProviderClasses list every required object. Policy Administration,
 Incident/Release and Pack Marketplace each use independent Vault roles and paths; their
 SecretProviderClasses mount exactly 15, 15 and 13 objects respectively. Agent Registry and
 Enterprise Mutation Authority each mount exactly fourteen objects. Files mount directly at
@@ -358,14 +388,18 @@ Verify rendered policy with the installed CNI because Service DNAT ordering diff
 
 ## Build, render and apply
 
-Build twenty-seven repository images using `scripts/build-production-image.py`: `runtime`,
+Build the exact thirty-one release subjects using `scripts/build-production-image.py`: `runtime`,
 `orchestrator`, `transition`, `execution`, `registry`, `agent-registry`, `approval`, `pep`,
 `policy-admin`, `incident-release`, `pack-marketplace`, `identity`, `tool-proxy`,
 `evidence`, `audit`, `enterprise-control`,
 `enterprise-authority`, `model-gateway`, `data-governance`, `context-governance`,
 `runtime-anomaly`, `security-evaluation`, `pack-supply-chain`, `domain-runtime`,
-`platform-sre`, `console`, and `migrations`. Every base is
-digest-pinned. Supply externally maintained Envoy and utility digests in values.
+`platform-sre`, `console`, `migrations`, `release-admission`, `sandbox-worker`, and the
+AgentTrust-owned `envoy` and `utility` wrapper subjects. Every base is digest-pinned; the
+candidate workflow requires SBOM and provenance attestations for every subject. The
+`sandbox-worker` artifact is installed as a native binary on a dedicated Linux host after
+its image attestation and extracted binary digest are verified; do not run it as a normal
+Deployment or mount host `runsc` into a Pod.
 
 Prepare `agenttrust.production-stack-values.v2` values and a runtime config based on
 `config/production-runtime.example.json`. Rendering rejects placeholders, mutable images,
@@ -378,21 +412,33 @@ exactly match the PEP trust configuration.
 output=$(mktemp /tmp/agenttrust-production.XXXXXX.yaml)
 rm "$output"
 python3 scripts/render-production-stack.py \
-  --template deploy/kubernetes/production-stack.yaml.tmpl \
+  --template /absolute/repository/deploy/kubernetes/production-stack.yaml.tmpl \
   --values /protected/release/production-stack-values.json \
   --runtime-config /protected/release/production-runtime.json \
   --git-provenance /protected/release/signed-git-provenance.json \
   --git-provenance-keyring /protected/release/git-provenance-keyring.json \
   --release-binding /protected/release/signed-release-binding.json \
   --release-binding-keyring /protected/release/release-binding-keyring.json \
+  --activation /protected/release/activation.json \
+  --closure-report /protected/release/closure-report.json \
+  --production-certificate /protected/release/production-certificate.json \
+  --closure-public-key /protected/trust/closure-public-key.json \
+  --revocation-registry /protected/release/revocation-registry.json \
+  --revocation-public-key /protected/trust/revocation-public-key.json \
   --output "$output"
 kubectl apply --dry-run=server -f "$output"
 kubectl apply -f "$output" --selector agenttrust.io/apply-phase=prerequisite
+kubectl apply -f "$output" --selector agenttrust.io/apply-phase=admission
+kubectl wait --for=condition=complete --timeout=10m job \
+  --selector agenttrust.io/apply-phase=admission
 kubectl apply -f "$output" --selector agenttrust.io/apply-phase=migration
-kubectl wait --for=condition=complete --timeout=30m \
-  job/agenttrust-migrate-RENDERED_RELEASE_NAME
-kubectl logs job/agenttrust-migrate-RENDERED_RELEASE_NAME --all-containers
+kubectl wait --for=condition=complete --timeout=30m job \
+  --selector agenttrust.io/apply-phase=migration
 kubectl apply -f "$output" --selector agenttrust.io/apply-phase=workload
+# Wait for every rendered Deployment before exposing either ingress.
+kubectl rollout status deployment \
+  --selector app.kubernetes.io/part-of=agenttrust-control-plane --timeout=10m
+kubectl apply -f "$output" --selector agenttrust.io/apply-phase=traffic
 ```
 
 The renderer creates a new absolute output file at `0600` and refuses overwrite. Do not

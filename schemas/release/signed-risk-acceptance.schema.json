@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/signed-risk-acceptance.schema.json",
+  "title": "Release-scoped signed residual risk acceptance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "artifact_kind", "artifact_digest", "release_id",
+    "scope_digest", "environment_reference", "issued_at", "expires_at",
+    "reviewers"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-risk-acceptance.v1"},
+    "artifact_kind": {"const": "RISK"},
+    "artifact_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "scope_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "environment_reference": {"type": "string", "pattern": "^environment://production/.+$", "maxLength": 512},
+    "issued_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "expires_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "reviewers": {
+      "type": "array", "minItems": 1, "maxItems": 1,
+      "items": {"$ref": "#/$defs/reviewer"}
+    }
+  },
+  "$defs": {
+    "reviewer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["reviewer_id", "organization", "role", "key_id", "signature"],
+      "properties": {
+        "reviewer_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "organization": {"type": "string", "minLength": 1, "maxLength": 256},
+        "role": {"const": "COMPLIANCE_OWNER"},
+        "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+        "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+      }
+    }
+  }
+}

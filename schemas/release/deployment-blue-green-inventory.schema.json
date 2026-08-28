@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-blue-green-inventory.schema.json",
+  "title": "Production deployment blue-green inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "inventory_id", "source_release_id", "target_release_id",
+    "source_revision", "target_revision", "environment_reference", "traffic_revision",
+    "traffic_bindings", "workloads", "observed_at", "valid_until", "inventory_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-blue-green-inventory.v1"},
+    "inventory_id": {"type": "string", "format": "uuid"},
+    "source_release_id": {"$ref": "#/$defs/releaseId"},
+    "target_release_id": {"$ref": "#/$defs/releaseId"},
+    "source_revision": {"$ref": "#/$defs/identifier"},
+    "target_revision": {"$ref": "#/$defs/identifier"},
+    "environment_reference": {"$ref": "#/$defs/environment"},
+    "traffic_revision": {"$ref": "#/$defs/identifier"},
+    "traffic_bindings": {
+      "type": "array", "minItems": 1, "maxItems": 1000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["service_name", "revision"],
+        "properties": {
+          "service_name": {"$ref": "#/$defs/identifier"},
+          "revision": {"$ref": "#/$defs/identifier"}
+        }
+      }
+    },
+    "workloads": {
+      "type": "array", "minItems": 2, "maxItems": 4000,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": [
+          "workload_name", "revision", "release_id", "image", "desired_replicas",
+          "ready_replicas", "available_replicas"
+        ],
+        "properties": {
+          "workload_name": {"$ref": "#/$defs/identifier"},
+          "revision": {"$ref": "#/$defs/identifier"},
+          "release_id": {"$ref": "#/$defs/releaseId"},
+          "image": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:/-]*@sha256:[0-9a-f]{64}$"},
+          "desired_replicas": {"type": "integer", "minimum": 0},
+          "ready_replicas": {"type": "integer", "minimum": 0},
+          "available_replicas": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "observed_at": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "inventory_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "environment": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"}
+  }
+}

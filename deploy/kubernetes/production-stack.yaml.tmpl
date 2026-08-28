@@ -7,6 +7,74 @@ data:
   release-id: "@@RELEASE_ID@@"
   release-digest: "@@RELEASE_DIGEST@@"
   evidence-bundle-digest: "@@EVIDENCE_BUNDLE_DIGEST@@"
+  activation-receipt-digest: "@@ACTIVATION_RECEIPT_DIGEST@@"
+  production-certificate-id: "@@PRODUCTION_CERTIFICATE_ID@@"
+  revocation-registry-sequence: "@@REVOCATION_REGISTRY_SEQUENCE@@"
+  revocation-registry-digest: "@@REVOCATION_REGISTRY_DIGEST@@"
+  sandbox-worker-transport-image: "@@SANDBOX_WORKER_IMAGE@@"
+  sandbox-worker-execution-mode: "NATIVE_SYSTEMD_DEDICATED_HOST"
+  sandbox-runtime-class: "agenttrust-gvisor"
+  utility-transport-image: "@@UTILITY_IMAGE@@"
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: agenttrust-gvisor
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+handler: runsc
+scheduling:
+  nodeSelector:
+    agenttrust.io/gvisor-ready: "true"
+    agenttrust.io/dedicated-sandbox-node: "true"
+  tolerations:
+    - {key: agenttrust.io/dedicated-sandbox, operator: Equal, value: "true", effect: NoSchedule}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agenttrust-sandboxes
+  labels:
+    app.kubernetes.io/part-of: agenttrust-control-plane
+    agenttrust.io/apply-phase: prerequisite
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: agenttrust-sandbox-executor
+  namespace: agenttrust-sandboxes
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agenttrust-sandbox-default-deny
+  namespace: agenttrust-sandboxes
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: agenttrust-sandbox-quota
+  namespace: agenttrust-sandboxes
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+spec:
+  hard:
+    count/jobs.batch: "100"
+    count/pods: "200"
+    requests.cpu: "64"
+    requests.memory: 256Gi
+    requests.ephemeral-storage: 2Ti
+    limits.cpu: "64"
+    limits.memory: 256Gi
+    limits.ephemeral-storage: 2Ti
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -157,7 +225,7 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: agenttrust-release-evidence
+  name: agenttrust-release-evidence-@@RELEASE_NAME@@
   labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
   annotations:
     agenttrust.io/release-id: "@@RELEASE_ID@@"
@@ -168,6 +236,126 @@ spec:
   volumeName: "@@EVIDENCE_PV_NAME@@"
   resources:
     requests: {storage: "@@EVIDENCE_STORAGE_SIZE@@"}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: admit-@@RELEASE_NAME@@
+  labels:
+    app.kubernetes.io/name: agenttrust-release-admission
+    app.kubernetes.io/component: release-admission
+    app.kubernetes.io/part-of: agenttrust-control-plane
+    agenttrust.io/apply-phase: admission
+  annotations:
+    agenttrust.io/release-id: "@@RELEASE_ID@@"
+    agenttrust.io/production-certificate-id: "@@PRODUCTION_CERTIFICATE_ID@@"
+    agenttrust.io/revocation-registry-digest: "@@REVOCATION_REGISTRY_DIGEST@@"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agenttrust-release-admission
+        app.kubernetes.io/component: release-admission
+        app.kubernetes.io/part-of: agenttrust-control-plane
+    spec:
+      restartPolicy: Never
+      serviceAccountName: agenttrust-production-runtime
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: verify-production-closure
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - verify-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/receipt.json
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
+      volumes:
+        - {name: evidence, persistentVolumeClaim: {claimName: agenttrust-release-evidence-@@RELEASE_NAME@@, readOnly: true}}
+        - name: admission-trust
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-release-admission}}
+        - {name: activation-state, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+---
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: agenttrust-release-admission
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite, agenttrust.io/revocation-projection-prerequisite: "true"}
+spec:
+  provider: vault
+  parameters:
+    vaultAddress: "@@VAULT_ADDRESS@@"
+    vaultSkipTLSVerify: "false"
+    roleName: "@@VAULT_RELEASE_ADMISSION_ROLE@@"
+    objects: |
+      - {objectName: "closure-public-key.json", secretPath: "@@VAULT_RELEASE_ADMISSION_PATH@@", secretKey: "closure_public_key", filePermission: 0o440}
+      - {objectName: "revocation-public-key.json", secretPath: "@@VAULT_RELEASE_ADMISSION_PATH@@", secretKey: "revocation_public_key", filePermission: 0o440}
+      - {objectName: "current-revocation-registry.json", secretPath: "@@VAULT_RELEASE_ADMISSION_PATH@@", secretKey: "current_revocation_registry", filePermission: 0o440}
+      - {objectName: "current-revocation-projection.json", secretPath: "@@VAULT_RELEASE_ADMISSION_PATH@@", secretKey: "current_revocation_projection", filePermission: 0o440}
+      - {objectName: "revocation-projection-public-key.json", secretPath: "@@VAULT_RELEASE_ADMISSION_PATH@@", secretKey: "revocation_projection_public_key", filePermission: 0o440}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: verify-revocation-projection-@@RELEASE_NAME@@
+  labels:
+    app.kubernetes.io/name: agenttrust-revocation-projection-verifier
+    app.kubernetes.io/component: release-admission
+    app.kubernetes.io/part-of: agenttrust-control-plane
+    agenttrust.io/apply-phase: admission
+    agenttrust.io/revocation-projection-gate: "true"
+  annotations:
+    agenttrust.io/release-id: "@@RELEASE_ID@@"
+    agenttrust.io/revocation-registry-digest: "@@REVOCATION_REGISTRY_DIGEST@@"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agenttrust-revocation-projection-verifier
+        app.kubernetes.io/component: release-admission
+        app.kubernetes.io/part-of: agenttrust-control-plane
+    spec:
+      restartPolicy: Never
+      serviceAccountName: agenttrust-production-runtime
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: verify-live-projection
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - verify-revocation-projection
+            - /trust/current-revocation-registry.json
+            - /trust/current-revocation-projection.json
+            - /trust/revocation-projection-public-key.json
+            - /trust/revocation-public-key.json
+            - "@@REVOCATION_REGISTRY_SEQUENCE@@"
+            - "@@REVOCATION_REGISTRY_DIGEST@@"
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          volumeMounts:
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+      volumes:
+        - name: admission-trust
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-release-admission}}
 ---
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
@@ -721,7 +909,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: agenttrust-production-runtime
-  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite}
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: prerequisite, agenttrust.io/revocation-projection-prerequisite: "true"}
 automountServiceAccountToken: false
 ---
 apiVersion: apps/v1
@@ -970,7 +1158,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: agenttrust-enterprise-control
-  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: traffic}
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: HTTP
     nginx.ingress.kubernetes.io/proxy-body-size: 1m
@@ -991,7 +1179,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: agenttrust-console
-  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: workload}
+  labels: {app.kubernetes.io/part-of: agenttrust-control-plane, agenttrust.io/apply-phase: traffic}
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: HTTP
     nginx.ingress.kubernetes.io/proxy-body-size: 1m
@@ -1286,6 +1474,34 @@ spec:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             - {topologyKey: kubernetes.io/hostname, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-execution}}}
+      initContainers:
+        - name: prepare-activation-state
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args: ["prepare-activation-directory", "/activation/live"]
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 5m, memory: 8Mi}, limits: {cpu: 50m, memory: 32Mi}}
+          volumeMounts:
+            - {name: activation-state, mountPath: /activation}
+        - name: verify-release-activation
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - verify-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/live/receipt.json
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
       containers:
         - name: execution
           image: "@@EXECUTION_IMAGE@@"
@@ -1320,6 +1536,11 @@ spec:
             - {name: AGENT_TRUST_EXECUTION_EVIDENCE_TOKEN_FILE, value: /var/run/agenttrust/secrets/execution/evidence.token}
             - {name: AGENT_TRUST_EXECUTION_EVIDENCE_VERIFICATION_KEYS_FILE, value: /var/run/agenttrust/secrets/execution/evidence-verification-keys.json}
             - {name: AGENT_TRUST_EXECUTION_EVIDENCE_READINESS_SCHEMA, value: "@@EXECUTION_EVIDENCE_READINESS_SCHEMA@@"}
+            - {name: AGENT_TRUST_EXECUTION_ACTIVATION_RELEASE_ID, value: "@@RELEASE_ID@@"}
+            - {name: AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_FILE, value: /run/agenttrust/activation/receipt.json}
+            - {name: AGENT_TRUST_EXECUTION_ACTIVATION_MAX_STALENESS_SECONDS, value: "30"}
+            - {name: AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_OWNER_UID, value: "65531"}
+            - {name: AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_READER_GID, value: "65532"}
           ports: [{name: https, containerPort: 8083}, {name: management, containerPort: 9093}]
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
           resources: {requests: {cpu: 500m, memory: 512Mi}, limits: {cpu: "2", memory: 2Gi}}
@@ -1328,10 +1549,44 @@ spec:
           livenessProbe: {tcpSocket: {port: https}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
           volumeMounts:
             - {name: secrets, mountPath: /var/run/agenttrust/secrets/execution, readOnly: true}
+            - {name: activation-state, mountPath: /run/agenttrust/activation, subPath: live, readOnly: true}
             - {name: tmp, mountPath: /tmp}
+        - name: activation-watcher
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - watch-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/current-revocation-registry.json
+            - /trust/current-revocation-projection.json
+            - /trust/revocation-projection-public-key.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/live/receipt.json
+            - 127.0.0.1:8091
+          ports: [{name: activation-watch, containerPort: 8091}]
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          readinessProbe:
+            exec: {command: ["/usr/local/bin/production-closure", "check-activation-watch", "127.0.0.1:8091"]}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
       volumes:
         - name: secrets
           csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-execution}}
+        - {name: evidence, persistentVolumeClaim: {claimName: agenttrust-release-evidence-@@RELEASE_NAME@@, readOnly: true}}
+        - name: admission-trust
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-release-admission}}
+        - {name: activation-state, emptyDir: {medium: Memory, sizeLimit: 2Mi}}
         - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
 ---
 apiVersion: v1
@@ -2475,25 +2730,33 @@ spec:
             - topologyKey: kubernetes.io/hostname
               labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-production-runtime}}
       initContainers:
+        - name: prepare-activation-state
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args: ["prepare-activation-directory", "/activation/live"]
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 5m, memory: 8Mi}, limits: {cpu: 50m, memory: 32Mi}}
+          volumeMounts:
+            - {name: activation-state, mountPath: /activation}
         - name: verify-release-evidence
-          image: "@@UTILITY_IMAGE@@"
-          command: ["/bin/sh", "-ec"]
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
           args:
-            - |
-              test "$(cat /evidence/release-id)" = "$RELEASE_ID"
-              test -s /evidence/batch-statuses.json
-              test -s /evidence/gate-evidence.json
-              test -s /evidence/residual-risks.json
-              test -s /evidence/exceptions.json
-              test -s /evidence/SHA256SUMS
-              test "$(sha256sum /evidence/SHA256SUMS | awk '{print $1}')" = "$BUNDLE_DIGEST"
-              cd /evidence && sha256sum -c SHA256SUMS
-          env:
-            - {name: RELEASE_ID, value: "@@RELEASE_ID@@"}
-            - {name: BUNDLE_DIGEST, value: "@@EVIDENCE_BUNDLE_DIGEST@@"}
-          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+            - verify-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/live/receipt.json
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
           resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
-          volumeMounts: [{name: evidence, mountPath: /evidence, readOnly: true}]
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
       containers:
         - name: runtime
           image: "@@RUNTIME_IMAGE@@"
@@ -2511,6 +2774,36 @@ spec:
             - {name: runtime-config, mountPath: /etc/agenttrust/config/production-runtime.json, subPath: production-runtime.json, readOnly: true}
             - {name: secrets, mountPath: /etc/agenttrust/secrets/runtime, readOnly: true}
             - {name: evidence, mountPath: /var/lib/agenttrust/evidence, readOnly: true}
+            - {name: activation-state, mountPath: /run/agenttrust/activation, subPath: live, readOnly: true}
+        - name: activation-watcher
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - watch-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/current-revocation-registry.json
+            - /trust/current-revocation-projection.json
+            - /trust/revocation-projection-public-key.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/live/receipt.json
+            - 127.0.0.1:8091
+          ports: [{name: activation-watch, containerPort: 8091}]
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          readinessProbe:
+            exec: {command: ["/usr/local/bin/production-closure", "check-activation-watch", "127.0.0.1:8091"]}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
         - name: mtls-ingress
           image: "@@ENVOY_IMAGE@@"
           args: ["-c", "/etc/envoy/envoy.yaml", "--concurrency", "2"]
@@ -2528,7 +2821,10 @@ spec:
         - {name: envoy-config, configMap: {name: agenttrust-envoy-runtime}}
         - name: secrets
           csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-production-runtime}}
-        - {name: evidence, persistentVolumeClaim: {claimName: agenttrust-release-evidence, readOnly: true}}
+        - {name: evidence, persistentVolumeClaim: {claimName: agenttrust-release-evidence-@@RELEASE_NAME@@, readOnly: true}}
+        - name: admission-trust
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-release-admission}}
+        - {name: activation-state, emptyDir: {medium: Memory, sizeLimit: 2Mi}}
         - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 64Mi}}
 ---
 apiVersion: v1
@@ -2758,6 +3054,34 @@ spec:
       enableServiceLinks: false
       securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
       topologySpreadConstraints: [{maxSkew: 1, minDomains: 3, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: DoNotSchedule, labelSelector: {matchLabels: {app.kubernetes.io/name: agenttrust-platform-sre}}}]
+      initContainers:
+        - name: prepare-activation-state
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args: ["prepare-activation-directory", "/activation/live"]
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 5m, memory: 8Mi}, limits: {cpu: 50m, memory: 32Mi}}
+          volumeMounts:
+            - {name: activation-state, mountPath: /activation}
+        - name: verify-release-activation
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - verify-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/live/receipt.json
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
       containers:
         - name: authority
           image: "@@PLATFORM_SRE_IMAGE@@"
@@ -2820,8 +3144,69 @@ spec:
           resources: {requests: {cpu: 250m, memory: 256Mi}, limits: {cpu: "2", memory: 2Gi}}
           readinessProbe: {httpGet: {path: /ready, port: management}, periodSeconds: 5, failureThreshold: 3}
           livenessProbe: {httpGet: {path: /live, port: management}, periodSeconds: 10, failureThreshold: 3}
-          volumeMounts: [{name: secrets, mountPath: /var/run/agenttrust/secrets/platform-sre, readOnly: true}, {name: tmp, mountPath: /tmp}]
-      volumes: [{name: secrets, csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-platform-sre}}}, {name: tmp, emptyDir: {medium: Memory, sizeLimit: 128Mi}}]
+          volumeMounts:
+            - {name: secrets, mountPath: /var/run/agenttrust/secrets/platform-sre, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+        - name: activation-watcher
+          image: "@@RELEASE_ADMISSION_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          args:
+            - watch-activation
+            - /evidence/production-certificate.json
+            - /evidence/closure-report.json
+            - /evidence/closure-input.json
+            - /trust/closure-public-key.json
+            - /evidence/revocation-registry.json
+            - /trust/current-revocation-registry.json
+            - /trust/current-revocation-projection.json
+            - /trust/revocation-projection-public-key.json
+            - /trust/revocation-public-key.json
+            - /evidence/activation-expectation.json
+            - /activation/live/receipt.json
+            - 127.0.0.1:8091
+          ports: [{name: activation-watch, containerPort: 8091}]
+          securityContext: {runAsNonRoot: true, runAsUser: 65531, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 10m, memory: 16Mi}, limits: {cpu: 100m, memory: 64Mi}}
+          readinessProbe:
+            exec: {command: ["/usr/local/bin/production-closure", "check-activation-watch", "127.0.0.1:8091"]}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          volumeMounts:
+            - {name: evidence, mountPath: /evidence, readOnly: true}
+            - {name: admission-trust, mountPath: /trust, readOnly: true}
+            - {name: activation-state, mountPath: /activation}
+        - name: activation-lease-renewer
+          image: "@@RUNTIME_IMAGE@@"
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/agenttrust-activation-lease-renewer"]
+          env:
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_RELEASE_ID, value: "@@RELEASE_ID@@"}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_WATCHER_URL, value: http://127.0.0.1:8091/ready}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_LISTEN, value: 127.0.0.1:8092}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_FILE, value: /activation/live/receipt.json}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_OWNER_UID, value: "65531"}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_READER_GID, value: "65532"}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/platform-sre/database-url}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_DATABASE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/platform-sre/database-password}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_DATABASE_CA_FILE, value: /var/run/agenttrust/secrets/platform-sre/database-ca.pem}
+            - {name: AGENT_TRUST_ACTIVATION_LEASE_DATABASE_EXPECTED_ROLE, value: "@@PLATFORM_SRE_APPLICATION_ROLE@@"}
+          ports: [{name: activation-lease, containerPort: 8092}]
+          securityContext: {runAsNonRoot: true, runAsUser: 65532, runAsGroup: 65532, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {cpu: 200m, memory: 128Mi}}
+          readinessProbe: {httpGet: {path: /ready, port: activation-lease}, periodSeconds: 5, timeoutSeconds: 2, failureThreshold: 2}
+          livenessProbe: {tcpSocket: {port: activation-lease}, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          volumeMounts:
+            - {name: secrets, mountPath: /var/run/agenttrust/secrets/platform-sre, readOnly: true}
+            - {name: activation-state, mountPath: /activation, readOnly: true}
+      volumes:
+        - name: secrets
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-platform-sre}}
+        - {name: evidence, persistentVolumeClaim: {claimName: agenttrust-release-evidence-@@RELEASE_NAME@@, readOnly: true}}
+        - name: admission-trust
+          csi: {driver: secrets-store.csi.k8s.io, readOnly: true, volumeAttributes: {secretProviderClass: agenttrust-release-admission}}
+        - {name: activation-state, emptyDir: {medium: Memory, sizeLimit: 2Mi}}
+        - {name: tmp, emptyDir: {medium: Memory, sizeLimit: 128Mi}}
 ---
 apiVersion: v1
 kind: Service

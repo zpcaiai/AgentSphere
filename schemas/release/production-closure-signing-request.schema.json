@@ -8,21 +8,31 @@
   "properties": {
     "schema_version": {"const": "agenttrust.production-closure-signing-request.v1"},
     "algorithm": {"const": "Ed25519"},
-    "key_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
     "certificate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version", "certificate_id", "release_id", "scope_digest", "report_digest", "production_closure", "issued_at", "expires_at", "key_id", "signature"],
+      "required": [
+        "schema_version", "certificate_id", "release_id", "scope_digest", "input_digest",
+        "report_digest", "signed_git_provenance_digest", "signed_release_binding_digest",
+        "release_digest", "reviewer_keyring_digest", "production_closure", "issued_at",
+        "expires_at", "key_id", "signature"
+      ],
       "properties": {
         "schema_version": {"const": "agenttrust.production-closure.v1"},
         "certificate_id": {"type": "string", "pattern": "^pc-[a-f0-9]{24}$"},
-        "release_id": {"type": "string", "minLength": 1},
+        "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
         "scope_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "input_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "report_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "signed_git_provenance_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "signed_release_binding_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "release_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "reviewer_keyring_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
         "production_closure": {"const": true},
         "issued_at": {"type": "string", "format": "date-time"},
         "expires_at": {"type": "string", "format": "date-time"},
-        "key_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+        "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
         "signature": {"const": ""}
       }
     },

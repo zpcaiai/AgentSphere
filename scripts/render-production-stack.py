@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import ipaddress
 import json
 import os
@@ -20,13 +21,19 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from python.production_gates.git_provenance import (  # noqa: E402
+    canonical_json,
     signed_git_provenance_digest,
     verify_signed_git_provenance,
 )
 from python.production_gates.live_integrations import GateError  # noqa: E402
 from python.production_gates.release_binding import (  # noqa: E402
     build_release_binding,
+    signed_release_binding_digest,
     verify_signed_release_binding,
+)
+from python.production_gates.release_activation import (  # noqa: E402
+    ActivationError,
+    verify_activation_documents,
 )
 
 
@@ -57,6 +64,7 @@ IMAGE_KEYS = {
     "enterprise_authority", "model_gateway", "data_governance", "context_governance",
     "runtime_anomaly", "security_evaluation", "pack_supply_chain", "domain_runtime",
     "platform_sre", "console", "migration", "envoy", "utility",
+    "release_admission", "sandbox_worker",
 }
 VAULT_KEYS = {
     "address", "runtime_role", "runtime_path", "orchestrator_role",
@@ -79,6 +87,7 @@ VAULT_KEYS = {
     "domain_runtime_role", "domain_runtime_path",
     "platform_sre_role", "platform_sre_path",
     "migration_role", "migration_path",
+    "release_admission_role", "release_admission_path",
 }
 FACT_KEYS = {"policy", "approval", "credential", "ledger", "evaluator", "evidence", "supervisor"}
 AUTHORITY_KEYS = {
@@ -338,7 +347,9 @@ def reject_placeholders(value: object) -> None:
             reject_placeholders(nested)
 
 
-def validate_runtime_config(value: object) -> Mapping[str, Any]:
+def validate_runtime_config(
+    value: object, expected_release_id: str
+) -> Mapping[str, Any]:
     if not isinstance(value, dict):
         raise RenderError("PRODUCTION_STACK_RUNTIME_CONFIG_INVALID")
     reject_placeholders(value)
@@ -349,9 +360,29 @@ def validate_runtime_config(value: object) -> Mapping[str, Any]:
     ):
         raise RenderError("PRODUCTION_STACK_RUNTIME_CONFIG_INVALID")
     identity = value.get("identity")
+    activation = value.get("activation_guardian")
     endpoints = value.get("endpoints")
     evidence = value.get("evidence_files")
     model_versions = value.get("model_versions")
+    if (
+        not isinstance(activation, dict)
+        or set(activation) != {
+            "release_id",
+            "receipt_path",
+            "max_staleness_seconds",
+            "receipt_owner_uid",
+            "receipt_reader_gid",
+        }
+        or activation.get("release_id") != expected_release_id
+        or activation.get("receipt_path")
+        != "/run/agenttrust/activation/receipt.json"
+        or not isinstance(activation.get("max_staleness_seconds"), int)
+        or isinstance(activation.get("max_staleness_seconds"), bool)
+        or not 1 <= activation["max_staleness_seconds"] <= 60
+        or activation.get("receipt_owner_uid") != 65531
+        or activation.get("receipt_reader_gid") != 65532
+    ):
+        raise RenderError("PRODUCTION_STACK_ACTIVATION_GUARDIAN_INVALID")
     if not isinstance(identity, dict) or identity.get("require_mtls_peer") is not True:
         raise RenderError("PRODUCTION_STACK_RUNTIME_IDENTITY_INVALID")
     require_https(
@@ -430,6 +461,7 @@ def render(
     git_provenance_keyring: object,
     release_binding: object,
     release_binding_keyring: object,
+    activation_receipt: object,
 ) -> str:
     top_keys = {
         "schema_version", "release_id", "release_digest", "images", "database", "temporal",
@@ -444,6 +476,43 @@ def render(
     if not GIT_RELEASE_ID.fullmatch(release_id):
         raise RenderError("PRODUCTION_STACK_RELEASE_ID_INVALID")
     release_digest = require_text(values["release_digest"], "PRODUCTION_STACK_RELEASE_DIGEST_INVALID", DIGEST)
+    if (
+        not isinstance(activation_receipt, dict)
+        or set(activation_receipt) != {
+            "schema_version", "admitted", "release_id", "certificate_id",
+            "scope_digest", "input_digest", "report_digest",
+            "production_image_manifest_digest", "evidence_bundle_manifest_digest",
+            "activation_material_digest", "revocation_registry_id",
+            "revocation_registry_sequence", "revocation_registry_digest",
+            "verified_at", "valid_until",
+        }
+        or activation_receipt.get("schema_version")
+        != "agenttrust.production-release-activation-receipt.v1"
+        or activation_receipt.get("admitted") is not True
+        or activation_receipt.get("release_id") != release_id
+        or not isinstance(activation_receipt.get("certificate_id"), str)
+        or not re.fullmatch(r"pc-[0-9a-f]{24}", activation_receipt["certificate_id"])
+        or not isinstance(activation_receipt.get("revocation_registry_sequence"), int)
+        or isinstance(activation_receipt.get("revocation_registry_sequence"), bool)
+        or activation_receipt["revocation_registry_sequence"] < 1
+        or not isinstance(activation_receipt.get("revocation_registry_digest"), str)
+        or not DIGEST.fullmatch(activation_receipt["revocation_registry_digest"])
+        or any(
+            not isinstance(activation_receipt.get(field), str)
+            or not DIGEST.fullmatch(activation_receipt[field])
+            for field in (
+                "scope_digest", "input_digest", "report_digest",
+                "production_image_manifest_digest", "evidence_bundle_manifest_digest",
+                "activation_material_digest",
+            )
+        )
+        or not isinstance(activation_receipt.get("verified_at"), str)
+        or not isinstance(activation_receipt.get("valid_until"), str)
+    ):
+        raise RenderError("PRODUCTION_STACK_ACTIVATION_RECEIPT_INVALID")
+    activation_receipt_digest = hashlib.sha256(
+        canonical_json(activation_receipt)
+    ).hexdigest()
     try:
         provenance_report = verify_signed_git_provenance(
             git_provenance, git_provenance_keyring
@@ -1201,6 +1270,8 @@ def render(
     require_text(evidence["persistent_volume_name"], "PRODUCTION_STACK_EVIDENCE_PV_INVALID", NAME)
     require_text(evidence["bundle_digest"], "PRODUCTION_STACK_EVIDENCE_DIGEST_INVALID", DIGEST)
     require_text(evidence["storage_size"], "PRODUCTION_STACK_EVIDENCE_SIZE_INVALID", STORAGE)
+    if activation_receipt["evidence_bundle_manifest_digest"] != evidence["bundle_digest"]:
+        raise RenderError("PRODUCTION_STACK_ACTIVATION_EVIDENCE_MISMATCH")
 
     ingress = require_mapping(
         values["ingress"], "ingress",
@@ -1475,7 +1546,7 @@ def render(
                 f"PRODUCTION_STACK_{key.upper()}_AUTHORITY_READINESS_SCHEMA_MISMATCH"
             )
 
-    runtime = validate_runtime_config(runtime_config)
+    runtime = validate_runtime_config(runtime_config, release_id)
     release_name_base = re.sub(r"[^a-z0-9-]+", "-", release_id.lower()).strip("-")[:40]
     if not release_name_base:
         raise RenderError("PRODUCTION_STACK_RELEASE_ID_INVALID")
@@ -1486,6 +1557,14 @@ def render(
     replacements = {
         "RELEASE_ID": release_id, "RELEASE_NAME": release_name,
         "RELEASE_DIGEST": release_digest,
+        "ACTIVATION_RECEIPT_DIGEST": activation_receipt_digest,
+        "PRODUCTION_CERTIFICATE_ID": activation_receipt["certificate_id"],
+        "REVOCATION_REGISTRY_SEQUENCE": activation_receipt[
+            "revocation_registry_sequence"
+        ],
+        "REVOCATION_REGISTRY_DIGEST": activation_receipt[
+            "revocation_registry_digest"
+        ],
         "RUNTIME_CONFIG": runtime_indented,
         "EVIDENCE_BUNDLE_DIGEST": evidence["bundle_digest"],
         "EVIDENCE_PV_NAME": evidence["persistent_volume_name"],
@@ -1792,13 +1871,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--git-provenance-keyring", type=Path, required=True)
     parser.add_argument("--release-binding", type=Path, required=True)
     parser.add_argument("--release-binding-keyring", type=Path, required=True)
+    parser.add_argument("--activation", type=Path, required=True)
+    parser.add_argument("--closure-report", type=Path, required=True)
+    parser.add_argument("--production-certificate", type=Path, required=True)
+    parser.add_argument("--closure-public-key", type=Path, required=True)
+    parser.add_argument("--revocation-registry", type=Path, required=True)
+    parser.add_argument("--revocation-public-key", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    input_paths = (
+        args.template, args.values, args.runtime_config, args.git_provenance,
+        args.git_provenance_keyring, args.release_binding,
+        args.release_binding_keyring, args.activation, args.closure_report,
+        args.production_certificate, args.closure_public_key,
+        args.revocation_registry, args.revocation_public_key,
+    )
     if (
-        not args.template.is_file() or not args.values.is_file() or not args.runtime_config.is_file()
-        or not args.git_provenance.is_file() or not args.git_provenance_keyring.is_file()
-        or not args.release_binding.is_file() or not args.release_binding_keyring.is_file()
-        or not args.output.is_absolute() or args.output.exists()
+        any(
+            not path.is_absolute()
+            or path.is_symlink()
+            or not path.is_file()
+            or not 1 <= path.stat().st_size <= 128 * 1024 * 1024
+            for path in input_paths
+        )
+        or args.template.stat().st_size > 8 * 1024 * 1024
+        or not args.output.is_absolute()
+        or args.output.exists()
+        or not args.output.parent.is_dir()
     ):
         raise RenderError("PRODUCTION_STACK_PATH_INVALID")
     try:
@@ -1812,10 +1911,48 @@ def main(argv: Sequence[str] | None = None) -> int:
         release_binding_keyring = json.loads(
             args.release_binding_keyring.read_text(encoding="utf-8")
         )
+        activation = json.loads(args.activation.read_text(encoding="utf-8"))
+        closure_report = json.loads(args.closure_report.read_text(encoding="utf-8"))
+        production_certificate = json.loads(
+            args.production_certificate.read_text(encoding="utf-8")
+        )
+        closure_public_key = json.loads(args.closure_public_key.read_text(encoding="utf-8"))
+        revocation_registry = json.loads(args.revocation_registry.read_text(encoding="utf-8"))
+        revocation_public_key = json.loads(
+            args.revocation_public_key.read_text(encoding="utf-8")
+        )
     except (OSError, json.JSONDecodeError) as error:
         raise RenderError("PRODUCTION_STACK_INPUT_JSON_INVALID") from error
     if not isinstance(values, dict):
         raise RenderError("PRODUCTION_STACK_VALUES_INVALID")
+    try:
+        activation_receipt = verify_activation_documents(
+            activation=activation,
+            report=closure_report,
+            certificate=production_certificate,
+            certificate_key=closure_public_key,
+            revocation_registry=revocation_registry,
+            revocation_key=revocation_public_key,
+        )
+    except ActivationError as error:
+        raise RenderError("PRODUCTION_STACK_ACTIVATION_INVALID") from error
+    if (
+        not isinstance(activation, dict)
+        or activation.get("release_id") != values.get("release_id")
+        or activation.get("images") != values.get("images")
+        or not isinstance(values.get("evidence"), dict)
+        or activation.get("evidence_bundle_manifest_digest")
+        != values["evidence"].get("bundle_digest")
+        or not isinstance(activation.get("production_image_manifest"), dict)
+        or activation["production_image_manifest"].get("manifest_digest")
+        != activation_receipt.get("production_image_manifest_digest")
+        or activation_receipt.get("evidence_bundle_manifest_digest")
+        != values["evidence"].get("bundle_digest")
+        or activation.get("signed_release_binding_digest")
+        != signed_release_binding_digest(release_binding)
+        or activation_receipt.get("admitted") is not True
+    ):
+        raise RenderError("PRODUCTION_STACK_ACTIVATION_BINDING_MISMATCH")
     rendered = render(
         args.template.read_text(encoding="utf-8"),
         values,
@@ -1824,6 +1961,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         git_provenance_keyring=git_provenance_keyring,
         release_binding=release_binding,
         release_binding_keyring=release_binding_keyring,
+        activation_receipt=activation_receipt,
     )
     descriptor = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as stream:

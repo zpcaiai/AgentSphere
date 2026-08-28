@@ -15,6 +15,7 @@ use agent_trust_policy_pep::RuntimeControlPort;
 use agent_trust_production_closure::EvidenceSourcePort;
 use agent_trust_production_runtime::{
     ProductionAdapterSet, ProductionOrchestratorBinding,
+    activation::ActivationGuardian,
     adapters::{
         ControlledModelTransport, HttpIndustrialAdapter, HttpOrchestratorAdapter,
         ProductionIdentityVerifier, ProductionModelAdapter, RefreshingJwksProvider,
@@ -295,6 +296,7 @@ fn compiled_adapter_traits_are_complete() {
     lifecycle::<HttpLifecyclePropagationPort>();
     send_sync::<A2aPeerClient>();
     send_sync::<ProductionAdapterSet>();
+    send_sync::<ActivationGuardian>();
 
     fn assert_a2a_surface(client: &A2aPeerClient, request: &A2aSubmission) {
         drop(client.agent_card("peer"));
@@ -425,6 +427,38 @@ fn example_configuration_binds_every_adapter_fail_closed() {
         config.get("fail_closed").and_then(Value::as_bool),
         Some(true)
     );
+    let activation = config
+        .get("activation_guardian")
+        .and_then(Value::as_object)
+        .unwrap_or_else(|| panic!("continuous activation guardian is required"));
+    assert_eq!(activation.len(), 5);
+    let release_id = activation
+        .get("release_id")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("activation release_id is required"));
+    assert!(
+        release_id.strip_prefix("git:sha256:").is_some_and(
+            |digest| digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit())
+        )
+    );
+    assert_eq!(
+        activation.get("receipt_owner_uid").and_then(Value::as_u64),
+        Some(65531)
+    );
+    assert_eq!(
+        activation.get("receipt_reader_gid").and_then(Value::as_u64),
+        Some(65532)
+    );
+    assert_absolute(
+        activation.get("receipt_path"),
+        "dynamic activation receipt path",
+    );
+    assert!(
+        activation
+            .get("max_staleness_seconds")
+            .and_then(Value::as_u64)
+            .is_some_and(|seconds| (1..=60).contains(&seconds))
+    );
     let endpoints = config
         .get("endpoints")
         .and_then(Value::as_object)
@@ -497,6 +531,89 @@ fn example_configuration_binds_every_adapter_fail_closed() {
             }
             other => panic!("unsupported configuration binding: {other}"),
         }
+    }
+}
+
+#[test]
+fn continuous_activation_guard_reloads_before_readiness_and_production_operations() {
+    let root = workspace_root();
+    let activation =
+        fs::read_to_string(root.join("rust/crates/production-runtime/src/activation.rs"))
+            .unwrap_or_else(|error| panic!("activation guardian source: {error}"));
+    for binding in [
+        "read_protected_receipt(&self.config.receipt_path)",
+        "parse_strict_json(",
+        "receipt.verify_digest()",
+        "receipt.release_id != config.release_id",
+        "receipt.valid_until <= checked_at",
+        "receipt.verified_at > checked_at",
+        "mode != 0o440",
+        "before.uid() != 0",
+        "O_NOFOLLOW",
+        "before.nlink() != 1",
+    ] {
+        assert!(
+            activation.contains(binding),
+            "missing activation binding {binding}"
+        );
+    }
+    assert!(
+        implementation_scope(&activation, "pub struct ActivationGuardian")
+            .contains("config: ActivationGuardianConfig")
+    );
+    assert!(!activation.contains("cached_receipt"));
+
+    let runtime = fs::read_to_string(root.join("rust/crates/production-runtime/src/lib.rs"))
+        .unwrap_or_else(|error| panic!("runtime source: {error}"));
+    let binding = implementation_scope(
+        &runtime,
+        "impl OrchestratorSubmissionPort for ProductionOrchestratorBinding",
+    );
+    for method in [
+        "submit",
+        "get",
+        "cancel",
+        "kill",
+        "stream_snapshot",
+        "ready",
+    ] {
+        assert!(
+            binding.contains(&format!("fn {method}(")),
+            "missing {method}"
+        );
+    }
+    assert!(binding.matches("require_activation").count() >= 7);
+
+    let adapters = fs::read_to_string(root.join("rust/crates/production-runtime/src/adapters.rs"))
+        .unwrap_or_else(|error| panic!("adapter source: {error}"));
+    let raw_orchestrator = implementation_scope(
+        &adapters,
+        "impl OrchestratorSubmissionPort for HttpOrchestratorAdapter",
+    );
+    assert!(raw_orchestrator.matches("require_activation").count() >= 7);
+
+    let execution =
+        fs::read_to_string(root.join("rust/crates/production-runtime/src/execution.rs"))
+            .unwrap_or_else(|error| panic!("execution source: {error}"));
+    let coordinator =
+        implementation_scope(&execution, "impl<M, R, A, P, T, E, L> ExecutionCoordinator");
+    assert!(coordinator.matches("self.require_activation()").count() >= 6);
+
+    let service = fs::read_to_string(
+        root.join("rust/crates/production-runtime/src/bin/agenttrust-execution-service.rs"),
+    )
+    .unwrap_or_else(|error| panic!("execution service source: {error}"));
+    for variable in [
+        "AGENT_TRUST_EXECUTION_ACTIVATION_RELEASE_ID",
+        "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_FILE",
+        "AGENT_TRUST_EXECUTION_ACTIVATION_MAX_STALENESS_SECONDS",
+        "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_OWNER_UID",
+        "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_READER_GID",
+    ] {
+        assert!(
+            service.contains(variable),
+            "missing execution binding {variable}"
+        );
     }
 }
 

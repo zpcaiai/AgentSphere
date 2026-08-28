@@ -5,10 +5,12 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 [dependencies]
+agent-trust-action-ir = { path = "../action-ir" }
 agent-trust-contracts = { path = "../contracts" }
 agent-trust-policy-pep = { path = "../policy-pep" }
 agent-trust-registry = { path = "../registry" }
 async-trait.workspace = true
+base64.workspace = true
 chrono.workspace = true
 ed25519-dalek.workspace = true
 nix.workspace = true

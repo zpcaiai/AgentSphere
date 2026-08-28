@@ -72,7 +72,7 @@ paths:
             schema: {$ref: '../model-gateway/model-execution.schema.json#/$defs/request'}
       responses:
         '200':
-          description: Ordered bounded SSE. Only the terminal event carries usage and signed Evidence references.
+          description: Ordered bounded DLP_VERIFIED_BUFFERED SSE released only after WORM persistence and signed Evidence. Only the terminal event carries usage and Evidence references.
           content:
             text/event-stream:
               schema:
@@ -288,7 +288,7 @@ components:
     BillingStatement:
       type: object
       additionalProperties: false
-      required: [schema_version, tenant_id, canonical_action, provider_id, statement_period, statement_digest, residency_policy_evidence_digest, lines]
+      required: [schema_version, tenant_id, canonical_action, provider_id, statement_period, statement_digest, residency_policy_evidence_digest, lines, provider_attestation]
       properties:
         schema_version: {const: agenttrust.model-billing-statement.v1}
         tenant_id: {$ref: '#/components/schemas/Uuid'}
@@ -300,10 +300,26 @@ components:
           allOf: [{$ref: '#/components/schemas/Digest'}]
           description: Digest of the completed Batch 18 policy mutation Evidence that authorized the billed residency path.
         lines: {type: array, minItems: 1, maxItems: 100000, items: {$ref: '#/components/schemas/BillingLine'}}
+        provider_attestation: {$ref: '#/components/schemas/ProviderBillingAttestation'}
+    ProviderBillingAttestation:
+      type: object
+      additionalProperties: false
+      required: [schema_version, provider_id, statement_period, statement_digest, issued_at, expires_at, issuer, key_id, key_usage, signature]
+      properties:
+        schema_version: {const: agenttrust.model-provider-billing-attestation.v1}
+        provider_id: {type: string, minLength: 1, maxLength: 128}
+        statement_period: {type: string, minLength: 1, maxLength: 64}
+        statement_digest: {$ref: '#/components/schemas/Digest'}
+        issued_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+        issuer: {type: string, minLength: 1, maxLength: 256}
+        key_id: {type: string, minLength: 1, maxLength: 128}
+        key_usage: {const: MODEL_PROVIDER_BILLING}
+        signature: {type: string, minLength: 86, maxLength: 86, pattern: '^[A-Za-z0-9_-]+$'}
     BillingReconciliation:
       type: object
       additionalProperties: false
-      required: [schema_version, matched, matched_requests, total_metered_microunits, total_billed_microunits, statement_digest, evidence_ref, evidence_digest]
+      required: [schema_version, matched, matched_requests, total_metered_microunits, total_billed_microunits, statement_digest, provider_attestation_digest, evidence_ref, evidence_digest]
       properties:
         schema_version: {const: agenttrust.model-billing-reconciliation.v1}
         matched: {type: boolean}
@@ -311,6 +327,7 @@ components:
         total_metered_microunits: {type: integer, minimum: 0}
         total_billed_microunits: {type: integer, minimum: 0}
         statement_digest: {$ref: '#/components/schemas/Digest'}
+        provider_attestation_digest: {$ref: '#/components/schemas/Digest'}
         evidence_ref: {type: string, minLength: 1, maxLength: 512}
         evidence_digest: {$ref: '#/components/schemas/Digest'}
     Error:

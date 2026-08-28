@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-transition-receipt.schema.json",
+  "title": "Monotonic production deployment transition receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "transition_id", "transition_type", "source_release_id",
+    "target_release_id", "environment_reference", "sequence", "previous_transition_digest",
+    "writer_fence_receipt_digest", "inventory_digest", "traffic_revision", "writes_fenced",
+    "from_state", "to_state", "evidence_digests", "observed_at", "valid_until",
+    "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-transition-receipt.v1"},
+    "transition_id": {"type": "string", "format": "uuid"},
+    "transition_type": {"enum": ["CUTOVER", "ROLLBACK", "UNFREEZE"]},
+    "source_release_id": {"$ref": "#/$defs/releaseId"},
+    "target_release_id": {"$ref": "#/$defs/releaseId"},
+    "environment_reference": {"$ref": "#/$defs/environment"},
+    "sequence": {"type": "integer", "minimum": 1, "maximum": 3},
+    "previous_transition_digest": {"$ref": "#/$defs/digest"},
+    "writer_fence_receipt_digest": {"$ref": "#/$defs/digest"},
+    "inventory_digest": {"$ref": "#/$defs/digest"},
+    "traffic_revision": {"$ref": "#/$defs/identifier"},
+    "writes_fenced": {"type": "boolean"},
+    "from_state": {"enum": ["DRAINED", "CUTOVER_COMMITTED", "ROLLBACK_COMMITTED"]},
+    "to_state": {"enum": ["CUTOVER_COMMITTED", "ROLLBACK_COMMITTED", "SOURCE_ACTIVE", "TARGET_ACTIVE"]},
+    "evidence_digests": {
+      "type": "object", "minProperties": 3, "maxProperties": 3,
+      "additionalProperties": {"$ref": "#/$defs/digest"}
+    },
+    "observed_at": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "receipt_digest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"transition_type": {"const": "CUTOVER"}},
+        "required": ["transition_type"]
+      },
+      "then": {
+        "properties": {
+          "sequence": {"const": 1},
+          "previous_transition_digest": {"const": "0000000000000000000000000000000000000000000000000000000000000000"},
+          "writes_fenced": {"const": true},
+          "from_state": {"const": "DRAINED"},
+          "to_state": {"const": "CUTOVER_COMMITTED"},
+          "evidence_digests": {"$ref": "#/$defs/cutoverEvidence"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"transition_type": {"const": "ROLLBACK"}},
+        "required": ["transition_type"]
+      },
+      "then": {
+        "properties": {
+          "sequence": {"const": 2},
+          "previous_transition_digest": {
+            "allOf": [
+              {"$ref": "#/$defs/digest"},
+              {"not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}}
+            ]
+          },
+          "writes_fenced": {"const": true},
+          "from_state": {"const": "CUTOVER_COMMITTED"},
+          "to_state": {"const": "ROLLBACK_COMMITTED"},
+          "evidence_digests": {"$ref": "#/$defs/rollbackEvidence"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"transition_type": {"const": "UNFREEZE"}},
+        "required": ["transition_type"]
+      },
+      "then": {
+        "properties": {
+          "previous_transition_digest": {
+            "allOf": [
+              {"$ref": "#/$defs/digest"},
+              {"not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}}
+            ]
+          },
+          "writes_fenced": {"const": false},
+          "evidence_digests": {"$ref": "#/$defs/unfreezeEvidence"}
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "sequence": {"const": 2},
+              "from_state": {"const": "CUTOVER_COMMITTED"},
+              "to_state": {"const": "TARGET_ACTIVE"}
+            }
+          },
+          {
+            "properties": {
+              "sequence": {"const": 3},
+              "from_state": {"const": "ROLLBACK_COMMITTED"},
+              "to_state": {"const": "SOURCE_ACTIVE"}
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "environment": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"},
+    "cutoverEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cutover_operation", "health_observation", "traffic_observation"],
+      "properties": {
+        "cutover_operation": {"$ref": "#/$defs/digest"},
+        "health_observation": {"$ref": "#/$defs/digest"},
+        "traffic_observation": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "rollbackEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["health_observation", "rollback_operation", "traffic_observation"],
+      "properties": {
+        "health_observation": {"$ref": "#/$defs/digest"},
+        "rollback_operation": {"$ref": "#/$defs/digest"},
+        "traffic_observation": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "unfreezeEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control_plane_observation", "traffic_observation", "write_unfreeze"],
+      "properties": {
+        "control_plane_observation": {"$ref": "#/$defs/digest"},
+        "traffic_observation": {"$ref": "#/$defs/digest"},
+        "write_unfreeze": {"$ref": "#/$defs/digest"}
+      }
+    }
+  }
+}

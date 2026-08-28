@@ -1,0 +1,13 @@
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN cargo build --locked --release -p agent-trust-sandbox-runtime --bin agenttrust-gvisor-worker
+
+FROM ${RUNTIME_BASE_IMAGE}
+LABEL io.agenttrust.execution-mode="native-systemd-artifact-transport-only"
+COPY --from=build /src/target/release/agenttrust-gvisor-worker /usr/local/bin/agenttrust-gvisor-worker
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/agenttrust-gvisor-worker"]

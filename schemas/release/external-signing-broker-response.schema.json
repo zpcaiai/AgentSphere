@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/external-signing-broker-response.schema.json",
+  "title": "External signing broker response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "request_digest", "request_kind", "key_id", "algorithm", "payload_sha256", "signature", "signed_at", "audit_receipt_digest", "audit_receipt", "audit_signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.external-signing-broker-response.v1"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "request_digest": {"$ref": "#/$defs/digest"},
+    "request_kind": {"enum": ["PRODUCTION_CLOSURE_CERTIFICATE", "PRODUCTION_CLOSURE_REVOCATION_REGISTRY"]},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "algorithm": {"const": "Ed25519"},
+    "payload_sha256": {"$ref": "#/$defs/digest"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"},
+    "signed_at": {"type": "string", "format": "date-time"},
+    "audit_receipt_digest": {"$ref": "#/$defs/digest"},
+    "audit_receipt": {"$ref": "external-signing-audit-receipt.schema.json"},
+    "audit_signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

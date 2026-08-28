@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-activation-expectation.schema.json",
+  "title": "Production Closure Activation Expectation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "release_id", "scope_digest", "build_digest", "release_digest", "topology_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure-activation-expectation.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "build_digest": {"$ref": "#/$defs/digest"},
+    "release_digest": {"$ref": "#/$defs/digest"},
+    "topology_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

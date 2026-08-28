@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-cutover-broker-request.schema.json",
+  "title": "Digest-bound external deployment cutover request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "request_id", "source_release_id", "target_release_id",
+    "environment_reference", "operation", "expected_previous_transition_digest",
+    "writer_fence_receipt_digest", "requested_at", "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-cutover-broker-request.v1"},
+    "request_id": {"type": "string", "pattern": "^deployment-cutover-[0-9a-f]{32}$"},
+    "source_release_id": {"$ref": "#/$defs/releaseId"},
+    "target_release_id": {"$ref": "#/$defs/releaseId"},
+    "environment_reference": {"$ref": "#/$defs/environment"},
+    "operation": {"enum": ["WRITER_FENCE", "CUTOVER", "ROLLBACK", "UNFREEZE"]},
+    "expected_previous_transition_digest": {"$ref": "#/$defs/digest"},
+    "writer_fence_receipt_digest": {"$ref": "#/$defs/digest"},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "idempotency_key": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"operation": {"enum": ["WRITER_FENCE", "CUTOVER"]}}, "required": ["operation"]},
+      "then": {"properties": {"expected_previous_transition_digest": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}}},
+      "else": {"properties": {"expected_previous_transition_digest": {"not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}}}}
+    },
+    {
+      "if": {"properties": {"operation": {"const": "WRITER_FENCE"}}, "required": ["operation"]},
+      "then": {"properties": {"writer_fence_receipt_digest": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}}},
+      "else": {"properties": {"writer_fence_receipt_digest": {"not": {"const": "0000000000000000000000000000000000000000000000000000000000000000"}}}}
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "environment": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"}
+  }
+}

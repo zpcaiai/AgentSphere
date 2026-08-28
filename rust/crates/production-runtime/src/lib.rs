@@ -4,14 +4,17 @@
 //! fail-closed business logic; this crate owns network, TLS, credential-file and filesystem
 //! bindings. Constructing the complete adapter set validates every mandatory endpoint.
 
+pub mod activation;
 pub mod adapters;
 pub mod config;
+pub mod database;
 pub mod execution;
 pub mod execution_server;
 pub mod http;
 pub mod ops;
 pub mod protocols;
 
+use activation::ActivationGuardian;
 use adapters::{
     ControlledModelTransport, HttpIndustrialAdapter, HttpOrchestratorAdapter,
     ProductionIdentityVerifier, ProductionModelAdapter, SecretBrokerCredentialLifecycle,
@@ -37,6 +40,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 pub struct ProductionAdapterSet {
+    pub activation_guardian: Arc<ActivationGuardian>,
     pub identity: Arc<ProductionIdentityVerifier>,
     pub orchestrator: Arc<HttpOrchestratorAdapter>,
     pub model_transport: ControlledModelTransport,
@@ -60,6 +64,10 @@ pub struct ProductionAdapterSet {
 impl ProductionAdapterSet {
     pub fn from_config(config: &ProductionRuntimeConfig) -> Result<Self, ConfigurationError> {
         config.validate()?;
+        let activation_guardian = Arc::new(
+            ActivationGuardian::new(config.activation_guardian.clone())
+                .map_err(|_| ConfigurationError::Invalid)?,
+        );
         let endpoint = |name: &str| -> Result<SecureHttpTransport, ConfigurationError> {
             SecureHttpTransport::new(
                 config
@@ -87,8 +95,13 @@ impl ProductionAdapterSet {
                     .ok_or(ConfigurationError::Invalid)?;
                 model_adapters.insert(
                     profile.to_string(),
-                    ProductionModelAdapter::new(profile.to_string(), model.clone(), transport)
-                        .map_err(|_| ConfigurationError::Invalid)?,
+                    ProductionModelAdapter::new(
+                        profile.to_string(),
+                        model.clone(),
+                        transport,
+                        activation_guardian.clone(),
+                    )
+                    .map_err(|_| ConfigurationError::Invalid)?,
                 );
             }
             if let Some(server) = name.strip_prefix("mcp:") {
@@ -127,16 +140,23 @@ impl ProductionAdapterSet {
             })
             .collect::<Result<BTreeMap<_, _>, ConfigurationError>>()?;
         Ok(Self {
+            activation_guardian: activation_guardian.clone(),
             identity: Arc::new(
                 ProductionIdentityVerifier::new(&config.identity)
                     .map_err(|_| ConfigurationError::Invalid)?,
             ),
-            orchestrator: Arc::new(HttpOrchestratorAdapter::new(endpoint("orchestrator")?)),
-            model_transport: ControlledModelTransport::new(models)
+            orchestrator: Arc::new(HttpOrchestratorAdapter::new(
+                endpoint("orchestrator")?,
+                activation_guardian.clone(),
+            )),
+            model_transport: ControlledModelTransport::new(models, activation_guardian.clone())
                 .map_err(|_| ConfigurationError::Invalid)?,
             model_adapters,
             secret_broker: SecretBrokerCredentialLifecycle::new(endpoint("secret_broker")?),
-            industrial: HttpIndustrialAdapter::new(endpoint("industrial")?),
+            industrial: HttpIndustrialAdapter::new(
+                endpoint("industrial")?,
+                activation_guardian.clone(),
+            ),
             backup: HttpBackupPort::new(endpoint("backup")?),
             containment: HttpContainmentPort::new(endpoint("containment")?),
             recertification: HttpRecertificationPort::new(endpoint("recertification")?),
@@ -152,8 +172,10 @@ impl ProductionAdapterSet {
             runtime_control: HttpRuntimeControlPort::new(endpoint("runtime_control")?),
             lifecycle: HttpLifecyclePropagationPort::new(endpoint("lifecycle")?),
             evidence: FilesystemEvidenceSource::new(config.evidence_files.clone()),
-            mcp: HttpMcpTransport::new(mcp).map_err(|_| ConfigurationError::Invalid)?,
-            a2a: A2aPeerClient::new(a2a).map_err(|_| ConfigurationError::Invalid)?,
+            mcp: HttpMcpTransport::new(mcp, activation_guardian.clone())
+                .map_err(|_| ConfigurationError::Invalid)?,
+            a2a: A2aPeerClient::new(a2a, activation_guardian)
+                .map_err(|_| ConfigurationError::Invalid)?,
             health,
         })
     }
@@ -174,6 +196,7 @@ impl ProductionOrchestratorBinding {
 #[async_trait]
 impl OrchestratorSubmissionPort for ProductionOrchestratorBinding {
     async fn submit(&self, envelope: InboundEnvelope) -> Result<IngressResponse, GatewayError> {
+        self.require_activation()?;
         self.runtime
             .orchestrator
             .submit(canonicalize_production_action(envelope)?)
@@ -185,6 +208,7 @@ impl OrchestratorSubmissionPort for ProductionOrchestratorBinding {
         owner: &str,
         action: &ActionId,
     ) -> Result<ActionView, GatewayError> {
+        self.require_activation()?;
         self.runtime.orchestrator.get(tenant, owner, action).await
     }
     async fn cancel(
@@ -193,6 +217,7 @@ impl OrchestratorSubmissionPort for ProductionOrchestratorBinding {
         owner: &str,
         action: &ActionId,
     ) -> Result<(), GatewayError> {
+        self.require_activation()?;
         self.runtime
             .orchestrator
             .cancel(tenant, owner, action)
@@ -204,6 +229,7 @@ impl OrchestratorSubmissionPort for ProductionOrchestratorBinding {
         owner: &str,
         action: &ActionId,
     ) -> Result<(), GatewayError> {
+        self.require_activation()?;
         self.runtime.orchestrator.kill(tenant, owner, action).await
     }
     async fn stream_snapshot(
@@ -212,16 +238,17 @@ impl OrchestratorSubmissionPort for ProductionOrchestratorBinding {
         owner: &str,
         task: &TaskId,
     ) -> Result<Vec<String>, GatewayError> {
+        self.require_activation()?;
         self.runtime
             .orchestrator
             .stream_snapshot(tenant, owner, task)
             .await
     }
     async fn ready(&self) -> bool {
-        if !self.runtime.orchestrator.ready().await {
+        if self.require_activation().is_err() || !self.runtime.orchestrator.ready().await {
             return false;
         }
-        join_all(
+        let dependencies_ready = join_all(
             self.runtime
                 .health
                 .values()
@@ -229,7 +256,18 @@ impl OrchestratorSubmissionPort for ProductionOrchestratorBinding {
         )
         .await
         .into_iter()
-        .all(|result| result.is_ok())
+        .all(|result| result.is_ok());
+        dependencies_ready && self.require_activation().is_ok()
+    }
+}
+
+impl ProductionOrchestratorBinding {
+    fn require_activation(&self) -> Result<(), GatewayError> {
+        self.runtime
+            .activation_guardian
+            .require_active()
+            .map(|_| ())
+            .map_err(|_| GatewayError::DownstreamUnavailable)
     }
 }
 

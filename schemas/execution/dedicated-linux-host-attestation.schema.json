@@ -11,6 +11,11 @@
     "runtime",
     "dedicated",
     "issuer",
+    "runner_name",
+    "runner_group",
+    "runner_labels",
+    "node_pool",
+    "runsc_binary_sha256",
     "issued_at",
     "expires_at"
   ],
@@ -21,6 +26,17 @@
     "runtime": {"const": "runsc"},
     "dedicated": {"const": true},
     "issuer": {"type": "string", "minLength": 1, "maxLength": 200},
+    "runner_name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "runner_group": {"const": "production-isolation"},
+    "runner_labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 7,
+      "maxItems": 32,
+      "contains": {"const": "agenttrust-production-gvisor"}
+    },
+    "node_pool": {"type": "string", "minLength": 1, "maxLength": 128},
+    "runsc_binary_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "issued_at": {"type": "string", "format": "date-time"},
     "expires_at": {"type": "string", "format": "date-time"}
   }

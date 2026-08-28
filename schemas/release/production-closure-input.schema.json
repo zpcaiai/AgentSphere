@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-input.schema.json",
+  "title": "Production Closure Input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "batch_statuses", "gate_evidence", "residual_risks", "exceptions"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure.v1"},
+    "scope": {"$ref": "#/$defs/scope"},
+    "batch_statuses": {
+      "type": "array", "minItems": 35, "maxItems": 35,
+      "items": {"$ref": "#/$defs/batchEvidence"}
+    },
+    "gate_evidence": {
+      "type": "array", "minItems": 15, "maxItems": 15,
+      "items": {"$ref": "#/$defs/gateEvidence"}
+    },
+    "residual_risks": {
+      "type": "array", "maxItems": 10000,
+      "items": {"$ref": "#/$defs/risk"}
+    },
+    "exceptions": {
+      "type": "array", "maxItems": 1000,
+      "items": {"$ref": "#/$defs/exception"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "release_id", "commit_digest", "signed_git_provenance_digest",
+        "signed_release_binding_digest", "release_digest", "reviewer_keyring_digest",
+        "build_digest", "policy_digest", "pack_set_digest", "prompt_set_digest",
+        "model_set_digest", "topology_digest", "environment", "valid_from", "valid_until"
+      ],
+      "properties": {
+        "release_id": {"$ref": "#/$defs/releaseId"},
+        "commit_digest": {"$ref": "#/$defs/digest"},
+        "signed_git_provenance_digest": {"$ref": "#/$defs/digest"},
+        "signed_release_binding_digest": {"$ref": "#/$defs/digest"},
+        "release_digest": {"$ref": "#/$defs/digest"},
+        "reviewer_keyring_digest": {"$ref": "#/$defs/digest"},
+        "build_digest": {"$ref": "#/$defs/digest"},
+        "policy_digest": {"$ref": "#/$defs/digest"},
+        "pack_set_digest": {"$ref": "#/$defs/digest"},
+        "prompt_set_digest": {"$ref": "#/$defs/digest"},
+        "model_set_digest": {"$ref": "#/$defs/digest"},
+        "topology_digest": {"$ref": "#/$defs/digest"},
+        "environment": {"const": "production"},
+        "valid_from": {"type": "string", "format": "date-time"},
+        "valid_until": {"type": "string", "format": "date-time"}
+      }
+    },
+    "batchEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["batch", "status", "scope_digest", "evidence_digest", "measured_at", "expires_at"],
+      "properties": {
+        "batch": {"type": "integer", "minimum": 1, "maximum": 35},
+        "status": {"const": "EVIDENCE_VERIFIED"},
+        "scope_digest": {"$ref": "#/$defs/digest"},
+        "evidence_digest": {"$ref": "#/$defs/digest"},
+        "measured_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "gateEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "gate_id", "scope_digest", "passed", "evidence_kind", "evidence_digests",
+        "environment_reference", "measured_at", "expires_at", "source_certificate_type"
+      ],
+      "properties": {
+        "gate_id": {
+          "enum": [
+            "CONTRACT_COMPATIBILITY", "SUPPLY_CHAIN_PROVENANCE", "MULTITENANT_ISOLATION",
+            "IDEMPOTENCY_AND_RECOVERY", "CONTINUOUS_AUTHORIZATION", "DOMAIN_CODING",
+            "DOMAIN_INDUSTRIAL", "DOMAIN_ENERGY", "DOMAIN_MEDICAL",
+            "DOMAIN_SENSITIVE_INTERACTION", "SECURITY_CAMPAIGN", "HA_DR_RESTORE",
+            "UPGRADE_ROLLBACK", "CONTROL_EVIDENCE_GRAPH", "ENTERPRISE_ACCEPTANCE"
+          ]
+        },
+        "scope_digest": {"$ref": "#/$defs/digest"},
+        "passed": {"const": true},
+        "evidence_kind": {"enum": ["UNIT_TEST", "INTEGRATION_TEST", "REAL_ENVIRONMENT", "INDEPENDENT_ASSURANCE"]},
+        "evidence_digests": {
+          "type": "object", "minProperties": 1, "maxProperties": 512,
+          "additionalProperties": {"$ref": "#/$defs/digest"}
+        },
+        "environment_reference": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "minLength": 1, "maxLength": 512}
+          ]
+        },
+        "measured_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "source_certificate_type": {
+          "oneOf": [
+            {"type": "null"},
+            {"enum": ["QUALIFIED_BATCH_EVIDENCE_SET", "DOMAIN_ASSURANCE_ATTESTATION", "EXTERNAL_GATE_ASSURANCE_ATTESTATION"]}
+          ]
+        }
+      }
+    },
+    "severity": {"enum": ["P3", "P2", "P1", "P0"]},
+    "risk": {
+      "type": "object", "additionalProperties": false,
+      "required": ["risk_id", "severity", "description", "owner", "accepted_by"],
+      "properties": {
+        "risk_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "severity": {"$ref": "#/$defs/severity"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "owner": {"type": "string", "minLength": 1, "maxLength": 256},
+        "accepted_by": {
+          "oneOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 256}]
+        }
+      }
+    },
+    "exception": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exception_id", "gate_id", "severity", "owner", "approved_by", "compensating_control_digests", "expires_at"],
+      "properties": {
+        "exception_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "gate_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "severity": {"$ref": "#/$defs/severity"},
+        "owner": {"type": "string", "minLength": 1, "maxLength": 256},
+        "approved_by": {
+          "type": "array", "minItems": 2, "maxItems": 32, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        },
+        "compensating_control_digests": {
+          "type": "array", "minItems": 1, "maxItems": 256, "uniqueItems": true,
+          "items": {"$ref": "#/$defs/digest"}
+        },
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

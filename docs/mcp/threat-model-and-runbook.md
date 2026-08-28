@@ -12,6 +12,16 @@ freezes the server. Undeclared side effects quarantine it. Revocation blocks new
 operators then revoke credential leases, terminate inflight work, preserve sanitized evidence and
 review affected task IDs. Never unfreeze by editing an old snapshot—register a new reviewed version.
 
+The production registry is keyed by `(tenant_id, server_id)`, binds publisher keys to publisher IDs,
+and requires a durable `McpStateStore` for registration, approval, lifecycle transitions,
+single-use authorization consumption and every call outcome. Native clients complete
+`initialize`/`notifications/initialized`, follow opaque `tools/list` cursors with cycle and size
+limits, and use `structuredContent` for an advertised output schema. `isError=true`, response-ID
+mismatch, uninitialized calls, schema drift, missing durable state or an independently observed
+effect mismatch fail closed. A production call also carries Canonical Action IR: the proxy
+recomputes its ActionHash and requires its tenant, exact tool/version and payload arguments to match
+the call before consuming the single-use authorization. Publisher annotations never establish trust.
+
 Local tests use controlled transports. Real third-party MCP servers, vulnerability feeds and sandbox
 network observation remain deployment gates.
 

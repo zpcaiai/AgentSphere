@@ -1522,6 +1522,15 @@ GRANT UPDATE (state,receipt,updated_at) ON public.sre_action_ingress TO $platfor
 GRANT UPDATE (state,execution_owner,lease_expires_at,external_receipt,safe_result,evidence_request,evidence_ref,evidence_digest,updated_at)
   ON public.sre_authority_executions TO $platform_sre_application_role;
 GRANT UPDATE (delivered_at,delivery_attempts) ON public.sre_evidence_outbox TO $platform_sre_application_role;
+GRANT SELECT ON TABLE public.production_activation_lease,
+  public.production_activation_history TO $platform_sre_application_role;
+GRANT EXECUTE ON FUNCTION public.agenttrust_renew_production_activation(
+  char(64), text, text, text, bigint, char(64), text, char(64), timestamptz, timestamptz
+) TO $platform_sre_application_role;
+GRANT EXECUTE ON FUNCTION public.agenttrust_transition_production_activation(
+  char(64), char(64), text, text, text, text, bigint, char(64), text, char(64),
+  timestamptz, timestamptz, char(64)
+) TO $platform_sre_application_role;
 SQL
 fi
 
@@ -3246,8 +3255,40 @@ BEGIN
        OR EXISTS (SELECT 1 FROM information_schema.role_table_grants
                    WHERE grantee=role_name AND table_schema='public'
                      AND privilege_type IN ('DELETE','TRUNCATE','REFERENCES','TRIGGER'))
-       OR EXISTS (SELECT 1 FROM information_schema.role_routine_grants
-                   WHERE grantee=role_name AND routine_schema='public')
+       OR (
+         role_name <> '$platform_sre_application_role'
+         AND EXISTS (
+           SELECT 1 FROM pg_proc AS function
+           JOIN pg_namespace AS namespace ON namespace.oid = function.pronamespace
+           WHERE namespace.nspname='public'
+             AND has_function_privilege(role_name,function.oid,'EXECUTE')
+         )
+       )
+       OR (
+         role_name = '$platform_sre_application_role'
+         AND (
+           NOT has_function_privilege(
+             role_name,
+             'public.agenttrust_renew_production_activation(character,text,text,text,bigint,character,text,character,timestamp with time zone,timestamp with time zone)'::regprocedure,
+             'EXECUTE'
+           )
+           OR NOT has_function_privilege(
+             role_name,
+             'public.agenttrust_transition_production_activation(character,character,text,text,text,text,bigint,character,text,character,timestamp with time zone,timestamp with time zone,character)'::regprocedure,
+             'EXECUTE'
+           )
+           OR EXISTS (
+             SELECT 1 FROM pg_proc AS function
+             JOIN pg_namespace AS namespace ON namespace.oid = function.pronamespace
+             WHERE namespace.nspname='public'
+               AND has_function_privilege(role_name,function.oid,'EXECUTE')
+               AND function.oid NOT IN (
+                 'public.agenttrust_renew_production_activation(character,text,text,text,bigint,character,text,character,timestamp with time zone,timestamp with time zone)'::regprocedure,
+                 'public.agenttrust_transition_production_activation(character,character,text,text,text,text,bigint,character,text,character,timestamp with time zone,timestamp with time zone,character)'::regprocedure
+               )
+           )
+         )
+       )
        OR EXISTS (SELECT 1 FROM information_schema.role_usage_grants
                    WHERE grantee=role_name AND object_type='SEQUENCE') THEN
       RAISE EXCEPTION 'MIGRATION_PRODUCTION_AUTHORITY_ROLE_POSTURE_INVALID:%', role_name;

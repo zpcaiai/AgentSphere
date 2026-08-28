@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/signed-deployment-control-receipt.schema.json",
+  "title": "Signed production deployment control receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "document_kind", "document", "document_digest", "signer_id",
+    "organization", "role", "key_id", "key_usage", "algorithm", "signed_at",
+    "request_digest", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-deployment-control-receipt.v1"},
+    "document_kind": {"enum": ["WRITER_FENCE", "CUTOVER", "ROLLBACK", "UNFREEZE"]},
+    "document": {"type": "object", "minProperties": 1, "maxProperties": 128},
+    "document_digest": {"$ref": "#/$defs/digest"},
+    "signer_id": {"$ref": "#/$defs/identifier"},
+    "organization": {"type": "string", "minLength": 1, "maxLength": 256},
+    "role": {"enum": [
+      "SRE_RELEASE_FENCE", "RELEASE_CUTOVER_AUTHORITY",
+      "DISASTER_RECOVERY_OWNER", "SRE_RELEASE_UNFREEZE"
+    ]},
+    "key_id": {"$ref": "#/$defs/identifier"},
+    "key_usage": {"const": "PRODUCTION_DEPLOYMENT_CUTOVER"},
+    "algorithm": {"const": "Ed25519"},
+    "signed_at": {"type": "string", "format": "date-time"},
+    "request_digest": {"$ref": "#/$defs/digest"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"document_kind": {"const": "WRITER_FENCE"}}, "required": ["document_kind"]},
+      "then": {"properties": {
+        "document": {"$ref": "deployment-writer-fence-receipt.schema.json"},
+        "role": {"const": "SRE_RELEASE_FENCE"}
+      }}
+    },
+    {
+      "if": {"properties": {"document_kind": {"const": "CUTOVER"}}, "required": ["document_kind"]},
+      "then": {"properties": {
+        "document": {
+          "allOf": [
+            {"$ref": "deployment-transition-receipt.schema.json"},
+            {"properties": {"transition_type": {"const": "CUTOVER"}}}
+          ]
+        },
+        "role": {"const": "RELEASE_CUTOVER_AUTHORITY"}
+      }}
+    },
+    {
+      "if": {"properties": {"document_kind": {"const": "ROLLBACK"}}, "required": ["document_kind"]},
+      "then": {"properties": {
+        "document": {
+          "allOf": [
+            {"$ref": "deployment-transition-receipt.schema.json"},
+            {"properties": {"transition_type": {"const": "ROLLBACK"}}}
+          ]
+        },
+        "role": {"const": "DISASTER_RECOVERY_OWNER"}
+      }}
+    },
+    {
+      "if": {"properties": {"document_kind": {"const": "UNFREEZE"}}, "required": ["document_kind"]},
+      "then": {"properties": {
+        "document": {
+          "allOf": [
+            {"$ref": "deployment-transition-receipt.schema.json"},
+            {"properties": {"transition_type": {"const": "UNFREEZE"}}}
+          ]
+        },
+        "role": {"const": "SRE_RELEASE_UNFREEZE"}
+      }}
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+  }
+}

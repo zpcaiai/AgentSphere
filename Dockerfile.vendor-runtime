@@ -1,0 +1,8 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# This wrapper deliberately adds no mutable package-manager layer. It gives the
+# release pipeline an AgentTrust-owned, digest-pinned subject for third-party
+# runtime images so SBOM and provenance attestations bind the exact promoted
+# bytes rather than an unverified mutable tag.

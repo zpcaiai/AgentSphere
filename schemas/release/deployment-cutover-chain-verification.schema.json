@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-cutover-chain-verification.schema.json",
+  "title": "Production deployment cutover chain verification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "verified", "external_actions_executed_by_this_module",
+    "source_release_id", "target_release_id", "environment_reference",
+    "writer_fence_receipt_digest", "transition_count", "final_state",
+    "final_transition_digest", "signer_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-cutover-chain-verification.v1"},
+    "verified": {"const": true},
+    "external_actions_executed_by_this_module": {"const": false},
+    "source_release_id": {"$ref": "#/$defs/releaseId"},
+    "target_release_id": {"$ref": "#/$defs/releaseId"},
+    "environment_reference": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"},
+    "writer_fence_receipt_digest": {"$ref": "#/$defs/digest"},
+    "transition_count": {"type": "integer", "minimum": 2, "maximum": 3},
+    "final_state": {"enum": ["SOURCE_ACTIVE", "TARGET_ACTIVE"]},
+    "final_transition_digest": {"$ref": "#/$defs/digest"},
+    "signer_ids": {
+      "type": "array", "minItems": 3, "maxItems": 4, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"}
+  }
+}

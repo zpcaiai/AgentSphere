@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-release-activation-receipt.schema.json",
+  "title": "Verified production release activation receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "admitted", "release_id", "certificate_id",
+    "scope_digest", "input_digest", "report_digest", "production_image_manifest_digest",
+    "evidence_bundle_manifest_digest", "activation_material_digest",
+    "revocation_registry_id", "revocation_registry_sequence",
+    "revocation_registry_digest", "verified_at", "valid_until"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-release-activation-receipt.v1"},
+    "admitted": {"const": true},
+    "release_id": {
+      "type": "string",
+      "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"
+    },
+    "certificate_id": {"type": "string", "pattern": "^pc-[a-f0-9]{24}$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "input_digest": {"$ref": "#/$defs/digest"},
+    "report_digest": {"$ref": "#/$defs/digest"},
+    "production_image_manifest_digest": {"$ref": "#/$defs/digest"},
+    "evidence_bundle_manifest_digest": {"$ref": "#/$defs/digest"},
+    "activation_material_digest": {"$ref": "#/$defs/digest"},
+    "revocation_registry_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "revocation_registry_sequence": {"type": "integer", "minimum": 1},
+    "revocation_registry_digest": {"$ref": "#/$defs/digest"},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/industrial/prepared-action.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "preparation_id", "tenant_id", "action_hash", "resource_key", "before", "target_value", "engineering_unit", "authorization_id", "central_policy_version", "local_policy_version", "prepared_at", "clock_health_digest", "journal_digest", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.industrial-edge.v1"},
+    "preparation_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "action_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 1280},
+    "before": {"$ref": "telemetry-sample.schema.json"},
+    "target_value": {},
+    "engineering_unit": {"type": "string", "minLength": 1, "maxLength": 64},
+    "authorization_id": {"type": "string", "format": "uuid"},
+    "central_policy_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "local_policy_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "prepared_at": {"type": "string", "format": "date-time"},
+    "clock_health_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "journal_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

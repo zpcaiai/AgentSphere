@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/gvisor-execution-job.schema.json",
+  "title": "Dispatcher-signed production gVisor execution job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "job_id", "authorization", "tool", "executor", "profile",
+    "network_profile", "filesystem_profile", "budget", "oci_bundle", "registry_attestation",
+    "runtime_attestation_digest", "issued_at", "expires_at", "dispatcher_key_id",
+    "dispatcher_key_usage", "job_digest", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.gvisor-execution-job.v1"},
+    "job_id": {"type": "string", "format": "uuid"},
+    "authorization": {
+      "type": "object",
+      "description": "Exact ExecutionAuthorization contract from schemas/openapi/execution-v1.yaml; Rust denies unknown fields and verifies its PEP signature."
+    },
+    "tool": {
+      "type": "object",
+      "description": "Exact ResolvedToolSnapshot contract from schemas/openapi/registry-v1.yaml; the worker recomputes snapshot_hash."
+    },
+    "executor": {"$ref": "#/$defs/executor"},
+    "profile": {"$ref": "#/$defs/profile"},
+    "network_profile": {"$ref": "#/$defs/network"},
+    "filesystem_profile": {"$ref": "#/$defs/filesystem"},
+    "budget": {"$ref": "#/$defs/budget"},
+    "oci_bundle": {"$ref": "#/$defs/bundle"},
+    "registry_attestation": {"$ref": "#/$defs/registryAttestation"},
+    "runtime_attestation_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "dispatcher_key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "dispatcher_key_usage": {"const": "AGENTTRUST_GVISOR_JOB_DISPATCH_V1"},
+    "job_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "prefixedDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "executor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["executor_id", "image_digest", "entrypoint", "fixed_args", "working_directory", "environment", "shell"],
+      "properties": {
+        "executor_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "image_digest": {"$ref": "#/$defs/prefixedDigest"},
+        "entrypoint": {"type": "string", "pattern": "^/"},
+        "fixed_args": {"type": "array", "maxItems": 256, "items": {"type": "string", "maxLength": 16384}},
+        "working_directory": {"type": "string", "pattern": "^/"},
+        "environment": {"type": "object", "maxProperties": 64, "propertyNames": {"pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}, "additionalProperties": {"type": "string", "maxLength": 16384}},
+        "shell": {"const": false}
+      }
+    },
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "production_isolation_required", "non_root", "read_only_rootfs", "network_none", "no_new_privileges", "drop_all_capabilities"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "production_isolation_required": {"const": true}, "non_root": {"const": true},
+        "read_only_rootfs": {"const": true}, "network_none": {"const": true},
+        "no_new_privileges": {"const": true}, "drop_all_capabilities": {"const": true}
+      }
+    },
+    "network": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "default_deny", "allowed_endpoints", "max_connections", "max_upload_bytes"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1}, "default_deny": {"const": true},
+        "allowed_endpoints": {"type": "array", "maxItems": 0}, "max_connections": {"const": 0}, "max_upload_bytes": {"const": 0}
+      }
+    },
+    "filesystem": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_id", "read_only_inputs", "writable_paths", "max_files", "max_file_bytes"],
+      "properties": {
+        "profile_id": {"type": "string", "minLength": 1}, "read_only_inputs": {"const": true},
+        "writable_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "not": {"pattern": "^(?:/|.*(?:^|/)\\.\\.(?:/|$))"}}},
+        "max_files": {"type": "integer", "minimum": 1}, "max_file_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cpu_millis", "memory_bytes", "pids", "disk_bytes", "max_stdout_bytes", "max_stderr_bytes", "timeout_ms"],
+      "properties": {
+        "cpu_millis": {"type": "integer", "minimum": 1}, "memory_bytes": {"type": "integer", "minimum": 1},
+        "pids": {"type": "integer", "minimum": 1}, "disk_bytes": {"type": "integer", "minimum": 1},
+        "max_stdout_bytes": {"type": "integer", "minimum": 0}, "max_stderr_bytes": {"type": "integer", "minimum": 0},
+        "timeout_ms": {"type": "integer", "minimum": 1}
+      }
+    },
+    "bundle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["bundle_path", "config_digest", "container_id"],
+      "properties": {
+        "bundle_path": {"type": "string", "pattern": "^/"}, "config_digest": {"$ref": "#/$defs/prefixedDigest"},
+        "container_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"}
+      }
+    },
+    "registryAttestation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "tenant_id", "tool_id", "tool_version", "tool_snapshot_hash", "implementation_digest", "canonical_arguments_hash", "executor_spec_digest", "registry_revision", "status", "checked_at", "expires_at", "issuer", "key_id", "key_usage", "attestation_digest", "signature"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.gvisor-registry-attestation.v1"},
+        "tenant_id": {"type": "string", "format": "uuid"},
+        "tool_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "tool_version": {"type": "string", "minLength": 1, "maxLength": 128},
+        "tool_snapshot_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "implementation_digest": {"$ref": "#/$defs/prefixedDigest"},
+        "canonical_arguments_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "executor_spec_digest": {"$ref": "#/$defs/prefixedDigest"},
+        "registry_revision": {"type": "integer", "minimum": 1},
+        "status": {"const": "ACTIVE"},
+        "checked_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+        "key_usage": {"const": "AGENTTRUST_GVISOR_REGISTRY_ATTESTATION_V1"},
+        "attestation_digest": {"$ref": "#/$defs/prefixedDigest"},
+        "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+      }
+    }
+  }
+}

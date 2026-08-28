@@ -1,0 +1,467 @@
+name: production-release-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Signed annotated Git tag to qualify and build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  AGENT_TRUST_GH_BINARY: ${{ vars.AGENT_TRUST_GH_BINARY }}
+  AGENT_TRUST_GH_SHA256: ${{ vars.AGENT_TRUST_GH_SHA256 }}
+  AGENT_TRUST_GIT_BINARY: ${{ vars.AGENT_TRUST_GIT_BINARY }}
+  AGENT_TRUST_GIT_SHA256: ${{ vars.AGENT_TRUST_GIT_SHA256 }}
+  AGENT_TRUST_DOCKER_BINARY: ${{ vars.AGENT_TRUST_DOCKER_BINARY }}
+  AGENT_TRUST_DOCKER_SHA256: ${{ vars.AGENT_TRUST_DOCKER_SHA256 }}
+  AGENT_TRUST_PYTHON_BINARY: ${{ vars.AGENT_TRUST_PYTHON_BINARY }}
+  AGENT_TRUST_PYTHON_SHA256: ${{ vars.AGENT_TRUST_PYTHON_SHA256 }}
+  AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE: ${{ vars.AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE }}
+  AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256: ${{ vars.AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256 }}
+  AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY: ${{ vars.AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY }}
+  AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE: ${{ vars.AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE }}
+
+concurrency:
+  group: production-release-candidate-${{ github.event.inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  immutable-source:
+    runs-on: [self-hosted, linux, production-candidate, actions-runner-2-327-1]
+    environment: production-candidate
+    outputs:
+      commit_sha: ${{ steps.source.outputs.commit_sha }}
+      release_id: ${{ steps.source.outputs.release_id }}
+    steps:
+      - name: Verify the dedicated candidate runner toolchain before source use
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import hashlib, os, pathlib, re, shutil, stat, sys
+          if sys.version_info[:2] != (3, 14) or not pathlib.Path(sys.executable).is_absolute():
+              raise SystemExit("RUNNER_PYTHON_VERSION_INVALID")
+          if os.environ.get("RUNNER_OS") != "Linux" or not os.environ.get("RUNNER_NAME"):
+              raise SystemExit("RUNNER_IDENTITY_INVALID")
+          for path_name, digest_name in (
+              ("AGENT_TRUST_GH_BINARY", "AGENT_TRUST_GH_SHA256"),
+              ("AGENT_TRUST_GIT_BINARY", "AGENT_TRUST_GIT_SHA256"),
+              ("AGENT_TRUST_DOCKER_BINARY", "AGENT_TRUST_DOCKER_SHA256"),
+              ("AGENT_TRUST_PYTHON_BINARY", "AGENT_TRUST_PYTHON_SHA256"),
+          ):
+              path = pathlib.Path(os.environ.get(path_name, ""))
+              digest = os.environ.get(digest_name, "")
+              if not path.is_absolute() or path.is_symlink() or path.resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              metadata = path.stat(follow_symlinks=False)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or os.access(path, os.W_OK) or not os.access(path, os.X_OK) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                  raise SystemExit("RUNNER_TOOL_DIGEST_INVALID")
+              if path_name == "AGENT_TRUST_PYTHON_BINARY" and pathlib.Path(sys.executable).resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+              if path_name != "AGENT_TRUST_PYTHON_BINARY" and shutil.which(path.name) != str(path):
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+          trust = pathlib.Path(os.environ.get("AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE", ""))
+          if not trust.is_absolute() or trust.is_symlink() or trust.resolve() != trust:
+              raise SystemExit("RUNNER_GIT_TRUST_INVALID")
+          metadata = trust.stat(follow_symlinks=False)
+          if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or not 1 <= metadata.st_size <= 1024 * 1024 or not os.access(trust, os.R_OK) or os.access(trust, os.W_OK):
+              raise SystemExit("RUNNER_GIT_TRUST_INVALID")
+          PY
+          "$AGENT_TRUST_GH_BINARY" --version
+          "$AGENT_TRUST_GIT_BINARY" --version
+          "$AGENT_TRUST_DOCKER_BINARY" version --format '{{.Client.Version}}'
+          test -z "${DOCKER_HOST:-}"
+          test -z "${DOCKER_CONTEXT:-}"
+          test "$("$AGENT_TRUST_DOCKER_BINARY" context inspect --format '{{.Endpoints.docker.Host}}')" = unix:///var/run/docker.sock
+          test -S /var/run/docker.sock
+          test ! -L /var/run/docker.sock
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: source
+        name: Verify the exact signed immutable source
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          TAG_REF: refs/tags/${{ inputs.release_tag }}
+          EXPECTED_DISPATCH_REF: refs/heads/${{ github.event.repository.default_branch }}
+          EXPECTED_CODEOWNERS_SHA256: ${{ vars.AGENT_TRUST_CODEOWNERS_SHA256 }}
+        run: |
+          set -euo pipefail
+          git_cmd=("$AGENT_TRUST_GIT_BINARY" -c include.path="$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE")
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]
+          test "$GITHUB_REF" = "$EXPECTED_DISPATCH_REF"
+          test "$GITHUB_REF_TYPE" = branch
+          test "$GITHUB_REF_PROTECTED" = true
+          test "$("${git_cmd[@]}" cat-file -t "$TAG_REF")" = tag
+          "${git_cmd[@]}" verify-tag "$TAG_REF"
+          commit_sha="$("${git_cmd[@]}" rev-parse "$TAG_REF^{}")"
+          test "$commit_sha" = "$GITHUB_SHA"
+          "${git_cmd[@]}" verify-commit "$commit_sha"
+          [[ "$EXPECTED_CODEOWNERS_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          test -f .github/CODEOWNERS
+          test ! -L .github/CODEOWNERS
+          test -s .github/CODEOWNERS
+          "${git_cmd[@]}" cat-file -e "$commit_sha:.github/CODEOWNERS"
+          codeowners_sha256="$("${git_cmd[@]}" show "$commit_sha:.github/CODEOWNERS" | "$AGENT_TRUST_PYTHON_BINARY" -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')"
+          test "$codeowners_sha256" = "$EXPECTED_CODEOWNERS_SHA256"
+          test -z "$("${git_cmd[@]}" status --porcelain=v1 --untracked-files=all)"
+          object_format="$("${git_cmd[@]}" rev-parse --show-object-format)"
+          case "$object_format" in
+            sha1) test "${#commit_sha}" -eq 40 ;;
+            sha256) test "${#commit_sha}" -eq 64 ;;
+            *) exit 1 ;;
+          esac
+          printf 'commit_sha=%s\n' "$commit_sha" >> "$GITHUB_OUTPUT"
+          printf 'release_id=git:%s:%s\n' "$object_format" "$commit_sha" >> "$GITHUB_OUTPUT"
+      - name: Verify the immutable candidate Python dependency closure
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/verify-production-python-runtime.py verify \
+            --manifest "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE" \
+            --manifest-sha256 "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256" \
+            --python-sha256 "$AGENT_TRUST_PYTHON_SHA256" \
+            --requirements-lock "$AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY/requirements-ci.lock"
+          PIP_CONFIG_FILE=/dev/null "$AGENT_TRUST_PYTHON_BINARY" -m pip check
+
+  complete-quality-matrix:
+    needs: immutable-source
+    uses: ./.github/workflows/ci.yml
+
+  build-attest-and-push:
+    needs: [immutable-source, complete-quality-matrix]
+    runs-on: [self-hosted, linux, production-candidate, actions-runner-2-327-1]
+    environment: production-candidate
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {component: runtime, image_key: runtime, base_kind: rust}
+          - {component: orchestrator, image_key: orchestrator, base_kind: python}
+          - {component: transition, image_key: transition, base_kind: rust}
+          - {component: execution, image_key: execution, base_kind: rust}
+          - {component: registry, image_key: registry, base_kind: rust}
+          - {component: agent-registry, image_key: agent_registry, base_kind: rust}
+          - {component: policy-admin, image_key: policy_admin, base_kind: rust}
+          - {component: incident-release, image_key: incident_release, base_kind: rust}
+          - {component: pack-marketplace, image_key: pack_marketplace, base_kind: rust}
+          - {component: approval, image_key: approval, base_kind: rust}
+          - {component: pep, image_key: pep, base_kind: rust}
+          - {component: identity, image_key: identity, base_kind: rust}
+          - {component: tool-proxy, image_key: tool_proxy, base_kind: rust}
+          - {component: evidence, image_key: evidence, base_kind: rust}
+          - {component: audit, image_key: audit, base_kind: rust}
+          - {component: enterprise-control, image_key: enterprise, base_kind: java}
+          - {component: enterprise-authority, image_key: enterprise_authority, base_kind: rust}
+          - {component: model-gateway, image_key: model_gateway, base_kind: rust}
+          - {component: data-governance, image_key: data_governance, base_kind: rust}
+          - {component: context-governance, image_key: context_governance, base_kind: rust}
+          - {component: runtime-anomaly, image_key: runtime_anomaly, base_kind: rust}
+          - {component: security-evaluation, image_key: security_evaluation, base_kind: rust}
+          - {component: pack-supply-chain, image_key: pack_supply_chain, base_kind: rust}
+          - {component: domain-runtime, image_key: domain_runtime, base_kind: rust}
+          - {component: platform-sre, image_key: platform_sre, base_kind: rust}
+          - {component: console, image_key: console, base_kind: node}
+          - {component: migrations, image_key: migration, base_kind: postgres}
+          - {component: envoy, image_key: envoy, base_kind: envoy}
+          - {component: utility, image_key: utility, base_kind: utility}
+          - {component: release-admission, image_key: release_admission, base_kind: rust}
+          - {component: sandbox-worker, image_key: sandbox_worker, base_kind: rust}
+    env:
+      RUST_BUILDER_IMAGE: ${{ vars.AGENT_TRUST_RUST_BUILDER_IMAGE }}
+      RUNTIME_BASE_IMAGE: ${{ vars.AGENT_TRUST_RUNTIME_BASE_IMAGE }}
+      PYTHON_BASE_IMAGE: ${{ vars.AGENT_TRUST_PYTHON_BASE_IMAGE }}
+      MAVEN_BUILDER_IMAGE: ${{ vars.AGENT_TRUST_MAVEN_BUILDER_IMAGE }}
+      JAVA_RUNTIME_IMAGE: ${{ vars.AGENT_TRUST_JAVA_RUNTIME_IMAGE }}
+      NODE_BUILDER_IMAGE: ${{ vars.AGENT_TRUST_NODE_BUILDER_IMAGE }}
+      CONSOLE_BASE_IMAGE: ${{ vars.AGENT_TRUST_CONSOLE_BASE_IMAGE }}
+      POSTGRES_CLIENT_IMAGE: ${{ vars.AGENT_TRUST_POSTGRES_CLIENT_IMAGE }}
+      ENVOY_BASE_IMAGE: ${{ vars.AGENT_TRUST_ENVOY_BASE_IMAGE }}
+      UTILITY_BASE_IMAGE: ${{ vars.AGENT_TRUST_UTILITY_BASE_IMAGE }}
+      CONTROL_API_URL: ${{ vars.AGENT_TRUST_CONTROL_API_URL }}
+      AGUI_VERIFY_KEY: ${{ vars.AGENT_TRUST_AGUI_VERIFY_KEY }}
+    steps:
+      - name: Verify the dedicated candidate runner toolchain before build use
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import hashlib, os, pathlib, re, shutil, stat, sys
+          if sys.version_info[:2] != (3, 14) or not pathlib.Path(sys.executable).is_absolute():
+              raise SystemExit("RUNNER_PYTHON_VERSION_INVALID")
+          if os.environ.get("RUNNER_OS") != "Linux" or not os.environ.get("RUNNER_NAME"):
+              raise SystemExit("RUNNER_IDENTITY_INVALID")
+          for path_name, digest_name in (
+              ("AGENT_TRUST_GH_BINARY", "AGENT_TRUST_GH_SHA256"),
+              ("AGENT_TRUST_GIT_BINARY", "AGENT_TRUST_GIT_SHA256"),
+              ("AGENT_TRUST_DOCKER_BINARY", "AGENT_TRUST_DOCKER_SHA256"),
+              ("AGENT_TRUST_PYTHON_BINARY", "AGENT_TRUST_PYTHON_SHA256"),
+          ):
+              path = pathlib.Path(os.environ.get(path_name, ""))
+              digest = os.environ.get(digest_name, "")
+              if not path.is_absolute() or path.is_symlink() or path.resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              metadata = path.stat(follow_symlinks=False)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or os.access(path, os.W_OK) or not os.access(path, os.X_OK) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                  raise SystemExit("RUNNER_TOOL_DIGEST_INVALID")
+              if path_name == "AGENT_TRUST_PYTHON_BINARY" and pathlib.Path(sys.executable).resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+              if path_name != "AGENT_TRUST_PYTHON_BINARY" and shutil.which(path.name) != str(path):
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+          trust = pathlib.Path(os.environ.get("AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE", ""))
+          if not trust.is_absolute() or trust.is_symlink() or trust.resolve() != trust:
+              raise SystemExit("RUNNER_GIT_TRUST_INVALID")
+          metadata = trust.stat(follow_symlinks=False)
+          if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or not 1 <= metadata.st_size <= 1024 * 1024 or not os.access(trust, os.R_OK) or os.access(trust, os.W_OK):
+              raise SystemExit("RUNNER_GIT_TRUST_INVALID")
+          PY
+          "$AGENT_TRUST_GH_BINARY" --version
+          "$AGENT_TRUST_GIT_BINARY" --version
+          "$AGENT_TRUST_DOCKER_BINARY" version --format '{{.Client.Version}}'
+          test -z "${DOCKER_HOST:-}"
+          test -z "${DOCKER_CONTEXT:-}"
+          test "$("$AGENT_TRUST_DOCKER_BINARY" context inspect --format '{{.Endpoints.docker.Host}}')" = unix:///var/run/docker.sock
+          test -S /var/run/docker.sock
+          test ! -L /var/run/docker.sock
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.immutable-source.outputs.commit_sha }}
+          persist-credentials: false
+      - name: Verify the immutable candidate Python dependency closure
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/verify-production-python-runtime.py verify \
+            --manifest "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE" \
+            --manifest-sha256 "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256" \
+            --python-sha256 "$AGENT_TRUST_PYTHON_SHA256" \
+            --requirements-lock "$AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY/requirements-ci.lock"
+          PIP_CONFIG_FILE=/dev/null "$AGENT_TRUST_PYTHON_BINARY" -m pip check
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: image
+        name: Build only from immutable base images and push
+        env:
+          COMPONENT: ${{ matrix.component }}
+          IMAGE_KEY: ${{ matrix.image_key }}
+          BASE_KIND: ${{ matrix.base_kind }}
+          COMMIT_SHA: ${{ needs.immutable-source.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          output_image="ghcr.io/${owner}/agentsphere-${COMPONENT}:git-${COMMIT_SHA}"
+          args=(--component "$COMPONENT" --output-image "$output_image")
+          case "$BASE_KIND" in
+            rust) args+=(--base-image "$RUST_BUILDER_IMAGE" --base-image "$RUNTIME_BASE_IMAGE") ;;
+            python) args+=(--base-image "$PYTHON_BASE_IMAGE") ;;
+            java) args+=(--base-image "$MAVEN_BUILDER_IMAGE" --base-image "$JAVA_RUNTIME_IMAGE") ;;
+            node) args+=(--base-image "$NODE_BUILDER_IMAGE" --base-image "$CONSOLE_BASE_IMAGE" --control-api-url "$CONTROL_API_URL" --agui-verify-key "$AGUI_VERIFY_KEY") ;;
+            postgres) args+=(--base-image "$POSTGRES_CLIENT_IMAGE") ;;
+            envoy) args+=(--base-image "$ENVOY_BASE_IMAGE") ;;
+            utility) args+=(--base-image "$UTILITY_BASE_IMAGE") ;;
+            *) exit 1 ;;
+          esac
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/build-production-image.py --docker-binary "$AGENT_TRUST_DOCKER_BINARY" "${args[@]}"
+          "$AGENT_TRUST_DOCKER_BINARY" push "$output_image"
+          repo_digests="$("$AGENT_TRUST_DOCKER_BINARY" image inspect "$output_image" --format '{{json .RepoDigests}}')"
+          subject_digest="$("$AGENT_TRUST_PYTHON_BINARY" - "$output_image" "$repo_digests" <<'PY'
+          import json, sys
+          subject = sys.argv[1].rsplit(":", 1)[0]
+          matches = sorted(
+              item.split("@", 1)[1]
+              for item in json.loads(sys.argv[2])
+              if item.startswith(subject + "@")
+          )
+          if len(matches) != 1:
+              raise SystemExit("PUSHED_IMAGE_DIGEST_AMBIGUOUS")
+          print(matches[0])
+          PY
+          )"
+          [[ "$subject_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          subject_name="${output_image%:*}"
+          digest_ref="${subject_name}@${subject_digest}"
+          printf 'subject_name=%s\n' "$subject_name" >> "$GITHUB_OUTPUT"
+          printf 'subject_digest=%s\n' "$subject_digest" >> "$GITHUB_OUTPUT"
+          printf 'digest_ref=%s\n' "$digest_ref" >> "$GITHUB_OUTPUT"
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ steps.image.outputs.digest_ref }}
+          format: spdx-json
+          output-file: image-sbom.spdx.json
+      - id: provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ${{ steps.image.outputs.subject_name }}
+          subject-digest: ${{ steps.image.outputs.subject_digest }}
+          push-to-registry: true
+      - id: sbom
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # v3
+        with:
+          subject-name: ${{ steps.image.outputs.subject_name }}
+          subject-digest: ${{ steps.image.outputs.subject_digest }}
+          sbom-path: image-sbom.spdx.json
+          push-to-registry: true
+      - name: Write the bounded image record
+        env:
+          COMPONENT: ${{ matrix.component }}
+          IMAGE_KEY: ${{ matrix.image_key }}
+          RELEASE_ID: ${{ needs.immutable-source.outputs.release_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          IMAGE: ${{ steps.image.outputs.digest_ref }}
+          SUBJECT_DIGEST: ${{ steps.image.outputs.subject_digest }}
+          PROVENANCE_URL: ${{ steps.provenance.outputs.attestation-url }}
+          SBOM_URL: ${{ steps.sbom.outputs.attestation-url }}
+        run: |
+          set -euo pipefail
+          export SBOM_SHA256="$("$AGENT_TRUST_PYTHON_BINARY" -c 'import hashlib,pathlib; print(hashlib.sha256(pathlib.Path("image-sbom.spdx.json").read_bytes()).hexdigest())')"
+          "$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import json, os, pathlib, re
+          values = {name: os.environ[name] for name in (
+              "COMPONENT", "IMAGE_KEY", "RELEASE_ID", "RELEASE_TAG", "IMAGE",
+              "SUBJECT_DIGEST", "SBOM_SHA256", "PROVENANCE_URL", "SBOM_URL",
+          )}
+          if not re.fullmatch(r"[a-z0-9_]+", values["IMAGE_KEY"]):
+              raise SystemExit("IMAGE_KEY_INVALID")
+          record = {
+              "schema_version": "agenttrust.production-image-record.v1",
+              "image_key": values["IMAGE_KEY"],
+              "component": values["COMPONENT"],
+              "release_id": values["RELEASE_ID"],
+              "release_tag": values["RELEASE_TAG"],
+              "image": values["IMAGE"],
+              "subject_digest": values["SUBJECT_DIGEST"],
+              "sbom_sha256": values["SBOM_SHA256"],
+              "provenance_attestation_url": values["PROVENANCE_URL"],
+              "sbom_attestation_url": values["SBOM_URL"],
+          }
+          pathlib.Path(f"{values['IMAGE_KEY']}.json").write_text(
+              json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-image-${{ matrix.image_key }}-${{ needs.immutable-source.outputs.commit_sha }}
+          path: ${{ matrix.image_key }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  assemble-candidate:
+    needs: [immutable-source, build-attest-and-push]
+    runs-on: [self-hosted, linux, production-candidate, actions-runner-2-327-1]
+    environment: production-candidate
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Verify the dedicated candidate runner toolchain before assembly use
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import hashlib, os, pathlib, re, shutil, stat, sys
+          if sys.version_info[:2] != (3, 14) or not pathlib.Path(sys.executable).is_absolute():
+              raise SystemExit("RUNNER_PYTHON_VERSION_INVALID")
+          if os.environ.get("RUNNER_OS") != "Linux" or not os.environ.get("RUNNER_NAME"):
+              raise SystemExit("RUNNER_IDENTITY_INVALID")
+          for path_name, digest_name in (
+              ("AGENT_TRUST_GH_BINARY", "AGENT_TRUST_GH_SHA256"),
+              ("AGENT_TRUST_GIT_BINARY", "AGENT_TRUST_GIT_SHA256"),
+              ("AGENT_TRUST_DOCKER_BINARY", "AGENT_TRUST_DOCKER_SHA256"),
+              ("AGENT_TRUST_PYTHON_BINARY", "AGENT_TRUST_PYTHON_SHA256"),
+          ):
+              path = pathlib.Path(os.environ.get(path_name, ""))
+              digest = os.environ.get(digest_name, "")
+              if not path.is_absolute() or path.is_symlink() or path.resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              metadata = path.stat(follow_symlinks=False)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or os.access(path, os.W_OK) or not os.access(path, os.X_OK) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                  raise SystemExit("RUNNER_TOOL_DIGEST_INVALID")
+              if path_name == "AGENT_TRUST_PYTHON_BINARY" and pathlib.Path(sys.executable).resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+              if path_name != "AGENT_TRUST_PYTHON_BINARY" and shutil.which(path.name) != str(path):
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+          trust = pathlib.Path(os.environ.get("AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE", ""))
+          if not trust.is_absolute() or trust.is_symlink() or trust.resolve() != trust:
+              raise SystemExit("RUNNER_GIT_TRUST_INVALID")
+          metadata = trust.stat(follow_symlinks=False)
+          if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or not 1 <= metadata.st_size <= 1024 * 1024 or not os.access(trust, os.R_OK) or os.access(trust, os.W_OK):
+              raise SystemExit("RUNNER_GIT_TRUST_INVALID")
+          PY
+          "$AGENT_TRUST_GH_BINARY" --version
+          "$AGENT_TRUST_GIT_BINARY" --version
+          "$AGENT_TRUST_DOCKER_BINARY" version --format '{{.Client.Version}}'
+          test -z "${DOCKER_HOST:-}"
+          test -z "${DOCKER_CONTEXT:-}"
+          test "$("$AGENT_TRUST_DOCKER_BINARY" context inspect --format '{{.Endpoints.docker.Host}}')" = unix:///var/run/docker.sock
+          test -S /var/run/docker.sock
+          test ! -L /var/run/docker.sock
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.immutable-source.outputs.commit_sha }}
+          persist-credentials: false
+      - name: Verify the immutable candidate Python dependency closure
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/verify-production-python-runtime.py verify \
+            --manifest "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE" \
+            --manifest-sha256 "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256" \
+            --python-sha256 "$AGENT_TRUST_PYTHON_SHA256" \
+            --requirements-lock "$AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY/requirements-ci.lock"
+          PIP_CONFIG_FILE=/dev/null "$AGENT_TRUST_PYTHON_BINARY" -m pip check
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: production-image-*-${{ needs.immutable-source.outputs.commit_sha }}
+          path: ${{ runner.temp }}/production-image-records
+          merge-multiple: true
+      - id: manifest
+        env:
+          RELEASE_ID: ${{ needs.immutable-source.outputs.release_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/production-image-manifest.json"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/assemble-production-image-manifest.py assemble \
+            --records-directory "$RUNNER_TEMP/production-image-records" \
+            --release-id "$RELEASE_ID" \
+            --release-tag "$RELEASE_TAG" \
+            --repository "$GITHUB_REPOSITORY" \
+            --output "$output"
+          digest="$("$AGENT_TRUST_PYTHON_BINARY" - "$output" <<'PY'
+          import hashlib, pathlib, sys
+          print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+          PY
+          )"
+          printf 'path=%s\n' "$output" >> "$GITHUB_OUTPUT"
+          printf 'sha256=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+      - id: attestation
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.manifest.outputs.path }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-candidate-${{ needs.immutable-source.outputs.commit_sha }}
+          path: ${{ steps.manifest.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Candidate summary
+        env:
+          MANIFEST_SHA256: ${{ steps.manifest.outputs.sha256 }}
+          ATTESTATION_URL: ${{ steps.attestation.outputs.attestation-url }}
+        run: |
+          printf 'Immutable image manifest SHA-256: %s\n' "$MANIFEST_SHA256" >> "$GITHUB_STEP_SUMMARY"
+          printf 'GitHub attestation: %s\n' "$ATTESTATION_URL" >> "$GITHUB_STEP_SUMMARY"

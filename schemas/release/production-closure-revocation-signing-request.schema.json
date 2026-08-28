@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-revocation-signing-request.schema.json",
+  "title": "Production Closure Revocation Registry External Signing Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "algorithm", "key_id", "base_checkpoint_digest", "registry", "signing_payload", "payload_sha256"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure-revocation-signing-request.v1"},
+    "algorithm": {"const": "Ed25519"},
+    "key_id": {"$ref": "#/$defs/identifier"},
+    "base_checkpoint_digest": {"$ref": "#/$defs/digest"},
+    "registry": {"$ref": "#/$defs/unsignedRegistry"},
+    "signing_payload": {"type": "string", "minLength": 32, "maxLength": 33554432, "pattern": "^[A-Za-z0-9_-]+$"},
+    "payload_sha256": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "unsignedRegistry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "registry_id", "sequence", "previous_registry_digest", "published_at", "expires_at", "key_id", "entries", "signature"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.production-closure-revocation-registry.v1"},
+        "registry_id": {"$ref": "#/$defs/identifier"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "previous_registry_digest": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/digest"}]},
+        "published_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "key_id": {"$ref": "#/$defs/identifier"},
+        "entries": {
+          "type": "array", "maxItems": 100000,
+          "items": {"$ref": "#/$defs/entry"}
+        },
+        "signature": {"const": ""}
+      }
+    },
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["certificate_id", "release_id", "reason_code", "evidence_digest", "revoked_at"],
+      "properties": {
+        "certificate_id": {"type": "string", "pattern": "^pc-[a-f0-9]{24}$"},
+        "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+        "reason_code": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$"},
+        "evidence_digest": {"$ref": "#/$defs/digest"},
+        "revoked_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

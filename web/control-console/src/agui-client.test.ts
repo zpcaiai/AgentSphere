@@ -1,19 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgUiEventReducer, AgUiResumeClient, buildApprovalIntent, type AgUiEventEnvelope } from "../../shared/agui-client";
 
+const SIGNATURE = "A".repeat(86);
+
 function event(sequence: number, overrides: Partial<AgUiEventEnvelope> = {}): AgUiEventEnvelope {
   return { schema_version: "agenttrust.a2a-agui.v1", event_id: `event-${sequence}`, tenant_id: "tenant-1", task_id: "task-1",
     sequence, trace_id: "trace-1", kind: "EXECUTION_STATUS", safe_payload: { status: "RUNNING" },
-    occurred_at: "2026-08-13T00:00:00Z", backend_signature: "signed", ...overrides };
+    occurred_at: "2026-08-13T00:00:00Z", backend_signature: SIGNATURE, ...overrides };
 }
 
 describe("AG-UI client", () => {
   it("requires verified, gap-free backend events", async () => {
-    const reducer = new AgUiEventReducer(async (value) => value.backend_signature === "signed", 2);
+    const reducer = new AgUiEventReducer(async (value) => value.backend_signature === SIGNATURE, 2);
     expect(await reducer.apply(event(1))).toBe("APPLIED");
     expect(await reducer.apply(event(1))).toBe("DUPLICATE");
     await expect(reducer.apply(event(3))).rejects.toThrow("AGUI_SEQUENCE_GAP");
-    await expect(reducer.apply(event(2, { backend_signature: "forged" }))).rejects.toThrow("AGUI_BACKEND_SIGNATURE_INVALID");
+    await expect(reducer.apply(event(2, { backend_signature: "B".repeat(86) }))).rejects.toThrow("AGUI_BACKEND_SIGNATURE_INVALID");
   });
 
   it("uses bounded resume responses and in-memory tokens", async () => {
@@ -39,7 +41,7 @@ describe("AG-UI client", () => {
         tenant_id: "tenant-1", task_id: "task-1", sequence: 1024,
         safe_state: { status: "RUNNING", evidence_digest: "a".repeat(64) },
         next_resume_token: "snapshot-token", generated_at: "2026-08-13T00:00:00Z",
-        backend_signature: "signed" }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        backend_signature: SIGNATURE }), { status: 200, headers: { "Content-Type": "application/json" } }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ events: [event(1025)], next_resume_token: "token-1025",
         safe_snapshot_required: false }), { status: 200, headers: { "Content-Type": "application/json" } }));
     const client = new AgUiResumeClient("https://control.example", "tenant-1", async () => true);

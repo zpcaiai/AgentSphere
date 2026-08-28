@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/industrial/telemetry-sample.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resource_key", "value", "engineering_unit", "quality", "resource_version", "sampled_at", "sequence"],
+  "properties": {
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 1280},
+    "value": {},
+    "engineering_unit": {"type": "string", "minLength": 1, "maxLength": 64},
+    "quality": {"enum": ["GOOD", "UNCERTAIN", "BAD", "STALE"]},
+    "resource_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "sampled_at": {"type": "string", "format": "date-time"},
+    "sequence": {"type": "integer", "minimum": 0}
+  }
+}

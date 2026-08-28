@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-cutover-signing-request.schema.json",
+  "title": "Externally signable deployment control request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "document_kind", "key_id", "key_usage", "algorithm", "document",
+    "document_digest", "signing_payload", "payload_sha256", "prepared_at", "request_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-cutover-signing-request.v1"},
+    "document_kind": {"enum": ["WRITER_FENCE", "CUTOVER", "ROLLBACK", "UNFREEZE"]},
+    "key_id": {"$ref": "#/$defs/identifier"},
+    "key_usage": {"const": "PRODUCTION_DEPLOYMENT_CUTOVER"},
+    "algorithm": {"const": "Ed25519"},
+    "document": {"type": "object", "minProperties": 1, "maxProperties": 128},
+    "document_digest": {"$ref": "#/$defs/digest"},
+    "signing_payload": {"type": "string", "minLength": 32, "maxLength": 16777216, "pattern": "^[A-Za-z0-9_-]+$"},
+    "payload_sha256": {"$ref": "#/$defs/digest"},
+    "prepared_at": {"type": "string", "format": "date-time"},
+    "request_digest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"document_kind": {"const": "WRITER_FENCE"}}, "required": ["document_kind"]},
+      "then": {"properties": {"document": {"$ref": "deployment-writer-fence-receipt.schema.json"}}}
+    },
+    {
+      "if": {"properties": {"document_kind": {"const": "CUTOVER"}}, "required": ["document_kind"]},
+      "then": {"properties": {"document": {
+        "allOf": [
+          {"$ref": "deployment-transition-receipt.schema.json"},
+          {"properties": {"transition_type": {"const": "CUTOVER"}}}
+        ]
+      }}}
+    },
+    {
+      "if": {"properties": {"document_kind": {"const": "ROLLBACK"}}, "required": ["document_kind"]},
+      "then": {"properties": {"document": {
+        "allOf": [
+          {"$ref": "deployment-transition-receipt.schema.json"},
+          {"properties": {"transition_type": {"const": "ROLLBACK"}}}
+        ]
+      }}}
+    },
+    {
+      "if": {"properties": {"document_kind": {"const": "UNFREEZE"}}, "required": ["document_kind"]},
+      "then": {"properties": {"document": {
+        "allOf": [
+          {"$ref": "deployment-transition-receipt.schema.json"},
+          {"properties": {"transition_type": {"const": "UNFREEZE"}}}
+        ]
+      }}}
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+  }
+}

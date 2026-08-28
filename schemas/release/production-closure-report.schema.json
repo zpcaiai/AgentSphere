@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-report.schema.json",
+  "title": "Production Closure Evaluation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "scope_digest", "input_digest", "eligible", "blockers",
+    "verified_gate_digests", "evaluated_at", "evidence_valid_until", "report_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "input_digest": {"$ref": "#/$defs/digest"},
+    "eligible": {"type": "boolean"},
+    "blockers": {
+      "type": "array", "maxItems": 10000, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "verified_gate_digests": {
+      "type": "object", "minProperties": 15, "maxProperties": 15,
+      "propertyNames": {
+        "enum": [
+          "CONTRACT_COMPATIBILITY", "SUPPLY_CHAIN_PROVENANCE",
+          "MULTITENANT_ISOLATION", "IDEMPOTENCY_AND_RECOVERY",
+          "CONTINUOUS_AUTHORIZATION", "DOMAIN_CODING", "DOMAIN_INDUSTRIAL",
+          "DOMAIN_ENERGY", "DOMAIN_MEDICAL", "DOMAIN_SENSITIVE_INTERACTION",
+          "SECURITY_CAMPAIGN", "HA_DR_RESTORE", "UPGRADE_ROLLBACK",
+          "CONTROL_EVIDENCE_GRAPH", "ENTERPRISE_ACCEPTANCE"
+        ]
+      },
+      "additionalProperties": {"$ref": "#/$defs/digest"}
+    },
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "evidence_valid_until": {"type": "string", "format": "date-time"},
+    "report_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

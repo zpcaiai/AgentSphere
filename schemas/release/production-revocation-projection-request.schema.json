@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-revocation-projection-request.schema.json",
+  "title": "Production revocation projection request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "request_id", "release_id", "environment_reference",
+    "base_checkpoint_digest", "registry_id", "registry_key_id", "registry_sequence",
+    "registry_digest", "registry", "required_watcher_ids", "requested_at",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-revocation-projection-request.v1"},
+    "request_id": {"type": "string", "pattern": "^agenttrust-revocation-projection-[0-9a-f]{32}$"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "environment_reference": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9._:/-]{1,480}$"},
+    "base_checkpoint_digest": {"$ref": "#/$defs/digest"},
+    "registry_id": {"$ref": "#/$defs/identifier"},
+    "registry_key_id": {"$ref": "#/$defs/identifier"},
+    "registry_sequence": {"type": "integer", "minimum": 1},
+    "registry_digest": {"$ref": "#/$defs/digest"},
+    "registry": {"$ref": "production-closure-revocation-registry.schema.json"},
+    "required_watcher_ids": {
+      "type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/identifier"}
+    },
+    "requested_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "idempotency_key": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+  }
+}

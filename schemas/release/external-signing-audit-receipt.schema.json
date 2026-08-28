@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/external-signing-audit-receipt.schema.json",
+  "title": "External signing operation audit receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "request_id", "request_digest", "request_kind", "key_id",
+    "algorithm", "payload_sha256", "document_signature_sha256", "signed_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.external-signing-audit-receipt.v1"},
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "request_digest": {"$ref": "#/$defs/digest"},
+    "request_kind": {"enum": ["PRODUCTION_CLOSURE_CERTIFICATE", "PRODUCTION_CLOSURE_REVOCATION_REGISTRY"]},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "algorithm": {"const": "Ed25519"},
+    "payload_sha256": {"$ref": "#/$defs/digest"},
+    "document_signature_sha256": {"$ref": "#/$defs/digest"},
+    "signed_at": {"type": "string", "format": "date-time", "maxLength": 64}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

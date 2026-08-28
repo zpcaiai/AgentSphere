@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/a2a/agui-resume-token.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "task_id", "after_sequence", "expires_at", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.a2a-agui.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "after_sequence": {"type": "integer", "minimum": 0},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

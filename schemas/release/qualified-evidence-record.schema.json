@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/qualified-evidence-record.schema.json",
+  "title": "Release-scoped evidence record awaiting trusted qualification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "kind", "record_id", "release_id", "scope_digest",
+    "environment_reference", "passed", "evidence_digests", "measured_at",
+    "expires_at", "verification_policy_digest", "record_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.qualified-evidence-record.v1"},
+    "kind": {"enum": ["BATCH", "EXTERNAL_CONDITION"]},
+    "record_id": {
+      "oneOf": [
+        {"pattern": "^BATCH_(?:0[1-9]|[12][0-9]|3[0-5])$"},
+        {
+          "enum": [
+            "ENTERPRISE_IDP_JWKS", "WORKLOAD_MTLS_CA",
+            "SECRET_BROKER_DYNAMIC_LEASES", "DEDICATED_LINUX_GVISOR",
+            "PRODUCTION_MULTIZONE_TEMPORAL", "MANAGED_DATABASE_MULTI_ZONE",
+            "LOCKED_RETENTION_OBJECT_STORAGE",
+            "MODEL_GENERATION_STREAM_DLP_BILLING_RESIDENCY", "MCP_REAL_ENDPOINT",
+            "A2A_REAL_ENDPOINT", "OPCUA_MQTT_MODBUS_REAL_ENDPOINTS",
+            "SUPERVISED_PHYSICAL_WRITE", "MULTIZONE_CONTROL_PLANE_TOPOLOGY",
+            "NETWORK_STORAGE_CONTROL_PLANE_FAULTS", "SUSTAINED_PRODUCTION_LOAD",
+            "CUSTOMER_EXPERT_INDEPENDENT_ACCEPTANCE",
+            "IMMUTABLE_GIT_RELEASE_PROVENANCE"
+          ]
+        }
+      ]
+    },
+    "release_id": {"pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "environment_reference": {
+      "type": "string", "pattern": "^environment://production/.+$", "maxLength": 512
+    },
+    "passed": {"const": true},
+    "evidence_digests": {
+      "type": "object", "minProperties": 1, "maxProperties": 512,
+      "propertyNames": {"type": "string", "minLength": 1, "maxLength": 256},
+      "additionalProperties": {"$ref": "#/$defs/digest"}
+    },
+    "measured_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "expires_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "verification_policy_digest": {"$ref": "#/$defs/digest"},
+    "record_digest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "BATCH"}}},
+      "then": {"properties": {"record_id": {"pattern": "^BATCH_(?:0[1-9]|[12][0-9]|3[0-5])$"}}}
+    },
+    {
+      "if": {"properties": {"kind": {"const": "EXTERNAL_CONDITION"}}},
+      "then": {
+        "properties": {
+          "record_id": {
+            "not": {"pattern": "^BATCH_"}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

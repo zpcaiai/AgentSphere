@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/a2a/agent-card.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "protocol_version", "agent_id", "publisher_id", "endpoint", "capability_ids", "card_hash", "trust_level", "verified", "issued_at", "expires_at", "observed_at", "publisher_key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.a2a-agui.v1"},
+    "protocol_version": {"enum": ["0.3.0", "1.0"]},
+    "agent_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "publisher_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "endpoint": {"type": "string", "pattern": "^https://", "maxLength": 2048},
+    "capability_ids": {"type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256}},
+    "card_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "trust_level": {"enum": ["verified-card", "untrusted-card"]},
+    "verified": {"type": "boolean"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "publisher_key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

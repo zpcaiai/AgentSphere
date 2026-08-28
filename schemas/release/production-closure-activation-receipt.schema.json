@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-activation-receipt.schema.json",
+  "title": "Production Closure Activation Verification Receipt",
+  "description": "The activation watcher atomically replaces this dynamic receipt after each successful full verification. Consumers must also enforce verified_at freshness and valid_until; a historical receipt is not a liveness signal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "certificate_id", "release_id", "scope_digest", "input_digest",
+    "report_digest", "activation_expectation_digest", "revocation_registry_id",
+    "revocation_sequence", "revocation_registry_digest", "verified_at", "valid_until",
+    "production_write_enabled", "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-closure-activation-receipt.v1"},
+    "certificate_id": {"type": "string", "pattern": "^pc-[a-f0-9]{24}$"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "input_digest": {"$ref": "#/$defs/digest"},
+    "report_digest": {"$ref": "#/$defs/digest"},
+    "activation_expectation_digest": {"$ref": "#/$defs/digest"},
+    "revocation_registry_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "revocation_sequence": {"type": "integer", "minimum": 1},
+    "revocation_registry_digest": {"$ref": "#/$defs/digest"},
+    "verified_at": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "production_write_enabled": {"const": true},
+    "receipt_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}
+}

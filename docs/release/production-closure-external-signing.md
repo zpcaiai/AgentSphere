@@ -5,14 +5,14 @@ loads a production private key. A KMS or approved signing service signs the exac
 and the finalizer verifies the detached signature before it writes a certificate.
 
 This flow does not make an ineligible release eligible. `prepare-external-signing` rejects a
-report unless all 36 batch statuses and all closure gates are verified for the exact production
+report unless all Batch 01–35 statuses and all closure gates are verified for the exact production
 scope. The current checked-in evidence therefore continues to produce `NOT_ISSUED`.
 
 ## Prepare the immutable request
 
 ```bash
 production-closure prepare-external-signing \
-  closure-report.json closure-scope.json kms:key:production-closure \
+  closure-report.json closure-input.json kms:key:production-closure \
   closure-signing-request.json
 ```
 
@@ -30,34 +30,46 @@ The KMS integration returns a detached document:
 
 ```json
 {
-  "schema_version": "agenttrust.production-closure-external-signature.v1",
+  "schema_version": "agenttrust.production-closure-external-signature.v2",
   "request_digest": "<sha256 of canonical signing request>",
   "algorithm": "Ed25519",
   "key_id": "kms:key:production-closure",
+  "signed_at": "2030-01-01T00:00:00Z",
+  "audit_receipt_digest": "<sha256 of the external signer audit receipt>",
   "signature": "<base64url Ed25519 signature without padding>"
 }
 ```
 
 The KMS adapter must obtain `request_digest` from the prepare command output or recompute it with
-JCS. It must not accept a caller-supplied key ID outside its release policy.
+JCS. It must not accept a caller-supplied key ID outside its release policy. The v2 detached
+envelope preserves the signer's timestamp and audit-receipt digest; the finalizer rejects stale or
+malformed metadata, while the protected CI attestation binds the complete envelope as release
+evidence.
 
 ## Finalize and verify
 
 ```bash
 production-closure finalize-external-signing \
   closure-signing-request.json closure-external-signature.json \
-  closure-public-key.json closure-report.json closure-scope.json \
+  closure-public-key.json closure-report.json closure-input.json \
   production-closure-certificate.json
 
 production-closure verify \
-  production-closure-certificate.json closure-report.json closure-public-key.json \
+  production-closure-certificate.json closure-report.json closure-input.json \
+  closure-public-key.json \
   signed-revocation-registry.json revocation-registry-public-key.json
 ```
 
 Finalization reconstructs the canonical payload, verifies its digest, checks request/report/scope
 bindings, checks the detached signature with the independently supplied public key, and performs
-the normal offline certificate verification. A request, response, public-key or report mismatch
-fails closed. The output is created atomically with `create_new` semantics.
+the normal offline certificate verification. The report and certificate both bind the canonical
+SHA-256 digest of the entire closure input, not only its scope. A request, response, public-key,
+input or report mismatch fails closed. The output is created atomically with `create_new`
+semantics.
+
+The certificate expiry is exactly the earliest expiry of its production scope, Batch 01–35
+evidence, required gate evidence, trusted reviewer keys/keyring, and any active exception. It
+cannot outlive a source that justified issuance.
 
 Certificate verification also requires a current
 `agenttrust.production-closure-revocation-registry.v1` snapshot. The signed snapshot is valid for
@@ -79,11 +91,43 @@ out-of-order, tampered or incorrectly signed registries fail closed. A consumer 
 trusted local checkpoint must re-bootstrap through the release authority; it must not trust an
 arbitrary older chain supplied with a certificate.
 
+Create registry snapshots through the same private-key-free boundary. The update contains only
+new revocations; the preparer verifies the prior signed snapshot and carries every prior entry
+forward. `-` is permitted only for sequence 1:
+
+```bash
+production-closure prepare-revocation-signing \
+  revocation-update.json previous-registry.json revocation-registry-public-key.json \
+  revocation-signing-request.json
+
+production-closure finalize-revocation-signing \
+  revocation-signing-request.json revocation-external-signature.json \
+  previous-registry.json revocation-registry-public-key.json \
+  signed-revocation-registry.json
+```
+
+The KMS signs the request's decoded `signing_payload`. A successor that removes or mutates any
+historical revocation fails both finalization and `verify-revocation-successor`.
+
+Before opening traffic or production writes, compare the verified certificate with the exact
+deployment material and emit a create-new activation receipt:
+
+```bash
+production-closure verify-activation \
+  production-closure-certificate.json closure-report.json closure-input.json \
+  closure-public-key.json signed-revocation-registry.json \
+  revocation-registry-public-key.json activation-expectation.json \
+  activation-receipt.json
+```
+
+The expectation pins release ID, scope, build, release and topology digests. Missing, expired,
+revoked or mismatched inputs never produce a receipt with `production_write_enabled=true`.
+
 ## Local signing boundary
 
 The old `issue` command is disabled and returns `CLOSURE_EXTERNAL_SIGNING_REQUIRED`. Local signing
-is excluded from the default binary. It is available only in an explicitly built development
-binary:
+and `ClosureAuthority` are excluded from both the default library and binary. They are available
+only in an explicitly built development binary:
 
 ```bash
 cargo run -p agent-trust-production-closure \

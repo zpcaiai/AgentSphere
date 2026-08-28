@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-evidence-bundle-manifest.schema.json",
+  "title": "Positive certificate-bearing production evidence bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "scope_digest", "environment_reference",
+    "created_at", "eligible", "production_certificate_included",
+    "batch_evidence_verified", "condition_evidence_verified", "gate_evidence_verified",
+    "trust_anchor_digests", "artifacts", "manifest_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-evidence-bundle.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "environment_reference": {
+      "type": "string", "pattern": "^environment://production/.+$", "maxLength": 512
+    },
+    "created_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "eligible": {"const": true},
+    "production_certificate_included": {"const": true},
+    "batch_evidence_verified": {"const": 35},
+    "condition_evidence_verified": {"const": 17},
+    "gate_evidence_verified": {"const": 15},
+    "trust_anchor_digests": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "git_provenance_keyring", "release_binding_keyring", "reviewer_keyring",
+        "worm_keyring", "closure_public_key", "revocation_public_key",
+        "revocation_checkpoint"
+      ],
+      "properties": {
+        "git_provenance_keyring": {"$ref": "#/$defs/digest"},
+        "release_binding_keyring": {"$ref": "#/$defs/digest"},
+        "reviewer_keyring": {"$ref": "#/$defs/digest"},
+        "worm_keyring": {"$ref": "#/$defs/digest"},
+        "closure_public_key": {"$ref": "#/$defs/digest"},
+        "revocation_public_key": {"$ref": "#/$defs/digest"},
+        "revocation_checkpoint": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "artifacts": {
+      "type": "array", "minItems": 12, "maxItems": 12,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["role", "path", "sha256", "size"],
+        "properties": {
+          "role": {
+            "enum": [
+              "qualification_input", "closure_input", "closure_report",
+              "production_closure_certificate",
+              "production_closure_signing_request",
+              "production_closure_external_signature",
+              "production_closure_signing_audit_receipt",
+              "production_closure_revocation_registry",
+              "production_closure_revocation_signing_request",
+              "production_closure_revocation_external_signature",
+              "production_closure_revocation_signing_audit_receipt",
+              "production_image_manifest"
+            ]
+          },
+          "path": {
+            "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]{1,512}$"
+          },
+          "sha256": {"$ref": "#/$defs/digest"},
+          "size": {"type": "integer", "minimum": 1, "maximum": 67108864}
+        }
+      }
+    },
+    "manifest_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

@@ -91,12 +91,13 @@
     },
     "streamEvent": {
       "type": "object", "additionalProperties": false,
-      "required": ["schema_version", "request_id", "sequence", "chunk_utf8", "terminal", "finish_reason", "usage", "artifact_ref", "artifact_digest", "evidence_ref", "evidence_digest"],
+      "required": ["schema_version", "request_id", "sequence", "chunk_utf8", "release_mode", "terminal", "finish_reason", "usage", "artifact_ref", "artifact_digest", "evidence_ref", "evidence_digest"],
       "properties": {
         "schema_version": {"const": "agenttrust.model-stream-event.v1"},
         "request_id": {"$ref": "#/$defs/uuid"},
         "sequence": {"type": "integer", "minimum": 1, "maximum": 10000},
         "chunk_utf8": {"type": "string", "maxLength": 1048576},
+        "release_mode": {"const": "DLP_VERIFIED_BUFFERED", "description": "Chunks are released only after output DLP, governed WORM storage, and signed Evidence complete."},
         "terminal": {"type": "boolean"},
         "finish_reason": {"type": ["string", "null"], "maxLength": 64},
         "usage": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/usage"}]},

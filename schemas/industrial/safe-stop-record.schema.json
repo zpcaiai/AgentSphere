@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/industrial/safe-stop-record.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_id", "tenant_id", "authorization_id", "action_hash", "resource_key", "reason_code", "requested_by", "requested_at", "local_journal_hash", "intent_journal_digest", "completion_journal_digest"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.industrial-edge.v1"},
+    "record_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "authorization_id": {"type": "string", "format": "uuid"},
+    "action_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "resource_key": {"type": "string", "minLength": 1, "maxLength": 1280},
+    "reason_code": {"type": "string", "pattern": "^[A-Z0-9_]{1,128}$"},
+    "requested_by": {"type": "string", "minLength": 1, "maxLength": 256},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "local_journal_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "intent_journal_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "completion_journal_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

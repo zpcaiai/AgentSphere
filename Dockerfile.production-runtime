@@ -4,10 +4,13 @@ FROM ${RUST_BUILDER_IMAGE} AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY rust ./rust
-RUN cargo build --locked --release -p agent-trust-production-runtime
+RUN cargo build --locked --release -p agent-trust-production-runtime \
+    --bin agent-trust-production-runtime \
+    --bin agenttrust-activation-lease-renewer
 
 FROM ${RUNTIME_BASE_IMAGE}
 COPY --from=build /src/target/release/agent-trust-production-runtime /usr/local/bin/agent-trust-production-runtime
+COPY --from=build /src/target/release/agenttrust-activation-lease-renewer /usr/local/bin/agenttrust-activation-lease-renewer
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/agent-trust-production-runtime"]
 CMD ["/etc/agenttrust/production-runtime.json"]

@@ -1,12 +1,34 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://agentsphere.local/schemas/release/production-closure-certificate.schema.json",
-  "title": "Production Closure Certificate", "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "certificate_id", "release_id", "scope_digest", "report_digest", "production_closure", "issued_at", "expires_at", "key_id", "signature"],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-closure-certificate.schema.json",
+  "title": "Production Closure Certificate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "certificate_id", "release_id", "scope_digest", "input_digest",
+    "report_digest", "signed_git_provenance_digest", "signed_release_binding_digest",
+    "release_digest", "reviewer_keyring_digest", "production_closure", "issued_at",
+    "expires_at", "key_id", "signature"
+  ],
   "properties": {
-    "schema_version": {"const": "agenttrust.production-closure.v1"}, "certificate_id": {"type": "string", "minLength": 1}, "release_id": {"type": "string", "minLength": 1},
-    "scope_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "report_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
-    "production_closure": {"const": true}, "issued_at": {"type": "string", "format": "date-time"}, "expires_at": {"type": "string", "format": "date-time"},
-    "key_id": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[A-Za-z0-9._:/-]+$"},
+    "schema_version": {"const": "agenttrust.production-closure.v1"},
+    "certificate_id": {"type": "string", "pattern": "^pc-[a-f0-9]{24}$"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[a-f0-9]{40}|sha256:[a-f0-9]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "input_digest": {"$ref": "#/$defs/digest"},
+    "report_digest": {"$ref": "#/$defs/digest"},
+    "signed_git_provenance_digest": {"$ref": "#/$defs/digest"},
+    "signed_release_binding_digest": {"$ref": "#/$defs/digest"},
+    "release_digest": {"$ref": "#/$defs/digest"},
+    "reviewer_keyring_digest": {"$ref": "#/$defs/digest"},
+    "production_closure": {"const": true},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "key_id": {"$ref": "#/$defs/identifier"},
     "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
   }
 }

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.invalid/model-gateway/provider-residency-attestation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "provider_key", "provider_request_id", "provider_manifest_digest", "model_version", "region", "jurisdiction", "request_digest", "response_digest", "input_tokens", "output_tokens", "processed_at", "expires_at", "evidence_ref", "issuer", "key_id", "key_usage", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.model-provider-residency-attestation.v1"},
+    "provider_key": {"type": "string", "minLength": 1, "maxLength": 768},
+    "provider_request_id": {"type": "string", "minLength": 1, "maxLength": 512},
+    "provider_manifest_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "model_version": {"type": "string", "minLength": 1, "maxLength": 256},
+    "region": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "jurisdiction": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "request_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "response_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "input_tokens": {"type": "integer", "minimum": 0},
+    "output_tokens": {"type": "integer", "minimum": 0},
+    "processed_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "evidence_ref": {"type": "string", "pattern": "^evidence://", "maxLength": 2048},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "key_usage": {"const": "MODEL_PROVIDER_RESIDENCY"},
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

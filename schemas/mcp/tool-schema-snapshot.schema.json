@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/mcp/tool-schema-snapshot.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "tenant_id", "server_id", "server_version", "tool_name", "namespaced_tool_id", "input_schema", "output_schema", "declared_effect", "schema_hash", "snapshot_hash"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.mcp.v1"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "server_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "server_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "tool_name": {"type": "string", "minLength": 1, "maxLength": 256},
+    "namespaced_tool_id": {"type": "string", "pattern": "^mcp\\.", "maxLength": 768},
+    "input_schema": {"type": "object"},
+    "output_schema": {"type": "object"},
+    "declared_effect": {"enum": ["PURE", "IDEMPOTENT", "COMPENSATABLE", "IRREVERSIBLE"]},
+    "schema_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "snapshot_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

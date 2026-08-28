@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/revocation-projection-broker-config.schema.json",
+  "title": "External revocation projection broker client configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "endpoint", "server_name", "oidc_audience",
+    "environment_reference", "ca_file", "client_certificate_file",
+    "client_private_key_file", "projection_public_key", "timeout_seconds",
+    "maximum_response_bytes", "head_ttl_seconds", "ack_timeout_seconds",
+    "required_watcher_ids"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.revocation-projection-broker-config.v1"},
+    "endpoint": {"type": "string", "pattern": "^https://[^/?#]+(?::(?:443|8443))?/v1/revocation-projections$"},
+    "server_name": {"type": "string", "format": "hostname"},
+    "oidc_audience": {"type": "string", "minLength": 1, "maxLength": 256},
+    "environment_reference": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9._:/-]{1,480}$"},
+    "ca_file": {"type": "string", "pattern": "^/"},
+    "client_certificate_file": {"type": "string", "pattern": "^/"},
+    "client_private_key_file": {"type": "string", "pattern": "^/"},
+    "projection_public_key": {"$ref": "#/$defs/publicKey"},
+    "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 30},
+    "maximum_response_bytes": {"type": "integer", "minimum": 4096, "maximum": 4194304},
+    "head_ttl_seconds": {"type": "integer", "minimum": 30, "maximum": 300},
+    "ack_timeout_seconds": {"type": "integer", "minimum": 5, "maximum": 300},
+    "required_watcher_ids": {
+      "type": "array", "minItems": 1, "maxItems": 10000, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/identifier"},
+      "allOf": [
+        {"contains": {"const": "execution/fleet"}},
+        {"contains": {"const": "platform-sre/activation-lease"}},
+        {"contains": {"const": "runtime/fleet"}}
+      ]
+    }
+  },
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "publicKey": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "key_id", "public_key"],
+      "properties": {
+        "schema_version": {"const": "agenttrust.ed25519-public-key.v1"},
+        "key_id": {"$ref": "#/$defs/identifier"},
+        "public_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
+      }
+    }
+  }
+}

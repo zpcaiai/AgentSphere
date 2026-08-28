@@ -1,4 +1,4 @@
-use crate::{config::IdentityConfig, http::SecureHttpTransport};
+use crate::{activation::ActivationGuardian, config::IdentityConfig, http::SecureHttpTransport};
 use agent_trust_contracts::{AgentInstanceId, SchemaVersion, TenantId};
 use agent_trust_gateway::{
     ActionView, GatewayError, IdentityContext, IdentityVerifierPort, InboundEnvelope,
@@ -205,10 +205,23 @@ impl IdentityVerifierPort for ProductionIdentityVerifier {
 #[derive(Clone)]
 pub struct HttpOrchestratorAdapter {
     transport: SecureHttpTransport,
+    activation_guardian: Arc<ActivationGuardian>,
 }
 impl HttpOrchestratorAdapter {
-    pub fn new(transport: SecureHttpTransport) -> Self {
-        Self { transport }
+    pub fn new(
+        transport: SecureHttpTransport,
+        activation_guardian: Arc<ActivationGuardian>,
+    ) -> Self {
+        Self {
+            transport,
+            activation_guardian,
+        }
+    }
+    fn require_activation(&self) -> Result<(), GatewayError> {
+        self.activation_guardian
+            .require_active()
+            .map(|_| ())
+            .map_err(|_| GatewayError::DownstreamUnavailable)
     }
 }
 
@@ -240,6 +253,7 @@ struct AckResponse {
 #[async_trait]
 impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
     async fn submit(&self, envelope: InboundEnvelope) -> Result<IngressResponse, GatewayError> {
+        self.require_activation()?;
         let tenant_id = envelope.tenant_context.tenant_id.0.clone();
         self.transport
             .post_json_tenant(
@@ -257,6 +271,7 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
         owner: &str,
         action: &agent_trust_contracts::ActionId,
     ) -> Result<ActionView, GatewayError> {
+        self.require_activation()?;
         self.transport
             .post_json_tenant(
                 "/v1/actions/query",
@@ -277,6 +292,7 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
         owner: &str,
         action: &agent_trust_contracts::ActionId,
     ) -> Result<(), GatewayError> {
+        self.require_activation()?;
         let response: AckResponse = self
             .transport
             .post_json_tenant(
@@ -303,6 +319,7 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
         owner: &str,
         action: &agent_trust_contracts::ActionId,
     ) -> Result<(), GatewayError> {
+        self.require_activation()?;
         let response: AckResponse = self
             .transport
             .post_json_tenant(
@@ -329,6 +346,7 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
         owner: &str,
         task: &agent_trust_contracts::TaskId,
     ) -> Result<Vec<String>, GatewayError> {
+        self.require_activation()?;
         let response: StreamResponse = self
             .transport
             .post_json_tenant(
@@ -346,25 +364,37 @@ impl OrchestratorSubmissionPort for HttpOrchestratorAdapter {
         Ok(response.events)
     }
     async fn ready(&self) -> bool {
-        self.transport
+        if self.require_activation().is_err() {
+            return false;
+        }
+        let ready = self
+            .transport
             .get_bytes("/ready")
             .await
             .ok()
             .and_then(|bytes| serde_json::from_slice::<ReadyResponse>(&bytes).ok())
-            .is_some_and(|response| response.ready)
+            .is_some_and(|response| response.ready);
+        ready && self.require_activation().is_ok()
     }
 }
 
 #[derive(Clone)]
 pub struct ControlledModelTransport {
     profiles: BTreeMap<String, SecureHttpTransport>,
+    activation_guardian: Arc<ActivationGuardian>,
 }
 impl ControlledModelTransport {
-    pub fn new(profiles: BTreeMap<String, SecureHttpTransport>) -> Result<Self, ModelError> {
+    pub fn new(
+        profiles: BTreeMap<String, SecureHttpTransport>,
+        activation_guardian: Arc<ActivationGuardian>,
+    ) -> Result<Self, ModelError> {
         if profiles.is_empty() || profiles.keys().any(|key| key.is_empty()) {
             return Err(ModelError::ConfigurationInvalid);
         }
-        Ok(Self { profiles })
+        Ok(Self {
+            profiles,
+            activation_guardian,
+        })
     }
 }
 
@@ -372,12 +402,14 @@ pub struct ProductionModelAdapter {
     provider_key: String,
     model: String,
     transport: SecureHttpTransport,
+    activation_guardian: Arc<ActivationGuardian>,
 }
 impl ProductionModelAdapter {
     pub fn new(
         provider_key: String,
         model: String,
         transport: SecureHttpTransport,
+        activation_guardian: Arc<ActivationGuardian>,
     ) -> Result<Self, ModelError> {
         if provider_key.is_empty() || model.is_empty() {
             return Err(ModelError::ConfigurationInvalid);
@@ -386,6 +418,7 @@ impl ProductionModelAdapter {
             provider_key,
             model,
             transport,
+            activation_guardian,
         })
     }
     fn body(&self, request: &ProviderRequest, stream: bool) -> Value {
@@ -406,6 +439,9 @@ impl ModelProviderAdapter for ProductionModelAdapter {
         &self.provider_key
     }
     async fn generate(&self, request: ProviderRequest) -> Result<ProviderResponse, ModelError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| ModelError::ProviderUnavailable)?;
         let value: Value = self
             .transport
             .post_json(
@@ -418,6 +454,9 @@ impl ModelProviderAdapter for ProductionModelAdapter {
         parse_model_response(value, request.maximum_output_bytes)
     }
     async fn stream(&self, request: ProviderRequest) -> Result<ProviderStreamResponse, ModelError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| ModelError::ProviderUnavailable)?;
         let bytes = self
             .transport
             .post_json_bytes(
@@ -432,6 +471,9 @@ impl ModelProviderAdapter for ProductionModelAdapter {
         parse_sse_response(&bytes, request.maximum_output_bytes)
     }
     async fn embeddings(&self, request: ProviderRequest) -> Result<Vec<f32>, ModelError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| ModelError::ProviderUnavailable)?;
         let body = json!({"model": self.model, "input": String::from_utf8_lossy(&request.prompt),
             "metadata": {"request_hash": request.request_hash, "idempotency_key": request.idempotency_key}});
         let value: Value = self
@@ -595,6 +637,9 @@ impl ProviderWireTransport for ControlledModelTransport {
         body: Value,
         maximum_output_bytes: usize,
     ) -> Result<Value, ModelError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| ModelError::ProviderUnavailable)?;
         if maximum_output_bytes == 0 || maximum_output_bytes > 32 * 1024 * 1024 {
             return Err(ModelError::RequestInvalid);
         }
@@ -656,10 +701,17 @@ impl CredentialLifecyclePort for SecretBrokerCredentialLifecycle {
 #[derive(Clone)]
 pub struct HttpIndustrialAdapter {
     transport: SecureHttpTransport,
+    activation_guardian: Arc<ActivationGuardian>,
 }
 impl HttpIndustrialAdapter {
-    pub fn new(transport: SecureHttpTransport) -> Self {
-        Self { transport }
+    pub fn new(
+        transport: SecureHttpTransport,
+        activation_guardian: Arc<ActivationGuardian>,
+    ) -> Self {
+        Self {
+            transport,
+            activation_guardian,
+        }
     }
 }
 #[async_trait]
@@ -677,6 +729,9 @@ impl IndustrialAdapter for HttpIndustrialAdapter {
         expected_value: &Value,
         new_value: &Value,
     ) -> Result<TelemetrySample, IndustrialError> {
+        self.activation_guardian
+            .require_active()
+            .map_err(|_| IndustrialError::DisconnectedFailClosed)?;
         self.transport
             .post_json(
                 "/v1/industrial/compare-and-set",

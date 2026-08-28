@@ -1,0 +1,46 @@
+[Unit]
+Description=AgentTrust one-shot gVisor execution worker for authorization %i
+Documentation=file:///usr/share/doc/agentsphere/gvisor-worker-deployment.md
+After=local-fs.target
+ConditionPathIsExecutable=/usr/local/libexec/agenttrust-gvisor-worker
+ConditionPathIsExecutable=/usr/local/sbin/runsc
+ConditionPathIsReadWrite=/var/lib/agenttrust-gvisor
+
+[Service]
+Type=oneshot
+User=agenttrust-sandbox
+Group=agenttrust-sandbox
+SupplementaryGroups=agenttrust-gvisor-spool
+WorkingDirectory=/var/lib/agenttrust-gvisor
+UMask=0077
+ExecCondition=/usr/bin/sha256sum --check --strict /etc/agenttrust/gvisor/worker-binary.sha256
+LoadCredentialEncrypted=receipt-signing-key.json:/etc/agenttrust/gvisor/receipt-signing-key.cred
+ExecStart=/usr/local/libexec/agenttrust-gvisor-worker execute /var/spool/agenttrust-gvisor/inbox/%i.json /etc/agenttrust/gvisor/worker-keyring.json /etc/agenttrust/gvisor/runtime-attestation.json %d/receipt-signing-key.json /usr/local/sbin/runsc /var/lib/agenttrust-gvisor/workspaces /var/lib/agenttrust-gvisor/replay /var/lib/agenttrust-gvisor/results/%i
+NoNewPrivileges=yes
+Delegate=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+ReadOnlyPaths=/var/spool/agenttrust-gvisor/inbox
+ReadWritePaths=/var/lib/agenttrust-gvisor
+RestrictAddressFamilies=AF_UNIX
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+KillMode=control-group
+SendSIGKILL=yes
+TimeoutStartSec=24h
+
+[Install]
+WantedBy=multi-user.target

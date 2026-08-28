@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -33,8 +34,21 @@ def command_for(
     *,
     control_api_url: str | None = None,
     agui_verify_key: str | None = None,
+    docker_binary: str = "docker",
 ) -> list[str]:
-    if not _OUTPUT.fullmatch(output_image) or any(not _IMAGE.fullmatch(image) for image in bases):
+    docker_path = Path(docker_binary)
+    if (
+        not _OUTPUT.fullmatch(output_image)
+        or any(not _IMAGE.fullmatch(image) for image in bases)
+        or (
+            docker_binary != "docker"
+            and (
+                not docker_path.is_absolute()
+                or docker_path.name != "docker"
+                or any(character in docker_binary for character in "\x00\r\n")
+            )
+        )
+    ):
         raise BuildConfigurationError("PRODUCTION_IMAGE_CONFIGURATION_INVALID")
     if component == "runtime" and len(bases) == 2:
         dockerfile = root / "Dockerfile.production-runtime"
@@ -91,6 +105,17 @@ def command_for(
         dockerfile = root / "Dockerfile.enterprise-authority"
         arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
                      "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "release-admission" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.release-admission"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component == "sandbox-worker" and len(bases) == 2:
+        dockerfile = root / "Dockerfile.sandbox-worker"
+        arguments = ["--build-arg", f"RUST_BUILDER_IMAGE={bases[0]}",
+                     "--build-arg", f"RUNTIME_BASE_IMAGE={bases[1]}"]
+    elif component in {"envoy", "utility"} and len(bases) == 1:
+        dockerfile = root / "Dockerfile.vendor-runtime"
+        arguments = ["--build-arg", f"BASE_IMAGE={bases[0]}"]
     elif (
         component == "console" and len(bases) == 2 and _valid_https(control_api_url)
         and _valid_ed25519_key(agui_verify_key)
@@ -107,7 +132,7 @@ def command_for(
         raise BuildConfigurationError("PRODUCTION_IMAGE_COMPONENT_INVALID")
     if not dockerfile.is_file():
         raise BuildConfigurationError("PRODUCTION_IMAGE_DOCKERFILE_MISSING")
-    return ["docker", "build", "--pull=false", "--file", str(dockerfile),
+    return [docker_binary, "build", "--pull=false", "--file", str(dockerfile),
             *arguments, "--tag", output_image, str(root)]
 
 
@@ -149,17 +174,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         "context-governance", "security-evaluation", "platform-sre", "runtime-anomaly",
         "model-gateway", "data-governance", "pack-supply-chain", "domain-runtime",
         "enterprise-control", "enterprise-authority", "console", "migrations",
+        "release-admission", "sandbox-worker", "envoy", "utility",
     ), required=True)
     parser.add_argument("--output-image", required=True)
     parser.add_argument("--base-image", action="append", required=True)
     parser.add_argument("--control-api-url")
     parser.add_argument("--agui-verify-key")
+    parser.add_argument(
+        "--docker-binary",
+        default=os.environ.get("AGENT_TRUST_DOCKER_BINARY", "docker"),
+        help="Digest-verified absolute docker CLI path for production workflows",
+    )
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args(argv)
     root = args.root.resolve()
     command = command_for(
         args.component, args.output_image, args.base_image, root,
         control_api_url=args.control_api_url, agui_verify_key=args.agui_verify_key,
+        docker_binary=args.docker_binary,
     )
     subprocess.run(command, check=True, cwd=root)
     return 0

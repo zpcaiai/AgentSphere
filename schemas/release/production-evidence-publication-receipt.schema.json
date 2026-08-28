@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-evidence-publication-receipt.schema.json",
+  "title": "Production runtime evidence publication receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_id", "scope_digest", "volume_name",
+    "evidence_bundle_manifest_digest", "activation_material_digest",
+    "certificate_id", "revocation_registry_id", "revocation_registry_sequence",
+    "revocation_registry_digest",
+    "files", "directory_digest", "published_at", "filesystem_mode_read_only",
+    "locked_retention_evidence_required", "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-evidence-publication-receipt.v1"},
+    "release_id": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "scope_digest": {"$ref": "#/$defs/digest"},
+    "volume_name": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[a-z0-9](?:[-a-z0-9.]*[a-z0-9])?$"},
+    "evidence_bundle_manifest_digest": {"$ref": "#/$defs/digest"},
+    "activation_material_digest": {"$ref": "#/$defs/digest"},
+    "certificate_id": {"type": "string", "pattern": "^pc-[0-9a-f]{24}$"},
+    "revocation_registry_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "revocation_registry_sequence": {"type": "integer", "minimum": 1},
+    "revocation_registry_digest": {"$ref": "#/$defs/digest"},
+    "files": {
+      "type": "array", "minItems": 9, "maxItems": 9,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "sha256", "size"],
+        "properties": {
+          "name": {
+            "enum": [
+              "production-certificate.json", "closure-report.json",
+              "closure-input.json", "revocation-registry.json",
+              "activation-expectation.json", "batch-statuses.json",
+              "gate-evidence.json", "residual-risks.json", "exceptions.json"
+            ]
+          },
+          "sha256": {"$ref": "#/$defs/digest"},
+          "size": {"type": "integer", "minimum": 1, "maximum": 67108864}
+        }
+      }
+    },
+    "directory_digest": {"$ref": "#/$defs/digest"},
+    "published_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "filesystem_mode_read_only": {"const": true},
+    "locked_retention_evidence_required": {"const": true},
+    "receipt_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+}

@@ -31,18 +31,27 @@ development Gateway remains a separate explicitly gated binary.
 ```bash
 cargo build --locked --release -p agent-trust-production-runtime
 python3 scripts/audit-production-runtime.py
+python3 scripts/report-production-release-readiness.py || test $? -eq 2
 python3 scripts/render-production-stack.py \
-  --template deploy/kubernetes/production-stack.yaml.tmpl \
+  --template /absolute/repository/deploy/kubernetes/production-stack.yaml.tmpl \
   --values /protected/release/production-stack-values.json \
   --runtime-config /protected/release/production-runtime.json \
   --git-provenance /protected/release/signed-git-provenance.json \
   --git-provenance-keyring /protected/release/git-provenance-keyring.json \
   --release-binding /protected/release/signed-release-binding.json \
   --release-binding-keyring /protected/release/release-binding-keyring.json \
+  --activation /protected/release/activation.json \
+  --closure-report /protected/release/closure-report.json \
+  --production-certificate /protected/release/production-certificate.json \
+  --closure-public-key /protected/trust/closure-public-key.json \
+  --revocation-registry /protected/release/revocation-registry.json \
+  --revocation-public-key /protected/trust/revocation-public-key.json \
   --output /absolute/new/manifest.yaml
 ```
 
-The full-stack template is the only production deployment unit. The historical
+The readiness command exits `2` while any release task remains open and never upgrades
+local or historical results into production evidence. The full-stack template is the only
+production deployment unit. The historical
 `production-runtime.yaml.tmpl` and `render-production-runtime.py` pair may be used only for
 component-level compatibility checks; it omits the authority, migration, identity, secret and
 network-policy inventory required by a production release.

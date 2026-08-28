@@ -406,8 +406,11 @@ def main() -> int:
     versions = [migration_version(value) for value in entries]
     if versions != sorted(versions):
         fail("MIGRATION_MANIFEST_ORDER_INVALID")
-    if entries[-1] != "production-closure/0036_02_global_tenant_isolation.sql":
-        fail("GLOBAL_TENANT_ISOLATION_NOT_LAST")
+    if entries[-2:] != [
+        "production-closure/0036_02_global_tenant_isolation.sql",
+        "production-closure/0036_03_production_activation_lease.sql",
+    ]:
+        fail("GLOBAL_PRODUCTION_CLOSURE_MIGRATIONS_NOT_LAST")
     if "orchestrator/0036_01_24_production_orchestrator_hardening.sql" not in entries:
         fail("ORCHESTRATOR_PRODUCTION_HARDENING_MISSING")
     if entries.index("transaction-ledger/0001_transaction_ledger.sql") > entries.index(
@@ -469,6 +472,13 @@ def main() -> int:
         "enterprise_authority_executions",
         "agent_registry_audit_events",
         "audit_human_assertion_uses",
+        "production_activation_lease",
+        "production_activation_history",
+        "agenttrust_enforce_production_activation",
+        "agenttrust_renew_production_activation",
+        "agenttrust_transition_production_activation",
+        "agenttrust_production_activation_guard",
+        "PRODUCTION_ACTIVATION_LEASE_NOT_ACTIVE",
     ):
         if required not in source:
             fail(f"MIGRATION_REQUIRED_CLOSURE_MISSING:{required}")

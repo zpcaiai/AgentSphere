@@ -313,6 +313,7 @@ fn error_status(error: &ExecutionError) -> StatusCode {
             | agent_trust_registry::RegistryError::CompensationInvalid,
         ) => StatusCode::BAD_GATEWAY,
         ExecutionError::Configuration
+        | ExecutionError::ActivationUnavailable
         | ExecutionError::DependencyUnavailable
         | ExecutionError::Ledger(_)
         | ExecutionError::Registry(_)
@@ -326,6 +327,7 @@ fn error_code(error: &ExecutionError) -> &'static str {
         ExecutionError::RequestInvalid | ExecutionError::ActionIr(_) => "EXECUTION_REQUEST_INVALID",
         ExecutionError::MaterializationInvalid => "EXECUTION_MATERIALIZATION_INVALID",
         ExecutionError::AuthorizationDenied => "EXECUTION_AUTHORIZATION_DENIED",
+        ExecutionError::ActivationUnavailable => "EXECUTION_PRODUCTION_ACTIVATION_UNAVAILABLE",
         ExecutionError::DependencyUnavailable => "EXECUTION_DEPENDENCY_UNAVAILABLE",
         ExecutionError::DependencyResponseInvalid => "EXECUTION_DEPENDENCY_RESPONSE_INVALID",
         ExecutionError::EvidenceInvalid | ExecutionError::Evidence(_) => {

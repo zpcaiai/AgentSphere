@@ -79,13 +79,22 @@ struct ProviderKeyringDocument {
 struct ProviderKeyRecord {
     key_id: String,
     key_usage: String,
+    issuer: String,
+    provider_ids: BTreeSet<String>,
     public_key_base64url: String,
     status: String,
 }
 
 #[derive(Debug, Clone)]
 struct ProviderKeyring {
-    keys: BTreeMap<String, VerifyingKey>,
+    keys: BTreeMap<String, TrustedProviderKey>,
+}
+
+#[derive(Debug, Clone)]
+struct TrustedProviderKey {
+    key: VerifyingKey,
+    issuer: String,
+    provider_ids: BTreeSet<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -172,6 +181,40 @@ struct SignedProviderRevocation {
     key_id: String,
     key_usage: String,
     signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SignedProviderResidencyAttestation {
+    schema_version: String,
+    provider_key: String,
+    provider_request_id: String,
+    provider_manifest_digest: String,
+    model_version: String,
+    region: String,
+    jurisdiction: String,
+    request_digest: String,
+    response_digest: String,
+    input_tokens: u64,
+    output_tokens: u64,
+    processed_at: DateTime<Utc>,
+    expires_at: DateTime<Utc>,
+    evidence_ref: String,
+    issuer: String,
+    key_id: String,
+    key_usage: String,
+    signature: String,
+}
+
+impl SignedProviderResidencyAttestation {
+    fn signing_bytes(&self) -> Result<Vec<u8>, AuthorityError> {
+        let mut copy = self.clone();
+        copy.signature.clear();
+        serde_jcs::to_vec(&copy).map_err(|_| AuthorityError::ProviderOutcomeUnknown)
+    }
+    fn digest(&self) -> Result<String, AuthorityError> {
+        canonical_digest(self).map_err(|_| AuthorityError::ProviderOutcomeUnknown)
+    }
 }
 
 #[derive(Serialize)]
@@ -456,6 +499,8 @@ struct ModelEvidencePayload<'a> {
     output_dlp_report_digest: &'a str,
     residency_policy_evidence_ref: &'a str,
     residency_policy_evidence_digest: &'a str,
+    residency_attestation_ref: &'a str,
+    residency_attestation_digest: &'a str,
     output_dlp_evidence_ref: &'a str,
     output_dlp_evidence_digest: &'a str,
     output_label_evidence_ref: &'a str,
@@ -498,6 +543,7 @@ struct BillingEvidenceRequest<'a> {
     provider_id: &'a str,
     statement_period: &'a str,
     statement_digest: &'a str,
+    provider_attestation_digest: &'a str,
     residency_policy_evidence_digest: &'a str,
     matched: bool,
     matched_requests: u64,
@@ -574,14 +620,25 @@ impl HttpProductionModelRuntime {
             return Err(AuthorityError::ConfigurationInvalid);
         }
         let mut keys = BTreeMap::new();
+        let mut key_usages = BTreeSet::new();
         for record in keyring_document.keys {
             if record.status != "ACTIVE"
                 || !matches!(
                     record.key_usage.as_str(),
-                    "MODEL_PROVIDER_MANIFEST" | "MODEL_PROVIDER_REVOCATION"
+                    "MODEL_PROVIDER_MANIFEST"
+                        | "MODEL_PROVIDER_REVOCATION"
+                        | "MODEL_PROVIDER_RESIDENCY"
+                        | "MODEL_PROVIDER_BILLING"
                 )
                 || record.key_id.is_empty()
                 || record.key_id.len() > 128
+                || !identifier(&record.issuer, 256)
+                || record.provider_ids.is_empty()
+                || record.provider_ids.len() > 1000
+                || record
+                    .provider_ids
+                    .iter()
+                    .any(|provider| !identifier(provider, 128))
             {
                 return Err(AuthorityError::ConfigurationInvalid);
             }
@@ -593,12 +650,31 @@ impl HttpProductionModelRuntime {
                 .map_err(|_| AuthorityError::ConfigurationInvalid)?;
             let key = VerifyingKey::from_bytes(&key_bytes)
                 .map_err(|_| AuthorityError::ConfigurationInvalid)?;
+            key_usages.insert(record.key_usage.clone());
             if keys
-                .insert(format!("{}:{}", record.key_usage, record.key_id), key)
+                .insert(
+                    format!("{}:{}", record.key_usage, record.key_id),
+                    TrustedProviderKey {
+                        key,
+                        issuer: record.issuer,
+                        provider_ids: record.provider_ids,
+                    },
+                )
                 .is_some()
             {
                 return Err(AuthorityError::ConfigurationInvalid);
             }
+        }
+        if ![
+            "MODEL_PROVIDER_MANIFEST",
+            "MODEL_PROVIDER_REVOCATION",
+            "MODEL_PROVIDER_RESIDENCY",
+            "MODEL_PROVIDER_BILLING",
+        ]
+        .iter()
+        .all(|usage| key_usages.contains(*usage))
+        {
+            return Err(AuthorityError::ConfigurationInvalid);
         }
         let evidence_document: EvidenceKeyringDocument = private_json(evidence_keyring_file)?;
         if evidence_document.schema_version != "agenttrust.model-evidence-keyring.v1"
@@ -1509,7 +1585,7 @@ impl HttpProductionModelRuntime {
         profile: &ProviderEndpointRecord,
         body: &Value,
         accept: &str,
-    ) -> Result<(String, Vec<u8>), AuthorityError> {
+    ) -> Result<(String, Vec<u8>, SignedProviderResidencyAttestation), AuthorityError> {
         let token = read_secret(&profile.token_file, 16, 8192)?;
         let response = self
             .client
@@ -1533,10 +1609,78 @@ impl HttpProductionModelRuntime {
             .unwrap_or("")
             .trim()
             .to_ascii_lowercase();
+        let encoded_attestation = response
+            .headers()
+            .get("x-agenttrust-residency-attestation")
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty() && value.len() <= 65_536)
+            .ok_or(AuthorityError::ProviderOutcomeUnknown)?;
+        let attestation_bytes = URL_SAFE_NO_PAD
+            .decode(encoded_attestation.as_bytes())
+            .map_err(|_| AuthorityError::ProviderOutcomeUnknown)?;
+        let attestation: SignedProviderResidencyAttestation =
+            strict_json(&attestation_bytes, 49_152)?;
         let bytes = bounded_bytes(response, MAX_PROVIDER_RESPONSE)
             .await
             .map_err(|_| AuthorityError::ProviderOutcomeUnknown)?;
-        Ok((content_type, bytes))
+        if attestation.request_digest != canonical_digest(body)?
+            || attestation.response_digest != digest(&bytes)
+        {
+            return Err(AuthorityError::ProviderOutcomeUnknown);
+        }
+        Ok((content_type, bytes, attestation))
+    }
+
+    fn verify_residency_attestation(
+        &self,
+        plan: &RoutePlan,
+        outcome: &ProviderOutcome,
+        attestation: &SignedProviderResidencyAttestation,
+        now: DateTime<Utc>,
+    ) -> Result<(String, String), AuthorityError> {
+        let key = self
+            .keyring
+            .keys
+            .get(&format!("MODEL_PROVIDER_RESIDENCY:{}", attestation.key_id))
+            .ok_or(AuthorityError::ProviderOutcomeUnknown)?;
+        let signature = Signature::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(attestation.signature.as_bytes())
+                .map_err(|_| AuthorityError::ProviderOutcomeUnknown)?,
+        )
+        .map_err(|_| AuthorityError::ProviderOutcomeUnknown)?;
+        if attestation.schema_version != "agenttrust.model-provider-residency-attestation.v1"
+            || attestation.key_usage != "MODEL_PROVIDER_RESIDENCY"
+            || attestation.provider_key != plan.provider_key
+            || attestation.provider_request_id != outcome.provider_request_id
+            || attestation.provider_manifest_digest != plan.provider_manifest_digest
+            || attestation.model_version != plan.model_version
+            || attestation.region != plan.provider_region
+            || attestation.jurisdiction != plan.provider_jurisdiction
+            || attestation.input_tokens != outcome.input_tokens
+            || attestation.output_tokens != outcome.output_tokens
+            || !lower_digest(&attestation.request_digest)
+            || !lower_digest(&attestation.response_digest)
+            || !evidence_reference(&attestation.evidence_ref)
+            || attestation.processed_at > now
+            || now >= attestation.expires_at
+            || attestation.expires_at > attestation.processed_at + chrono::Duration::hours(24)
+            || !identifier(&attestation.issuer, 256)
+            || key.issuer != attestation.issuer
+            || !key.provider_ids.contains(
+                plan.provider_key
+                    .split(':')
+                    .next()
+                    .ok_or(AuthorityError::ProviderOutcomeUnknown)?,
+            )
+            || key
+                .key
+                .verify(&attestation.signing_bytes()?, &signature)
+                .is_err()
+        {
+            return Err(AuthorityError::ProviderOutcomeUnknown);
+        }
+        Ok((attestation.evidence_ref.clone(), attestation.digest()?))
     }
 
     async fn dependency_ready(&self, endpoint: &AdapterEndpoint) -> Result<(), AuthorityError> {
@@ -1806,6 +1950,7 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
                     endpoint_profile: manifest.endpoint_profile.clone(),
                     model_id: manifest.model_id.clone(),
                     model_version: manifest.model_version.clone(),
+                    provider_region: manifest.region.clone(),
                     provider_jurisdiction: manifest.jurisdiction.clone(),
                     protocol: manifest.protocol.clone(),
                     cost_microunits_per_token: manifest.cost_microunits_per_token,
@@ -1864,28 +2009,38 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
         let body = provider_request_body(request, plan);
         match request.operation {
             ModelOperation::Generate => {
-                let (content_type, bytes) = self
+                let (content_type, bytes, attestation) = self
                     .provider_response(profile, &body, "application/json")
                     .await?;
                 if content_type != "application/json" {
                     return Err(AuthorityError::ProviderOutcomeUnknown);
                 }
-                parse_generate_response(&bytes, plan)
+                let mut outcome = parse_generate_response(&bytes, plan)?;
+                let (reference, digest) =
+                    self.verify_residency_attestation(plan, &outcome, &attestation, Utc::now())?;
+                outcome.residency_attestation_ref = reference;
+                outcome.residency_attestation_digest = digest;
+                Ok(outcome)
             }
             ModelOperation::Embeddings => {
-                let (content_type, bytes) = self
+                let (content_type, bytes, attestation) = self
                     .provider_response(profile, &body, "application/json")
                     .await?;
                 if content_type != "application/json" {
                     return Err(AuthorityError::ProviderOutcomeUnknown);
                 }
-                parse_embedding_response(&bytes, plan)
+                let mut outcome = parse_embedding_response(&bytes, plan)?;
+                let (reference, digest) =
+                    self.verify_residency_attestation(plan, &outcome, &attestation, Utc::now())?;
+                outcome.residency_attestation_ref = reference;
+                outcome.residency_attestation_digest = digest;
+                Ok(outcome)
             }
             ModelOperation::Stream => {
-                let (content_type, bytes) = self
+                let (content_type, bytes, attestation) = self
                     .provider_response(profile, &body, "text/event-stream")
                     .await?;
-                match profile.protocol.as_str() {
+                let mut outcome = match profile.protocol.as_str() {
                     "OPENAI_COMPATIBLE" if content_type == "text/event-stream" => {
                         parse_openai_sse(&bytes, plan)
                     }
@@ -1898,7 +2053,12 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
                         parse_local_json_lines(&bytes, plan)
                     }
                     _ => Err(AuthorityError::ProviderOutcomeUnknown),
-                }
+                }?;
+                let (reference, digest) =
+                    self.verify_residency_attestation(plan, &outcome, &attestation, Utc::now())?;
+                outcome.residency_attestation_ref = reference;
+                outcome.residency_attestation_digest = digest;
+                Ok(outcome)
             }
         }
     }
@@ -2283,6 +2443,8 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             output_dlp_report_digest: &output_dlp.findings_digest,
             residency_policy_evidence_ref: &plan.data_policy_evidence_ref,
             residency_policy_evidence_digest: &plan.data_policy_evidence_digest,
+            residency_attestation_ref: &outcome.residency_attestation_ref,
+            residency_attestation_digest: &outcome.residency_attestation_digest,
             output_dlp_evidence_ref: mutation_evidence_ref(&output_dlp_record)?,
             output_dlp_evidence_digest: mutation_evidence_digest(&output_dlp_record)?,
             output_label_evidence_ref: mutation_evidence_ref(&output_label_record)?,
@@ -2356,6 +2518,8 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             evidence_digest: evidence.evidence_digest,
             residency_policy_evidence_ref: plan.data_policy_evidence_ref.clone(),
             residency_policy_evidence_digest: plan.data_policy_evidence_digest.clone(),
+            residency_attestation_ref: outcome.residency_attestation_ref.clone(),
+            residency_attestation_digest: outcome.residency_attestation_digest.clone(),
             output_dlp_report_digest: output_dlp.findings_digest,
             output_dlp_evidence_ref: mutation_evidence_ref(&output_dlp_record)?.to_owned(),
             output_dlp_evidence_digest: mutation_evidence_digest(&output_dlp_record)?.to_owned(),
@@ -2392,6 +2556,7 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
         total_metered_microunits: u64,
         total_billed_microunits: u64,
     ) -> Result<BillingEvidenceReceipt, AuthorityError> {
+        let provider_attestation_digest = canonical_digest(&request.provider_attestation)?;
         let payload = BillingEvidenceRequest {
             schema_version: "agenttrust.model-billing-evidence-payload.v1",
             tenant_id: request.tenant_id.to_string(),
@@ -2409,6 +2574,7 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             provider_id: &request.provider_id,
             statement_period: &request.statement_period,
             statement_digest: &request.statement_digest,
+            provider_attestation_digest: &provider_attestation_digest,
             residency_policy_evidence_digest: &request.residency_policy_evidence_digest,
             matched,
             matched_requests,
@@ -2467,6 +2633,44 @@ impl ProductionModelRuntime for HttpProductionModelRuntime {
             evidence_ref: response.evidence_ref,
             evidence_digest: response.evidence_digest,
         })
+    }
+
+    async fn verify_billing_statement(
+        &self,
+        request: &BillingStatementRequest,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorityError> {
+        let attestation = &request.provider_attestation;
+        let key = self
+            .keyring
+            .keys
+            .get(&format!("MODEL_PROVIDER_BILLING:{}", attestation.key_id))
+            .ok_or(AuthorityError::ProviderDenied)?;
+        let signature = Signature::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(attestation.signature.as_bytes())
+                .map_err(|_| AuthorityError::ProviderDenied)?,
+        )
+        .map_err(|_| AuthorityError::ProviderDenied)?;
+        if attestation.schema_version != "agenttrust.model-provider-billing-attestation.v1"
+            || attestation.provider_id != request.provider_id
+            || attestation.statement_period != request.statement_period
+            || attestation.statement_digest != request.statement_digest
+            || attestation.key_usage != "MODEL_PROVIDER_BILLING"
+            || attestation.issued_at > now
+            || now >= attestation.expires_at
+            || attestation.expires_at > attestation.issued_at + chrono::Duration::days(45)
+            || !identifier(&attestation.issuer, 256)
+            || key.issuer != attestation.issuer
+            || !key.provider_ids.contains(&request.provider_id)
+            || key
+                .key
+                .verify(&attestation.signing_bytes()?, &signature)
+                .is_err()
+        {
+            return Err(AuthorityError::ProviderDenied);
+        }
+        Ok(())
     }
 
     async fn ready(&self) -> Result<(), AuthorityError> {
@@ -2553,7 +2757,9 @@ fn verify_manifest(
         || manifest.maximum_context_bytes > 16_777_216
         || manifest.maximum_output_bytes == 0
         || manifest.maximum_output_bytes > 33_554_432
-        || key.verify(&bytes, &signature).is_err()
+        || key.issuer != manifest.issuer
+        || !key.provider_ids.contains(&manifest.provider_id)
+        || key.key.verify(&bytes, &signature).is_err()
     {
         return Err(AuthorityError::ProviderDenied);
     }
@@ -2601,7 +2807,9 @@ fn verify_revocation(
             .reason_code
             .bytes()
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
-        || key.verify(&bytes, &signature).is_err()
+        || key.issuer != revocation.issuer
+        || !key.provider_ids.contains(&revocation.provider_id)
+        || key.key.verify(&bytes, &signature).is_err()
     {
         return Err(AuthorityError::ProviderDenied);
     }
@@ -2894,6 +3102,8 @@ fn provider_outcome(
         input_tokens,
         output_tokens,
         cost_microunits: cost,
+        residency_attestation_ref: String::new(),
+        residency_attestation_digest: String::new(),
     })
 }
 
@@ -3318,6 +3528,7 @@ fn lower_digest(value: &str) -> bool {
 #[cfg(test)]
 mod adapter_tests {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
 
     #[test]
     fn service_urls_cannot_escape_the_configured_origin() {
@@ -3366,5 +3577,66 @@ mod adapter_tests {
             let encoded = serde_json::to_string(&operation).ok();
             assert_eq!(encoded.as_deref(), Some(expected));
         }
+    }
+
+    #[test]
+    fn provider_residency_signature_binds_region_and_response_digest() {
+        let key = SigningKey::from_bytes(&[71u8; 32]);
+        let now = Utc::now();
+        let mut attestation = SignedProviderResidencyAttestation {
+            schema_version: "agenttrust.model-provider-residency-attestation.v1".into(),
+            provider_key: "provider:model:1".into(),
+            provider_request_id: "provider-request".into(),
+            provider_manifest_digest: "a".repeat(64),
+            model_version: "1".into(),
+            region: "cn-north-1".into(),
+            jurisdiction: "CN".into(),
+            request_digest: "b".repeat(64),
+            response_digest: "c".repeat(64),
+            input_tokens: 10,
+            output_tokens: 20,
+            processed_at: now,
+            expires_at: now + chrono::Duration::hours(1),
+            evidence_ref: "evidence://provider/residency".into(),
+            issuer: "provider".into(),
+            key_id: "residency-key".into(),
+            key_usage: "MODEL_PROVIDER_RESIDENCY".into(),
+            signature: String::new(),
+        };
+        attestation.signature = URL_SAFE_NO_PAD.encode(
+            key.sign(
+                &attestation
+                    .signing_bytes()
+                    .unwrap_or_else(|_| panic!("bytes")),
+            )
+            .to_bytes(),
+        );
+        let signature = Signature::from_slice(
+            &URL_SAFE_NO_PAD
+                .decode(&attestation.signature)
+                .unwrap_or_else(|_| panic!("signature")),
+        )
+        .unwrap_or_else(|_| panic!("signature"));
+        assert!(
+            key.verifying_key()
+                .verify(
+                    &attestation
+                        .signing_bytes()
+                        .unwrap_or_else(|_| panic!("bytes")),
+                    &signature,
+                )
+                .is_ok()
+        );
+        attestation.region = "us-east-1".into();
+        assert!(
+            key.verifying_key()
+                .verify(
+                    &attestation
+                        .signing_bytes()
+                        .unwrap_or_else(|_| panic!("bytes")),
+                    &signature,
+                )
+                .is_err()
+        );
     }
 }

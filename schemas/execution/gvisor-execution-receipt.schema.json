@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/execution/gvisor-execution-receipt.schema.json",
+  "title": "gVisor worker execution and cleanup receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "job_id", "job_digest", "authorization_id", "action_hash",
+    "container_id", "image_digest", "oci_config_digest", "runsc_binary_digest",
+    "runtime_attestation_digest", "worker_hostname", "status", "exit_code", "stdout_sha256", "stderr_sha256",
+    "stdout_bytes", "stderr_bytes", "stdout_truncated", "stderr_truncated", "replay_consumed",
+    "runsc_deleted", "bundle_removed", "started_at", "finished_at", "issuer", "key_id",
+    "key_usage", "receipt_digest", "signature"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.gvisor-execution-receipt.v1"},
+    "job_id": {"type": "string", "format": "uuid"},
+    "job_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "authorization_id": {"type": "string", "format": "uuid"},
+    "action_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "container_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+    "image_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "oci_config_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "runsc_binary_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "runtime_attestation_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "worker_hostname": {"type": "string", "minLength": 1, "maxLength": 253, "pattern": "^[^\\s]+$"},
+    "status": {"enum": ["SUCCEEDED", "FAILED", "TIMED_OUT", "KILLED"]},
+    "exit_code": {"type": ["integer", "null"], "minimum": -2147483648, "maximum": 2147483647},
+    "stdout_sha256": {"$ref": "#/$defs/digest"}, "stderr_sha256": {"$ref": "#/$defs/digest"},
+    "stdout_bytes": {"type": "integer", "minimum": 0}, "stderr_bytes": {"type": "integer", "minimum": 0},
+    "stdout_truncated": {"type": "boolean"}, "stderr_truncated": {"type": "boolean"},
+    "replay_consumed": {"const": true}, "runsc_deleted": {"const": true}, "bundle_removed": {"const": true},
+    "started_at": {"type": "string", "format": "date-time"}, "finished_at": {"type": "string", "format": "date-time"},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "key_usage": {"const": "AGENTTRUST_GVISOR_EXECUTION_RECEIPT_V1"},
+    "receipt_digest": {"$ref": "#/$defs/prefixedDigest"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "prefixedDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}

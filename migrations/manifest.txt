@@ -67,4 +67,6 @@ orchestrator/0036_01_24_production_orchestrator_hardening.sql
 enterprise-approval/0036_01_25_approval_review_evidence_v2.sql
 enterprise-approval/0036_01_26_approval_decision_evidence.sql
 enterprise-control/0036_01_27_approval_intent_receipt.sql
+protocol-adapters/0036_01_28_protocol_runtime_hardening.sql
 production-closure/0036_02_global_tenant_isolation.sql
+production-closure/0036_03_production_activation_lease.sql

@@ -1,0 +1,667 @@
+name: production-assurance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Signed annotated tag that must peel to the protected default-branch SHA
+        required: true
+        type: string
+      candidate_run_id:
+        description: Successful production-release-candidate workflow run ID
+        required: true
+        type: string
+      evidence_run_id:
+        description: Successful production-evidence-intake workflow run ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-assurance
+  cancel-in-progress: false
+
+jobs:
+  close-and-activate:
+    runs-on: [self-hosted, linux, production-assurance, actions-runner-2-327-1]
+    environment: production-assurance
+    timeout-minutes: 120
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+      packages: read
+    env:
+      AGENT_TRUST_GH_BINARY: ${{ vars.AGENT_TRUST_GH_BINARY }}
+      AGENT_TRUST_GH_SHA256: ${{ vars.AGENT_TRUST_GH_SHA256 }}
+      AGENT_TRUST_GIT_BINARY: ${{ vars.AGENT_TRUST_GIT_BINARY }}
+      AGENT_TRUST_GIT_SHA256: ${{ vars.AGENT_TRUST_GIT_SHA256 }}
+      AGENT_TRUST_DOCKER_BINARY: ${{ vars.AGENT_TRUST_DOCKER_BINARY }}
+      AGENT_TRUST_DOCKER_SHA256: ${{ vars.AGENT_TRUST_DOCKER_SHA256 }}
+      AGENT_TRUST_PYTHON_BINARY: ${{ vars.AGENT_TRUST_PYTHON_BINARY }}
+      AGENT_TRUST_PYTHON_SHA256: ${{ vars.AGENT_TRUST_PYTHON_SHA256 }}
+      AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE: ${{ vars.AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE }}
+      AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256: ${{ vars.AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256 }}
+      AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY: ${{ vars.AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY }}
+      AGENT_TRUST_PYTHON_WHEELHOUSE_MANIFEST_SHA256: ${{ vars.AGENT_TRUST_PYTHON_WHEELHOUSE_MANIFEST_SHA256 }}
+      AGENT_TRUST_CARGO_BINARY: ${{ vars.AGENT_TRUST_CARGO_BINARY }}
+      AGENT_TRUST_CARGO_SHA256: ${{ vars.AGENT_TRUST_CARGO_SHA256 }}
+      AGENT_TRUST_RUSTC_BINARY: ${{ vars.AGENT_TRUST_RUSTC_BINARY }}
+      AGENT_TRUST_RUSTC_SHA256: ${{ vars.AGENT_TRUST_RUSTC_SHA256 }}
+      AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE: ${{ vars.AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE }}
+      AGENT_TRUST_GIT_PROVENANCE_KEYRING_FILE: ${{ vars.AGENT_TRUST_GIT_PROVENANCE_KEYRING_FILE }}
+      AGENT_TRUST_RELEASE_BINDING_KEYRING_FILE: ${{ vars.AGENT_TRUST_RELEASE_BINDING_KEYRING_FILE }}
+      AGENT_TRUST_REVIEWER_KEYRING_FILE: ${{ vars.AGENT_TRUST_REVIEWER_KEYRING_FILE }}
+      AGENT_TRUST_WORM_KEYRING_FILE: ${{ vars.AGENT_TRUST_WORM_KEYRING_FILE }}
+      AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE: ${{ vars.AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE }}
+      AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE: ${{ vars.AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE }}
+      AGENT_TRUST_REVOCATION_CHECKPOINT_FILE: ${{ vars.AGENT_TRUST_REVOCATION_CHECKPOINT_FILE }}
+      AGENT_TRUST_SIGNING_BROKER_CONFIG_FILE: ${{ vars.AGENT_TRUST_SIGNING_BROKER_CONFIG_FILE }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify every ambient runner tool and production toolchain before use
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import hashlib, os, pathlib, re, shutil, stat, sys
+          if sys.version_info[:2] != (3, 14) or not pathlib.Path(sys.executable).is_absolute():
+              raise SystemExit("RUNNER_PYTHON_VERSION_INVALID")
+          for path_name, digest_name in (
+              ("AGENT_TRUST_GH_BINARY", "AGENT_TRUST_GH_SHA256"),
+              ("AGENT_TRUST_GIT_BINARY", "AGENT_TRUST_GIT_SHA256"),
+              ("AGENT_TRUST_DOCKER_BINARY", "AGENT_TRUST_DOCKER_SHA256"),
+              ("AGENT_TRUST_PYTHON_BINARY", "AGENT_TRUST_PYTHON_SHA256"),
+              ("AGENT_TRUST_CARGO_BINARY", "AGENT_TRUST_CARGO_SHA256"),
+              ("AGENT_TRUST_RUSTC_BINARY", "AGENT_TRUST_RUSTC_SHA256"),
+          ):
+              path = pathlib.Path(os.environ.get(path_name, ""))
+              digest = os.environ.get(digest_name, "")
+              if not path.is_absolute() or path.is_symlink() or path.resolve() != path:
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              metadata = path.stat(follow_symlinks=False)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or os.access(path, os.W_OK) or not os.access(path, os.X_OK) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit("RUNNER_TOOL_PATH_INVALID")
+              if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                  raise SystemExit("RUNNER_TOOL_DIGEST_INVALID")
+              resolved = shutil.which(path.name)
+              if path_name != "AGENT_TRUST_PYTHON_BINARY" and resolved != str(path):
+                  raise SystemExit("RUNNER_TOOL_RESOLUTION_INVALID")
+          for path_name in (
+              "AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE",
+              "AGENT_TRUST_GIT_PROVENANCE_KEYRING_FILE",
+              "AGENT_TRUST_RELEASE_BINDING_KEYRING_FILE",
+              "AGENT_TRUST_REVIEWER_KEYRING_FILE",
+              "AGENT_TRUST_WORM_KEYRING_FILE",
+              "AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE",
+              "AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE",
+              "AGENT_TRUST_REVOCATION_CHECKPOINT_FILE",
+              "AGENT_TRUST_SIGNING_BROKER_CONFIG_FILE",
+              "AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE",
+          ):
+              path = pathlib.Path(os.environ.get(path_name, ""))
+              if not path.is_absolute() or path.is_symlink() or path.resolve() != path:
+                  raise SystemExit("RUNNER_TRUST_PATH_INVALID")
+              metadata = path.stat(follow_symlinks=False)
+              if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or not 1 <= metadata.st_size <= 64 * 1024 * 1024:
+                  raise SystemExit("RUNNER_TRUST_PATH_INVALID")
+              if not os.access(path, os.R_OK) or os.access(path, os.W_OK):
+                  raise SystemExit("RUNNER_TRUST_PATH_ACCESS_INVALID")
+          PY
+          "$AGENT_TRUST_GH_BINARY" --version
+          "$AGENT_TRUST_GH_BINARY" attestation verify --help | grep -F -- '--source-digest'
+          "$AGENT_TRUST_GIT_BINARY" --version
+          "$AGENT_TRUST_DOCKER_BINARY" version --format '{{.Client.Version}}'
+          test "$("$AGENT_TRUST_RUSTC_BINARY" --version)" = 'rustc 1.89.0 (29483883e 2025-08-04)'
+          test "$("$AGENT_TRUST_CARGO_BINARY" --version)" = 'cargo 1.89.0 (c24e10642 2025-06-23)'
+      - id: source
+        name: Verify the exact signed immutable source with deployment-owned Git trust
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          EXPECTED_DISPATCH_REF: refs/heads/${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git_cmd=("$AGENT_TRUST_GIT_BINARY")
+          [[ "$RELEASE_TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]
+          test "$GITHUB_REF" = "$EXPECTED_DISPATCH_REF"
+          test "$GITHUB_REF_TYPE" = branch
+          test "$GITHUB_REF_PROTECTED" = true
+          test "$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE" != ""
+          [[ "$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE" = /* ]]
+          test -f "$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE"
+          test ! -L "$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE"
+          tag_ref="refs/tags/$RELEASE_TAG"
+          test "$("${git_cmd[@]}" cat-file -t "$tag_ref")" = tag
+          "${git_cmd[@]}" -c include.path="$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE" verify-tag "$tag_ref"
+          commit_sha="$("${git_cmd[@]}" rev-parse "$tag_ref^{}")"
+          test "$commit_sha" = "$GITHUB_SHA"
+          "${git_cmd[@]}" -c include.path="$AGENT_TRUST_GIT_VERIFICATION_CONFIG_FILE" verify-commit "$commit_sha"
+          "${git_cmd[@]}" checkout --detach "$commit_sha"
+          test -z "$("${git_cmd[@]}" status --porcelain=v1 --untracked-files=all)"
+          object_format="$("${git_cmd[@]}" rev-parse --show-object-format)"
+          case "$object_format" in
+            sha1) test "${#commit_sha}" -eq 40 ;;
+            sha256) test "${#commit_sha}" -eq 64 ;;
+            *) exit 1 ;;
+          esac
+          printf 'commit_sha=%s\n' "$commit_sha" >> "$GITHUB_OUTPUT"
+          printf 'release_id=git:%s:%s\n' "$object_format" "$commit_sha" >> "$GITHUB_OUTPUT"
+      - name: Verify the digest-bound dependency closure and immutable Python runtime
+        run: |
+          set -euo pipefail
+          "$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import hashlib, json, os, pathlib, re, stat
+
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          wheelhouse = pathlib.Path(os.environ.get("AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY", ""))
+          manifest_digest = os.environ.get("AGENT_TRUST_PYTHON_WHEELHOUSE_MANIFEST_SHA256", "")
+          if not workspace.is_absolute() or workspace.resolve() != workspace:
+              raise SystemExit("PYTHON_DEPENDENCY_WORKSPACE_INVALID")
+          if not wheelhouse.is_absolute() or wheelhouse.is_symlink() or wheelhouse.resolve() != wheelhouse:
+              raise SystemExit("PYTHON_WHEELHOUSE_INVALID")
+          metadata = wheelhouse.stat(follow_symlinks=False)
+          if not stat.S_ISDIR(metadata.st_mode) or metadata.st_mode & 0o022 or os.access(wheelhouse, os.W_OK):
+              raise SystemExit("PYTHON_WHEELHOUSE_INVALID")
+
+          def secure_file(path: pathlib.Path, maximum: int) -> bytes:
+              metadata = path.stat(follow_symlinks=False)
+              if path.is_symlink() or path.resolve().parent != wheelhouse or not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_mode & 0o022 or os.access(path, os.W_OK) or not 1 <= metadata.st_size <= maximum:
+                  raise SystemExit("PYTHON_WHEELHOUSE_FILE_INVALID")
+              return path.read_bytes()
+
+          def reject_duplicates(pairs):
+              value = {}
+              for key, item in pairs:
+                  if key in value:
+                      raise ValueError("duplicate JSON member")
+                  value[key] = item
+              return value
+
+          manifest_path = wheelhouse / "wheelhouse-manifest.json"
+          lock_path = wheelhouse / "requirements-ci.lock"
+          manifest_bytes = secure_file(manifest_path, 16 * 1024 * 1024)
+          lock_bytes = secure_file(lock_path, 16 * 1024 * 1024)
+          if not re.fullmatch(r"[0-9a-f]{64}", manifest_digest) or hashlib.sha256(manifest_bytes).hexdigest() != manifest_digest:
+              raise SystemExit("PYTHON_WHEELHOUSE_MANIFEST_DIGEST_INVALID")
+          try:
+              manifest = json.loads(manifest_bytes, object_pairs_hook=reject_duplicates)
+              lock_text = lock_bytes.decode("utf-8")
+          except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+              raise SystemExit("PYTHON_WHEELHOUSE_MANIFEST_INVALID") from error
+          if not isinstance(manifest, dict) or set(manifest) != {"schema_version", "python_version", "requirements_sources", "requirements_lock_sha256", "wheels"} or manifest.get("schema_version") != "agenttrust.python-wheelhouse.v1" or manifest.get("python_version") != "3.14":
+              raise SystemExit("PYTHON_WHEELHOUSE_MANIFEST_INVALID")
+
+          discovered = set()
+          pending = [workspace / "requirements-ci.txt"]
+          while pending:
+              source = pending.pop()
+              if source in discovered:
+                  continue
+              if source.is_symlink() or source.resolve() != source or not source.is_file() or not source.is_relative_to(workspace):
+                  raise SystemExit("PYTHON_REQUIREMENTS_SOURCE_INVALID")
+              payload = source.read_bytes()
+              if not 1 <= len(payload) <= 4 * 1024 * 1024:
+                  raise SystemExit("PYTHON_REQUIREMENTS_SOURCE_INVALID")
+              discovered.add(source)
+              for line in payload.decode("utf-8").splitlines():
+                  stripped = line.strip()
+                  if not stripped.startswith(("-r", "--requirement")):
+                      continue
+                  match = re.fullmatch(r"(?:-r\s+|--requirement(?:\s+|=))([A-Za-z0-9_./-]{1,512})", stripped)
+                  if match is None:
+                      raise SystemExit("PYTHON_REQUIREMENTS_INCLUDE_INVALID")
+                  included = source.parent / match.group(1)
+                  if included.is_symlink() or included.resolve() != included or not included.is_relative_to(workspace):
+                      raise SystemExit("PYTHON_REQUIREMENTS_INCLUDE_INVALID")
+                  pending.append(included)
+          expected_sources = [
+              {"path": path.relative_to(workspace).as_posix(), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+              for path in sorted(discovered)
+          ]
+          if manifest.get("requirements_sources") != expected_sources or manifest.get("requirements_lock_sha256") != hashlib.sha256(lock_bytes).hexdigest():
+              raise SystemExit("PYTHON_REQUIREMENTS_BINDING_INVALID")
+          if "==" not in lock_text or "--hash=sha256:" not in lock_text or re.search(r"(?im)^\s*(?:-r|--requirement|-c|--constraint|-e|--editable|--index-url|--extra-index-url|--find-links|--trusted-host)\b", lock_text) or "://" in lock_text or " @ " in lock_text:
+              raise SystemExit("PYTHON_REQUIREMENTS_LOCK_INVALID")
+          hashes = re.findall(r"--hash=([^\s\\]+)", lock_text)
+          if not hashes or any(not re.fullmatch(r"sha256:[0-9a-f]{64}", item) for item in hashes):
+              raise SystemExit("PYTHON_REQUIREMENTS_LOCK_INVALID")
+
+          wheels = manifest.get("wheels")
+          if not isinstance(wheels, list) or not wheels:
+              raise SystemExit("PYTHON_WHEELHOUSE_MANIFEST_INVALID")
+          names = []
+          for record in wheels:
+              if not isinstance(record, dict) or set(record) != {"filename", "sha256", "size"}:
+                  raise SystemExit("PYTHON_WHEELHOUSE_MANIFEST_INVALID")
+              name, digest, size = record.get("filename"), record.get("sha256"), record.get("size")
+              if not isinstance(name, str) or pathlib.Path(name).name != name or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,250}\.whl", name) or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 1024 * 1024 * 1024:
+                  raise SystemExit("PYTHON_WHEELHOUSE_MANIFEST_INVALID")
+              payload = secure_file(wheelhouse / name, 1024 * 1024 * 1024)
+              if len(payload) != size or hashlib.sha256(payload).hexdigest() != digest:
+                  raise SystemExit("PYTHON_WHEEL_DIGEST_INVALID")
+              names.append(name)
+          if names != sorted(names) or len(names) != len(set(names)) or {item.name for item in wheelhouse.iterdir()} != {*names, manifest_path.name, lock_path.name}:
+              raise SystemExit("PYTHON_WHEELHOUSE_CONTENT_INVALID")
+          PY
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/verify-production-python-runtime.py verify \
+            --manifest "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_FILE" \
+            --manifest-sha256 "$AGENT_TRUST_PYTHON_RUNTIME_MANIFEST_SHA256" \
+            --python-sha256 "$AGENT_TRUST_PYTHON_SHA256" \
+            --requirements-lock "$AGENT_TRUST_PYTHON_WHEELHOUSE_DIRECTORY/requirements-ci.lock"
+          PIP_CONFIG_FILE=/dev/null "$AGENT_TRUST_PYTHON_BINARY" -m pip check
+      - name: Verify both upstream workflow run identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_RUN_ID" =~ ^[1-9][0-9]{0,19}$ ]]
+          [[ "$EVIDENCE_RUN_ID" =~ ^[1-9][0-9]{0,19}$ ]]
+          "$AGENT_TRUST_GH_BINARY" api "/repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+            > "$RUNNER_TEMP/candidate-run.json"
+          "$AGENT_TRUST_GH_BINARY" api "/repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID" \
+            > "$RUNNER_TEMP/evidence-run.json"
+          "$AGENT_TRUST_PYTHON_BINARY" - "$RUNNER_TEMP/candidate-run.json" "$RUNNER_TEMP/evidence-run.json" <<'PY'
+          import json, os, pathlib, sys
+          common = {
+              "event": "workflow_dispatch",
+              "status": "completed",
+              "conclusion": "success",
+              "head_sha": os.environ["COMMIT_SHA"],
+              "head_branch": os.environ["DEFAULT_BRANCH"],
+          }
+          for path, workflow in zip(sys.argv[1:], (
+              ".github/workflows/release-candidate.yml",
+              ".github/workflows/production-evidence-intake.yml",
+          ), strict=True):
+              value = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+              expected = {**common, "path": workflow}
+              if any(value.get(key) != item for key, item in expected.items()):
+                  raise SystemExit("UPSTREAM_WORKFLOW_RUN_MISMATCH")
+          PY
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: production-candidate-${{ steps.source.outputs.commit_sha }}
+          path: ${{ runner.temp }}/candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: production-qualification-source-${{ steps.source.outputs.commit_sha }}
+          path: ${{ runner.temp }}/evidence-source
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.evidence_run_id }}
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Reverify artifact attestations, immutable images, and the evidence intake binding
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_SHA: ${{ steps.source.outputs.commit_sha }}
+          RELEASE_ID: ${{ steps.source.outputs.release_id }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/candidate/production-image-manifest.json"
+          source="$RUNNER_TEMP/evidence-source"
+          test -f "$candidate" && test ! -L "$candidate"
+          test -f "$source/production-image-manifest.json"
+          cmp --silent "$candidate" "$source/production-image-manifest.json"
+          "$AGENT_TRUST_GH_BINARY" attestation verify "$candidate" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-candidate.yml" \
+            --source-digest "$COMMIT_SHA" \
+            --source-ref "$GITHUB_REF"
+          for artifact in qualification-input.json intake-receipt.json revocation-checkpoint.json; do
+            "$AGENT_TRUST_GH_BINARY" attestation verify "$source/$artifact" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/production-evidence-intake.yml" \
+              --source-digest "$COMMIT_SHA" \
+              --source-ref "$GITHUB_REF"
+          done
+          chmod 0440 "$source/revocation-checkpoint.json"
+          cmp --silent "$AGENT_TRUST_REVOCATION_CHECKPOINT_FILE" "$source/revocation-checkpoint.json"
+          checkpoint_base=(
+            verify-base
+            --checkpoint "$source/revocation-checkpoint.json"
+            --revocation-key "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE"
+          )
+          if test -f "$source/previous-revocation-registry.json"; then
+            checkpoint_base+=(--previous-registry "$source/previous-revocation-registry.json")
+          fi
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/manage-production-revocation-checkpoint.py \
+            "${checkpoint_base[@]}" > "$RUNNER_TEMP/revocation-checkpoint-base.json"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/assemble-production-image-manifest.py verify \
+            --manifest "$candidate" \
+            --release-id "$RELEASE_ID" \
+            --release-tag "$RELEASE_TAG" \
+            --repository "$GITHUB_REPOSITORY"
+          "$AGENT_TRUST_PYTHON_BINARY" - "$candidate" "$RUNNER_TEMP/candidate-images.txt" <<'PY'
+          import json, pathlib, sys
+          images = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")).get("images")
+          if not isinstance(images, dict) or not images:
+              raise SystemExit("CANDIDATE_IMAGES_INVALID")
+          pathlib.Path(sys.argv[2]).write_text(
+              "".join(f"{image}\n" for _, image in sorted(images.items())), encoding="utf-8"
+          )
+          PY
+          while IFS= read -r image; do
+            test "$image" != ""
+            "$AGENT_TRUST_GH_BINARY" attestation verify "oci://$image" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-candidate.yml" \
+              --source-digest "$COMMIT_SHA" \
+              --source-ref "$GITHUB_REF"
+          done < "$RUNNER_TEMP/candidate-images.txt"
+          compiled="$RUNNER_TEMP/recompiled-closure-input.json"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/compile-production-qualification.py \
+            --input "$source/qualification-input.json" \
+            --git-provenance-keyring "$AGENT_TRUST_GIT_PROVENANCE_KEYRING_FILE" \
+            --release-binding-keyring "$AGENT_TRUST_RELEASE_BINDING_KEYRING_FILE" \
+            --reviewer-keyring "$AGENT_TRUST_REVIEWER_KEYRING_FILE" \
+            --worm-keyring "$AGENT_TRUST_WORM_KEYRING_FILE" \
+            --output "$compiled"
+          "$AGENT_TRUST_PYTHON_BINARY" - "$source" "$candidate" "$compiled" <<'PY'
+          import hashlib, json, os, pathlib, sys
+          from python.production_gates.evidence_intake import validate_evidence_intake
+          from python.production_gates.git_provenance import canonical_json
+          from python.production_gates.qualification import QualificationTrustAnchors
+
+          source, candidate, compiled = map(pathlib.Path, sys.argv[1:])
+          def load(path):
+              if not path.is_absolute() or path.is_symlink() or not path.is_file():
+                  raise SystemExit("ASSURANCE_INPUT_PATH_INVALID")
+              return json.loads(path.read_text(encoding="utf-8"))
+          anchors = QualificationTrustAnchors(
+              load(pathlib.Path(os.environ["AGENT_TRUST_GIT_PROVENANCE_KEYRING_FILE"])),
+              load(pathlib.Path(os.environ["AGENT_TRUST_RELEASE_BINDING_KEYRING_FILE"])),
+              load(pathlib.Path(os.environ["AGENT_TRUST_REVIEWER_KEYRING_FILE"])),
+              load(pathlib.Path(os.environ["AGENT_TRUST_WORM_KEYRING_FILE"])),
+          )
+          closure, receipt = validate_evidence_intake(
+              load(source / "qualification-input.json"),
+              load(candidate),
+              load(source / "production-runtime.json"),
+              load(source / "revocation-update.json"),
+              anchors,
+              load(pathlib.Path(os.environ["AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE"])),
+              revocation_checkpoint=load(source / "revocation-checkpoint.json"),
+              previous_revocation_registry=(
+                  load(source / "previous-revocation-registry.json")
+                  if (source / "previous-revocation-registry.json").is_file()
+                  else None
+              ),
+              expected_release_tag=os.environ["RELEASE_TAG"],
+              expected_repository=os.environ["GITHUB_REPOSITORY"],
+          )
+          if canonical_json(closure) != canonical_json(load(compiled)):
+              raise SystemExit("ASSURANCE_RECOMPILED_INPUT_MISMATCH")
+          if canonical_json(closure) != canonical_json(load(source / "closure-input.json")):
+              raise SystemExit("ASSURANCE_INTAKE_INPUT_MISMATCH")
+          previous = load(source / "intake-receipt.json")
+          claimed = previous.pop("receipt_digest", None)
+          if claimed != hashlib.sha256(canonical_json(previous)).hexdigest():
+              raise SystemExit("ASSURANCE_INTAKE_RECEIPT_DIGEST_INVALID")
+          previous.pop("verified_at", None)
+          current = dict(receipt)
+          current.pop("receipt_digest", None)
+          current.pop("verified_at", None)
+          if previous != current:
+              raise SystemExit("ASSURANCE_INTAKE_RECEIPT_MISMATCH")
+          PY
+      - name: Build the private-key-free production closure verifier offline
+        env:
+          CARGO_NET_OFFLINE: "true"
+          RUSTC: ${{ vars.AGENT_TRUST_RUSTC_BINARY }}
+        run: >-
+          "$AGENT_TRUST_CARGO_BINARY" build --locked --offline --release
+          --no-default-features -p agent-trust-production-closure
+          --bin production-closure
+      - id: assurance
+        name: Obtain both external mTLS and OIDC signatures, close evidence, and verify activation
+        env:
+          RELEASE_ID: ${{ steps.source.outputs.release_id }}
+        run: |
+          set -euo pipefail
+          source="$RUNNER_TEMP/evidence-source"
+          output="$RUNNER_TEMP/production-assurance"
+          token_directory="$RUNNER_TEMP/production-signing-tokens"
+          mkdir -m 0700 "$output" "$token_directory"
+          trap 'rm -f "$token_directory/certificate.oidc" "$token_directory/revocation.oidc"' EXIT
+          install -m 0600 "$source/qualification-input.json" "$output/qualification-input.json"
+          install -m 0600 "$source/closure-input.json" "$output/closure-input.json"
+          install -m 0600 "$source/production-runtime.json" "$output/production-runtime.json"
+          install -m 0600 "$source/revocation-update.json" "$output/revocation-update.json"
+          install -m 0600 "$source/intake-receipt.json" "$output/intake-receipt.json"
+          install -m 0440 "$source/revocation-checkpoint.json" "$output/revocation-checkpoint.json"
+          install -m 0600 "$source/production-image-manifest.json" "$output/production-image-manifest.json"
+          if test -f "$source/previous-revocation-registry.json"; then
+            install -m 0600 "$source/previous-revocation-registry.json" "$output/previous-revocation-registry.json"
+            previous_registry="$output/previous-revocation-registry.json"
+          else
+            previous_registry=-
+          fi
+          "$AGENT_TRUST_PYTHON_BINARY" - "$output/qualification-input.json" "$output" <<'PY'
+          import json, os, pathlib, sys
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          documents = {
+              "signed-git-provenance.json": value.get("git_provenance"),
+              "signed-release-binding.json": value.get("release_binding"),
+          }
+          for name, document in documents.items():
+              if not isinstance(document, dict):
+                  raise SystemExit("ASSURANCE_RELEASE_DOCUMENT_INVALID")
+              path = pathlib.Path(sys.argv[2]) / name
+              descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+              with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                  json.dump(document, stream, indent=2, sort_keys=True)
+                  stream.write("\n")
+                  stream.flush()
+                  os.fsync(stream.fileno())
+          PY
+          "$AGENT_TRUST_PYTHON_BINARY" - "$output/closure-input.json" "$output" <<'PY'
+          import json, os, pathlib, sys
+          value = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          documents = {
+              "batch-statuses.json": value.get("batch_statuses"),
+              "gate-evidence.json": value.get("gate_evidence"),
+              "residual-risks.json": value.get("residual_risks"),
+              "exceptions.json": value.get("exceptions"),
+          }
+          if any(not isinstance(document, list) for document in documents.values()):
+              raise SystemExit("ASSURANCE_RUNTIME_EVIDENCE_INVALID")
+          for name, document in documents.items():
+              path = pathlib.Path(sys.argv[2]) / name
+              descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+              with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                  json.dump(document, stream, indent=2, sort_keys=True)
+                  stream.write("\n")
+                  stream.flush()
+                  os.fsync(stream.fileno())
+          PY
+          closure_bin="$GITHUB_WORKSPACE/target/release/production-closure"
+          test -x "$closure_bin"
+          "$closure_bin" evaluate "$output/closure-input.json" "$output/closure-report.json"
+          readarray -t signing_values < <("$AGENT_TRUST_PYTHON_BINARY" - <<'PY'
+          import json, os, pathlib
+          def read(name):
+              path = pathlib.Path(os.environ[name])
+              if not path.is_absolute() or path.is_symlink() or not path.is_file():
+                  raise SystemExit("ASSURANCE_TRUST_PATH_INVALID")
+              return json.loads(path.read_text(encoding="utf-8"))
+          closure_key = read("AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE")
+          revocation_key = read("AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE")
+          broker = read("AGENT_TRUST_SIGNING_BROKER_CONFIG_FILE")
+          for value in (closure_key.get("key_id"), revocation_key.get("key_id"), broker.get("oidc_audience")):
+              if not isinstance(value, str) or not value or "\n" in value:
+                  raise SystemExit("ASSURANCE_SIGNING_CONFIGURATION_INVALID")
+              print(value)
+          PY
+          )
+          test "${#signing_values[@]}" -eq 3
+          closure_key_id="${signing_values[0]}"
+          revocation_key_id="${signing_values[1]}"
+          oidc_audience="${signing_values[2]}"
+          "$closure_bin" prepare-external-signing \
+            "$output/closure-report.json" "$output/closure-input.json" \
+            "$closure_key_id" "$output/certificate-signing-request.json"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/acquire-github-oidc-token.py \
+            --audience "$oidc_audience" --output "$token_directory/certificate.oidc"
+          "$AGENT_TRUST_PYTHON_BINARY" -m python.production_gates.signing_broker \
+            --kind certificate \
+            --request "$output/certificate-signing-request.json" \
+            --config "$AGENT_TRUST_SIGNING_BROKER_CONFIG_FILE" \
+            --oidc-token-file "$token_directory/certificate.oidc" \
+            --output "$output/certificate-external-signature.json" \
+            --audit-receipt-output "$output/certificate-signing-audit-receipt.json"
+          "$closure_bin" finalize-external-signing \
+            "$output/certificate-signing-request.json" \
+            "$output/certificate-external-signature.json" \
+            "$AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE" \
+            "$output/closure-report.json" "$output/closure-input.json" \
+            "$output/production-certificate.json"
+          if test "$previous_registry" != -; then
+            "$closure_bin" verify-revocation-registry \
+              "$previous_registry" "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE"
+          fi
+          "$closure_bin" prepare-revocation-signing \
+            "$output/revocation-update.json" "$previous_registry" \
+            "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE" \
+            "$output/revocation-signing-request.json"
+          "$AGENT_TRUST_PYTHON_BINARY" - "$output/revocation-signing-request.json" "$revocation_key_id" <<'PY'
+          import json, pathlib, sys
+          request = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          if request.get("key_id") != sys.argv[2]:
+              raise SystemExit("ASSURANCE_REVOCATION_SIGNING_KEY_MISMATCH")
+          PY
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/acquire-github-oidc-token.py \
+            --audience "$oidc_audience" --output "$token_directory/revocation.oidc"
+          "$AGENT_TRUST_PYTHON_BINARY" -m python.production_gates.signing_broker \
+            --kind revocation \
+            --request "$output/revocation-signing-request.json" \
+            --config "$AGENT_TRUST_SIGNING_BROKER_CONFIG_FILE" \
+            --oidc-token-file "$token_directory/revocation.oidc" \
+            --output "$output/revocation-external-signature.json" \
+            --audit-receipt-output "$output/revocation-signing-audit-receipt.json"
+          "$closure_bin" finalize-revocation-signing \
+            "$output/revocation-signing-request.json" \
+            "$output/revocation-external-signature.json" "$previous_registry" \
+            "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE" \
+            "$output/revocation-registry.json"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/manage-production-revocation-checkpoint.py \
+            verify-successor \
+            --checkpoint "$output/revocation-checkpoint.json" \
+            --registry "$output/revocation-registry.json" \
+            --revocation-key "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE" \
+            > "$output/revocation-successor-verification.json"
+          if test "$previous_registry" != -; then
+            "$closure_bin" verify-revocation-successor \
+              "$previous_registry" "$output/revocation-registry.json" \
+              "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE"
+          fi
+          "$closure_bin" verify \
+            "$output/production-certificate.json" "$output/closure-report.json" \
+            "$output/closure-input.json" "$AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE" \
+            "$output/revocation-registry.json" "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/verify-production-evidence-bundle.py build \
+            --bundle-root "$output" \
+            --manifest "$output/evidence-manifest.json" \
+            --git-provenance-keyring "$AGENT_TRUST_GIT_PROVENANCE_KEYRING_FILE" \
+            --release-binding-keyring "$AGENT_TRUST_RELEASE_BINDING_KEYRING_FILE" \
+            --reviewer-keyring "$AGENT_TRUST_REVIEWER_KEYRING_FILE" \
+            --worm-keyring "$AGENT_TRUST_WORM_KEYRING_FILE" \
+            --closure-public-key "$AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE" \
+            --revocation-public-key "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE" \
+            --revocation-checkpoint "$output/revocation-checkpoint.json" \
+            --qualification-input "$output/qualification-input.json" \
+            --closure-input "$output/closure-input.json" \
+            --closure-report "$output/closure-report.json" \
+            --production-closure-certificate "$output/production-certificate.json" \
+            --production-closure-signing-request "$output/certificate-signing-request.json" \
+            --production-closure-signing-audit-receipt "$output/certificate-signing-audit-receipt.json" \
+            --production-closure-external-signature "$output/certificate-external-signature.json" \
+            --production-closure-revocation-registry "$output/revocation-registry.json" \
+            --production-closure-revocation-signing-request "$output/revocation-signing-request.json" \
+            --production-closure-revocation-signing-audit-receipt "$output/revocation-signing-audit-receipt.json" \
+            --production-closure-revocation-external-signature "$output/revocation-external-signature.json" \
+            --production-image-manifest "$output/production-image-manifest.json"
+          "$AGENT_TRUST_PYTHON_BINARY" scripts/prepare-production-activation.py \
+            --closure-input "$output/closure-input.json" \
+            --image-manifest "$output/production-image-manifest.json" \
+            --evidence-manifest "$output/evidence-manifest.json" \
+            --release-binding "$output/signed-release-binding.json" \
+            --activation-output "$output/activation.json" \
+            --expectation-output "$output/activation-expectation.json"
+          "$closure_bin" verify-activation \
+            "$output/production-certificate.json" "$output/closure-report.json" \
+            "$output/closure-input.json" "$AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE" \
+            "$output/revocation-registry.json" "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE" \
+            "$output/activation-expectation.json" "$output/rust-activation-receipt.json"
+          "$AGENT_TRUST_PYTHON_BINARY" -m python.production_gates.release_activation \
+            --activation "$output/activation.json" \
+            --report "$output/closure-report.json" \
+            --certificate "$output/production-certificate.json" \
+            --certificate-key "$AGENT_TRUST_CLOSURE_PUBLIC_KEY_FILE" \
+            --revocation-registry "$output/revocation-registry.json" \
+            --revocation-key "$AGENT_TRUST_REVOCATION_PUBLIC_KEY_FILE" \
+            --output "$output/activation-receipt.json"
+          "$AGENT_TRUST_PYTHON_BINARY" - "$output/rust-activation-receipt.json" "$output/activation-receipt.json" <<'PY'
+          import json, pathlib, sys
+          from datetime import datetime
+          rust, python = (
+              json.loads(pathlib.Path(path).read_text(encoding="utf-8")) for path in sys.argv[1:]
+          )
+          shared = ("certificate_id", "release_id", "scope_digest", "input_digest", "report_digest", "revocation_registry_id", "revocation_registry_digest")
+          if any(rust.get(key) != python.get(key) for key in shared):
+              raise SystemExit("ASSURANCE_ACTIVATION_RECEIPT_MISMATCH")
+          if rust.get("revocation_sequence") != python.get("revocation_registry_sequence"):
+              raise SystemExit("ASSURANCE_ACTIVATION_RECEIPT_MISMATCH")
+          if rust.get("production_write_enabled") is not True or python.get("admitted") is not True:
+              raise SystemExit("ASSURANCE_ACTIVATION_NOT_ADMITTED")
+          if datetime.fromisoformat(str(rust["valid_until"]).replace("Z", "+00:00")) != datetime.fromisoformat(str(python["valid_until"]).replace("Z", "+00:00")):
+              raise SystemExit("ASSURANCE_ACTIVATION_EXPIRY_MISMATCH")
+          PY
+          printf 'directory=%s\n' "$output" >> "$GITHUB_OUTPUT"
+      - id: evidence-attestation
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.assurance.outputs.directory }}/evidence-manifest.json
+      - id: activation-attestation
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.assurance.outputs.directory }}/activation.json
+      - id: runtime-attestation
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.assurance.outputs.directory }}/production-runtime.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-assurance-${{ steps.source.outputs.commit_sha }}
+          path: ${{ steps.assurance.outputs.directory }}
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30
+      - name: Record the independently signed positive closure
+        run: |
+          {
+            printf 'Release: `%s`\n' '${{ steps.source.outputs.release_id }}'
+            printf 'Candidate run: `%s`\n' '${{ inputs.candidate_run_id }}'
+            printf 'Evidence intake run: `%s`\n' '${{ inputs.evidence_run_id }}'
+            printf 'Evidence manifest attestation: %s\n' '${{ steps.evidence-attestation.outputs.attestation-url }}'
+            printf 'Activation attestation: %s\n' '${{ steps.activation-attestation.outputs.attestation-url }}'
+            printf 'Runtime configuration attestation: %s\n' '${{ steps.runtime-attestation.outputs.attestation-url }}'
+            printf 'No signing private key was loaded by this workflow. Both signatures came from the protected external mTLS and OIDC broker.\n'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-activation-watch-status.schema.json",
+  "title": "Production activation watcher readiness status",
+  "description": "Returned only by the loopback /ready endpoint. Ready is true only after a successful full activation verification whose dynamic receipt is at most 60 seconds old and still valid.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "ready", "last_success_at", "receipt_digest",
+    "revocation_registry_id", "revocation_registry_sequence",
+    "revocation_registry_digest", "projection_id", "projection_head_digest",
+    "maximum_age_seconds"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-activation-watch-status.v1"},
+    "ready": {"type": "boolean"},
+    "last_success_at": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "format": "date-time", "maxLength": 64}
+      ]
+    },
+    "receipt_digest": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    },
+    "revocation_registry_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+      ]
+    },
+    "revocation_registry_sequence": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "integer", "minimum": 1}
+      ]
+    },
+    "revocation_registry_digest": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    },
+    "projection_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}
+      ]
+    },
+    "projection_head_digest": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      ]
+    },
+    "maximum_age_seconds": {"const": 60}
+  }
+}

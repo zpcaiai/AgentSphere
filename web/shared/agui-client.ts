@@ -45,6 +45,7 @@ const EVENT_KINDS: ReadonlySet<string> = new Set<AgUiEventKind>([
   "PLAN_UPDATED", "TOOL_REQUESTED", "APPROVAL_REQUIRED", "APPROVAL_RECORDED",
   "EXECUTION_STATUS", "ARTIFACT_AVAILABLE", "EVALUATION_UPDATED", "INCIDENT",
 ]);
+const ED25519_SIGNATURE_BASE64URL = /^[A-Za-z0-9_-]{86}$/;
 
 export class AgUiEventReducer {
   private sequence = 0;
@@ -283,8 +284,8 @@ function validateSnapshot(snapshot: AgUiSafeSnapshot): void {
     || typeof snapshot.next_resume_token !== "string" || !snapshot.next_resume_token
     || snapshot.next_resume_token.length > 2_048
     || typeof snapshot.generated_at !== "string" || !Number.isFinite(Date.parse(snapshot.generated_at))
-    || typeof snapshot.backend_signature !== "string" || !snapshot.backend_signature
-    || snapshot.backend_signature.length > 200) {
+    || typeof snapshot.backend_signature !== "string"
+    || !ED25519_SIGNATURE_BASE64URL.test(snapshot.backend_signature)) {
     throw new Error("AGUI_SNAPSHOT_INVALID");
   }
 }
@@ -334,7 +335,8 @@ function validateEvent(event: AgUiEventEnvelope): void {
     || !EVENT_KINDS.has(event.kind) || !isRecord(event.safe_payload)
     || JSON.stringify(event.safe_payload).length > 64 * 1_024
     || typeof event.occurred_at !== "string" || !Number.isFinite(Date.parse(event.occurred_at))
-    || !event.backend_signature || event.backend_signature.length > 200) {
+    || typeof event.backend_signature !== "string"
+    || !ED25519_SIGNATURE_BASE64URL.test(event.backend_signature)) {
     throw new Error("AGUI_EVENT_INVALID");
   }
 }

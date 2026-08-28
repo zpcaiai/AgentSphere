@@ -17,11 +17,13 @@ the same canonical JSON payload. Verify it offline with:
 
 ```sh
 cargo run -p agent-trust-production-closure --bin production-closure -- \
-  verify-domain-assurance attestation.json reviewer-public-keys.json EXPECTED_SCOPE_SHA256
+  verify-domain-assurance attestation.json reviewer-keyring.json closure-scope.json \
+  /absolute/new/domain-gate-evidence.json
 ```
 
 The verifier requires two distinct qualified roles for the selected domain,
-distinct reviewer keys, a production environment reference, approved
+distinct reviewer keys from a deployment-owned
+`agenttrust.production-closure-reviewer-keyring.v1`, a production environment reference, approved
 non-automated review, bounded validity, and digest-pinned source evidence.
 Unit tests and locally generated keys never constitute external acceptance.
 
@@ -34,8 +36,8 @@ attestation into closure `GateEvidence` with:
 
 ```sh
 cargo run -p agent-trust-production-closure --bin production-closure -- \
-  verify-external-assurance external-attestation.json reviewer-public-keys.json \
-  EXPECTED_SCOPE_SHA256 /absolute/new/gate-evidence.json
+  verify-external-assurance external-attestation.json reviewer-keyring.json \
+  closure-scope.json /absolute/new/gate-evidence.json
 ```
 
 The verifier requires `environment://production/...`, a release ID and change
@@ -43,6 +45,13 @@ ticket, non-automated approval, digest-pinned evidence, bounded 30-day validity,
 qualified roles, distinct reviewer/key identities, two organizations and valid
 Ed25519 signatures. Repository code or a CI account cannot self-issue customer,
 expert or independent certification.
+
+Every keyring entry binds the reviewer identity, organization, qualified roles, the
+`PRODUCTION_ASSURANCE_REVIEW` key usage, Ed25519 public key, validity window, status and revocation
+time. The keyring's canonical digest is part of the production closure scope. A key with a
+mismatched identity, organization or role, a wrong usage, an inactive validity window, or a
+revoked status fails closed. Converted `GateEvidence` expires at the earliest attestation, scope,
+keyring or participating reviewer-key expiry.
 
 Before constructing the closure scope, collect immutable Git provenance from a
 clean repository root. The gate rejects local/file remotes, unapproved hosts,
@@ -79,8 +88,10 @@ Next, have the independent release authority bind the exact deployment inputs. T
 producer proves that the template bytes are the blob at the fixed path
 `deploy/kubernetes/production-stack.yaml.tmpl` in the provenance commit, then signs the
 Git provenance digest, blob object ID, template digest, canonical non-secret values,
-runtime-config digest, release ID and computed release digest. It writes a new finalized
-values document; neither output may already exist:
+runtime-config digest, release ID and computed release digest. Release Binding v2 signs
+only static values: `release_digest` and `evidence.bundle_digest` are deliberately
+excluded because each is derived from material that transitively contains the binding.
+It writes a new prepared static-values document; neither output may already exist:
 
 ```sh
 python3 -m python.production_gates.release_binding \
@@ -93,13 +104,25 @@ python3 -m python.production_gates.release_binding \
   --signing-key-file /protected/release/release-binding-ed25519.key \
   --issuer release-authority --key-id release-binding-2026-01 \
   --output /absolute/new/signed-release-binding.json \
-  --finalized-values-output /absolute/new/production-stack-values.json
+  --prepared-values-output /absolute/new/production-stack-static-values.json
 ```
 
-The renderer accepts only that finalized values file plus the signed binding and a
+After the positive evidence bundle and activation document exist, materialize the final
+values. This step injects the binding's `release_digest` and the activation's verified
+`evidence_bundle_manifest_digest`; no caller-supplied placeholder is retained:
+
+```sh
+python3 scripts/materialize-production-stack-values.py \
+  --release-binding /protected/release/signed-release-binding.json \
+  --release-binding-keyring /protected/trust/release-binding-keyring.json \
+  --activation /protected/release/activation.json \
+  --output /absolute/new/production-stack-values.json
+```
+
+The renderer accepts only that materialized values file plus the signed binding and a
 deployment-owned `agenttrust.release-binding-keyring.v1` public keyring. Recomputing a
-checksum after changing an image, template, value or runtime setting cannot authorize the
-change: the exact binding must still verify under an active release-authority key.
+checksum after changing an image, template, static value, runtime setting, or evidence
+bundle cannot authorize the change: the exact binding and activation must both verify.
 
 `WORKTREE-NO-GIT` is never promoted to an immutable release ID. Initialize or
 publish Git only through the repository owner's release process; this runbook

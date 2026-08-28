@@ -82,6 +82,11 @@ class ReleaseBindingTests(unittest.TestCase):
                 "release_id": f"git:sha1:{'a' * 40}",
                 "release_digest": "0" * 64,
                 "images": {"runtime": f"example/runtime@sha256:{'b' * 64}"},
+                "evidence": {
+                    "persistent_volume_name": "production-evidence",
+                    "bundle_digest": "f" * 64,
+                    "storage_size": "100Gi",
+                },
             }
             binding = build_release_binding(
                 "kind: List\n",
@@ -106,9 +111,16 @@ class ReleaseBindingTests(unittest.TestCase):
                 Draft202012Validator(schema).validate(value)
             verified = verify_signed_release_binding(envelope, keyring, now=now)
             self.assertEqual(verified["release_digest"], binding["release_digest"])
+            self.assertNotIn("release_digest", binding["static_values"])
+            self.assertNotIn("bundle_digest", binding["static_values"]["evidence"])
+
+            legacy = copy.deepcopy(envelope)
+            legacy["schema_version"] = "agenttrust.signed-release-binding.v1"
+            with self.assertRaisesRegex(GateError, "SIGNED_RELEASE_BINDING_INVALID"):
+                verify_signed_release_binding(legacy, keyring, now=now)
 
             tampered = copy.deepcopy(envelope)
-            tampered_values = tampered["binding"]["values_without_release_digest"]
+            tampered_values = tampered["binding"]["static_values"]
             tampered_values["images"]["runtime"] = (
                 f"example/runtime@sha256:{'e' * 64}"
             )

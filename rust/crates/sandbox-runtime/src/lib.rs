@@ -1,5 +1,7 @@
 //! Authorization-bound sandbox runtime, bounded process execution, and supervisor controls.
 
+pub mod gvisor;
+
 use agent_trust_contracts::{ActionHash, ExecutionAuthorization, ExecutionId, ToolRef};
 use agent_trust_policy_pep::{PolicyError, RuntimeControlPort};
 use agent_trust_registry::{ResolvedToolSnapshot, ToolRegistry};
@@ -87,7 +89,15 @@ impl ResourceBudget {
 #[serde(deny_unknown_fields)]
 pub struct ExecutorTemplate {
     pub executor_id: String,
+    /// Digest of the immutable workload implementation (OCI image or WASM component).
     pub implementation_digest: String,
+    /// Digest of the isolation runtime binary. Production OCI execution requires this
+    /// to be the independently pinned `runsc` digest; it must never be substituted for
+    /// the workload implementation digest carried by ExecutionAuthorization.
+    pub runtime_digest: Option<String>,
+    /// Digest of the exact OCI `config.json`. Required for production gVisor and
+    /// absent for non-OCI development and WASM templates.
+    pub oci_config_digest: Option<String>,
     pub program: PathBuf,
     pub fixed_args: Vec<String>,
     pub allowed_environment: BTreeMap<String, String>,
@@ -735,7 +745,10 @@ fn cleanup_workspace(
 
 fn is_sha256_digest(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
-        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
     })
 }
 
@@ -1214,6 +1227,8 @@ impl WasmComponentCommandBuilder {
         Ok(ExecutorTemplate {
             executor_id,
             implementation_digest: expected_component_digest.into(),
+            runtime_digest: Some(self.engine_digest.clone()),
+            oci_config_digest: None,
             program: self.wasmtime_path.clone(),
             fixed_args: vec![
                 "run".into(),
@@ -1244,22 +1259,42 @@ impl OciGvisorCommandBuilder {
                     == self.expected_runsc_digest
             })
     }
-    pub fn build(&self, sandbox_id: &str, bundle: &Path) -> Result<ExecutorTemplate, SandboxError> {
+    pub fn build(
+        &self,
+        sandbox_id: &str,
+        bundle: &Path,
+        state_root: &Path,
+        workload_implementation_digest: &str,
+        expected_config_digest: &str,
+    ) -> Result<ExecutorTemplate, SandboxError> {
         if !self.production_available()
             || !valid_sandbox_identifier(sandbox_id)
             || !bundle.is_absolute()
             || !bundle.is_dir()
             || !bundle.join("config.json").is_file()
+            || !state_root.is_absolute()
+            || state_root.components().any(|component| {
+                matches!(
+                    component,
+                    std::path::Component::ParentDir | std::path::Component::Prefix(_)
+                )
+            })
+            || !is_sha256_digest(workload_implementation_digest)
+            || !is_sha256_digest(expected_config_digest)
         {
             return Err(SandboxError::ProductionIsolationUnavailable);
         }
+        validate_oci_bundle(bundle, expected_config_digest)?;
         Ok(ExecutorTemplate {
             executor_id: "gvisor-runsc".into(),
-            implementation_digest: self.expected_runsc_digest.clone(),
+            implementation_digest: workload_implementation_digest.into(),
+            runtime_digest: Some(self.expected_runsc_digest.clone()),
+            oci_config_digest: Some(expected_config_digest.into()),
             program: self.runsc_path.clone(),
             fixed_args: vec![
                 "--network=none".into(),
                 "--rootless=true".into(),
+                format!("--root={}", state_root.display()),
                 "run".into(),
                 "--bundle".into(),
                 bundle.display().to_string(),
@@ -1272,32 +1307,57 @@ impl OciGvisorCommandBuilder {
 }
 
 fn verify_production_executor(template: &ExecutorTemplate) -> Result<(), SandboxError> {
+    let runtime_digest = template
+        .runtime_digest
+        .as_deref()
+        .ok_or(SandboxError::ProductionIsolationUnavailable)?;
+    let config_digest = template
+        .oci_config_digest
+        .as_deref()
+        .ok_or(SandboxError::ProductionIsolationUnavailable)?;
     if !cfg!(target_os = "linux")
         || template.executor_id != "gvisor-runsc"
         || !template.program.is_absolute()
         || !template.program.is_file()
         || !is_sha256_digest(&template.implementation_digest)
+        || !is_sha256_digest(runtime_digest)
+        || !is_sha256_digest(config_digest)
         || template.shell
-        || !template
-            .fixed_args
-            .iter()
-            .any(|item| item == "--network=none")
-        || !template
-            .fixed_args
-            .iter()
-            .any(|item| item == "--rootless=true")
-        || !template.fixed_args.iter().any(|item| item == "run")
-        || !template.fixed_args.iter().any(|item| item == "--bundle")
+        || template.fixed_args.len() != 7
+        || template.fixed_args[0] != "--network=none"
+        || template.fixed_args[1] != "--rootless=true"
+        || !template.fixed_args[2].starts_with("--root=/")
+        || template.fixed_args[3] != "run"
+        || template.fixed_args[4] != "--bundle"
+        || !Path::new(&template.fixed_args[5]).is_absolute()
+        || !valid_sandbox_identifier(&template.fixed_args[6])
     {
         return Err(SandboxError::ProductionIsolationUnavailable);
     }
     let bytes = std::fs::read(&template.program)
         .map_err(|_| SandboxError::ProductionIsolationUnavailable)?;
     let actual = format!("sha256:{}", hex_string(Sha256::digest(bytes)));
-    if actual != template.implementation_digest {
+    if actual != runtime_digest {
         return Err(SandboxError::ImageDigestMismatch);
     }
+    validate_oci_bundle(Path::new(&template.fixed_args[5]), config_digest)?;
     Ok(())
+}
+
+fn validate_oci_bundle(bundle: &Path, expected_config_digest: &str) -> Result<(), SandboxError> {
+    let config_path = bundle.join("config.json");
+    let metadata = std::fs::symlink_metadata(&config_path)
+        .map_err(|_| SandboxError::ProductionIsolationUnavailable)?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 1024 * 1024 {
+        return Err(SandboxError::ProductionIsolationUnavailable);
+    }
+    let bytes =
+        std::fs::read(&config_path).map_err(|_| SandboxError::ProductionIsolationUnavailable)?;
+    let actual = format!("sha256:{}", hex_string(Sha256::digest(&bytes)));
+    if actual != expected_config_digest {
+        return Err(SandboxError::ImageDigestMismatch);
+    }
+    gvisor::parse_oci_runtime_spec(&bytes).map(|_| ())
 }
 
 fn valid_sandbox_identifier(value: &str) -> bool {
@@ -1348,6 +1408,12 @@ pub enum SandboxError {
     Orphaned,
     #[error("SANDBOX_PRODUCTION_ISOLATION_UNAVAILABLE")]
     ProductionIsolationUnavailable,
+    #[error("SANDBOX_GVISOR_JOB_INVALID")]
+    JobInvalid,
+    #[error("SANDBOX_GVISOR_RUNTIME_ATTESTATION_INVALID")]
+    RuntimeAttestationInvalid,
+    #[error("SANDBOX_REPLAY_LEDGER_FAILED")]
+    ReplayLedgerFailed,
 }
 
 #[cfg(test)]
@@ -1516,6 +1582,8 @@ mod tests {
             template: ExecutorTemplate {
                 executor_id: "fixed".into(),
                 implementation_digest: tool.implementation.digest,
+                runtime_digest: None,
+                oci_config_digest: None,
                 program: PathBuf::from(program),
                 fixed_args: args,
                 allowed_environment: BTreeMap::new(),

@@ -162,6 +162,7 @@ pub struct RoutePlan {
     pub endpoint_profile: String,
     pub model_id: String,
     pub model_version: String,
+    pub provider_region: String,
     pub provider_jurisdiction: String,
     pub protocol: String,
     pub cost_microunits_per_token: u64,
@@ -196,6 +197,8 @@ pub struct ProviderOutcome {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cost_microunits: u64,
+    pub residency_attestation_ref: String,
+    pub residency_attestation_digest: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -209,6 +212,8 @@ pub struct CompletionEvidence {
     pub evidence_digest: String,
     pub residency_policy_evidence_ref: String,
     pub residency_policy_evidence_digest: String,
+    pub residency_attestation_ref: String,
+    pub residency_attestation_digest: String,
     pub output_dlp_report_digest: String,
     pub output_dlp_evidence_ref: String,
     pub output_dlp_evidence_digest: String,
@@ -261,6 +266,7 @@ pub struct ModelStreamEvent {
     pub request_id: Uuid,
     pub sequence: u64,
     pub chunk_utf8: String,
+    pub release_mode: StreamReleaseMode,
     pub terminal: bool,
     pub finish_reason: Option<String>,
     pub usage: Option<ModelUsage>,
@@ -268,6 +274,14 @@ pub struct ModelStreamEvent {
     pub artifact_digest: Option<String>,
     pub evidence_ref: Option<String>,
     pub evidence_digest: Option<String>,
+}
+
+/// No provider chunk is released before output DLP, artifact authorization, WORM persistence and
+/// signed Evidence complete. This intentionally favors confidentiality over token latency.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum StreamReleaseMode {
+    DlpVerifiedBuffered,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -335,6 +349,29 @@ pub struct BillingLine {
     pub billed_microunits: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderBillingAttestation {
+    pub schema_version: String,
+    pub provider_id: String,
+    pub statement_period: String,
+    pub statement_digest: String,
+    pub issued_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub issuer: String,
+    pub key_id: String,
+    pub key_usage: String,
+    pub signature: String,
+}
+
+impl ProviderBillingAttestation {
+    pub(crate) fn signing_bytes(&self) -> Result<Vec<u8>, AuthorityError> {
+        let mut copy = self.clone();
+        copy.signature.clear();
+        serde_jcs::to_vec(&copy).map_err(|_| AuthorityError::RequestInvalid)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct BillingStatementRequest {
@@ -346,6 +383,7 @@ pub struct BillingStatementRequest {
     pub statement_digest: String,
     pub residency_policy_evidence_digest: String,
     pub lines: Vec<BillingLine>,
+    pub provider_attestation: ProviderBillingAttestation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -357,6 +395,7 @@ pub struct BillingReconciliationResult {
     pub total_metered_microunits: u64,
     pub total_billed_microunits: u64,
     pub statement_digest: String,
+    pub provider_attestation_digest: String,
     pub evidence_ref: String,
     pub evidence_digest: String,
 }
@@ -422,6 +461,13 @@ pub trait ProductionModelRuntime: Send + Sync {
         total_metered_microunits: u64,
         total_billed_microunits: u64,
     ) -> Result<BillingEvidenceReceipt, AuthorityError>;
+
+    /// Verifies the provider-authenticated statement before any preview or database transition.
+    async fn verify_billing_statement(
+        &self,
+        request: &BillingStatementRequest,
+        now: DateTime<Utc>,
+    ) -> Result<(), AuthorityError>;
 
     async fn ready(&self) -> Result<(), AuthorityError>;
 }
@@ -855,7 +901,8 @@ impl PostgresModelAuthorityStore {
               data_policy_version,pre_transform_policy_decision_digest,\
               data_policy_decision_digest,transformation_digest,input_tokens,output_tokens,\
               cost_microunits,prompt_digest,output_digest,residency_policy_evidence_ref,\
-              residency_policy_evidence_digest,input_dlp_report_digest,input_dlp_evidence_ref,\
+              residency_policy_evidence_digest,residency_attestation_ref,\
+              residency_attestation_digest,input_dlp_report_digest,input_dlp_evidence_ref,\
               input_dlp_evidence_digest,transform_evidence_ref,transform_evidence_digest,\
               output_dlp_report_digest,output_dlp_evidence_ref,output_dlp_evidence_digest,\
               output_label_evidence_ref,output_label_evidence_digest,\
@@ -866,7 +913,7 @@ impl PostgresModelAuthorityStore {
               artifact_store_receipt_ref,artifact_store_receipt_digest,trace_id,occurred_at) \
              SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,prompt_digest,$17,\
                     $18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,\
-                    $35,$36,$37,$38,$39,$40,now() \
+                    $35,$36,$37,$38,$39,$40,$41,$42,now() \
              FROM public.model_gateway_requests \
              WHERE tenant_id=$1 AND request_id=$3",
         )
@@ -889,6 +936,8 @@ impl PostgresModelAuthorityStore {
         .bind(&completion.output_digest)
         .bind(&completion.residency_policy_evidence_ref)
         .bind(&completion.residency_policy_evidence_digest)
+        .bind(&completion.residency_attestation_ref)
+        .bind(&completion.residency_attestation_digest)
         .bind(&plan.dlp_report_digest)
         .bind(&plan.input_dlp_evidence_ref)
         .bind(&plan.input_dlp_evidence_digest)
@@ -1140,6 +1189,18 @@ impl PostgresModelAuthorityStore {
         if count != 11 {
             return Err(AuthorityError::DependencyUnavailable);
         }
+        let hardened_columns: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND (\
+             (table_name='model_execution_evidence' AND column_name IN \
+               ('residency_attestation_ref','residency_attestation_digest')) OR \
+             (table_name='model_billing_reconciliations' AND column_name='provider_attestation_digest'))",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| AuthorityError::DependencyUnavailable)?;
+        if hardened_columns != 3 {
+            return Err(AuthorityError::DependencyUnavailable);
+        }
         Ok(())
     }
 
@@ -1323,6 +1384,7 @@ impl PostgresModelAuthorityStore {
             total_metered_microunits: total_metered,
             total_billed_microunits: total_billed,
             statement_digest: request.statement_digest.clone(),
+            provider_attestation_digest: canonical_digest(&request.provider_attestation)?,
             evidence_ref: evidence.evidence_ref.clone(),
             evidence_digest: evidence.evidence_digest.clone(),
         };
@@ -1334,10 +1396,10 @@ impl PostgresModelAuthorityStore {
               authorization_digest,policy_decision_id,policy_decision_digest,authorization_evidence_ref,\
               authorization_evidence_digest,ledger_execution_id,ledger_event_id,ledger_event_digest,\
               fence_digest,resource_version,provider_id,statement_period,statement_digest,\
-              residency_policy_evidence_digest,matched_requests,total_metered_microunits,\
+              provider_attestation_digest,residency_policy_evidence_digest,matched_requests,total_metered_microunits,\
               total_billed_microunits,matched,trace_id,evidence_ref,evidence_digest,safe_response) \
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,\
-                     $20,$21,$22,$23,$24,$25,$26,$27,$28)",
+                     $20,$21,$22,$23,$24,$25,$26,$27,$28,$29)",
         )
         .bind(request.tenant_id)
         .bind(Uuid::new_v4())
@@ -1358,6 +1420,7 @@ impl PostgresModelAuthorityStore {
         .bind(&request.provider_id)
         .bind(&request.statement_period)
         .bind(&request.statement_digest)
+        .bind(canonical_digest(&request.provider_attestation)?)
         .bind(&request.residency_policy_evidence_digest)
         .bind(i64::try_from(matched_requests).map_err(|_| AuthorityError::RequestInvalid)?)
         .bind(i64::try_from(total_metered).map_err(|_| AuthorityError::RequestInvalid)?)
@@ -1585,6 +1648,9 @@ impl ModelExecutionAuthority {
         binding: ExecutionBinding,
     ) -> Result<BillingReconciliationResult, AuthorityError> {
         validate_billing_binding(&request, &binding)?;
+        self.runtime
+            .verify_billing_statement(&request, Utc::now())
+            .await?;
         let preview = self.store.preview_billing(&request).await?;
         let evidence = self
             .runtime
@@ -1704,6 +1770,16 @@ fn validate_billing_binding(
         || request.lines.is_empty()
         || request.lines.len() > 100_000
         || canonical_digest(&material)? != request.statement_digest
+        || request.provider_attestation.schema_version
+            != "agenttrust.model-provider-billing-attestation.v1"
+        || request.provider_attestation.provider_id != request.provider_id
+        || request.provider_attestation.statement_period != request.statement_period
+        || request.provider_attestation.statement_digest != request.statement_digest
+        || request.provider_attestation.key_usage != "MODEL_PROVIDER_BILLING"
+        || !identifier(&request.provider_attestation.issuer, 256)
+        || !identifier(&request.provider_attestation.key_id, 128)
+        || request.provider_attestation.issued_at >= request.provider_attestation.expires_at
+        || request.provider_attestation.signature.is_empty()
     {
         return Err(AuthorityError::BindingInvalid);
     }
@@ -2003,6 +2079,7 @@ fn validate_plan(request: &ModelExecutionRequest, plan: &RoutePlan) -> Result<()
         || !identifier(&plan.endpoint_profile, 128)
         || !identifier(&plan.model_id, 256)
         || !identifier(&plan.model_version, 256)
+        || !jurisdiction(&plan.provider_region)
         || !jurisdiction(&plan.provider_jurisdiction)
         || !matches!(
             plan.protocol.as_str(),
@@ -2059,6 +2136,8 @@ fn validate_provider_outcome(
         || !identifier(&outcome.finish_reason, 64)
         || outcome.input_tokens.saturating_add(outcome.output_tokens) == 0
         || outcome.cost_microunits > request.maximum_cost_microunits
+        || !adapter_reference(&outcome.residency_attestation_ref, 2048)
+        || !digest_value(&outcome.residency_attestation_digest)
         || output_bytes > request.maximum_output_bytes
         || outcome.stream_chunks.len() > 10_000
         || outcome
@@ -2105,6 +2184,8 @@ fn validate_completion(completion: &CompletionEvidence) -> Result<(), AuthorityE
         || !digest_value(&completion.evidence_digest)
         || !evidence_reference(&completion.residency_policy_evidence_ref, 2048)
         || !digest_value(&completion.residency_policy_evidence_digest)
+        || !adapter_reference(&completion.residency_attestation_ref, 2048)
+        || !digest_value(&completion.residency_attestation_digest)
         || !digest_value(&completion.output_dlp_report_digest)
         || !evidence_reference(&completion.output_dlp_evidence_ref, 2048)
         || !digest_value(&completion.output_dlp_evidence_digest)
@@ -2221,6 +2302,7 @@ fn build_stream_events(
                 request_id,
                 sequence,
                 chunk_utf8: chunk.clone(),
+                release_mode: StreamReleaseMode::DlpVerifiedBuffered,
                 terminal,
                 finish_reason: terminal.then(|| outcome.finish_reason.clone()),
                 usage: terminal.then_some(ModelUsage {
@@ -2362,5 +2444,62 @@ mod authority_tests {
         let safe = sanitized_result(&result).unwrap_or(Value::Null);
         assert!(safe.get("output_utf8").is_some_and(Value::is_null));
         assert!(safe.get("embedding").is_some_and(Value::is_null));
+    }
+
+    #[test]
+    fn stream_chunks_are_only_exposed_as_post_dlp_buffered_release() {
+        let outcome = ProviderOutcome {
+            schema_version: PROVIDER_OUTCOME_SCHEMA.into(),
+            provider_request_id: "provider-request".into(),
+            output_utf8: None,
+            embedding: None,
+            stream_chunks: vec!["one".into(), "two".into()],
+            finish_reason: "stop".into(),
+            input_tokens: 2,
+            output_tokens: 2,
+            cost_microunits: 4,
+            residency_attestation_ref: "evidence://provider/residency".into(),
+            residency_attestation_digest: "a".repeat(64),
+        };
+        let completion = CompletionEvidence {
+            schema_version: COMPLETION_SCHEMA.into(),
+            artifact_ref: format!("artifact://sha256/{}", "b".repeat(64)),
+            artifact_digest: "b".repeat(64),
+            output_digest: "c".repeat(64),
+            evidence_ref: "evidence://model/completion".into(),
+            evidence_digest: "d".repeat(64),
+            residency_policy_evidence_ref: "evidence://policy/residency".into(),
+            residency_policy_evidence_digest: "e".repeat(64),
+            residency_attestation_ref: "evidence://provider/residency".into(),
+            residency_attestation_digest: "a".repeat(64),
+            output_dlp_report_digest: "f".repeat(64),
+            output_dlp_evidence_ref: "evidence://dlp/output".into(),
+            output_dlp_evidence_digest: "1".repeat(64),
+            output_label_evidence_ref: "evidence://label/output".into(),
+            output_label_evidence_digest: "2".repeat(64),
+            artifact_policy_evidence_ref: "evidence://artifact/policy".into(),
+            artifact_policy_evidence_digest: "3".repeat(64),
+            grant_consumption_evidence_ref: None,
+            grant_consumption_evidence_digest: None,
+            export_authorization_evidence_ref: "evidence://export/authorization".into(),
+            export_authorization_evidence_digest: "4".repeat(64),
+            export_completion_evidence_ref: "evidence://export/completion".into(),
+            export_completion_evidence_digest: "5".repeat(64),
+            artifact_store_receipt_ref: "evidence://artifact/store".into(),
+            artifact_store_receipt_digest: "6".repeat(64),
+        };
+        let events = build_stream_events(Uuid::nil(), &outcome, &completion)
+            .unwrap_or_else(|_| panic!("stream"));
+        assert_eq!(events.len(), 2);
+        assert!(
+            events
+                .iter()
+                .all(|event| { event.release_mode == StreamReleaseMode::DlpVerifiedBuffered })
+        );
+        assert!(events[0].evidence_ref.is_none());
+        assert_eq!(
+            events[1].evidence_digest.as_deref(),
+            Some(completion.evidence_digest.as_str())
+        );
     }
 }

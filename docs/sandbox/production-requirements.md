@@ -13,7 +13,13 @@ AGENT_TRUST_ISOLATION_REPORT=/absolute/new/report.json \
 
 Production mode additionally requires a real Linux host and registered gVisor
 `runsc` runtime. The report schema prevents a baseline or `runc` result from
-being represented as production evidence.
+being represented as production evidence. The production execution entrypoint is the
+native systemd worker in `docs/sandbox/gvisor-worker-deployment.md`, not a nested `runsc`
+inside a Kubernetes Pod. It admits only PEP-authorized, dispatcher-signed jobs with an
+independent registry snapshot attestation and `NATIVE_SYSTEMD_RUNSC` host attestation,
+then emits an independently host-signed cleanup-complete receipt. RuntimeClass
+configuration is a Kubernetes alternative/declaration and is never substituted for the
+real Linux isolation report.
 
 The dedicated GitHub Actions host must run Actions Runner 2.327.1 or newer so
 the immutable Node 24 actions can start. Operators add the

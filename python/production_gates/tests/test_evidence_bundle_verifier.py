@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -140,6 +143,73 @@ class EvidenceBundleVerifierTests(unittest.TestCase):
         denial["reason_codes"] = ["BATCH_STATUSES_NOT_EVIDENCE_VERIFIED"]
         with self.assertRaisesRegex(RuntimeError, "PRODUCTION_TRUTH_MISMATCH"):
             self.verify(documents)
+
+    def test_release_code_manifest_covers_current_production_closure(self) -> None:
+        entries = VERIFIER.release_code_manifest_required_items()
+        self.assertIn("rust/crates/production-runtime/src/activation.rs", entries)
+        self.assertIn("deploy/kubernetes/production-stack.yaml.tmpl", entries)
+        self.assertIn(
+            "infra/terraform/github-release-governance/environment_variables.tf",
+            entries,
+        )
+        self.assertIn(".github/workflows/production-release.yml", entries)
+        self.assertIn(
+            "schemas/release/production-closure-revocation-update.schema.json",
+            entries,
+        )
+
+    def test_release_code_manifest_rejects_noncanonical_and_unsafe_paths(self) -> None:
+        relative = "config/production-runtime/release-code-manifest.txt"
+        invalid_payloads = (
+            f"{relative}\nREADME.md\n".encode(),
+            f"{relative}\n{relative}\n".encode(),
+            f"../escape\n{relative}\n".encode(),
+            f"/absolute\n{relative}\n".encode(),
+            f"bad\\path\n{relative}\n".encode(),
+            f"./README.md\n{relative}\n".encode(),
+            f"{relative}".encode(),
+            f"{relative}\r\n".encode(),
+            f"{relative}\x00\n".encode(),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / relative
+            source.parent.mkdir(parents=True)
+            for payload in invalid_payloads:
+                with self.subTest(payload=payload):
+                    source.write_bytes(payload)
+                    with self.assertRaises(VERIFIER.ReleaseCodeManifestError):
+                        VERIFIER.load_release_code_manifest(root)
+
+            target = root / "manifest-target.txt"
+            target.write_text(f"{relative}\n", encoding="utf-8")
+            source.unlink()
+            source.symlink_to(target)
+            with self.assertRaises(VERIFIER.ReleaseCodeManifestError):
+                VERIFIER.load_release_code_manifest(root)
+
+    def test_repository_digest_rejects_traversal_and_symlink_components(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "safe/source.txt"
+            source.parent.mkdir()
+            source.write_bytes(b"release-bytes")
+            self.assertEqual(
+                VERIFIER.repository_file_sha256(root, "safe/source.txt"),
+                hashlib.sha256(b"release-bytes").hexdigest(),
+            )
+            with self.assertRaises(VERIFIER.ReleaseCodeManifestError):
+                VERIFIER.repository_file_sha256(root, "../source.txt")
+
+            alias = root / "alias"
+            alias.symlink_to(source.parent, target_is_directory=True)
+            with self.assertRaises(VERIFIER.ReleaseCodeManifestError):
+                VERIFIER.repository_file_sha256(root, "alias/source.txt")
+
+            hard_link = root / "hard-link.txt"
+            os.link(source, hard_link)
+            with self.assertRaises(VERIFIER.ReleaseCodeManifestError):
+                VERIFIER.repository_file_sha256(root, "hard-link.txt")
 
 
 if __name__ == "__main__":

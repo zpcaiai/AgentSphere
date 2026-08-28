@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-activation-lease-renewer-status.schema.json",
+  "title": "Production activation lease renewer status",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "ready", "database_write_enabled", "release_id",
+    "lease_state", "lease_revision", "lease_state_digest",
+    "revocation_registry_sequence", "projection_id", "projection_head_digest",
+    "last_verified_at", "last_renewed_at", "valid_until", "error_code"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-activation-lease-renewer-status.v1"},
+    "ready": {"type": "boolean"},
+    "database_write_enabled": {"type": "boolean"},
+    "release_id": {"type": "string", "pattern": "^git:(sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "lease_state": {"oneOf": [{"type": "null"}, {"enum": ["ACTIVE", "FENCED", "REVOKED"]}]},
+    "lease_revision": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 0}]},
+    "lease_state_digest": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{64}$"}]},
+    "revocation_registry_sequence": {"oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]},
+    "projection_id": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"}]},
+    "projection_head_digest": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[0-9a-f]{64}$"}]},
+    "last_verified_at": {"oneOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+    "last_renewed_at": {"oneOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+    "valid_until": {"oneOf": [{"type": "null"}, {"type": "string", "format": "date-time"}]},
+    "error_code": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[A-Z0-9_]{1,128}$"}]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"database_write_enabled": {"const": true}}},
+      "then": {
+        "properties": {
+          "ready": {"const": true},
+          "lease_state": {"const": "ACTIVE"},
+          "error_code": {"type": "null"}
+        }
+      }
+    }
+  ]
+}

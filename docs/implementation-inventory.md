@@ -10,7 +10,7 @@ The repository started with specifications only. The implementation is one Rust 
 | 04 | `rust/crates/identity` | identity migration | audience, expiry, revocation, use-count tests |
 | 05 | `rust/crates/registry` | registry migration and manifests | lifecycle, schema, tenant, revoke tests |
 | 06 | `rust/crates/policy-pep`, `policies` | Common/Coding/Industrial Rego | hard-guard, PDP fail-closed, authorization tests |
-| 07 | `rust/crates/sandbox-runtime` | `sandbox-profiles` | replay, output bound, process-group kill tests |
+| 07 | `rust/crates/sandbox-runtime` | `sandbox-profiles`, native `agenttrust-gvisor-worker`, systemd/RuntimeClass adapters | signed PEP/registry/runtime/job/receipt contracts, durable replay, actual runsc/config digest checks, output bounds, process-group kill and cleanup tests; real Linux evidence remains external |
 | 08 | `rust/crates/tool-proxy` | connector profiles are Registry-owned | DLP-before-audit, SSRF/path and lease tests |
 | 09 | `rust/crates/transaction-ledger` | ledger migration | 100-way dedupe, UNKNOWN recovery, compensation tests |
 | 10 | `rust/crates/evidence-evaluator`, `python/evaluator_runtime` | evidence schema/migration, offline CLI | tamper/delete/reorder, hard-gate, timeout tests |
@@ -33,8 +33,8 @@ The repository started with specifications only. The implementation is one Rust 
 | 31 | `rust/crates/policy-administration` | policy bundle schema/migration/config | analysis, compile/sign, simulate, canary, rollback and exceptions |
 | 32 | `rust/crates/context-governance` | Canonical Action ingress, Postgres FORCE-RLS authority/executor, TLS 1.3 mTLS API, object/vector/cache/supply-chain/legal-hold/poisoning/Evidence adapters, schemas/OpenAPI/container/runbook | managed dependency, fault-injection, multi-zone and sustained-load evidence remain external gates |
 | 33 | `rust/crates/security-evaluation-lab`, `python/security_campaign` | attack DSL, dataset, migration/config | isolated runner, campaign, metrics, baseline and findings tests |
-| 34 | `rust/crates/platform-sre`, `deploy` | recovery schema, migration, SRE config, resilience/chaos IaC | dependency semantics, capacity, restore and upgrade gates |
+| 34 | `rust/crates/platform-sre`, `deploy` | recovery schema, migration, SRE config, resilience/chaos IaC, continuous activation lease renewer and database posture | dependency semantics, capacity, restore and upgrade gates; lease renewal and fail-closed activation contract tests |
 | 35 | `rust/crates/enterprise-control`, `java/enterprise-control-api`, `web/control-console` | governed OpenAPI, forced-RLS/idempotency migrations and production config | tenant/admin/BFF/task-status/webhook, quota/cost/API-key/license/integration, Java 21 warning-free and strict TypeScript tests |
-| 36 | `rust/crates/production-closure` | certificate/external-signing/signed-revocation schemas, migration, KMS-only production flow, config and release runbook | gate aggregation, real-evidence requirement, private-key-free external signing, monotonic revocation verification and offline validation |
+| 36 | `rust/crates/production-closure`, `python/production_gates` | certificate/external-signing/signed-revocation schemas, activation lease migration, blue-green stack materializer, mTLS/OIDC deployment-cutover broker, KMS-only production flow, config and release runbook | gate aggregation, real-evidence requirement, private-key-free external signing, monotonic revocation verification, writer-fence/cutover/rollback/unfreeze chain, and offline validation |
 
 The `model_data_evidence` integration test proves the local Batch 18 policy → Batch 15 route → Batch 10 signed evidence path. Batch 19-36 tests prove their portable code paths and denial boundaries. Linux isolation, real identity/provider/protocol targets, Temporal/HA/DR, physical or clinical controls, enterprise acceptance and final production certification are not inferred from these tests.

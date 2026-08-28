@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/production-release-readiness-report.schema.json",
+  "title": "Production release readiness report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "evaluated_at", "portable_release_code", "candidate",
+    "batch_status_summary", "external_condition_summary",
+    "production_closure_certificate", "eligible", "blocking_task_count",
+    "blocking_tasks", "report_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.production-release-readiness-report.v1"},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "portable_release_code": {"enum": ["COMPLETE", "INCOMPLETE"]},
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "release_id", "head", "object_format", "clean_worktree",
+        "commit_signature_verified", "signed_annotated_tags_at_head",
+        "local_immutable_candidate_ready", "remote_default_branch_ref",
+        "remote_default_branch_head", "remote_release_tag_object",
+        "remote_release_tag_target", "remote_release_tag_verified",
+        "immutable_candidate_ready"
+      ],
+      "properties": {
+        "release_id": {
+          "oneOf": [
+            {"const": "WORKTREE-NO-GIT"},
+            {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"}
+          ]
+        },
+        "head": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/gitObject"}]},
+        "object_format": {"type": ["string", "null"], "enum": ["sha1", "sha256", null]},
+        "clean_worktree": {"type": "boolean"},
+        "commit_signature_verified": {"type": "boolean"},
+        "signed_annotated_tags_at_head": {
+          "type": "array", "maxItems": 1, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 255}
+        },
+        "local_immutable_candidate_ready": {"type": "boolean"},
+        "remote_default_branch_ref": {
+          "oneOf": [{"type": "null"}, {"type": "string", "pattern": "^refs/heads/[A-Za-z0-9._/-]{1,240}$"}]
+        },
+        "remote_default_branch_head": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/gitObject"}]},
+        "remote_release_tag_object": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/gitObject"}]},
+        "remote_release_tag_target": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/gitObject"}]},
+        "remote_release_tag_verified": {"type": "boolean"},
+        "immutable_candidate_ready": {"type": "boolean"}
+      }
+    },
+    "batch_status_summary": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "NOT_STARTED": {"$ref": "#/$defs/batchCount"},
+        "IN_PROGRESS": {"$ref": "#/$defs/batchCount"},
+        "IMPLEMENTED": {"$ref": "#/$defs/batchCount"},
+        "EVIDENCE_VERIFIED": {"$ref": "#/$defs/batchCount"},
+        "BLOCKED": {"$ref": "#/$defs/batchCount"},
+        "INVALID": {"$ref": "#/$defs/batchCount"}
+      }
+    },
+    "external_condition_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total", "evidence_verified", "open"],
+      "properties": {
+        "total": {"const": 17},
+        "evidence_verified": {"type": "integer", "minimum": 0, "maximum": 17},
+        "open": {"type": "integer", "minimum": 0, "maximum": 17}
+      }
+    },
+    "production_closure_certificate": {"type": "string"},
+    "eligible": {"type": "boolean"},
+    "blocking_task_count": {"type": "integer", "minimum": 0},
+    "blocking_tasks": {
+      "type": "array", "maxItems": 10000,
+      "items": {"$ref": "#/$defs/blockingTask"}
+    },
+    "report_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "batchCount": {"type": "integer", "minimum": 0, "maximum": 36},
+    "gitObject": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
+    "blockingTask": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "phase", "status"],
+      "properties": {
+        "task_id": {"type": "string", "minLength": 1, "maxLength": 512},
+        "phase": {"type": "string", "pattern": "^[A-Z0-9_]+$"},
+        "status": {"type": "string", "minLength": 1, "maxLength": 256},
+        "required_external_inputs": {
+          "type": "array", "maxItems": 1000, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 2048}
+        }
+      }
+    }
+  }
+}

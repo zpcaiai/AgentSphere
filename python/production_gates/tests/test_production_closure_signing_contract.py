@@ -32,6 +32,33 @@ class ProductionClosureSigningContractTests(unittest.TestCase):
         self.assertIn('Some("finalize-external-signing")', cli)
         self.assertIn('Some("verify-revocation-registry")', cli)
         self.assertIn('Some("verify-revocation-successor")', cli)
+        self.assertIn('Some("prepare-revocation-signing")', cli)
+        self.assertIn('Some("finalize-revocation-signing")', cli)
+        self.assertIn('Some("verify-activation")', cli)
+        self.assertIn('Some("watch-activation")', cli)
+        self.assertIn('Some("prepare-activation-directory")', cli)
+        self.assertIn('Some("check-activation-watch")', cli)
+        for anchor in (
+            "const ACTIVATION_WATCH_INTERVAL: Duration = Duration::from_secs(25);",
+            "fn read_watch_json",
+            "fn write_watch_receipt",
+            "fn refresh_activation",
+            "fn serve_readiness",
+            ".verify_successor(previous, &registry_key, now)",
+            "fs::rename(&temporary, path)",
+            "file.set_permissions(fs::Permissions::from_mode(0o440))",
+            "fn prepare_activation_directory",
+            "builder.mode(0o750)",
+            "current_filesystem_ids()",
+            "fn initialize_activation_watch",
+            "baseline_registry: PathBuf",
+            "last_registry: Some(baseline)",
+            "fn check_activation_watch",
+            "TcpStream::connect_timeout(&address, Duration::from_secs(2))",
+            ".take(16 * 1024 + 1)",
+            'header_lines.next() != Some("HTTP/1.1 200 OK")',
+        ):
+            self.assertIn(anchor, cli)
         self.assertIn('Some("issue-local")', cli)
         self.assertIn('#[cfg(feature = "development-local-signing")]', cli)
         self.assertIn("require_development_local_signing()?", cli)
@@ -68,9 +95,22 @@ class ProductionClosureSigningContractTests(unittest.TestCase):
                 / "schemas/release/production-closure-revocation-registry.schema.json"
             ).read_text()
         )
+        reviewer_keyring = json.loads(
+            (ROOT / "schemas/release/production-closure-reviewer-keyring.schema.json").read_text()
+        )
+        activation = json.loads(
+            (ROOT / "schemas/release/production-closure-activation-receipt.schema.json").read_text()
+        )
+        revocation_request = json.loads(
+            (ROOT / "schemas/release/production-closure-revocation-signing-request.schema.json").read_text()
+        )
         self.assertFalse(request["additionalProperties"])
         self.assertFalse(signature["additionalProperties"])
         self.assertFalse(revocations["additionalProperties"])
+        self.assertFalse(reviewer_keyring["additionalProperties"])
+        self.assertFalse(activation["additionalProperties"])
+        self.assertFalse(revocation_request["additionalProperties"])
+        self.assertIn("base_checkpoint_digest", revocation_request["required"])
         self.assertEqual(
             request["properties"]["schema_version"]["const"],
             "agenttrust.production-closure-signing-request.v1",
@@ -82,8 +122,10 @@ class ProductionClosureSigningContractTests(unittest.TestCase):
         )
         self.assertEqual(
             signature["properties"]["schema_version"]["const"],
-            "agenttrust.production-closure-external-signature.v1",
+            "agenttrust.production-closure-external-signature.v2",
         )
+        self.assertIn("signed_at", signature["required"])
+        self.assertIn("audit_receipt_digest", signature["required"])
         self.assertEqual(signature["properties"]["signature"]["minLength"], 86)
         self.assertEqual(signature["properties"]["signature"]["maxLength"], 86)
         self.assertEqual(
@@ -91,6 +133,14 @@ class ProductionClosureSigningContractTests(unittest.TestCase):
             "agenttrust.production-closure-revocation-registry.v1",
         )
         self.assertEqual(revocations["properties"]["entries"]["maxItems"], 100000)
+        watch_status = json.loads(
+            (
+                ROOT
+                / "schemas/release/production-activation-watch-status.schema.json"
+            ).read_text()
+        )
+        self.assertFalse(watch_status["additionalProperties"])
+        self.assertEqual(watch_status["properties"]["maximum_age_seconds"]["const"], 60)
 
     def test_library_reconstructs_and_verifies_before_finalizing(self) -> None:
         source = (ROOT / "rust/crates/production-closure/src/lib.rs").read_text()
@@ -100,13 +150,21 @@ class ProductionClosureSigningContractTests(unittest.TestCase):
             "payload != self.certificate.signing_bytes()?",
             "self.request_digest != request.digest()?",
             "key.verify(&payload, &signature)",
-            ".verify_offline(report, key, now)",
+            ".verify_offline(report, input, key, now)",
             "external_signing_request_closes_kms_flow_without_loading_a_private_key",
             "external_signing_rejects_request_response_and_signature_replay_tampering",
             "pub struct SignedCertificateRevocationRegistry",
             "pub fn verify_successor",
             "signed_revocation_registry_is_required_and_detects_revoked_certificate",
             "revocation_registry_rejects_rollback_staleness_and_tampering",
+            "pub struct TrustedReviewerKeyring",
+            "pub struct ExternalRevocationRegistrySigningRequest",
+            "pub base_checkpoint_digest: String",
+            "is_sha256(&self.base_checkpoint_digest)",
+            "pub struct ProductionActivationVerifier",
+            "previous.entries.iter().all",
+            "pub input_digest: String",
+            "pub evidence_valid_until: DateTime<Utc>",
             "pub const REQUIRED_BATCH_LAST: u8 = 35;",
             'blockers.insert(format!("BATCH_{:02}_UNEXPECTED", status.batch))',
         ]

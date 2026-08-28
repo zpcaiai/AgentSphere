@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/signed-external-signing-audit-receipt.schema.json",
+  "title": "Cryptographically verifiable external signing audit receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt", "receipt_digest", "algorithm", "key_id", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.signed-external-signing-audit-receipt.v1"},
+    "receipt": {"$ref": "external-signing-audit-receipt.schema.json"},
+    "receipt_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "algorithm": {"const": "Ed25519"},
+    "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"},
+    "signature": {"type": "string", "pattern": "^[A-Za-z0-9_-]{86}$"}
+  }
+}

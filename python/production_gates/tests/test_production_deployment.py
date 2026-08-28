@@ -199,6 +199,26 @@ def _render_with_signed_provenance(
         git_provenance_keyring=_PROVENANCE_KEYRING,
         release_binding=signed_binding,
         release_binding_keyring=_RELEASE_BINDING_KEYRING,
+        activation_receipt={
+            "schema_version": "agenttrust.production-release-activation-receipt.v1",
+            "admitted": True,
+            "release_id": bound_values.get("release_id", _RELEASE_ID),
+            "certificate_id": "pc-" + "8" * 24,
+            "scope_digest": "9" * 64,
+            "input_digest": "d" * 64,
+            "report_digest": "a" * 64,
+            "production_image_manifest_digest": "e" * 64,
+            "evidence_bundle_manifest_digest": (
+                bound_values.get("evidence", {}).get("bundle_digest", "f" * 64)
+                if isinstance(bound_values.get("evidence"), dict) else "f" * 64
+            ),
+            "activation_material_digest": "b" * 64,
+            "revocation_registry_id": "test-registry",
+            "revocation_registry_sequence": 1,
+            "revocation_registry_digest": "c" * 64,
+            "verified_at": "2030-01-01T00:00:00Z",
+            "valid_until": "2030-01-02T00:00:00Z",
+        },
     )
 
 
@@ -226,6 +246,13 @@ def runtime_config() -> dict[str, object]:
 
     result = clean(value)
     assert isinstance(result, dict)
+    result["activation_guardian"] = {
+        "release_id": _RELEASE_ID,
+        "receipt_path": "/run/agenttrust/activation/receipt.json",
+        "max_staleness_seconds": 30,
+        "receipt_owner_uid": 65531,
+        "receipt_reader_gid": 65532,
+    }
     result["endpoints"]["orchestrator"]["base_url"] = "https://agenttrust-orchestrator"
     for name, token in RENDER.RUNTIME_ENDPOINT_TOKENS.items():
         result["endpoints"][name]["tls"]["bearer_token_file"] = f"/etc/agenttrust/secrets/runtime/{token}"
@@ -584,10 +611,18 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertNotIn("@@", result)
         self.assertIn("kind: Job", result)
         self.assertEqual(result.count("kind: Deployment"), 27)
-        self.assertEqual(result.count("kind: SecretProviderClass"), 26)
-        self.assertEqual(result.count("kind: NetworkPolicy"), 30)
+        self.assertEqual(result.count("kind: SecretProviderClass"), 27)
+        self.assertEqual(result.count("kind: NetworkPolicy"), 31)
         self.assertEqual(result.count("kind: PodDisruptionBudget"), 27)
-        self.assertEqual(result.count("kind: ServiceAccount"), 27)
+        self.assertEqual(result.count("kind: ServiceAccount"), 28)
+        self.assertEqual(result.count("kind: RuntimeClass"), 1)
+        self.assertEqual(result.count("kind: ResourceQuota"), 2)
+        self.assertIn("name: agenttrust-gvisor", result)
+        self.assertIn("handler: runsc", result)
+        self.assertIn("name: agenttrust-sandbox-default-deny", result)
+        self.assertNotIn(
+            "kind: Deployment\nmetadata:\n  name: agenttrust-sandbox-worker", result
+        )
         self.assertIn("kind: SecretProviderClass", result)
         self.assertIn("kind: NetworkPolicy", result)
         self.assertIn("ReadOnlyMany", result)
@@ -611,6 +646,7 @@ class ProductionDeploymentTests(unittest.TestCase):
             "AGENT_TRUST_AGENT_REGISTRY_APPLICATION_ROLE, value: \"agenttrust_agent_registry\"",
             result,
         )
+
         self.assertIn(
             "AGENT_TRUST_POLICY_ADMIN_APPLICATION_ROLE, value: \"agenttrust_policy_admin\"",
             result,
@@ -668,9 +704,12 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertEqual(
             migration_spc.count('secretPath: "kv/data/agenttrust/migration"'), 3
         )
-        migration_job = result.split("kind: Job\n", maxsplit=1)[1].split(
-            "---", maxsplit=1
-        )[0]
+        migration_job = next(
+            document
+            for document in result.split("---")
+            if "kind: Job\n" in document
+            and "app.kubernetes.io/name: agenttrust-migrations" in document
+        )
         for migration_input in (
             "AGENT_TRUST_DATABASE_URL_FILE, value: /var/run/agenttrust/secrets/database-url",
             "AGENT_TRUST_DATABASE_PASSWORD_FILE, value: /var/run/agenttrust/secrets/database-password",
@@ -807,6 +846,25 @@ class ProductionDeploymentTests(unittest.TestCase):
             self.assertIn(human_assertion_input, result)
         self.assertIn('objectName: "human-principal-signing-key"', result)
         self.assertIn('objectName: "human-principal-keyring.json"', result)
+
+    def test_consecutive_releases_use_distinct_immutable_evidence_claims(self) -> None:
+        template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
+        first = RENDER.render(template, values(), runtime_config())
+        second_values = values()
+        second_values["evidence"]["persistent_volume_name"] = "agenttrust-evidence-pv-2"
+        second_values["evidence"]["storage_size"] = "2Gi"
+        second = RENDER.render(template, second_values, runtime_config())
+
+        pattern = r"kind: PersistentVolumeClaim\nmetadata:\n  name: ([a-z0-9-]+)"
+        first_claim = re.search(pattern, first)
+        second_claim = re.search(pattern, second)
+        self.assertIsNotNone(first_claim)
+        self.assertIsNotNone(second_claim)
+        self.assertNotEqual(first_claim.group(1), second_claim.group(1))
+        self.assertTrue(first_claim.group(1).startswith("agenttrust-release-evidence-"))
+        self.assertTrue(second_claim.group(1).startswith("agenttrust-release-evidence-"))
+        self.assertEqual(first.count(first_claim.group(1)), 4)
+        self.assertEqual(second.count(second_claim.group(1)), 4)
 
     def test_platform_sre_topology_probe_is_rendered_as_a_separate_dependency(self) -> None:
         rendered = RENDER.render(
@@ -1206,6 +1264,66 @@ class ProductionDeploymentTests(unittest.TestCase):
         unsafe["identity"]["subject_mappings"][0]["subject"] = "REPLACE_WITH_SUBJECT"
         with self.assertRaisesRegex(RENDER.RenderError, "HAS_PLACEHOLDER"):
             RENDER.render("", values(), unsafe)
+
+    def test_runtime_activation_guardian_is_exactly_release_bound(self) -> None:
+        mutations = {
+            "release_id": "git:sha1:" + "2" * 40,
+            "receipt_path": "/var/run/agenttrust/activation/receipt.json",
+            "max_staleness_seconds": 61,
+            "receipt_owner_uid": 65532,
+            "receipt_reader_gid": 65531,
+        }
+        for field, replacement in mutations.items():
+            unsafe = runtime_config()
+            unsafe["activation_guardian"][field] = replacement
+            with self.subTest(field=field), self.assertRaisesRegex(
+                RENDER.RenderError, "ACTIVATION_GUARDIAN_INVALID"
+            ):
+                RENDER.render("", values(), unsafe)
+
+    def test_write_authorities_have_continuous_activation_and_database_lease(self) -> None:
+        template = (ROOT / "deploy/kubernetes/production-stack.yaml.tmpl").read_text()
+        self.assertEqual(template.count("- name: activation-watcher"), 3)
+        self.assertEqual(template.count("- name: prepare-activation-state"), 3)
+        self.assertEqual(
+            template.count(
+                'args: ["prepare-activation-directory", "/activation/live"]'
+            ),
+            3,
+        )
+        self.assertEqual(
+            template.count(
+                'exec: {command: ["/usr/local/bin/production-closure", '
+                '"check-activation-watch", "127.0.0.1:8091"]}'
+            ),
+            3,
+        )
+        self.assertEqual(
+            template.count(
+                "mountPath: /run/agenttrust/activation, subPath: live, readOnly: true"
+            ),
+            2,
+        )
+        for required in (
+            "current-revocation-registry.json",
+            "current-revocation-projection.json",
+            "revocation-projection-public-key.json",
+            "/evidence/revocation-registry.json",
+            "/trust/current-revocation-registry.json",
+            "runAsUser: 65531",
+            "runAsGroup: 65532",
+            "AGENT_TRUST_EXECUTION_ACTIVATION_RELEASE_ID",
+            "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_OWNER_UID",
+            "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_READER_GID",
+            "agenttrust-activation-lease-renewer",
+            "AGENT_TRUST_ACTIVATION_LEASE_WATCHER_URL",
+            "AGENT_TRUST_ACTIVATION_LEASE_DATABASE_EXPECTED_ROLE",
+            "path: /ready, port: activation-lease",
+        ):
+            self.assertIn(required, template)
+        self.assertNotIn(
+            "mountPath: /var/run/agenttrust/activation", template
+        )
 
     def test_yaml_breaking_https_endpoint_is_rejected(self) -> None:
         for endpoint in (

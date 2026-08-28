@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsphere.local/schemas/release/deployment-writer-fence-receipt.schema.json",
+  "title": "Production deployment writer-fence drain receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "fence_id", "source_release_id", "target_release_id",
+    "environment_reference", "fence_applied", "writes_blocked", "drain_complete",
+    "inflight_action_count", "pending_outbox_count", "active_execution_lease_count",
+    "database_recovery", "evidence_digests", "measured_at", "valid_until",
+    "receipt_digest"
+  ],
+  "properties": {
+    "schema_version": {"const": "agenttrust.deployment-writer-fence-receipt.v1"},
+    "fence_id": {"type": "string", "format": "uuid"},
+    "source_release_id": {"$ref": "#/$defs/releaseId"},
+    "target_release_id": {"$ref": "#/$defs/releaseId"},
+    "environment_reference": {"$ref": "#/$defs/environment"},
+    "fence_applied": {"const": true},
+    "writes_blocked": {"const": true},
+    "drain_complete": {"const": true},
+    "inflight_action_count": {"const": 0},
+    "pending_outbox_count": {"const": 0},
+    "active_execution_lease_count": {"const": 0},
+    "database_recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "database_cluster_id", "checkpoint_id", "checkpoint_digest", "wal_lsn",
+        "wal_segment_digest", "backup_id", "backup_manifest_digest",
+        "backup_object_version_digest", "backup_verified_at", "restore_test_receipt_digest"
+      ],
+      "properties": {
+        "database_cluster_id": {"$ref": "#/$defs/identifier"},
+        "checkpoint_id": {"$ref": "#/$defs/identifier"},
+        "checkpoint_digest": {"$ref": "#/$defs/digest"},
+        "wal_lsn": {"type": "string", "pattern": "^[0-9A-F]{1,8}/[0-9A-F]{1,8}$"},
+        "wal_segment_digest": {"$ref": "#/$defs/digest"},
+        "backup_id": {"$ref": "#/$defs/identifier"},
+        "backup_manifest_digest": {"$ref": "#/$defs/digest"},
+        "backup_object_version_digest": {"$ref": "#/$defs/digest"},
+        "backup_verified_at": {"type": "string", "format": "date-time"},
+        "restore_test_receipt_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "evidence_digests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backup_readback", "database_checkpoint", "inflight_query", "lease_query",
+        "outbox_query", "write_fence"
+      ],
+      "properties": {
+        "backup_readback": {"$ref": "#/$defs/digest"},
+        "database_checkpoint": {"$ref": "#/$defs/digest"},
+        "inflight_query": {"$ref": "#/$defs/digest"},
+        "lease_query": {"$ref": "#/$defs/digest"},
+        "outbox_query": {"$ref": "#/$defs/digest"},
+        "write_fence": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "measured_at": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"},
+    "receipt_digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "releaseId": {"type": "string", "pattern": "^git:(?:sha1:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "environment": {"type": "string", "pattern": "^environment://production/[A-Za-z0-9][A-Za-z0-9._:/-]{0,447}$"},
+    "identifier": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,255}$"}
+  }
+}

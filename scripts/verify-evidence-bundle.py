@@ -4,10 +4,18 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
 import re
+
+from python.production_gates.release_code_manifest import (
+    ReleaseCodeManifestError,
+    load_release_code_manifest,
+    repository_file_is_safe,
+    repository_file_sha256,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,10 +79,37 @@ REQUIRED_DENIAL_REASONS = {
 }
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MIGRATION_PATH = re.compile(r"^[A-Za-z0-9._/-]+\.sql$")
+MAX_EVIDENCE_FILE_BYTES = 128 * 1024 * 1024
+PRODUCTION_MIGRATION_COUNT = 70
+MANIFEST_FIELDS = {
+    "schema_version",
+    "release_id",
+    "generated_at",
+    "artifacts",
+    "offline_verification_required",
+    "production_certificate_included",
+}
+
+
+def reject_duplicate_key(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    value: dict[str, object] = {}
+    for key, item in pairs:
+        if key in value:
+            raise RuntimeError(f"EVIDENCE_BUNDLE_DUPLICATE_JSON_KEY:{key}")
+        value[key] = item
+    return value
 
 
 def read_object(path: Path) -> dict[str, object]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or not 1 <= path.stat(follow_symlinks=False).st_size <= MAX_EVIDENCE_FILE_BYTES
+    ):
+        raise RuntimeError(f"EVIDENCE_BUNDLE_INPUT_INVALID:{path.relative_to(ROOT)}")
+    value = json.loads(
+        path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_key
+    )
     if not isinstance(value, dict):
         raise RuntimeError(f"EVIDENCE_BUNDLE_JSON_OBJECT_REQUIRED:{path.relative_to(ROOT)}")
     return value
@@ -105,7 +140,7 @@ def production_migration_required_items() -> set[str]:
         if line.strip() and not line.lstrip().startswith("#")
     ]
     if (
-        len(entries) != 68
+        len(entries) != PRODUCTION_MIGRATION_COUNT
         or len(entries) != len(set(entries))
         or any(
             not MIGRATION_PATH.fullmatch(relative)
@@ -117,6 +152,22 @@ def production_migration_required_items() -> set[str]:
     ):
         raise RuntimeError("EVIDENCE_BUNDLE_MIGRATION_MANIFEST_INVALID")
     return {f"migrations/{relative}" for relative in entries}
+
+
+def release_code_manifest_required_items() -> set[str]:
+    """Load the deterministic source inventory covered by this evidence bundle.
+
+    The inventory is deliberately a plain, sorted list instead of executable
+    discovery logic.  This makes the reviewed release surface reproducible in
+    an offline checkout and prevents a dirty worktree from silently expanding
+    the evidence scope.  Every listed file must still be present in the signed
+    JSON evidence manifest and have its current bytes digest-checked below.
+    """
+
+    try:
+        return set(load_release_code_manifest(ROOT))
+    except ReleaseCodeManifestError:
+        raise RuntimeError("EVIDENCE_BUNDLE_RELEASE_CODE_MANIFEST_INVALID") from None
 
 
 def verify_non_certificate_truth(manifest: dict[str, object]) -> None:
@@ -163,7 +214,7 @@ def verify_non_certificate_truth(manifest: dict[str, object]) -> None:
         or readiness.get("production_closure_certificate") != "NOT_ISSUED"
         or not isinstance(local_code_gates, dict)
         or not str(local_code_gates.get("postgresql_migrations", "")).startswith(
-            "PASS_STATIC_MANIFEST_68_"
+            f"PASS_STATIC_MANIFEST_{PRODUCTION_MIGRATION_COUNT}_"
         )
         or not HEAVY_READINESS_GATES.issubset(local_code_gates)
         or any(
@@ -309,13 +360,30 @@ def verify_non_certificate_truth(manifest: dict[str, object]) -> None:
 
 def main() -> int:
     manifest = read_object(MANIFEST)
-    if manifest.get("schema_version") != "agenttrust.closure-evidence-bundle.v1":
+    generated_at = manifest.get("generated_at")
+    try:
+        parsed_generated_at = datetime.fromisoformat(
+            str(generated_at).replace("Z", "+00:00")
+        )
+    except (ValueError, OverflowError):
+        raise RuntimeError("EVIDENCE_BUNDLE_METADATA_INVALID") from None
+    if (
+        set(manifest) != MANIFEST_FIELDS
+        or manifest.get("schema_version") != "agenttrust.closure-evidence-bundle.v1"
+        or not isinstance(generated_at, str)
+        or not generated_at.endswith("Z")
+        or not 1 <= len(generated_at) <= 64
+        or parsed_generated_at.tzinfo is None
+        or parsed_generated_at.utcoffset()
+        != timezone.utc.utcoffset(parsed_generated_at)
+    ):
         raise RuntimeError("EVIDENCE_BUNDLE_SCHEMA_UNSUPPORTED")
     verify_non_certificate_truth(manifest)
     artifacts = manifest.get("artifacts")
     if not isinstance(artifacts, list):
         raise RuntimeError("EVIDENCE_BUNDLE_ARTIFACTS_INVALID")
     seen: set[str] = set()
+    ordered_paths: list[str] = []
     for artifact in artifacts:
         if not isinstance(artifact, dict) or set(artifact) != {"path", "sha256"}:
             raise RuntimeError("EVIDENCE_BUNDLE_ENTRY_INVALID")
@@ -323,21 +391,38 @@ def main() -> int:
         expected = artifact.get("sha256", "")
         if not isinstance(relative, str) or not isinstance(expected, str):
             raise RuntimeError("EVIDENCE_BUNDLE_ENTRY_INVALID")
-        path = (ROOT / relative).resolve()
+        relative_path = Path(relative)
+        source_path = ROOT / relative_path
+        path = source_path.resolve()
         if (
             not relative
             or relative in seen
+            or relative_path.is_absolute()
+            or relative_path.as_posix() != relative
+            or ".." in relative_path.parts
             or not path.is_relative_to(ROOT)
             or not SHA256.fullmatch(expected)
-            or not path.is_file()
+            or not repository_file_is_safe(
+                ROOT,
+                relative,
+                maximum_bytes=MAX_EVIDENCE_FILE_BYTES,
+            )
         ):
             raise RuntimeError("EVIDENCE_BUNDLE_ENTRY_INVALID")
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        try:
+            actual = repository_file_sha256(
+                ROOT,
+                relative,
+                maximum_bytes=MAX_EVIDENCE_FILE_BYTES,
+            )
+        except ReleaseCodeManifestError:
+            raise RuntimeError("EVIDENCE_BUNDLE_ENTRY_INVALID") from None
         if actual != expected:
             raise RuntimeError(f"EVIDENCE_BUNDLE_DIGEST_MISMATCH:{relative}")
         seen.add(relative)
-    if not seen:
-        raise RuntimeError("EVIDENCE_BUNDLE_EMPTY")
+        ordered_paths.append(relative)
+    if not seen or ordered_paths != sorted(ordered_paths):
+        raise RuntimeError("EVIDENCE_BUNDLE_ARTIFACT_ORDER_INVALID")
     required = {
         *(f"evidence/batch-{batch:02}/IMPLEMENTATION_STATUS.json" for batch in range(1, 37)),
         *production_migration_required_items(),
@@ -531,6 +616,7 @@ def main() -> int:
         "rust/crates/data-governance/tests/production_contract.rs",
         "python/production_gates/tests/test_supply_domain_contract.py",
         "scripts/verify-evidence-bundle.py",
+        *release_code_manifest_required_items(),
     }
     missing = required - seen
     if missing:

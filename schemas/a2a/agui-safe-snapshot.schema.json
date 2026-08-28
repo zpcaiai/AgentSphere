@@ -30,6 +30,6 @@
     },
     "next_resume_token": {"type": "string", "minLength": 1, "maxLength": 2048},
     "generated_at": {"type": "string", "format": "date-time"},
-    "backend_signature": {"type": "string", "minLength": 16, "maxLength": 4096}
+    "backend_signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
   }
 }

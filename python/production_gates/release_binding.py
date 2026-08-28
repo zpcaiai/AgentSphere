@@ -2,7 +2,9 @@
 
 The Git provenance signature authenticates an immutable commit and its published
 tag.  This contract separately authenticates the exact deployment template,
-non-secret values, and runtime configuration selected for that commit.
+static non-secret values, and runtime configuration selected for that commit.
+Derived release/evidence digests are injected later by a certificate-bound
+activation step so the signed material cannot contain a self-referential hash.
 """
 
 from __future__ import annotations
@@ -31,8 +33,8 @@ from python.production_gates.git_provenance import (
 from python.production_gates.live_integrations import GateError
 
 
-SIGNED_RELEASE_BINDING_SCHEMA_VERSION = "agenttrust.signed-release-binding.v1"
-RELEASE_BINDING_SCHEMA_VERSION = "agenttrust.release-binding.v1"
+SIGNED_RELEASE_BINDING_SCHEMA_VERSION = "agenttrust.signed-release-binding.v2"
+RELEASE_BINDING_SCHEMA_VERSION = "agenttrust.release-binding.v2"
 RELEASE_BINDING_KEYRING_SCHEMA_VERSION = "agenttrust.release-binding-keyring.v1"
 RELEASE_BINDING_KEY_USAGE = "PRODUCTION_RELEASE_BINDING"
 RELEASE_BINDING_ALGORITHM = "Ed25519"
@@ -53,7 +55,7 @@ _BINDING_FIELDS = {
     "template_git_path",
     "template_blob_object_id",
     "template_digest",
-    "values_without_release_digest",
+    "static_values",
     "runtime_config_digest",
 }
 _ENVELOPE_FIELDS = {
@@ -148,11 +150,17 @@ def build_release_binding(
         or not _OBJECT_ID.fullmatch(template_blob_object_id)
     ):
         raise GateError("RELEASE_BINDING_TEMPLATE_BLOB_INVALID")
-    unsigned_values = dict(values)
-    unsigned_values.pop("release_digest")
     try:
         # Canonical round-trip makes the signed object independent of caller mutation.
-        canonical_values = json.loads(canonical_json(unsigned_values))
+        # The release digest and the later positive-evidence bundle digest are
+        # derived values.  Signing either into its own transitive input creates
+        # an impossible hash cycle, so both are injected only after their
+        # independently verified material exists.
+        canonical_values = json.loads(canonical_json(dict(values)))
+        canonical_values.pop("release_digest")
+        evidence = canonical_values.get("evidence")
+        if isinstance(evidence, dict):
+            evidence.pop("bundle_digest", None)
         runtime_digest = _digest(runtime_config)
     except (UnicodeDecodeError, json.JSONDecodeError, GateError):
         raise GateError("RELEASE_BINDING_MATERIAL_INVALID") from None
@@ -163,7 +171,7 @@ def build_release_binding(
         "template_git_path": PRODUCTION_STACK_TEMPLATE_GIT_PATH,
         "template_blob_object_id": template_blob_object_id,
         "template_digest": hashlib.sha256(template.encode("utf-8")).hexdigest(),
-        "values_without_release_digest": canonical_values,
+        "static_values": canonical_values,
         "runtime_config_digest": runtime_digest,
     }
     material["release_digest"] = _digest(material)
@@ -178,7 +186,7 @@ def validate_release_binding(value: object) -> Mapping[str, Any]:
     object_format, _ = _object_format_from_release_id(release_id)
     object_id = binding.get("template_blob_object_id")
     expected_object_length = 40 if object_format == "sha1" else 64
-    values = binding.get("values_without_release_digest")
+    values = binding.get("static_values")
     if (
         binding.get("schema_version") != RELEASE_BINDING_SCHEMA_VERSION
         or binding.get("template_git_path") != PRODUCTION_STACK_TEMPLATE_GIT_PATH
@@ -193,6 +201,10 @@ def validate_release_binding(value: object) -> Mapping[str, Any]:
         or not _DIGEST.fullmatch(str(binding["runtime_config_digest"]))
         or not isinstance(values, dict)
         or "release_digest" in values
+        or (
+            isinstance(values.get("evidence"), dict)
+            and "bundle_digest" in values["evidence"]
+        )
         or values.get("release_id") != release_id
         or not isinstance(binding.get("release_digest"), str)
         or not _DIGEST.fullmatch(str(binding["release_digest"]))
@@ -385,9 +397,9 @@ def produce_signed_release_binding(
         key_id=key_id,
         signed_at=signed_at,
     )
-    finalized_values = json.loads(canonical_json(values))
-    finalized_values["release_digest"] = binding["release_digest"]
-    return envelope, finalized_values
+    prepared_values = json.loads(canonical_json(binding["static_values"]))
+    prepared_values["release_digest"] = binding["release_digest"]
+    return envelope, prepared_values
 
 
 def _read_json(path: Path, code: str) -> object:
@@ -422,7 +434,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--issuer", required=True)
     parser.add_argument("--key-id", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--finalized-values-output", type=Path, required=True)
+    parser.add_argument("--prepared-values-output", type=Path, required=True)
     args = parser.parse_args(argv)
     values = _read_json(args.values, "RELEASE_BINDING_VALUES_INVALID")
     runtime_config = _read_json(args.runtime_config, "RELEASE_BINDING_RUNTIME_INVALID")
@@ -432,7 +444,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if not isinstance(values, dict):
         raise GateError("RELEASE_BINDING_VALUES_INVALID")
-    envelope, finalized_values = produce_signed_release_binding(
+    envelope, prepared_values = produce_signed_release_binding(
         args.repository,
         args.template,
         values,
@@ -444,14 +456,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         key_id=args.key_id,
     )
     if (
-        args.output == args.finalized_values_output
+        args.output == args.prepared_values_output
         or not args.output.is_absolute()
-        or not args.finalized_values_output.is_absolute()
+        or not args.prepared_values_output.is_absolute()
         or args.output.exists()
-        or args.finalized_values_output.exists()
+        or args.prepared_values_output.exists()
     ):
         raise GateError("RELEASE_BINDING_OUTPUT_PATH_INVALID")
-    _write_new(args.finalized_values_output, finalized_values)
+    _write_new(args.prepared_values_output, prepared_values)
     # Publish the authoritative signature last. A concurrent path race can leave
     # an unsigned finalized-values file, but never a signed binding without its
     # values counterpart.

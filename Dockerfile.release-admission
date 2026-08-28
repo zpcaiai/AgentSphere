@@ -1,0 +1,12 @@
+ARG RUST_BUILDER_IMAGE
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUST_BUILDER_IMAGE} AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY rust ./rust
+RUN cargo build --locked --release -p agent-trust-production-closure --bin production-closure
+
+FROM ${RUNTIME_BASE_IMAGE}
+COPY --from=build /src/target/release/production-closure /usr/local/bin/production-closure
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/production-closure"]

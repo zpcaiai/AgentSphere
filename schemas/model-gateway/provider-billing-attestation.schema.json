@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.agenttrust.invalid/model-gateway/provider-billing-attestation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "provider_id", "statement_period", "statement_digest", "issued_at", "expires_at", "issuer", "key_id", "key_usage", "signature"],
+  "properties": {
+    "schema_version": {"const": "agenttrust.model-provider-billing-attestation.v1"},
+    "provider_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "statement_period": {"type": "string", "minLength": 1, "maxLength": 64},
+    "statement_digest": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "issuer": {"type": "string", "minLength": 1, "maxLength": 256},
+    "key_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "key_usage": {"const": "MODEL_PROVIDER_BILLING"},
+    "signature": {"type": "string", "minLength": 86, "maxLength": 86, "pattern": "^[A-Za-z0-9_-]+$"}
+  }
+}

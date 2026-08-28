@@ -1,3 +1,5 @@
+use crate::activation::ActivationGuardianConfig;
+use agent_trust_action_ir::{ParseLimits, parse_strict_json};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -209,6 +211,7 @@ pub struct EvidenceFilesConfig {
 pub struct ProductionRuntimeConfig {
     pub schema_version: String,
     pub fail_closed: bool,
+    pub activation_guardian: ActivationGuardianConfig,
     pub listeners: ListenerConfig,
     pub identity: IdentityConfig,
     pub endpoints: BTreeMap<String, EndpointConfig>,
@@ -219,8 +222,20 @@ pub struct ProductionRuntimeConfig {
 impl ProductionRuntimeConfig {
     pub fn load(path: &Path) -> Result<Self, ConfigurationError> {
         let bytes = fs::read(path).map_err(|_| ConfigurationError::Io)?;
+        let value = parse_strict_json(
+            &bytes,
+            &ParseLimits {
+                max_body_bytes: 4 * 1_048_576,
+                max_depth: 32,
+                max_array_items: 100_000,
+                max_string_bytes: 65_536,
+                max_object_keys: 100_000,
+                max_number_chars: 128,
+            },
+        )
+        .map_err(|_| ConfigurationError::Invalid)?;
         let config: Self =
-            serde_json::from_slice(&bytes).map_err(|_| ConfigurationError::Invalid)?;
+            serde_json::from_value(value).map_err(|_| ConfigurationError::Invalid)?;
         config.validate()?;
         Ok(config)
     }
@@ -256,6 +271,9 @@ impl ProductionRuntimeConfig {
         {
             return Err(ConfigurationError::Invalid);
         }
+        self.activation_guardian
+            .validate()
+            .map_err(|_| ConfigurationError::Invalid)?;
         self.identity.validate()?;
         // When a local mTLS ingress proxy supplies the verified certificate digest,
         // the application listener must not be reachable off-host.
