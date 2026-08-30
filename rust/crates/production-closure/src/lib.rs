@@ -2,7 +2,7 @@
 //!
 //! Earlier release-gate certificates are inputs to this gate, never substitutes for it.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 #[cfg(any(test, feature = "development-local-signing"))]

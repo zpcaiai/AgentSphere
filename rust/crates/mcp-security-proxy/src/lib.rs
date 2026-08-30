@@ -235,8 +235,8 @@ impl McpRegistry {
             .get(&manifest.signer_key_id)
             .cloned()
             .ok_or(McpError::SignatureInvalid)?;
-        if (self.state_store.is_some() && publisher != manifest.publisher_id)
-            || (!publisher.is_empty() && publisher != manifest.publisher_id)
+        if (!publisher.is_empty() || self.state_store.is_some())
+            && publisher != manifest.publisher_id
         {
             return Err(McpError::SignatureInvalid);
         }
@@ -1014,8 +1014,8 @@ fn validate_action_binding(
         serde_json::to_value(action.arguments()).map_err(|_| McpError::ArgumentsInvalid)?;
     let computed_action_hash =
         canonical_action_hash(action).map_err(|_| McpError::ArgumentsInvalid)?;
-    if &computed_action_hash != &request.action_hash
-        || &action.agent.tenant_id != &request.tenant_id
+    if computed_action_hash != request.action_hash
+        || action.agent.tenant_id != request.tenant_id
         || action.tool.tool_id.0.as_str() != snapshot.namespaced_tool_id.as_str()
         || action.tool.tool_version.0.as_str() != snapshot.server_version.as_str()
         || &bound_arguments != arguments
@@ -1049,8 +1049,8 @@ fn validate_manifest(manifest: &McpServerManifest) -> Result<(), McpError> {
         || !manifest.permissions.contains(&McpPermission::ToolsCall)
         || manifest.trust_tier != "untrusted"
         || manifest.network_endpoints.len() > 256
-        || (manifest.permissions.contains(&McpPermission::Network)
-            != !manifest.network_endpoints.is_empty())
+        || manifest.permissions.contains(&McpPermission::Network)
+            == manifest.network_endpoints.is_empty()
         || manifest
             .network_endpoints
             .iter()

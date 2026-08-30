@@ -9,6 +9,7 @@ dependencies = [
  "agent-trust-contracts",
  "agent-trust-identity",
  "agent-trust-protocol-adapter-sdk",
+ "async-trait",
  "base64",
  "chrono",
  "ed25519-dalek",
@@ -18,6 +19,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "url",
  "uuid",
 ]
 
@@ -793,6 +795,7 @@ version = "0.1.0"
 dependencies = [
  "agent-trust-action-ir",
  "agent-trust-agent-registry-posture",
+ "agent-trust-bounded-http",
  "agent-trust-contracts",
  "agent-trust-enterprise-approval",
  "agent-trust-enterprise-control",
@@ -931,10 +934,12 @@ dependencies = [
 name = "agent-trust-sandbox-runtime"
 version = "0.1.0"
 dependencies = [
+ "agent-trust-action-ir",
  "agent-trust-contracts",
  "agent-trust-policy-pep",
  "agent-trust-registry",
  "async-trait",
+ "base64",
  "chrono",
  "ed25519-dalek",
  "nix",

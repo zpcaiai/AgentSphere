@@ -223,10 +223,7 @@ fn read_protected_receipt(
         } else {
             metadata.uid() == 0 && mode & 0o022 == 0
         };
-        if !metadata.file_type().is_dir()
-            || metadata.file_type().is_symlink()
-            || !owner_valid
-        {
+        if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() || !owner_valid {
             return Err(ActivationError::ReceiptFileInvalid);
         }
     }

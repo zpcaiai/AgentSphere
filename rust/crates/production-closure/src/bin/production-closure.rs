@@ -8,14 +8,14 @@ use agent_trust_production_closure::{
     ProductionActivationVerifier, ProductionClosureCertificate, RevocationRegistryUpdate,
     SignedCertificateRevocationRegistry, TrustedReviewerKeyring,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 #[cfg(any(test, feature = "development-local-signing"))]
 use ed25519_dalek::SigningKey;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::env;
@@ -126,8 +126,7 @@ impl RevocationProjectionHead {
             .map_err(|_| "CLOSURE_PROJECTION_HEAD_INVALID")?;
         let mut unsigned = self.clone();
         unsigned.signature.clear();
-        let bytes = serde_jcs::to_vec(&unsigned)
-            .map_err(|_| "CLOSURE_PROJECTION_HEAD_INVALID")?;
+        let bytes = serde_jcs::to_vec(&unsigned).map_err(|_| "CLOSURE_PROJECTION_HEAD_INVALID")?;
         key.verify(&bytes, &signature)
             .map_err(|_| "CLOSURE_PROJECTION_HEAD_INVALID")
     }
@@ -225,9 +224,9 @@ fn prepare_activation_directory(target: &Path) -> Result<(), &'static str> {
 
     if !target.is_absolute()
         || target.file_name().is_none()
-        || target.components().any(|component| {
-            !matches!(component, Component::RootDir | Component::Normal(_))
-        })
+        || target
+            .components()
+            .any(|component| !matches!(component, Component::RootDir | Component::Normal(_)))
     {
         return Err("CLOSURE_ACTIVATION_DIRECTORY_PATH_INVALID");
     }
@@ -235,8 +234,8 @@ fn prepare_activation_directory(target: &Path) -> Result<(), &'static str> {
         .parent()
         .filter(|path| path.is_absolute())
         .ok_or("CLOSURE_ACTIVATION_DIRECTORY_PATH_INVALID")?;
-    let parent_before = fs::symlink_metadata(parent)
-        .map_err(|_| "CLOSURE_ACTIVATION_DIRECTORY_PARENT_INVALID")?;
+    let parent_before =
+        fs::symlink_metadata(parent).map_err(|_| "CLOSURE_ACTIVATION_DIRECTORY_PARENT_INVALID")?;
     if parent_before.file_type().is_symlink() || !parent_before.is_dir() {
         return Err("CLOSURE_ACTIVATION_DIRECTORY_PARENT_INVALID");
     }
@@ -246,12 +245,10 @@ fn prepare_activation_directory(target: &Path) -> Result<(), &'static str> {
     }
     let mut builder = DirBuilder::new();
     builder.mode(0o750);
-    builder
-        .create(target)
-        .map_err(|error| match error.kind() {
-            ErrorKind::AlreadyExists => "CLOSURE_ACTIVATION_DIRECTORY_ALREADY_EXISTS",
-            _ => "CLOSURE_ACTIVATION_DIRECTORY_CREATE_FAILED",
-        })?;
+    builder.create(target).map_err(|error| match error.kind() {
+        ErrorKind::AlreadyExists => "CLOSURE_ACTIVATION_DIRECTORY_ALREADY_EXISTS",
+        _ => "CLOSURE_ACTIVATION_DIRECTORY_CREATE_FAILED",
+    })?;
     let validate = || -> Result<(), &'static str> {
         let parent_after = fs::symlink_metadata(parent)
             .map_err(|_| "CLOSURE_ACTIVATION_DIRECTORY_PARENT_CHANGED")?;
@@ -463,8 +460,7 @@ impl ActivationWatchState {
                 .as_ref()
                 .is_some_and(|valid_until| valid_until > &now)
             && self.last_success.as_ref().is_some_and(|verified_at| {
-                verified_at.to_owned()
-                    + ChronoDuration::seconds(ACTIVATION_WATCH_FRESHNESS_SECONDS)
+                verified_at.to_owned() + ChronoDuration::seconds(ACTIVATION_WATCH_FRESHNESS_SECONDS)
                     >= now
             })
     }
@@ -545,14 +541,12 @@ fn refresh_activation(
         read_watch_json(&paths.certificate, MAXIMUM_INPUT_BYTES)?;
     let report: ClosureReport = read_watch_json(&paths.report, MAXIMUM_INPUT_BYTES)?;
     let input: ClosureInput = read_watch_json(&paths.input, MAXIMUM_INPUT_BYTES)?;
-    let certificate_key_spec: PublicKeySpec =
-        read_watch_json(&paths.certificate_key, 64 * 1024)?;
+    let certificate_key_spec: PublicKeySpec = read_watch_json(&paths.certificate_key, 64 * 1024)?;
     let registry: SignedCertificateRevocationRegistry =
         read_watch_json(&paths.registry, 32 * 1024 * 1024)?;
     let projection_head: RevocationProjectionHead =
         read_watch_json(&paths.projection_head, 64 * 1024)?;
-    let projection_key_spec: PublicKeySpec =
-        read_watch_json(&paths.projection_key, 64 * 1024)?;
+    let projection_key_spec: PublicKeySpec = read_watch_json(&paths.projection_key, 64 * 1024)?;
     let registry_key_spec: PublicKeySpec = read_watch_json(&paths.registry_key, 64 * 1024)?;
     let expectation: ProductionActivationExpectation =
         read_watch_json(&paths.expectation, 64 * 1024)?;
@@ -663,9 +657,7 @@ fn check_activation_watch(address: SocketAddr) -> Result<ActivationWatchStatus, 
         .set_read_timeout(Some(Duration::from_secs(2)))
         .and_then(|_| stream.set_write_timeout(Some(Duration::from_secs(2))))
         .map_err(|_| "CLOSURE_WATCH_READINESS_UNAVAILABLE")?;
-    let request = format!(
-        "GET /ready HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
-    );
+    let request = format!("GET /ready HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .and_then(|_| stream.flush())
@@ -839,8 +831,7 @@ fn valid_production_environment_reference(value: &str) -> bool {
             !suffix.is_empty()
                 && suffix.len() <= 480
                 && suffix.bytes().all(|byte| {
-                    byte.is_ascii_alphanumeric()
-                        || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'/' | b'-')
                 })
         })
 }
@@ -1089,22 +1080,15 @@ fn run() -> Result<(), &'static str> {
         }
         Some("watch-activation") => {
             let paths = ActivationWatchPaths {
-                certificate: PathBuf::from(
-                    args.next().ok_or("CLOSURE_CERTIFICATE_REQUIRED")?,
-                ),
+                certificate: PathBuf::from(args.next().ok_or("CLOSURE_CERTIFICATE_REQUIRED")?),
                 report: PathBuf::from(args.next().ok_or("CLOSURE_REPORT_REQUIRED")?),
                 input: PathBuf::from(args.next().ok_or("CLOSURE_INPUT_REQUIRED")?),
-                certificate_key: PathBuf::from(
-                    args.next().ok_or("CLOSURE_KEY_REQUIRED")?,
-                ),
+                certificate_key: PathBuf::from(args.next().ok_or("CLOSURE_KEY_REQUIRED")?),
                 baseline_registry: PathBuf::from(
                     args.next()
                         .ok_or("CLOSURE_BASELINE_REVOCATION_REGISTRY_REQUIRED")?,
                 ),
-                registry: PathBuf::from(
-                    args.next()
-                        .ok_or("CLOSURE_REVOCATION_REGISTRY_REQUIRED")?,
-                ),
+                registry: PathBuf::from(args.next().ok_or("CLOSURE_REVOCATION_REGISTRY_REQUIRED")?),
                 projection_head: PathBuf::from(
                     args.next()
                         .ok_or("CLOSURE_REVOCATION_PROJECTION_HEAD_REQUIRED")?,
@@ -1149,9 +1133,7 @@ fn run() -> Result<(), &'static str> {
                 .ok_or("CLOSURE_REVOCATION_SEQUENCE_REQUIRED")?
                 .parse::<u64>()
                 .map_err(|_| "CLOSURE_REVOCATION_SEQUENCE_INVALID")?;
-            let expected_digest = args
-                .next()
-                .ok_or("CLOSURE_REVOCATION_DIGEST_REQUIRED")?;
+            let expected_digest = args.next().ok_or("CLOSURE_REVOCATION_DIGEST_REQUIRED")?;
             if args.next().is_some() || expected_sequence == 0 || !valid_sha256(&expected_digest) {
                 return Err("CLOSURE_ARGUMENTS_INVALID");
             }
@@ -1168,9 +1150,8 @@ fn run() -> Result<(), &'static str> {
             {
                 return Err("CLOSURE_REVOCATION_REGISTRY_KEY_INVALID");
             }
-            let registry_key =
-                VerifyingKey::from_bytes(&decode_32(&registry_key_spec.public_key)?)
-                    .map_err(|_| "CLOSURE_REVOCATION_REGISTRY_KEY_INVALID")?;
+            let registry_key = VerifyingKey::from_bytes(&decode_32(&registry_key_spec.public_key)?)
+                .map_err(|_| "CLOSURE_REVOCATION_REGISTRY_KEY_INVALID")?;
             let now = Utc::now();
             registry
                 .verify(&registry_key, now)
@@ -1178,17 +1159,10 @@ fn run() -> Result<(), &'static str> {
             let registry_digest = registry
                 .digest()
                 .map_err(|_| "CLOSURE_REVOCATION_REGISTRY_INVALID")?;
-            if registry.sequence != expected_sequence
-                || registry_digest != expected_digest
-            {
+            if registry.sequence != expected_sequence || registry_digest != expected_digest {
                 return Err("CLOSURE_REVOCATION_PROJECTION_ROLLBACK");
             }
-            projection_head.verify(
-                &registry,
-                &registry_digest,
-                &projection_key_spec,
-                now,
-            )?;
+            projection_head.verify(&registry, &registry_digest, &projection_key_spec, now)?;
             let projection_head_digest = projection_head.digest()?;
             println!(
                 "{}",
@@ -1424,10 +1398,7 @@ mod tests {
     use agent_trust_production_closure::CertificateRevocationEntry;
     use ed25519_dalek::Signer;
 
-    fn sign_registry(
-        registry: &mut SignedCertificateRevocationRegistry,
-        key: &SigningKey,
-    ) {
+    fn sign_registry(registry: &mut SignedCertificateRevocationRegistry, key: &SigningKey) {
         registry.signature = URL_SAFE_NO_PAD.encode(
             key.sign(
                 &registry
@@ -1440,8 +1411,8 @@ mod tests {
 
     fn sign_head(head: &mut RevocationProjectionHead, key: &SigningKey) {
         head.signature.clear();
-        let payload = serde_jcs::to_vec(head)
-            .unwrap_or_else(|error| panic!("projection payload: {error}"));
+        let payload =
+            serde_jcs::to_vec(head).unwrap_or_else(|error| panic!("projection payload: {error}"));
         head.signature = URL_SAFE_NO_PAD.encode(key.sign(&payload).to_bytes());
     }
 
@@ -1524,16 +1495,18 @@ mod tests {
         };
         sign_head(&mut head, &projection_key);
 
-        assert!(verify_projected_registry_lineage(
-            &baseline,
-            &baseline_digest,
-            &current,
-            &current_digest,
-            &head,
-            &projection_key_spec,
-            now,
-        )
-        .is_ok());
+        assert!(
+            verify_projected_registry_lineage(
+                &baseline,
+                &baseline_digest,
+                &current,
+                &current_digest,
+                &head,
+                &projection_key_spec,
+                now,
+            )
+            .is_ok()
+        );
 
         let mut omission = current;
         omission.entries.remove(0);

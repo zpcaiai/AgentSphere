@@ -863,8 +863,8 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertNotEqual(first_claim.group(1), second_claim.group(1))
         self.assertTrue(first_claim.group(1).startswith("agenttrust-release-evidence-"))
         self.assertTrue(second_claim.group(1).startswith("agenttrust-release-evidence-"))
-        self.assertEqual(first.count(first_claim.group(1)), 4)
-        self.assertEqual(second.count(second_claim.group(1)), 4)
+        self.assertEqual(first.count(first_claim.group(1)), 5)
+        self.assertEqual(second.count(second_claim.group(1)), 5)
 
     def test_platform_sre_topology_probe_is_rendered_as_a_separate_dependency(self) -> None:
         rendered = RENDER.render(
@@ -1955,6 +1955,11 @@ class ProductionDeploymentTests(unittest.TestCase):
             ("actions/setup-node", "a0853c24544627f65ddf259abe73b1d18a591444"),
             ("actions/setup-python", "ece7cb06caefa5fff74198d8649806c4678c61a1"),
             ("actions/upload-artifact", "ea165f8d65b6e75b540449e92b4886f43607fa02"),
+            ("actions/download-artifact", "634f93cb2916e3fdff6788551b99b062d0335ce0"),
+            ("actions/attest-build-provenance", "977bb373ede98d70efdf65b84cb5f73e068dcc2a"),
+            ("actions/attest-sbom", "4651f806c01d8637787e274ac3bdf724ef169f34"),
+            ("anchore/sbom-action", "e22c389904149dbc22b58101806040fa8d37a610"),
+            ("docker/login-action", "c94ce9fb468520275223c153574b00df6fe4bcc9"),
             ("dtolnay/rust-toolchain", "4360b52568e2003a75bf9bc1d59f33a8e3fc893c"),
         }
         observed_actions: set[tuple[str, str]] = set()

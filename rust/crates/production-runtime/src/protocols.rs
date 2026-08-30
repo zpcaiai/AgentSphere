@@ -1,5 +1,5 @@
 use crate::{activation::ActivationGuardian, http::SecureHttpTransport};
-use agent_trust_contracts::{EffectClass, TaskId};
+use agent_trust_contracts::{EffectClass, TaskId, TenantId};
 use agent_trust_identity::CredentialHandle;
 use agent_trust_mcp_security_proxy::{ControlledMcpTransport, McpError, RawMcpResult};
 use async_trait::async_trait;
@@ -39,6 +39,7 @@ struct McpWireResult {
 impl ControlledMcpTransport for HttpMcpTransport {
     async fn call_tool(
         &self,
+        tenant_id: &TenantId,
         server_id: &str,
         tool_name: &str,
         arguments: &Value,
@@ -58,7 +59,8 @@ impl ControlledMcpTransport for HttpMcpTransport {
             .post_json(
                 "/v1/mcp/tools/call",
                 &json!({
-                    "server_id": server_id, "tool_name": tool_name, "arguments": arguments,
+                    "tenant_id": tenant_id, "server_id": server_id,
+                    "tool_name": tool_name, "arguments": arguments,
                     "credential_handle": credential_handle.0
                 }),
                 None,

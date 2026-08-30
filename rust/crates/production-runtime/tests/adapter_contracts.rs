@@ -541,14 +541,18 @@ fn continuous_activation_guard_reloads_before_readiness_and_production_operation
         fs::read_to_string(root.join("rust/crates/production-runtime/src/activation.rs"))
             .unwrap_or_else(|error| panic!("activation guardian source: {error}"));
     for binding in [
-        "read_protected_receipt(&self.config.receipt_path)",
+        "read_protected_receipt(",
+        "&self.config.receipt_path",
+        "self.config.receipt_owner_uid",
+        "self.config.receipt_reader_gid",
         "parse_strict_json(",
         "receipt.verify_digest()",
         "receipt.release_id != config.release_id",
         "receipt.valid_until <= checked_at",
         "receipt.verified_at > checked_at",
         "mode != 0o440",
-        "before.uid() != 0",
+        "before.uid() != expected_owner_uid",
+        "before.gid() != expected_reader_gid",
         "O_NOFOLLOW",
         "before.nlink() != 1",
     ] {
@@ -558,7 +562,7 @@ fn continuous_activation_guard_reloads_before_readiness_and_production_operation
         );
     }
     assert!(
-        implementation_scope(&activation, "pub struct ActivationGuardian")
+        implementation_scope(&activation, "pub struct ActivationGuardian {")
             .contains("config: ActivationGuardianConfig")
     );
     assert!(!activation.contains("cached_receipt"));

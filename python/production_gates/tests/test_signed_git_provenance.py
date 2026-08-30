@@ -227,15 +227,34 @@ class SignedGitProvenanceTests(unittest.TestCase):
             configuration = runtime_config()
             release_values = values()
             release_values["release_id"] = envelope["report"]["checks"]["release_id"]
+            configuration["activation_guardian"]["release_id"] = release_values["release_id"]
             release_values["release_digest"] = "0" * 64
             signed_binding, binding_keyring = self.release_binding_fixture(
                 Path(raw).resolve(), template, release_values, configuration, envelope
             )
+            activation_receipt = {
+                "schema_version": "agenttrust.production-release-activation-receipt.v1",
+                "admitted": True,
+                "release_id": release_values["release_id"],
+                "certificate_id": "pc-" + "8" * 24,
+                "scope_digest": "1" * 64,
+                "input_digest": "2" * 64,
+                "report_digest": "3" * 64,
+                "production_image_manifest_digest": "4" * 64,
+                "evidence_bundle_manifest_digest": release_values["evidence"]["bundle_digest"],
+                "activation_material_digest": "5" * 64,
+                "revocation_registry_id": "test-registry",
+                "revocation_registry_sequence": 1,
+                "revocation_registry_digest": "6" * 64,
+                "verified_at": "2030-01-01T00:00:00Z",
+                "valid_until": "2030-01-02T00:00:00Z",
+            }
             rendered = RENDER.render(
                 template, release_values, configuration,
                 git_provenance=envelope, git_provenance_keyring=keyring,
                 release_binding=signed_binding,
                 release_binding_keyring=binding_keyring,
+                activation_receipt=activation_receipt,
             )
             self.assertIn(release_values["release_id"], rendered)
 
@@ -247,6 +266,7 @@ class SignedGitProvenanceTests(unittest.TestCase):
                     git_provenance=envelope, git_provenance_keyring=keyring,
                     release_binding=signed_binding,
                     release_binding_keyring=binding_keyring,
+                    activation_receipt=activation_receipt,
                 )
             forged_digest = copy.deepcopy(release_values)
             forged_digest["release_digest"] = "f" * 64
@@ -256,6 +276,7 @@ class SignedGitProvenanceTests(unittest.TestCase):
                     git_provenance=envelope, git_provenance_keyring=keyring,
                     release_binding=signed_binding,
                     release_binding_keyring=binding_keyring,
+                    activation_receipt=activation_receipt,
                 )
             forged_report = copy.deepcopy(envelope)
             forged_report["report"]["checks"]["commit_object_id"] = "f" * 40
@@ -265,6 +286,7 @@ class SignedGitProvenanceTests(unittest.TestCase):
                     git_provenance=forged_report, git_provenance_keyring=keyring,
                     release_binding=signed_binding,
                     release_binding_keyring=binding_keyring,
+                    activation_receipt=activation_receipt,
                 )
 
     def test_remote_release_membership_fails_closed(self) -> None:

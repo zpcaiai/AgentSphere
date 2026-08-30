@@ -41,6 +41,7 @@ jobs:
           done
       - run: ./scripts/check-generated.sh
       - run: python3 scripts/check-contract-parity.py
+      - run: python3 scripts/check-batch-dependency-dag.py
       - run: python3 scripts/validate-enterprise-api-contract.py
       - name: Reject unbounded Rust production HTTP reads
         run: python3 scripts/validate-rust-http-bounds.py

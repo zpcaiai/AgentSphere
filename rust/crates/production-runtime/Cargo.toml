@@ -7,6 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 agent-trust-action-ir = { path = "../action-ir" }
+agent-trust-bounded-http = { path = "../bounded-http" }
 agent-trust-agent-registry-posture = { path = "../agent-registry-posture" }
 agent-trust-contracts = { path = "../contracts" }
 agent-trust-enterprise-approval = { path = "../enterprise-approval" }

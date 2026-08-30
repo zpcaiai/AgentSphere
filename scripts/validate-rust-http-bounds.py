@@ -30,6 +30,7 @@ EXPECTED_CONSUMERS = {
     "platform-sre",
     "policy-administration",
     "policy-pep",
+    "production-runtime",
     "runtime-anomaly",
     "security-evaluation-lab",
 }

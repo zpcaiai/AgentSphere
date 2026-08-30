@@ -1,4 +1,5 @@
 use agent_trust_action_ir::{ParseLimits, parse_strict_json};
+use agent_trust_bounded_http::read_bounded_body;
 use agent_trust_production_runtime::activation::{ActivationGuardian, ActivationGuardianConfig};
 use agent_trust_production_runtime::database::{
     validated_connect_options, verify_database_posture,
@@ -8,7 +9,6 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
-use sqlx::postgres::PgPoolOptions;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -152,17 +152,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let updater_status = Arc::clone(&status);
     let updater_config = Arc::clone(&config);
     let updater_pool = pool.clone();
+    let updater_client = reqwest::Client::builder()
+        .redirect(Policy::none())
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(3))
+        .build()?;
     let updater = tokio::spawn(async move {
-        let client = reqwest::Client::builder()
-            .redirect(Policy::none())
-            .connect_timeout(Duration::from_secs(2))
-            .timeout(Duration::from_secs(3))
-            .build()
-            .expect("static HTTP client configuration");
         loop {
             let next = match tokio::time::timeout(
                 Duration::from_secs(5),
-                renew_once(&updater_config, &updater_pool, &client),
+                renew_once(&updater_config, &updater_pool, &updater_client),
             )
             .await
             {
@@ -218,15 +217,17 @@ fn fresh_status(mut value: LeaseRenewerStatus) -> LeaseRenewerStatus {
     let now = Utc::now();
     let watcher_fresh = value.last_verified_at.as_ref().is_some_and(|verified_at| {
         let age = now.signed_duration_since(*verified_at);
-        age >= ChronoDuration::zero()
-            && age <= ChronoDuration::seconds(WATCH_MAX_AGE_SECONDS)
+        age >= ChronoDuration::zero() && age <= ChronoDuration::seconds(WATCH_MAX_AGE_SECONDS)
     });
     let renewal_fresh = !value.database_write_enabled
         || (value.last_renewed_at.as_ref().is_some_and(|renewed_at| {
             let age = now.signed_duration_since(*renewed_at);
             age >= ChronoDuration::zero()
                 && age <= ChronoDuration::seconds(RENEW_INTERVAL_SECONDS as i64 * 2)
-        }) && value.valid_until.as_ref().is_some_and(|valid_until| *valid_until > now));
+        }) && value
+            .valid_until
+            .as_ref()
+            .is_some_and(|valid_until| *valid_until > now));
     if !watcher_fresh || !renewal_fresh {
         value.ready = false;
         value.database_write_enabled = false;
@@ -263,7 +264,9 @@ async fn renew_once_inner(
     if watcher.receipt_digest.as_deref() != Some(receipt.receipt_digest.as_str())
         || watcher.revocation_registry_id.as_deref()
             != Some(receipt.revocation_registry_id.as_str())
-        || watcher.revocation_registry_sequence.map(|value| value as u64)
+        || watcher
+            .revocation_registry_sequence
+            .map(|value| value as u64)
             != Some(receipt.revocation_sequence)
         || watcher.revocation_registry_digest.as_deref()
             != Some(receipt.revocation_registry_digest.as_str())
@@ -355,7 +358,8 @@ async fn renew_once_inner(
     let valid_until = renewed
         .try_get::<DateTime<Utc>, _>("renewed_valid_until")
         .map_err(|_| "ACTIVATION_LEASE_RENEWAL_RESPONSE_INVALID")?;
-    if valid_until <= renewed_at || valid_until > renewed_at + ChronoDuration::seconds(LEASE_SECONDS)
+    if valid_until <= renewed_at
+        || valid_until > renewed_at + ChronoDuration::seconds(LEASE_SECONDS)
     {
         return Err("ACTIVATION_LEASE_RENEWAL_RESPONSE_INVALID");
     }
@@ -430,12 +434,13 @@ async fn check_active_status(
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .is_none_or(|value| !value.eq_ignore_ascii_case("application/json"))
-        || response.content_length().is_some_and(|value| value as usize > WATCH_MAX_BYTES)
+        || response
+            .content_length()
+            .is_some_and(|value| value as usize > WATCH_MAX_BYTES)
     {
         return Err("ACTIVATION_LEASE_PROBE_NOT_ACTIVE");
     }
-    let bytes = response
-        .bytes()
+    let bytes = read_bounded_body(response, WATCH_MAX_BYTES)
         .await
         .map_err(|_| "ACTIVATION_LEASE_PROBE_RESPONSE_INVALID")?;
     let value = parse_strict_json(
@@ -484,12 +489,13 @@ async fn read_watcher_status(
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .is_none_or(|value| !value.eq_ignore_ascii_case("application/json"))
-        || response.content_length().is_some_and(|value| value as usize > WATCH_MAX_BYTES)
+        || response
+            .content_length()
+            .is_some_and(|value| value as usize > WATCH_MAX_BYTES)
     {
         return Err("ACTIVATION_LEASE_WATCHER_INVALID");
     }
-    let bytes = response
-        .bytes()
+    let bytes = read_bounded_body(response, WATCH_MAX_BYTES)
         .await
         .map_err(|_| "ACTIVATION_LEASE_WATCHER_INVALID")?;
     let value = parse_strict_json(
@@ -515,11 +521,17 @@ async fn read_watcher_status(
         || status.maximum_age_seconds != 60
         || age < ChronoDuration::zero()
         || age > ChronoDuration::seconds(WATCH_MAX_AGE_SECONDS)
-        || status.receipt_digest.as_deref().is_none_or(|value| !is_digest(value))
-        || status.revocation_registry_id.as_deref().is_none_or(|value| {
-            value.is_empty() || value.len() > 256 || !is_identifier(value)
-        })
-        || status.revocation_registry_sequence.is_none_or(|value| value <= 0)
+        || status
+            .receipt_digest
+            .as_deref()
+            .is_none_or(|value| !is_digest(value))
+        || status
+            .revocation_registry_id
+            .as_deref()
+            .is_none_or(|value| value.is_empty() || value.len() > 256 || !is_identifier(value))
+        || status
+            .revocation_registry_sequence
+            .is_none_or(|value| value <= 0)
         || status
             .revocation_registry_digest
             .as_deref()
@@ -546,7 +558,9 @@ fn load_configuration() -> Result<Configuration, Box<dyn std::error::Error>> {
         .and_then(|value| value.parse::<IpAddr>().ok());
     if watcher_url.scheme() != "http"
         || watcher_host.is_none_or(|value| !value.is_loopback())
-        || watcher_url.port_or_known_default().is_none_or(|port| port == 0)
+        || watcher_url
+            .port_or_known_default()
+            .is_none_or(|port| port == 0)
         || watcher_url.path() != "/ready"
         || watcher_url.query().is_some()
         || watcher_url.fragment().is_some()
@@ -561,9 +575,7 @@ fn load_configuration() -> Result<Configuration, Box<dyn std::error::Error>> {
     }
     let owner_uid = required_env("AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_OWNER_UID")?.parse()?;
     let reader_gid = required_env("AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_READER_GID")?.parse()?;
-    let receipt_path = PathBuf::from(required_env(
-        "AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_FILE",
-    )?);
+    let receipt_path = PathBuf::from(required_env("AGENT_TRUST_ACTIVATION_LEASE_RECEIPT_FILE")?);
     let guardian = ActivationGuardian::new(ActivationGuardianConfig {
         release_id: release_id.clone(),
         receipt_path,
@@ -577,9 +589,7 @@ fn load_configuration() -> Result<Configuration, Box<dyn std::error::Error>> {
         listen,
         guardian,
         database_url: read_secret("AGENT_TRUST_ACTIVATION_LEASE_DATABASE_URL_FILE")?,
-        database_password: read_secret(
-            "AGENT_TRUST_ACTIVATION_LEASE_DATABASE_PASSWORD_FILE",
-        )?,
+        database_password: read_secret("AGENT_TRUST_ACTIVATION_LEASE_DATABASE_PASSWORD_FILE")?,
         database_ca: required_file("AGENT_TRUST_ACTIVATION_LEASE_DATABASE_CA_FILE", false)?,
         database_role: required_env("AGENT_TRUST_ACTIVATION_LEASE_DATABASE_EXPECTED_ROLE")?,
     })
@@ -648,17 +658,12 @@ fn is_digest(value: &str) -> bool {
 }
 
 fn is_release_id(value: &str) -> bool {
-    value
-        .strip_prefix("git:sha1:")
-        .is_some_and(|digest| {
-            digest.len() == 40
-                && digest
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        })
-        || value
-            .strip_prefix("git:sha256:")
-            .is_some_and(is_digest)
+    value.strip_prefix("git:sha1:").is_some_and(|digest| {
+        digest.len() == 40
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    }) || value.strip_prefix("git:sha256:").is_some_and(is_digest)
 }
 
 fn is_identifier(value: &str) -> bool {

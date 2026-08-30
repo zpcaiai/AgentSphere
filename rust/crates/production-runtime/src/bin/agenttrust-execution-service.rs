@@ -43,14 +43,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "AGENT_TRUST_EXECUTION_ACTIVATION_MAX_STALENESS_SECONDS",
         )?
         .parse()?,
-        receipt_owner_uid: required_env(
-            "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_OWNER_UID",
-        )?
-        .parse()?,
-        receipt_reader_gid: required_env(
-            "AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_READER_GID",
-        )?
-        .parse()?,
+        receipt_owner_uid: required_env("AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_OWNER_UID")?
+            .parse()?,
+        receipt_reader_gid: required_env("AGENT_TRUST_EXECUTION_ACTIVATION_RECEIPT_READER_GID")?
+            .parse()?,
     })?);
     let database_url = read_secret("AGENT_TRUST_EXECUTION_DATABASE_URL_FILE")?;
     let database_password = read_secret("AGENT_TRUST_EXECUTION_DATABASE_PASSWORD_FILE")?;

@@ -23,8 +23,8 @@ pub fn validated_connect_options(
     ca_file: &Path,
     expected_role: &str,
 ) -> Result<PgConnectOptions, ProductionDatabaseError> {
-    let parsed = url::Url::parse(value)
-        .map_err(|_| ProductionDatabaseError::ConfigurationInvalid)?;
+    let parsed =
+        url::Url::parse(value).map_err(|_| ProductionDatabaseError::ConfigurationInvalid)?;
     let query = parsed.query_pairs().collect::<Vec<_>>();
     let mut normalized = BTreeMap::new();
     for (key, value) in &query {

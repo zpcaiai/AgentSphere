@@ -41,6 +41,7 @@ migrations/manifest.txt
 migrations/production-closure/0036_03_production_activation_lease.sql
 migrations/protocol-adapters/0036_01_28_protocol_runtime_hardening.sql
 python/production_gates/blue_green_stack.py
+python/production_gates/dependency_dag.py
 python/production_gates/deployment_cutover.py
 python/production_gates/deployment_cutover_broker.py
 python/production_gates/evidence_intake.py
@@ -60,6 +61,7 @@ python/production_gates/signing_broker.py
 python/production_gates/tests/qualification_fixtures.py
 python/production_gates/tests/test_blue_green_stack.py
 python/production_gates/tests/test_build_production_image.py
+python/production_gates/tests/test_dependency_dag.py
 python/production_gates/tests/test_deployment_cutover.py
 python/production_gates/tests/test_evidence_bundle_verifier.py
 python/production_gates/tests/test_evidence_intake.py
@@ -192,6 +194,7 @@ schemas/release/worm-evidence-keyring.schema.json
 scripts/acquire-github-oidc-token.py
 scripts/assemble-production-image-manifest.py
 scripts/build-production-image.py
+scripts/check-batch-dependency-dag.py
 scripts/compile-production-qualification.py
 scripts/control-production-deployment-cutover.py
 scripts/execute-production-deployment.py

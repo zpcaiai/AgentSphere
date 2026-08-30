@@ -5,3 +5,5 @@ openapi-spec-validator==0.9.0
 # Registry wire-contract compatibility tests validate the Draft 2020-12 source schema directly.
 # Keep this at the validator's minimum compatible release to limit CI dependency drift.
 jsonschema==4.26.0
+# Dependency DAG and production stack validation consume YAML directly.
+PyYAML==6.0.3
