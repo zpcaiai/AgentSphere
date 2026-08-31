@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenttrust.local/schemas/release/signed-release-binding.schema.json",
+  "$id": "https://agentsphere.local/schemas/release/signed-release-binding.schema.json",
   "title": "Signed production release material binding",
   "type": "object",
   "additionalProperties": false,
