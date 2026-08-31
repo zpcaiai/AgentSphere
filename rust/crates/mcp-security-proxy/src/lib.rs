@@ -1408,7 +1408,7 @@ mod tests {
                 &snapshot.tenant_id,
                 "server",
                 &format!("sha256:{}", "f".repeat(64)),
-                &[snapshot.clone()],
+                std::slice::from_ref(&snapshot),
             ),
             Ok(true)
         );

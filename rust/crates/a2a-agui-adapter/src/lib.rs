@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1560,6 +1560,7 @@ pub enum A2aError {
 mod tests {
     use super::*;
     use agent_trust_contracts::{LeaseId, ToolId, ToolRef, ToolVersion};
+    use parking_lot::Mutex;
 
     #[derive(Default)]
     struct TaskStore {

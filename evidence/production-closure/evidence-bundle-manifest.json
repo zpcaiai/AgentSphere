@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-31T15:17:34Z",
+  "generated_at": "2026-08-31T15:21:53Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -1165,7 +1165,7 @@
     },
     {
       "path": "rust/crates/a2a-agui-adapter/src/lib.rs",
-      "sha256": "2e4f0a17417793da380141bdfde729cf6385f0dccd05af7c1381e9354f21b949"
+      "sha256": "c48e17c058795e58e193e7bb4801b8ab468b169e24cdc151aafa27a6b97d7b09"
     },
     {
       "path": "rust/crates/agent-registry-posture/src/server.rs",
@@ -1385,7 +1385,7 @@
     },
     {
       "path": "rust/crates/mcp-security-proxy/src/lib.rs",
-      "sha256": "3bc7d3c3e019f57bb2d0fb9fd888285b328028b21803851a26d8dd8450db35fe"
+      "sha256": "a979716afdc2a045828331066772b7f24d2af8642b386fb089e7a00d973cf531"
     },
     {
       "path": "rust/crates/model-gateway/src/adapters.rs",
