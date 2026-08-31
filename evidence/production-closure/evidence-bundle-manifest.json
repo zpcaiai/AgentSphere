@@ -1,11 +1,11 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-31T15:10:36Z",
+  "generated_at": "2026-08-31T15:15:24Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "27f2799a94ca95c3826f5e32978552185daa1353b81a5c0de4ef717cc0540c60"
+      "sha256": "6f128f84091f4313ccae90fdef49dc6ad44e8adec1b1cabd60b8f4bbcc98e82d"
     },
     {
       "path": ".github/workflows/linux-isolation.yml",
@@ -1161,7 +1161,7 @@
     },
     {
       "path": "rust/crates/a2a-agui-adapter/Cargo.toml",
-      "sha256": "3c9d308c2bafe0b5b4cfd1450a6838f4ec30eda0c60abafe1e78a9ad7ec67cb5"
+      "sha256": "5dd3847d5d8b8d86846a76ad83fbf63feeef793253b2158593b4bf5584d168f2"
     },
     {
       "path": "rust/crates/a2a-agui-adapter/src/lib.rs",

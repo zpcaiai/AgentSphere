@@ -406,5 +406,9 @@ jobs:
           }
           refence() { update_activation FENCED; }
           trap refence EXIT
+          # Build before opening the deliberately short write lease. A cold CI
+          # compiler must never consume the production-action authorization
+          # window or turn elapsed build time into a flaky persistence test.
+          cargo test --locked -p agent-trust-integration-tests --test postgres_persistence --no-run
           update_activation ACTIVE
           cargo test --locked -p agent-trust-integration-tests --test postgres_persistence -- --nocapture
