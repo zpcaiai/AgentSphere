@@ -2449,7 +2449,7 @@ mod authority_tests {
     #[test]
     fn stream_chunks_are_only_exposed_as_post_dlp_buffered_release() {
         let outcome = ProviderOutcome {
-            schema_version: PROVIDER_OUTCOME_SCHEMA.into(),
+            schema_version: EXTERNAL_OUTCOME_SCHEMA.into(),
             provider_request_id: "provider-request".into(),
             output_utf8: None,
             embedding: None,
@@ -2462,7 +2462,7 @@ mod authority_tests {
             residency_attestation_digest: "a".repeat(64),
         };
         let completion = CompletionEvidence {
-            schema_version: COMPLETION_SCHEMA.into(),
+            schema_version: COMPLETION_EVIDENCE_SCHEMA.into(),
             artifact_ref: format!("artifact://sha256/{}", "b".repeat(64)),
             artifact_digest: "b".repeat(64),
             output_digest: "c".repeat(64),
