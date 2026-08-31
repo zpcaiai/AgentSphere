@@ -1,11 +1,11 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-31T15:03:35Z",
+  "generated_at": "2026-08-31T15:10:36Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "1c92af624b9610553cacf174653eaa7d55173351f1fb82444e792ccfb41bf1cf"
+      "sha256": "27f2799a94ca95c3826f5e32978552185daa1353b81a5c0de4ef717cc0540c60"
     },
     {
       "path": ".github/workflows/linux-isolation.yml",
@@ -1081,7 +1081,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "5e20103a07c35d6f2ff2aa97bcc6a20e53358c42a4c237fea702cb2e80eb4741"
+      "sha256": "5463fcc0f965aecf91a0825e870a3ad6c5cb0cc0de229e33c4c939bbde5706ff"
     },
     {
       "path": "python/production_gates/tests/test_production_deployment_orchestration.py",
@@ -1581,7 +1581,7 @@
     },
     {
       "path": "rust/crates/sandbox-runtime/src/gvisor.rs",
-      "sha256": "aecee0acf7ec7b8e42d5780b36d897ad68d7b376677ba0f86bddb91b95801a85"
+      "sha256": "9eb847ae579f738e146e4de35e5a328817d6eb5af57440e7add898fc7ef336fb"
     },
     {
       "path": "rust/crates/sandbox-runtime/src/lib.rs",

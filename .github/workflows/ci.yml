@@ -372,6 +372,39 @@ jobs:
             END IF;
           END $$;
           SQL
-      - env:
+      - name: Run persistence integration under an ephemeral CI-only activation lease
+        env:
           AGENT_TRUST_TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/agenttrust
-        run: cargo test --locked -p agent-trust-integration-tests --test postgres_persistence -- --nocapture
+        run: |
+          update_activation() {
+            next_state="$1"
+            PGPASSWORD=agenttrust-ci-migration-password \
+              PGHOST=localhost PGPORT=5432 PGUSER=agenttrust_migration_ci \
+              PGDATABASE=agenttrust PGSSLMODE=verify-full \
+              PGSSLROOTCERT="$AGENT_TRUST_CI_DATABASE_CA_FILE" \
+              PGSSLMINPROTOCOLVERSION=TLSv1.3 PGCHANNELBINDING=require \
+              PGGSSENCMODE=disable PGCLIENTENCODING=UTF8 \
+              psql --no-psqlrc -v ON_ERROR_STOP=1 \
+                -v release_id="git:sha1:$GITHUB_SHA" -v next_state="$next_state" <<'SQL'
+          UPDATE public.production_activation_lease
+             SET revision = revision + 1,
+                 state = :'next_state',
+                 release_id = :'release_id',
+                 certificate_id = CASE WHEN :'next_state' = 'ACTIVE' THEN 'pc-000000000000000000000000' ELSE NULL END,
+                 revocation_registry_id = CASE WHEN :'next_state' = 'ACTIVE' THEN 'ci-only' ELSE NULL END,
+                 revocation_sequence = CASE WHEN :'next_state' = 'ACTIVE' THEN 1 ELSE NULL END,
+                 revocation_registry_digest = CASE WHEN :'next_state' = 'ACTIVE' THEN repeat('1', 64) ELSE NULL END,
+                 projection_id = CASE WHEN :'next_state' = 'ACTIVE' THEN 'ci-only' ELSE NULL END,
+                 projection_head_digest = CASE WHEN :'next_state' = 'ACTIVE' THEN repeat('2', 64) ELSE NULL END,
+                 watcher_verified_at = CASE WHEN :'next_state' = 'ACTIVE' THEN clock_timestamp() ELSE NULL END,
+                 renewed_at = CASE WHEN :'next_state' = 'ACTIVE' THEN clock_timestamp() ELSE NULL END,
+                 valid_until = CASE WHEN :'next_state' = 'ACTIVE' THEN clock_timestamp() + interval '45 seconds' ELSE '-infinity'::timestamptz END,
+                 transition_receipt_digest = CASE WHEN :'next_state' = 'ACTIVE' THEN repeat('3', 64) ELSE NULL END,
+                 state_digest = CASE WHEN :'next_state' = 'ACTIVE' THEN repeat('4', 64) ELSE repeat('5', 64) END
+           WHERE singleton;
+          SQL
+          }
+          refence() { update_activation FENCED; }
+          trap refence EXIT
+          update_activation ACTIVE
+          cargo test --locked -p agent-trust-integration-tests --test postgres_persistence -- --nocapture

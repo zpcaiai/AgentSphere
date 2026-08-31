@@ -2065,6 +2065,15 @@ class ProductionDeploymentTests(unittest.TestCase):
         fixture_insert = rls_probe.split("INSERT INTO enterprise_tenants", maxsplit=1)[0]
         self.assertIn("psql --no-psqlrc", fixture_insert)
         self.assertIn("PGSSLMODE=verify-full", fixture_insert)
+        self.assertIn(
+            "Run persistence integration under an ephemeral CI-only activation lease",
+            workflow,
+        )
+        self.assertIn("trap refence EXIT", workflow)
+        self.assertIn("update_activation ACTIVE", workflow)
+        self.assertIn("refence() { update_activation FENCED; }", workflow)
+        self.assertIn("PGUSER=agenttrust_migration_ci", workflow)
+        self.assertIn("clock_timestamp() + interval '45 seconds'", workflow)
         self.assertIn("AGENT_TRUST_DATABASE_PASSWORD_FILE", workflow)
         self.assertGreaterEqual(
             workflow.count("run-production-migrations.sh --apply"),
