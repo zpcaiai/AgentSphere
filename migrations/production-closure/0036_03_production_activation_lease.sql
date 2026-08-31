@@ -91,6 +91,24 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $activation_guard$
 BEGIN
+  -- The dedicated migration authority already owns the database and schema and can replace
+  -- triggers. Make that inherent authority explicit so forward/idempotent migrations remain
+  -- possible after this final guard is installed. No application role can acquire this path.
+  IF EXISTS (
+    SELECT 1
+      FROM pg_catalog.pg_database AS database
+      JOIN pg_catalog.pg_roles AS role
+        ON role.oid = database.datdba
+     WHERE database.datname = current_database()
+       AND role.rolname = session_user
+       AND NOT role.rolsuper
+       AND NOT role.rolcreaterole
+       AND NOT role.rolcreatedb
+       AND NOT role.rolreplication
+       AND NOT role.rolbypassrls
+  ) THEN
+    RETURN NULL;
+  END IF;
   IF NOT EXISTS (
     SELECT 1
       FROM public.production_activation_lease AS lease

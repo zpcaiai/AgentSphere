@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-30T15:46:16Z",
+  "generated_at": "2026-08-31T14:57:53Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -853,7 +853,7 @@
     },
     {
       "path": "migrations/production-closure/0036_03_production_activation_lease.sql",
-      "sha256": "83ff33c4973bafd06dbe17783c64a0fbb6274419349822e10a1a24a3ed44248b"
+      "sha256": "83f1c8d01779ba1834127a435b568ebcebd35075d4233912d39541182f245b1f"
     },
     {
       "path": "migrations/production-closure/0036_production_closure.sql",
@@ -1033,7 +1033,7 @@
     },
     {
       "path": "python/production_gates/tests/test_dependency_dag.py",
-      "sha256": "2decb26e8252c70c0e49bb1883a0e8cbda44f71cf0cef075c73fea2db3a21f1a"
+      "sha256": "0b363ea5d08eb4bea39f0e8ce7993ba2631587acdb7ea2de60a9d088693ea76b"
     },
     {
       "path": "python/production_gates/tests/test_deployment_cutover.py",
@@ -1073,7 +1073,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_activation_lease_contract.py",
-      "sha256": "20befcf09ec1c2f0d4b2fe117cdb5046df655e5581229a43bd6fc7384af146ef"
+      "sha256": "8dad543b5d0ef8d960e02a1069bf2835003ee55b66189df33b45de6f17545d1c"
     },
     {
       "path": "python/production_gates/tests/test_production_closure_signing_contract.py",
@@ -1081,7 +1081,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "afafce17e69262fcf1a31a5ece076f4fd4efd65bf9c7375aa05dde6274eeecf3"
+      "sha256": "fc04db1962de258090e8b61fb281d40cc8b31e9e5a2342cc4174efccc68c4122"
     },
     {
       "path": "python/production_gates/tests/test_production_deployment_orchestration.py",
@@ -2041,7 +2041,7 @@
     },
     {
       "path": "scripts/check-batch-dependency-dag.py",
-      "sha256": "d534648d8c19c17a117a2c955c02e5f568546da33420890808771b2267e4cd55"
+      "sha256": "16baec7a9e4b0ca1b45966297b5e7ad178c71fc5498dced20797ba30a02febd6"
     },
     {
       "path": "scripts/compile-production-qualification.py",

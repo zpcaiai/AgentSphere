@@ -7,13 +7,14 @@ import json
 from pathlib import Path
 import sys
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from python.production_gates.dependency_dag import (
     DependencyDagError,
     validate_repository_dags,
 )
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:

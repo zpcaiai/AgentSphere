@@ -2029,6 +2029,10 @@ class ProductionDeploymentTests(unittest.TestCase):
         )
         self.assertIn("PGGSSENCMODE=disable PGCLIENTENCODING=UTF8", standalone_replay)
         self.assertIn("PGPASSWORD=agenttrust-ci-migration-password", standalone_replay)
+        activation_lease = (
+            ROOT / "migrations/production-closure/0036_03_production_activation_lease.sql"
+        ).read_text()
+        self.assertIn("role.rolname = session_user", activation_lease)
         self.assertNotIn("\n        env:", standalone_replay)
         self.assertNotIn("-U postgres", standalone_replay)
         self.assertNotIn('PGDATABASE="$database_url"', standalone_replay)

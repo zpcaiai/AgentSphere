@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -16,6 +19,19 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class DependencyDagTests(unittest.TestCase):
+    def test_cli_is_independent_of_callers_working_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/check-batch-dependency-dag.py")],
+                cwd=directory,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        report = json.loads(result.stdout)
+        self.assertTrue(report["validated"])
+        self.assertEqual(report["batch_count"], 36)
+
     def test_repository_snapshots_and_skill_metadata_match(self) -> None:
         dag, paths = validate_repository_dags(ROOT)
         self.assertEqual(tuple(dag.batches), EXPECTED_BATCHES)

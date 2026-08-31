@@ -45,6 +45,13 @@ class ProductionActivationLeaseContractTests(unittest.TestCase):
             "watcher_verified_at >= clock_timestamp() - interval '60 seconds'",
             "requested_valid_until > clock_timestamp() + interval '45 seconds'",
             "BEFORE INSERT OR UPDATE OR DELETE OR TRUNCATE",
+            "role.rolname = session_user",
+            "database.datname = current_database()",
+            "NOT role.rolsuper",
+            "NOT role.rolcreaterole",
+            "NOT role.rolcreatedb",
+            "NOT role.rolreplication",
+            "NOT role.rolbypassrls",
         ):
             self.assertIn(required, sql)
         self.assertIn("'agenttrust_schema_migrations'", sql)
@@ -75,7 +82,7 @@ class ProductionActivationLeaseContractTests(unittest.TestCase):
             "RENEW_INTERVAL_SECONDS: u64 = 10",
             "LEASE_SECONDS: i64 = 45",
             "watcher.receipt_digest.as_deref() != Some(receipt.receipt_digest.as_str())",
-            "watcher.revocation_registry_sequence.map(|value| value as u64)",
+            "watcher\n            .revocation_registry_sequence\n            .map(|value| value as u64)",
             "watcher.revocation_registry_digest.as_deref()",
             "agenttrust_renew_production_activation",
             "state == \"FENCED\"",
