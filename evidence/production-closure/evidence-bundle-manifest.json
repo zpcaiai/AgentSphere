@@ -1,7 +1,7 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-31T15:49:51Z",
+  "generated_at": "2026-08-31T15:57:31Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
@@ -1701,7 +1701,7 @@
     },
     {
       "path": "schemas/execution/linux-isolation-report.schema.json",
-      "sha256": "8e1121d81de8cf483da800ee58810c517b0e74397ee36df38830534e0abf180c"
+      "sha256": "3b51f1c5ee24dddfd260e256e09624740e173174f0a5b27901c6685866cb7501"
     },
     {
       "path": "schemas/industrial/asset-channel.schema.json",
