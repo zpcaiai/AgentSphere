@@ -4,10 +4,21 @@
   "title": "AgentTrust production runtime configuration",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version","fail_closed","listeners","identity","model_versions","endpoints","evidence_files"],
+  "required": ["schema_version","fail_closed","activation_guardian","listeners","identity","model_versions","endpoints","evidence_files"],
   "properties": {
     "schema_version": {"const":"agenttrust.production-runtime-config.v1"},
     "fail_closed": {"const":true},
+    "activation_guardian": {
+      "type":"object","additionalProperties":false,
+      "required":["release_id","receipt_path","max_staleness_seconds","receipt_owner_uid","receipt_reader_gid"],
+      "properties": {
+        "release_id":{"type":"string","pattern":"^git:sha(1:[0-9a-f]{40}|256:[0-9a-f]{64})$"},
+        "receipt_path":{"type":"string","pattern":"^/"},
+        "max_staleness_seconds":{"type":"integer","minimum":1,"maximum":60},
+        "receipt_owner_uid":{"type":"integer","minimum":1,"maximum":4294967295},
+        "receipt_reader_gid":{"type":"integer","minimum":1,"maximum":4294967295}
+      }
+    },
     "listeners": {
       "type":"object","additionalProperties":false,"required":["data","management"],
       "properties":{"data":{"type":"string","minLength":3},"management":{"type":"string","minLength":3}}
