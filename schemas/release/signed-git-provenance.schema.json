@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenttrust.local/schemas/release/signed-git-provenance.schema.json",
+  "$id": "https://agentsphere.local/schemas/release/signed-git-provenance.schema.json",
   "title": "Signed immutable Git provenance",
   "type": "object",
   "additionalProperties": false,
