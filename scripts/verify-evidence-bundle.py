@@ -9,6 +9,10 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from python.production_gates.release_code_manifest import (
     ReleaseCodeManifestError,
@@ -18,7 +22,6 @@ from python.production_gates.release_code_manifest import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evidence/production-closure/evidence-bundle-manifest.json"
 PRODUCTION_CLOSURE = ROOT / "evidence/production-closure"
 

@@ -4,6 +4,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).parents[3]
@@ -53,7 +54,14 @@ class LinuxIsolationReportTests(unittest.TestCase):
 
     def test_exact_production_report_verifies(self) -> None:
         report, now = self.fixture()
-        self.assertEqual(MODULE.verify(report, now=now), report["evidence_digest"])
+        source_environment = {
+            "GITHUB_REPOSITORY": report["source_repository"],
+            "GITHUB_SHA": report["source_commit"],
+            "GITHUB_WORKFLOW_REF": report["source_workflow_ref"],
+            "RUNNER_NAME": report["runner_name"],
+        }
+        with patch.dict("os.environ", source_environment):
+            self.assertEqual(MODULE.verify(report, now=now), report["evidence_digest"])
 
     def test_tampered_or_baseline_report_fails_closed(self) -> None:
         report, now = self.fixture()

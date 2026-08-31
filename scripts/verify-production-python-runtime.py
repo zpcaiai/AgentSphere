@@ -8,6 +8,9 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 from python.production_gates.live_integrations import GateError
 from python.production_gates.runner_runtime import (
     DEFAULT_REQUIRED_DISTRIBUTIONS,

@@ -1,11 +1,11 @@
 {
   "schema_version": "agenttrust.closure-evidence-bundle.v1",
   "release_id": "WORKTREE-NO-GIT",
-  "generated_at": "2026-08-31T14:57:53Z",
+  "generated_at": "2026-08-31T15:03:35Z",
   "artifacts": [
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "8ca10f1734006a06bc21f61028dadfb572ce34de3e3ff0452b4eaa336aded3d1"
+      "sha256": "1c92af624b9610553cacf174653eaa7d55173351f1fb82444e792ccfb41bf1cf"
     },
     {
       "path": ".github/workflows/linux-isolation.yml",
@@ -1057,7 +1057,7 @@
     },
     {
       "path": "python/production_gates/tests/test_linux_isolation_report.py",
-      "sha256": "e2a78fa4bac5610f390965194a57299ec80a18bf21bf700a161b6ec71e8591b4"
+      "sha256": "da05f8428e7afb709b9e3d1af09545408dbdf67aa816d36b5d2a5816de757808"
     },
     {
       "path": "python/production_gates/tests/test_migration_idempotency.py",
@@ -1081,7 +1081,7 @@
     },
     {
       "path": "python/production_gates/tests/test_production_deployment.py",
-      "sha256": "fc04db1962de258090e8b61fb281d40cc8b31e9e5a2342cc4174efccc68c4122"
+      "sha256": "5e20103a07c35d6f2ff2aa97bcc6a20e53358c42a4c237fea702cb2e80eb4741"
     },
     {
       "path": "python/production_gates/tests/test_production_deployment_orchestration.py",
@@ -2033,7 +2033,7 @@
     },
     {
       "path": "scripts/assemble-production-image-manifest.py",
-      "sha256": "d1304f5412efa98b59cc198fc9565c5ece4511a604550375c6464377d7e2c7c8"
+      "sha256": "d0734cf93d239a635f8a96cf94d8937e359ee13c714df40e40c8558eec53155b"
     },
     {
       "path": "scripts/build-production-image.py",
@@ -2045,43 +2045,43 @@
     },
     {
       "path": "scripts/compile-production-qualification.py",
-      "sha256": "f9b39f9ffeadc7e35013e3f9c78703a6ea82e0173536b6a93becfd7357407724"
+      "sha256": "8b403a6a8b16cdfcf3dee6d8700bd39eb274daa566e1c9074a2ddfe8aebcb708"
     },
     {
       "path": "scripts/control-production-deployment-cutover.py",
-      "sha256": "4763e390ec889efa50f276cf4ef3f234179bfdf416ba4100903e3c2173475209"
+      "sha256": "27c2ab1916535e167b6e99401c385e070d56b53e630fbd76891394f48432f5b6"
     },
     {
       "path": "scripts/execute-production-deployment.py",
-      "sha256": "24e9685b4ebeace790d08b7be14c5279aea4f087583227d98a55ad37bb383014"
+      "sha256": "0d9d703650627bc53b03289b7494fa9dd33bc030987a57928bbb7197688576af"
     },
     {
       "path": "scripts/intake-production-evidence.py",
-      "sha256": "3fefc843d1dddecf142d02f4b4c1cb84ed4455181953fce80f037c348c5bd0d6"
+      "sha256": "7cdd834dc6af70bb504b1cbd8357877730abc9c12af77631e36cea3d4c99e737"
     },
     {
       "path": "scripts/manage-production-revocation-checkpoint.py",
-      "sha256": "e0b30d6a53a1554203d777ecbc67740d96cfe0caf40cca0ff360422271628483"
+      "sha256": "e5af610050d5ef877627911cc50557801d5249728596d31f6fc45e50aae4de55"
     },
     {
       "path": "scripts/materialize-production-blue-green-stack.py",
-      "sha256": "d540cdb56effebcf2c1363010a9aad5ed93dac259b02ab92d4554564685dfb62"
+      "sha256": "289ebface61f870344d6d0b47fc2296feaf8c4b9b377cd8aca2e7f15a66c2de2"
     },
     {
       "path": "scripts/materialize-production-stack-values.py",
-      "sha256": "000367133a954b474b0b630233282832b2aeebd86917344c8a1dc4c71d917cca"
+      "sha256": "c44822591bfef570065d7c478c2220aea684b2285294d723c4f47689731454a6"
     },
     {
       "path": "scripts/prepare-production-activation.py",
-      "sha256": "79a8c8a5605a950f1a97f0955157c5f355cfd33f0e5984d1f8a718c179cdaa66"
+      "sha256": "44b67bf161907cd3eadd512a5d159580f8c3b7b657ad976c17d4ae4656efaf7d"
     },
     {
       "path": "scripts/project-production-revocation.py",
-      "sha256": "26f6d7babfd2e8591ca3c4cc432eac7d277388a5130d8e5b534db88fe15ff13e"
+      "sha256": "d9abc31f302ac2d08a0cecf9dc48b555be8d4304ffc951402455272575571327"
     },
     {
       "path": "scripts/publish-production-release-evidence.py",
-      "sha256": "b010983c8b999d904077f10daf8597b3baec9ae3751780e570017f6cef3591dc"
+      "sha256": "de87c11f08fd8b92c99ccf2bd3076bccbe4fc64565753a692b2d8255c8167d97"
     },
     {
       "path": "scripts/render-production-stack.py",
@@ -2089,11 +2089,11 @@
     },
     {
       "path": "scripts/report-production-release-readiness.py",
-      "sha256": "7eb912d0f687ef40d8fec32193cc9de5f5e165bf752bf6f2aafbb4b17483ddb4"
+      "sha256": "723cfb4841841f1fe6a8f67a1033c72c7b35989015a2290b27872b265e38b7c0"
     },
     {
       "path": "scripts/request-production-deployment-cutover.py",
-      "sha256": "d0ba216a690b6f7e89a7713aa6f93bbc11682a62fcb415a283381dd6c877ffce"
+      "sha256": "cd2b75a36ca2841bee588e319bcdf0c2be1605dd7b907cacd2ecc20cf73b2027"
     },
     {
       "path": "scripts/run-linux-isolation-gate.sh",
@@ -2109,7 +2109,7 @@
     },
     {
       "path": "scripts/sync-closure-evidence-manifest.py",
-      "sha256": "267e66f526313691840d5d777e193555902f5640ca0247b186cd4aee16b17055"
+      "sha256": "5d52e2dd79d3ce6e944c9c24b9aed43f98e7223bfc245ab61cbcbe5be25a72fe"
     },
     {
       "path": "scripts/validate-enterprise-api-contract.py",
@@ -2129,7 +2129,7 @@
     },
     {
       "path": "scripts/verify-evidence-bundle.py",
-      "sha256": "a8ba9777eb3986601948b1b4d5a2c7355c30ce66158d6d6f96daa93c75894702"
+      "sha256": "92c76f5f2c7f56d88118c2f68f339bc65f25d68aa0a10eb986ea9088407374c0"
     },
     {
       "path": "scripts/verify-external-gate-evidence.py",
@@ -2141,11 +2141,11 @@
     },
     {
       "path": "scripts/verify-production-evidence-bundle.py",
-      "sha256": "7d2d20e286c413e2f9973d062aea0acb7d9400ff3be15fdb3b4380a14fe1c3a8"
+      "sha256": "f6dfa6d6425c58157960babf4d47ee59e5f84591c4614a0a957e8157900deffa"
     },
     {
       "path": "scripts/verify-production-python-runtime.py",
-      "sha256": "2819acfddbba8cbb74877b01b971b5975361089f58d632b2ed32f61f1f7ec55f"
+      "sha256": "4995cda78e9349bd0aeff60db059d573117adb3477d94b1e87af0f87f9c2ce3b"
     },
     {
       "path": "web/approval-console/src/ApprovalConsole.vue",

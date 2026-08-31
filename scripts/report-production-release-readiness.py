@@ -11,7 +11,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 from typing import Any, Sequence
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from python.production_gates.release_code_manifest import (
     ReleaseCodeManifestError,
@@ -20,7 +24,6 @@ from python.production_gates.release_code_manifest import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
 class ReadinessError(RuntimeError):
     pass
 

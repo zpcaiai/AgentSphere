@@ -8,6 +8,8 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -562,6 +564,25 @@ def values() -> dict[str, object]:
 
 
 class ProductionDeploymentTests(unittest.TestCase):
+    def test_production_python_entrypoints_are_working_directory_independent(self) -> None:
+        scripts = []
+        for path in sorted((ROOT / "scripts").glob("*.py")):
+            source = path.read_text(encoding="utf-8")
+            if re.search(r"^(?:from|import) python\.", source, re.MULTILINE):
+                scripts.append(path)
+                self.assertIn("sys.path.insert(0, str(ROOT))", source, str(path))
+        self.assertGreaterEqual(len(scripts), 18)
+        with tempfile.TemporaryDirectory() as directory:
+            for path in scripts:
+                completed = subprocess.run(
+                    [sys.executable, str(path), "--help"],
+                    cwd=directory,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                self.assertEqual(completed.returncode, 0, f"{path}: {completed.stderr}")
+
     def test_full_stack_rejects_worktree_release(self) -> None:
         unsafe = values()
         unsafe["release_id"] = "WORKTREE-NO-GIT"
@@ -2036,6 +2057,14 @@ class ProductionDeploymentTests(unittest.TestCase):
         self.assertNotIn("\n        env:", standalone_replay)
         self.assertNotIn("-U postgres", standalone_replay)
         self.assertNotIn('PGDATABASE="$database_url"', standalone_replay)
+        rls_probe = workflow.split(
+            "- name: Verify enterprise RLS with a non-bypass application role",
+            maxsplit=1,
+        )[1].split("- env:", maxsplit=1)[0]
+        self.assertIn("PGUSER=agenttrust_migration_ci", rls_probe)
+        fixture_insert = rls_probe.split("INSERT INTO enterprise_tenants", maxsplit=1)[0]
+        self.assertIn("psql --no-psqlrc", fixture_insert)
+        self.assertIn("PGSSLMODE=verify-full", fixture_insert)
         self.assertIn("AGENT_TRUST_DATABASE_PASSWORD_FILE", workflow)
         self.assertGreaterEqual(
             workflow.count("run-production-migrations.sh --apply"),

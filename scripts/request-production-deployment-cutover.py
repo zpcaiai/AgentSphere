@@ -7,7 +7,11 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Sequence
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from python.production_gates.deployment_cutover_broker import (
     OPERATIONS,

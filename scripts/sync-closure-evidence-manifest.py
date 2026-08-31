@@ -9,7 +9,11 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 from typing import Sequence
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from python.production_gates.release_code_manifest import (
     ReleaseCodeManifestError,
@@ -18,7 +22,6 @@ from python.production_gates.release_code_manifest import (
 )
 
 
-ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "evidence/production-closure/evidence-bundle-manifest.json"
 _FIELDS = {
     "schema_version",
